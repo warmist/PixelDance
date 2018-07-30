@@ -26,14 +26,14 @@ function make_config(tbl,defaults)
 	end
 	return ret
 end
-
+local max_size=math.min(STATE.size[1],STATE.size[2])/2
 img_buf=img_buf or buffers.Make("color")
 tick=tick or 0
 config=make_config({
 	{"color",{0.5,0,0,1},type="color"},
 	{"k",0.2,type="float"},
 	{"l",0.4,type="float"},
-	{"R",400,type="int",min=0,max=512},
+	{"R",400,type="int",min=0,max=max_size},
 	{"ticking",100,type="float",min=1,max=10000},
 	{"ticking2",100,type="float",min=1,max=10000},
 },config)
@@ -82,11 +82,11 @@ function pos( t )
 end
 function update(  )
 	imgui.Begin("Hello")
-	
+	local s=STATE.size
 	draw_config(config)
 	local c_u8={config.color[1]*255,config.color[2]*255,config.color[3]*255,config.color[4]*255}
 	if imgui.Button("Clear image") then
-		local s=STATE.size
+		print("Clearing:"..s[1].."x"..s[2])
 		for x=0,s[1]-1 do
 			for y=0,s[2]-1 do
 				img_buf:set(x,y,{0,0,0,0})
@@ -95,13 +95,13 @@ function update(  )
 	end
 	imgui.SameLine()
 	if imgui.Button("Save image") then
-		img_buf:save("saved_"..image_no..".png")
+		img_buf:save("saved_"..image_no..".png","Saved by PixelDance")
 		image_no=image_no+1
 	end
 	imgui.End()
 	for i=1,config.ticking do
 		local x,y=pos(tick/config.ticking2);
-		img_buf:set(x+512,y+512,c_u8)
+		img_buf:set(x+s[1]/2,y+s[2]/2,c_u8)
 		tick=tick+1
 	end
 	img_buf:present()

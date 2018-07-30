@@ -7,6 +7,8 @@
 #include "filesys.h"
 #include "limgui.h"
 #include "lua_buffers.h"
+#include "stb_image.h"
+#define WRAP_CPP_EXCEPTIONS
 void load_projects(const char* prefix,file_watcher& fwatch)
 {
     std::string path_prefix = prefix;
@@ -19,7 +21,22 @@ void load_projects(const char* prefix,file_watcher& fwatch)
         fwatch.files.emplace_back(f);
     }
 }
-
+static int wrap_exceptions(lua_State *L, lua_CFunction f)
+{
+	try {
+		return f(L);  // Call wrapped function and return result.
+	}
+	catch (const char *s) {  // Catch and convert exceptions.
+		lua_pushstring(L, s);
+	}
+	catch (std::exception& e) {
+		lua_pushstring(L, e.what());
+	}
+	catch (...) {
+		lua_pushliteral(L, "caught (...)");
+	}
+	return lua_error(L);  // Rethrow as a Lua error.
+}
 static int msghandler(lua_State *L) {
 	const char *msg = lua_tostring(L, 1);
 	if (msg == NULL) {  /* is error object not a string? */
@@ -93,8 +110,6 @@ struct project {
 	bool is_errored = false;
 	lua_global_state state;
 
-	
-
     project() {}
     ~project() { if(L)lua_close(L); };
 
@@ -105,8 +120,11 @@ struct project {
         luaL_openlibs(L);
 		lua_open_imgui(L);
 		lua_open_buffers(L);
-		//lua_pushlightuserdata(L, this);
-		//lua_setglobal(L, "__project");
+#ifdef WRAP_CPP_EXCEPTIONS
+		lua_pushlightuserdata(L, (void *)wrap_exceptions);
+		luaJIT_setmode(L, -1, LUAJIT_MODE_WRAPCFUNC | LUAJIT_MODE_ON);
+		lua_pop(L, 1);
+#endif
 
 		state.write(L);
     }
@@ -163,7 +181,22 @@ struct project {
 		}
 		fixup_imgui_state();
 	}
+	void load_image(const char* path)
+	{
+		auto f=fopen(path, "rb");
+		int x, y, comp;
 
+		auto data = stbi_load_from_file(f, &x, &y, &comp, 4);
+		stbi_image_free(data);
+		auto pos = ftell(f);
+		fseek(f, 0, SEEK_END);
+		auto size = ftell(f);
+		std::vector<unsigned char> buffer;
+		buffer.resize(size - pos);
+		fseek(f, pos, SEEK_SET);
+		fread(buffer.data(), size - pos, 1, f);
+		fclose(f);
+	}
 };
 int main(int argc, char** argv)
 {
@@ -185,7 +218,7 @@ int main(int argc, char** argv)
 	back_buffer.create(csize.x, csize.y);
 	
 	sf::Sprite back_buffer_sprite;
-	back_buffer_sprite.setTexture(back_buffer);
+	back_buffer_sprite.setTexture(back_buffer,true);
 
     project current_project;
 	current_project.state = { csize ,&back_buffer};
@@ -205,11 +238,14 @@ int main(int argc, char** argv)
 			if (event.type == sf::Event::Resized)
 			{
 				auto ev = event.size;
+				//sf::Texture new_texture;
+				//new_texture
 				back_buffer.create(ev.width, ev.height);
-
+				back_buffer_sprite.setTextureRect(sf::IntRect(0, 0, ev.width, ev.height));
 				current_project.state = { sf::Vector2u(ev.width,ev.height),&back_buffer };
 				current_project.state.write(current_project.L);
 				resize_lua_buffers(ev.width, ev.height);
+				window.setView(sf::View(sf::Vector2f(ev.width / 2, ev.height / 2), sf::Vector2f(ev.width, ev.height)));
 			}
         }
 		bool need_reload = false;

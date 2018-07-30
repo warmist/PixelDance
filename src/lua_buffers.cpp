@@ -7,7 +7,8 @@
 #include "lauxlib.h"
 
 #include <unordered_map>
-
+#define STB_IMAGE_WRITE_STATIC
+//#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
 enum class buffer_type {
@@ -54,7 +55,7 @@ static int get_buffer(lua_State* L)
 	int x = luaL_checkinteger(L, 2);
 	int y = luaL_checkinteger(L, 3);
 	auto e = buffer_registry[ptr];
-	auto& v = ptr->at(x*e.w + y); \
+	auto& v = ptr->at(x + y*e.w); \
 	return buffer_value_access<T>::push(L, v);
 }
 static int set_buffer(lua_State* L) {
@@ -63,7 +64,7 @@ static int set_buffer(lua_State* L) {
 	int y = luaL_checkinteger(L, 3);
 	auto new_value = buffer_value_access<T>::to_element(L, 4);
 	auto e = buffer_registry[ptr];
-	ptr->at(x*e.w + y) = new_value;
+	ptr->at(x+ y*e.w) = new_value;
 	return 0;
 }
 static int del_buffer(lua_State* L) {	
@@ -216,14 +217,33 @@ static int present_buffer(lua_State* L)
 	tex->update(reinterpret_cast<const sf::Uint8*>(ptr->data()));
 	return 0;
 }
-
+static void fwrite_callback(void* c, void* d, int size)
+{
+	fwrite(d, size, 1, (FILE*)c);
+}
 static int save_image(lua_State* L)
 {
 	auto ptr = buffer_value_access<u8x4>::check(L, 1);
 	auto path = luaL_checkstring(L, 2);
+	size_t suffix_len;
+	auto suffix = luaL_optlstring(L, 3, "", &suffix_len);
 
 	auto e = buffer_registry[ptr];
-	auto ret=stbi_write_png(path, e.w, ptr->size() / e.w, 4, ptr->data(), e.w * 4);
+	int ret;
+	
+	ret=stbi_write_png(path, e.w, ptr->size() / e.w, 4, ptr->data(), e.w * 4);
+	if (suffix_len != 0)
+	{
+		auto f=fopen(path, "ab");
+		fwrite(suffix, suffix_len, 1, f);
+		fclose(f);
+		//later this will be better, now need to update to sfml2.5
+		/*int out_len;
+		auto f = fopen(path, "wb");
+		ret= stbi_write_png_to_func(&fwrite_callback,f, e.w, ptr->size() / e.w, 4, ptr->data(), e.w * 4);
+		fwrite(suffix, suffix_len, 1, f);
+		fclose(f);*/
+	}
 	lua_pushinteger(L, ret);
 	return 1;
 }
