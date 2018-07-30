@@ -2,6 +2,10 @@
 
 #include <imgui.h>
 #include <vector>
+
+#include "lua.hpp"
+#include "lualib.h"
+#include "lauxlib.h"
 int lua_absindex(lua_State *L, int i) {
 	if (i < 0 && i > LUA_REGISTRYINDEX)
 		i += lua_gettop(L) + 1;

@@ -6,6 +6,7 @@
 
 #include "filesys.h"
 #include "limgui.h"
+#include "lua_buffers.h"
 void load_projects(const char* prefix,file_watcher& fwatch)
 {
     std::string path_prefix = prefix;
@@ -42,12 +43,58 @@ static int docall(lua_State *L, int narg, int nres) {
 	lua_remove(L, base);  /* remove message handler from the stack */
 	return status;
 }
+static int lua_read_only(lua_State* L)
+{
+	luaL_error(L,"Tried to write to read-only table");
+	return 0;
+}
+struct lua_global_state
+{
+	sf::Vector2u size;
+	sf::Texture* tex;
+	void write(lua_State* L)
+	{
+		if (!L)
+			return;
+		lua_newtable(L);
 
+		lua_newtable(L);
+		lua_pushinteger(L, size.x);
+		lua_rawseti(L, -2, 1);
+		lua_pushinteger(L, size.y);
+		lua_rawseti(L, -2, 2);
+
+		lua_setfield(L, -2, "size");
+
+		lua_pushlightuserdata(L, tex);
+		lua_setfield(L, -2, "texture");
+
+		
+		lua_newtable(L);
+
+		lua_pushvalue(L, -2);
+		lua_setfield(L, -2, "__index");
+
+		lua_pushcfunction(L, lua_read_only);
+		lua_setfield(L, -2, "__newindex");
+
+		lua_pushboolean(L, false);
+		lua_setfield(L, -2, "__metatable");
+
+		lua_setmetatable(L, -2);
+
+		lua_setglobal(L, "STATE");
+	}
+};
 struct project {
     lua_State *L=nullptr;
     std::string path;
     std::vector<std::string> errors;
 	bool is_errored = false;
+	lua_global_state state;
+
+	
+
     project() {}
     ~project() { if(L)lua_close(L); };
 
@@ -57,12 +104,19 @@ struct project {
         L = luaL_newstate();
         luaL_openlibs(L);
 		lua_open_imgui(L);
-		
+		lua_open_buffers(L);
 		//lua_pushlightuserdata(L, this);
 		//lua_setglobal(L, "__project");
+
+		state.write(L);
     }
     void reload_file()
     {
+		if (path == "")
+		{
+			is_errored = true;
+			return;
+		}
         if (luaL_dofile(L, path.c_str()) != 0)
         {
             size_t len;
@@ -109,6 +163,7 @@ struct project {
 		}
 		fixup_imgui_state();
 	}
+
 };
 int main(int argc, char** argv)
 {
@@ -123,9 +178,19 @@ int main(int argc, char** argv)
     sf::RenderWindow window(sf::VideoMode(1024, 1024), "PixelDance");
     window.setFramerateLimit(60);
     ImGui::SFML::Init(window);
+	auto csize = window.getSize();
+
+	sf::Texture back_buffer;
+
+	back_buffer.create(csize.x, csize.y);
+	
+	sf::Sprite back_buffer_sprite;
+	back_buffer_sprite.setTexture(back_buffer);
 
     project current_project;
+	current_project.state = { csize ,&back_buffer};
     current_project.init_lua();
+	
     int selected_project = -1;
     int old_selected = selected_project;
     sf::Clock deltaClock;
@@ -137,6 +202,15 @@ int main(int argc, char** argv)
             if (event.type == sf::Event::Closed) {
                 window.close();
             }
+			if (event.type == sf::Event::Resized)
+			{
+				auto ev = event.size;
+				back_buffer.create(ev.width, ev.height);
+
+				current_project.state = { sf::Vector2u(ev.width,ev.height),&back_buffer };
+				current_project.state.write(current_project.L);
+				resize_lua_buffers(ev.width, ev.height);
+			}
         }
 		bool need_reload = false;
         if (fwatch.check_changes())
@@ -188,6 +262,10 @@ int main(int argc, char** argv)
             {
                 current_project.load_file(fwatch.files[selected_project].path);
             }
+			else
+			{
+				current_project.load_file("");
+			}
         }
         old_selected = selected_project;
         ImGui::Separator();
@@ -208,6 +286,7 @@ int main(int argc, char** argv)
 
 
         window.clear();
+		window.draw(back_buffer_sprite);
         ImGui::SFML::Render(window);
         window.display();
     }

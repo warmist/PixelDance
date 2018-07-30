@@ -36,6 +36,7 @@ set(SRCS
   src/imgui-SFML.cpp
   src/filesys.cpp
   src/limgui.cpp
+  src/lua_buffers.cpp
   ${IMGUI}/imgui.cpp
   ${IMGUI}/imgui_draw.cpp
   ${IMGUI}/imgui_demo.cpp
@@ -48,6 +49,7 @@ set(HDRS
   src/limgui.h
   src/stb_image.h
   src/stb_image_write.h
+  src/lua_buffers.h
   ${LUA}/lua.hpp
   ${LUA}/lualib.h
 )
