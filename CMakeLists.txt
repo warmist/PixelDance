@@ -1,0 +1,59 @@
+# NEEDS: sfml (static linked), LUA (better: luajit also static) IMGUI (aka dear imgui - compiled in)
+
+cmake_minimum_required (VERSION 2.9)
+project (pixeldance CXX C)
+
+set(TARGET_NAME "pixeldance")
+
+if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
+   message(FATAL_ERROR "In-source builds are not allowed.")
+endif()
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/")
+
+#dependancies
+set(SFML_STATIC_LIBRARIES TRUE)
+FIND_PACKAGE( SFML 2.4 COMPONENTS graphics window system)
+
+
+SET(IMGUI "../imgui" CACHE PATH "Path to imgui")
+add_definitions(-DIMGUI_USER_CONFIG="imconfig-SFML.h")
+
+SET(LUA "../luajit" CACHE PATH "Path to lua")
+
+
+set(CMAKE_INSTALL_OPENMP_LIBRARIES TRUE)
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION .)
+include(InstallRequiredSystemLibraries)
+
+message(STATUS OPENMP: ${MSVC_OPENMP_DIR})
+
+
+
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+set(SOURCES
+  src/main.cpp
+  src/imgui-SFML.cpp
+  ${IMGUI}/imgui.cpp
+  ${IMGUI}/imgui_draw.cpp
+  ${IMGUI}/imgui_demo.cpp
+)
+
+set(HDRS
+  src/imconfig-SFML.h
+  src/imgui-SFML.h
+  ${LUA}/lua.hpp
+  ${LUA}/lualib.h
+)
+include_directories(${SFML_INCLUDE_DIR})
+#include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+INCLUDE_DIRECTORIES(${IMGUI})
+INCLUDE_DIRECTORIES(${LUA})
+
+add_executable(${TARGET_NAME}
+  ${SOURCES} ${HDRS}
+)
+
+target_link_libraries(${TARGET_NAME}  ${SFML_LIBRARIES} ${SFML_DEPENDENCIES} ${LUA}/lua51.lib)
+install(TARGETS ${TARGET_NAME} DESTINATION .)
