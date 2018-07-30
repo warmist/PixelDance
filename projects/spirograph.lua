@@ -35,8 +35,9 @@ config=make_config({
 	{"l",0.4,type="float"},
 	{"R",400,type="int",min=0,max=512},
 	{"ticking",100,type="float",min=1,max=10000},
+	{"ticking2",100,type="float",min=1,max=10000},
 },config)
-
+image_no=image_no or 0
 function draw_config( tbl )
 	for _,entry in ipairs(tbl) do
 		local name=entry[1]
@@ -92,11 +93,16 @@ function update(  )
 			end
 		end
 	end
+	imgui.SameLine()
+	if imgui.Button("Save image") then
+		img_buf:save("saved_"..image_no..".png")
+		image_no=image_no+1
+	end
 	imgui.End()
 	for i=1,config.ticking do
-		local x,y=pos(tick/config.ticking);
+		local x,y=pos(tick/config.ticking2);
 		img_buf:set(x+512,y+512,c_u8)
 		tick=tick+1
 	end
-	buffers.Present(img_buf)
+	img_buf:present()
 end

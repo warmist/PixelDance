@@ -7,6 +7,9 @@
 #include "lauxlib.h"
 
 #include <unordered_map>
+
+#include "stb_image_write.h"
+
 enum class buffer_type {
 	vector_u8x4,
 	vector_float,
@@ -91,6 +94,7 @@ static void resize_buffer(void* d, int w, int h){
 	p->resize(w*h);
 	buffer_registry[d].w = w;
 }
+static void add_special_methods(lua_State* L);
 static int make_buffer(lua_State* L, int w, int h){
 	auto ret = new std::vector<T>(w*h);
 	buffer_registry[ret].w = w;
@@ -107,6 +111,9 @@ static int make_buffer(lua_State* L, int w, int h){
 		lua_setfield(L, -2, "get");
 		lua_pushcfunction(L, set_buffer);
 		lua_setfield(L, -2, "set");
+
+		add_special_methods(L);
+
 		lua_pushvalue(L, -1);
 		lua_setfield(L, -2, "__index");
 	}
@@ -129,20 +136,9 @@ static int make_lua_auto_buffer(lua_State* L)
 		return buffer_value_access<float>::make_buffer(L, x, y);
 	}
 }
-static int present_buffer(lua_State* L)
-{
-	auto ptr= buffer_value_access<u8x4>::check(L, 1);
-	lua_getglobal(L, "STATE");
-	lua_getfield(L, -1, "texture");
 
-	auto tex=reinterpret_cast<sf::Texture*>(lua_touserdata(L, -1));
-	lua_pop(L, 2);
-	tex->update(reinterpret_cast<const sf::Uint8*>(ptr->data()));
-	return 0;
-}
 static const luaL_Reg lua_buffers_lib[] = {
 	{ "Make",make_lua_auto_buffer },
-	{ "Present",present_buffer},
 	{ NULL, NULL }
 };
 
@@ -209,6 +205,39 @@ static u8x4 buffer_value_access<u8x4>::to_element(lua_State * L, int id)
 	return ret;
 }
 
+static int present_buffer(lua_State* L)
+{
+	auto ptr = buffer_value_access<u8x4>::check(L, 1);
+	lua_getglobal(L, "STATE");
+	lua_getfield(L, -1, "texture");
+
+	auto tex = reinterpret_cast<sf::Texture*>(lua_touserdata(L, -1));
+	lua_pop(L, 2);
+	tex->update(reinterpret_cast<const sf::Uint8*>(ptr->data()));
+	return 0;
+}
+
+static int save_image(lua_State* L)
+{
+	auto ptr = buffer_value_access<u8x4>::check(L, 1);
+	auto path = luaL_checkstring(L, 2);
+
+	auto e = buffer_registry[ptr];
+	auto ret=stbi_write_png(path, e.w, ptr->size() / e.w, 4, ptr->data(), e.w * 4);
+	lua_pushinteger(L, ret);
+	return 1;
+}
+
+template<>
+static void buffer_value_access<u8x4>::add_special_methods(lua_State * L)
+{
+	lua_pushcfunction(L, present_buffer);
+	lua_setfield(L, -2, "present");
+	
+	lua_pushcfunction(L, save_image);
+	lua_setfield(L, -2, "save");
+}
+
 template<>
 static constexpr char * buffer_value_access<float>::name()
 {
@@ -226,4 +255,10 @@ template<>
 static float buffer_value_access<float>::to_element(lua_State * L, int id)
 {
 	return luaL_checknumber(L, id);
+}
+
+template<>
+static void buffer_value_access<float>::add_special_methods(lua_State * L)
+{
+	//nothing to add :S
 }
