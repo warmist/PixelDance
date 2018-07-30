@@ -31,10 +31,11 @@ message(STATUS OPENMP: ${MSVC_OPENMP_DIR})
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-set(SOURCES
+set(SRCS
   src/main.cpp
   src/imgui-SFML.cpp
   src/filesys.cpp
+  src/limgui.cpp
   ${IMGUI}/imgui.cpp
   ${IMGUI}/imgui_draw.cpp
   ${IMGUI}/imgui_demo.cpp
@@ -44,6 +45,9 @@ set(HDRS
   src/imconfig-SFML.h
   src/imgui-SFML.h
   src/filesys.h
+  src/limgui.h
+  src/stb_image.h
+  src/stb_image_write.h
   ${LUA}/lua.hpp
   ${LUA}/lualib.h
 )
@@ -54,7 +58,7 @@ INCLUDE_DIRECTORIES(${IMGUI})
 INCLUDE_DIRECTORIES(${LUA})
 
 add_executable(${TARGET_NAME}
-  ${SOURCES} ${HDRS}
+  ${SRCS} ${HDRS}
 )
 
 target_link_libraries(${TARGET_NAME}  ${SFML_LIBRARIES} ${SFML_DEPENDENCIES} ${LUA}/lua51.lib)

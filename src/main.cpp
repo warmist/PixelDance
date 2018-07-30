@@ -5,6 +5,7 @@
 #include "SFML\Graphics.hpp"
 
 #include "filesys.h"
+#include "limgui.h"
 void load_projects(const char* prefix,file_watcher& fwatch)
 {
     std::string path_prefix = prefix;
@@ -17,11 +18,36 @@ void load_projects(const char* prefix,file_watcher& fwatch)
         fwatch.files.emplace_back(f);
     }
 }
+
+static int msghandler(lua_State *L) {
+	const char *msg = lua_tostring(L, 1);
+	if (msg == NULL) {  /* is error object not a string? */
+		if (luaL_callmeta(L, 1, "__tostring") &&  /* does it have a metamethod */
+			lua_type(L, -1) == LUA_TSTRING)  /* that produces a string? */
+			return 1;  /* that is the message */
+		else
+			msg = lua_pushfstring(L, "(error object is a %s value)",
+				luaL_typename(L, 1));
+	}
+	luaL_traceback(L, L, msg, 1);  /* append a standard traceback */
+	return 1;  /* return the traceback */
+}
+
+static int docall(lua_State *L, int narg, int nres) {
+	int status;
+	int base = lua_gettop(L) - narg;  /* function index */
+	lua_pushcfunction(L, msghandler);  /* push message handler */
+	lua_insert(L, base);  /* put it under function and args */
+	status = lua_pcall(L, narg, nres, base);
+	lua_remove(L, base);  /* remove message handler from the stack */
+	return status;
+}
+
 struct project {
     lua_State *L=nullptr;
     std::string path;
     std::vector<std::string> errors;
-
+	bool is_errored = false;
     project() {}
     ~project() { if(L)lua_close(L); };
 
@@ -30,6 +56,10 @@ struct project {
             lua_close(L);
         L = luaL_newstate();
         luaL_openlibs(L);
+		lua_open_imgui(L);
+		
+		//lua_pushlightuserdata(L, this);
+		//lua_setglobal(L, "__project");
     }
     void reload_file()
     {
@@ -39,7 +69,10 @@ struct project {
             const char* err=lua_tolstring(L, 1, &len);
             std::string error_str(err, len);
             errors.push_back(error_str);
+			is_errored = true;
         }
+		else
+			is_errored = false;
     }
     void load_file(std::string file_path)
     {
@@ -49,6 +82,7 @@ struct project {
     void clear_errors()
     {
         errors.clear();
+		is_errored = false;
     }
     void reset()
     {
@@ -56,6 +90,25 @@ struct project {
         init_lua();
         reload_file();
     }
+	void update()
+	{
+		if (is_errored)
+			return;
+		lua_getglobal(L, "update");
+		if (!lua_isnil(L, -1))
+		{
+			if (docall(L, 0, 0))
+			{
+				is_errored = true;
+				errors.emplace_back(lua_tostring(L, -1));
+			}
+		}
+		else
+		{
+			lua_pop(L, 1);
+		}
+		fixup_imgui_state();
+	}
 };
 int main(int argc, char** argv)
 {
@@ -85,18 +138,27 @@ int main(int argc, char** argv)
                 window.close();
             }
         }
+		bool need_reload = false;
         if (fwatch.check_changes())
         {
             for (auto& f : fwatch.files)
             {
-                if (f.changed)
+                if (f.changed && f.exists)
                 {
                     //TODO: use changes
-
+					if (current_project.path == f.path)
+					{
+						need_reload = true;
+					}
                 }
             }
         }
         ImGui::SFML::Update(window, deltaClock.restart());
+
+		if(need_reload)
+			current_project.reload_file();
+		current_project.update();
+
 
         ImGui::ShowDemoWindow();
         ImGui::Begin("Projects");
