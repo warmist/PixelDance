@@ -233,8 +233,6 @@ int main(int argc, char** argv)
 			current_project.reload_file();
 		current_project.update();
 
-
-        ImGui::ShowDemoWindow();
         ImGui::Begin("Projects");
         const char* project_name = "<no project>";
         if (selected_project >= 0 && selected_project < fwatch.files.size())
