@@ -1,0 +1,1 @@
+table.sort( tablename, sortfunction )

@@ -34,6 +34,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set(SOURCES
   src/main.cpp
   src/imgui-SFML.cpp
+  src/filesys.cpp
   ${IMGUI}/imgui.cpp
   ${IMGUI}/imgui_draw.cpp
   ${IMGUI}/imgui_demo.cpp
@@ -42,6 +43,7 @@ set(SOURCES
 set(HDRS
   src/imconfig-SFML.h
   src/imgui-SFML.h
+  src/filesys.h
   ${LUA}/lua.hpp
   ${LUA}/lualib.h
 )
