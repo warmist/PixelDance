@@ -8,6 +8,7 @@
 #include "limgui.h"
 #include "lua_buffers.h"
 #include "stb_image.h"
+#include "stb_image_write.h"
 #define WRAP_CPP_EXCEPTIONS
 
 void load_projects(const char* prefix,file_watcher& fwatch)
@@ -83,6 +84,43 @@ static int present_buffer(lua_State* L)
     lua_pop(L, 2);
     tex->update(data);
     return 0;
+}
+static int save_image(lua_State* L)
+{
+    luaL_checktype(L, 1, LUA_TTABLE);
+
+    lua_getfield(L, 1, "w");
+    int w=lua_tonumber(L, -1);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "h");
+    int h = lua_tonumber(L, -1);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "d");
+    auto data = reinterpret_cast<const sf::Uint8*>(lua_topointer(L, -1));
+    lua_pop(L, 1);
+
+    const char* path = luaL_checkstring(L, 2);
+    size_t suffix_len = 0;
+    const char* suffix = luaL_optlstring(L, 3, "", &suffix_len);
+
+
+    auto ret = stbi_write_png(path, w, h, 4, data, w * 4);
+    if (suffix_len != 0)
+    {
+        auto f = fopen(path, "ab");
+        fwrite(suffix, suffix_len, 1, f);
+        fclose(f);
+        //later this will be better, now need to update to sfml2.5
+        /*int out_len;
+        auto f = fopen(path, "wb");
+        ret= stbi_write_png_to_func(&fwrite_callback,f, e.w, ptr->size() / e.w, 4, ptr->data(), e.w * 4);
+        fwrite(suffix, suffix_len, 1, f);
+        fclose(f);*/
+    }
+    lua_pushinteger(L, ret);
+    return 1;
 }
 struct lua_global_state
 {
@@ -167,6 +205,9 @@ struct project {
 
         lua_pushcfunction(L, present_buffer);
         lua_setglobal(L, "__present");
+
+        lua_pushcfunction(L, save_image);
+        lua_setglobal(L, "__save_png");
 
 		state.write(L);
     }
