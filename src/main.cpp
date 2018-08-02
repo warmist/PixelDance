@@ -9,6 +9,7 @@
 #include "lua_buffers.h"
 #include "stb_image.h"
 #define WRAP_CPP_EXCEPTIONS
+
 void load_projects(const char* prefix,file_watcher& fwatch)
 {
     std::string path_prefix = prefix;
@@ -64,6 +65,24 @@ static int lua_read_only(lua_State* L)
 {
 	luaL_error(L,"Tried to write to read-only table");
 	return 0;
+}
+static int present_buffer(lua_State* L)
+{
+    luaL_checktype(L, 1, LUA_TTABLE);
+    /*lua_getfield(L, 1, "w");
+    lua_getfield(L, 1, "h");*/
+
+    lua_getfield(L, 1, "d");
+    auto data=reinterpret_cast<const sf::Uint8*>(lua_topointer(L, -1));
+    lua_pop(L, 1);
+    
+    lua_getglobal(L, "STATE");
+    lua_getfield(L, -1, "texture");
+
+    auto tex = reinterpret_cast<sf::Texture*>(lua_touserdata(L, -1));
+    lua_pop(L, 2);
+    tex->update(data);
+    return 0;
 }
 struct lua_global_state
 {
@@ -143,10 +162,11 @@ struct project {
 		lua_pushlightuserdata(L, this);
 		lua_setglobal(L, "__project");
 
-
 		lua_pushcfunction(L, lua_get_my_source);
 		lua_setglobal(L, "__get_source");
-		
+
+        lua_pushcfunction(L, present_buffer);
+        lua_setglobal(L, "__present");
 
 		state.write(L);
     }
@@ -203,6 +223,27 @@ struct project {
 		}
 		fixup_imgui_state();
 	}
+    void resize(int w,int h)
+    {
+        if (is_errored)
+            return;
+        lua_getglobal(L, "resize");
+        if (!lua_isnil(L, -1))
+        {
+            lua_pushnumber(L,w);
+            lua_pushnumber(L,h);
+            if (docall(L, 2, 0))
+            {
+                is_errored = true;
+                errors.emplace_back(lua_tostring(L, -1));
+            }
+        }
+        else
+        {
+            lua_pop(L, 1);
+        }
+        fixup_imgui_state();
+    }
 	void load_image(const char* path)
 	{
 		auto f=fopen(path, "rb");
@@ -286,6 +327,7 @@ int main(int argc, char** argv)
 				current_project.state.write(current_project.L);
 				resize_lua_buffers(ev.width, ev.height);
 				window.setView(sf::View(sf::Vector2f(ev.width / 2, ev.height / 2), sf::Vector2f(ev.width, ev.height)));
+                current_project.resize(ev.width, ev.height);
 			}
         }
 		bool need_reload = false;
@@ -354,8 +396,6 @@ int main(int argc, char** argv)
         for (auto& s : current_project.errors)
             ImGui::Text("%s", s.c_str());
         ImGui::EndChild();
-
-        ImGui::Button("Test");
         ImGui::End();
 
 
