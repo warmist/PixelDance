@@ -11,6 +11,8 @@
 //#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+#include <imgui.h>
+
 enum class buffer_type {
 	vector_u8x4,
 	vector_float,
@@ -247,6 +249,20 @@ static int save_image(lua_State* L)
 	lua_pushinteger(L, ret);
 	return 1;
 }
+static int lua_color_set4(lua_State* L) {
+	auto ptr = buffer_value_access<u8x4>::check(L, 1);
+	int x = luaL_checkinteger(L, 2);
+	int y = luaL_checkinteger(L, 3);
+
+	uint8_t r = luaL_checkinteger(L, 4);
+	uint8_t g = luaL_checkinteger(L, 5);
+	uint8_t b = luaL_checkinteger(L, 6);
+	uint8_t a = luaL_optint(L, 7,255);
+	
+	auto e = buffer_registry[ptr];
+	ptr->at(x + y*e.w) = { r,g,b,a };
+	return 0;
+}
 
 template<>
 static void buffer_value_access<u8x4>::add_special_methods(lua_State * L)
@@ -256,6 +272,9 @@ static void buffer_value_access<u8x4>::add_special_methods(lua_State * L)
 	
 	lua_pushcfunction(L, save_image);
 	lua_setfield(L, -2, "save");
+
+	lua_pushcfunction(L, lua_color_set4);
+	lua_setfield(L, -2, "set4");
 }
 
 template<>
@@ -276,9 +295,16 @@ static float buffer_value_access<float>::to_element(lua_State * L, int id)
 {
 	return luaL_checknumber(L, id);
 }
-
+static int lua_show_hist(lua_State* L)
+{
+	auto ptr = buffer_value_access<float>::check(L, 1);
+	const char* label = luaL_checkstring(L, 2);
+	ImGui::PlotHistogram(label, ptr->data(), ptr->size());
+	return 0;
+}
 template<>
 static void buffer_value_access<float>::add_special_methods(lua_State * L)
 {
-	//nothing to add :S
+	lua_pushcfunction(L, lua_show_hist);
+	lua_setfield(L, -2, "histogram");
 }

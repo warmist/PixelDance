@@ -103,6 +103,7 @@ struct lua_global_state
 		lua_setglobal(L, "STATE");
 	}
 };
+static int lua_get_my_source(lua_State* L);
 struct project {
     lua_State *L=nullptr;
     std::string path;
@@ -125,6 +126,13 @@ struct project {
 		luaJIT_setmode(L, -1, LUAJIT_MODE_WRAPCFUNC | LUAJIT_MODE_ON);
 		lua_pop(L, 1);
 #endif
+		lua_pushlightuserdata(L, this);
+		lua_setglobal(L, "__project");
+		lua_pop(L, 1);
+
+		lua_pushcfunction(L, lua_get_my_source);
+		lua_setglobal(L, "__get_source()");
+		lua_pop(L, 1);
 
 		state.write(L);
     }
@@ -198,6 +206,24 @@ struct project {
 		fclose(f);
 	}
 };
+static int lua_get_my_source(lua_State* L)
+{
+	lua_getglobal(L, "__project");
+	auto p = reinterpret_cast<project*>(lua_touserdata(L, -1));
+	lua_pop(L, 1);
+
+	auto f=fopen(p->path.c_str(), "rb");
+	fseek(f, 0, SEEK_END);
+	auto size = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	std::vector<unsigned char> buffer;
+	buffer.resize(size);
+	fread(buffer.data(), size, 1, f);
+	fclose(f);
+
+	lua_pushlstring(L, (const char*)buffer.data(), buffer.size());
+	return 1;
+}
 int main(int argc, char** argv)
 {
     if (argc == 1)
