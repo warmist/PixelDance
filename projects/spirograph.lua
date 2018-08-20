@@ -36,6 +36,7 @@ config=make_config({
 	{"R",400,type="int",min=0,max=max_size},
 	{"ticking",100,type="float",min=1,max=10000},
 	{"ticking2",100,type="float",min=1,max=10000},
+	{"dist",100,type="float",min=1,max=1000},
 },config)
 image_no=image_no or 0
 function draw_config( tbl )
@@ -98,10 +99,17 @@ function update(  )
 		img_buf:save("saved_"..image_no..".png","Saved by PixelDance")
 		image_no=image_no+1
 	end
+	local eps=0.000001
 	imgui.End()
 	for i=1,config.ticking do
 		local x,y=pos(tick/config.ticking2);
-		img_buf:set(x+s[1]/2,y+s[2]/2,c_u8)
+		local x2,y2=pos(tick/config.ticking2+eps);
+		local dx=x2-x
+		local dy=y2-y
+		local dl=math.sqrt(dx*dx+dy*dy)
+		local tx=dx/dl
+		local ty=dy/dl
+		img_buf:set(x+tx*config.dist+s[1]/2,y+ty*config.dist+s[2]/2,c_u8)
 		tick=tick+1
 	end
 	img_buf:present()

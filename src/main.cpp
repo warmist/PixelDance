@@ -245,6 +245,26 @@ struct project {
         init_lua();
         reload_file();
     }
+	void set_mouse()
+	{
+		auto& io = ImGui::GetIO();
+		lua_newtable(L);
+
+		lua_pushnumber(L, io.MousePos.x);
+		lua_setfield(L, -2, "x");
+
+		lua_pushnumber(L, io.MousePos.y);
+		lua_setfield(L, -2, "y");
+		
+#define ADD_MOUSE(x) lua_pushboolean(L, io.MouseDownOwned[x]); lua_setfield(L, -2, "owned" ## # x); lua_pushboolean(L, io.MouseClicked[x]); lua_setfield(L, -2, "clicked" ## # x); lua_pushboolean(L, io.MouseReleased[x]); lua_setfield(L, -2, "released" ## # x)
+		ADD_MOUSE(0);
+		ADD_MOUSE(1);
+		ADD_MOUSE(2);
+		ADD_MOUSE(3);
+		ADD_MOUSE(4);
+#undef ADD_MOUSE
+		lua_setfield(L, LUA_GLOBALSINDEX, "__mouse");
+	}
 	void update()
 	{
 		if (is_errored)
@@ -390,6 +410,7 @@ int main(int argc, char** argv)
 
 		if(need_reload)
 			current_project.reload_file();
+		current_project.set_mouse();
 		current_project.update();
 
         ImGui::Begin("Projects");
