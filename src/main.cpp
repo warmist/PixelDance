@@ -437,6 +437,7 @@ int main(int argc, char** argv)
 		current_project.update();
 
         ImGui::Begin("Projects");
+		ImGui::Text("FPS:%g", ImGui::GetIO().Framerate);
         const char* project_name = "<no project>";
         if (selected_project >= 0 && selected_project < fwatch.files.size())
             project_name = fwatch.files[selected_project].path.c_str();

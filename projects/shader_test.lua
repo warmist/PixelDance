@@ -15,6 +15,12 @@ void main(){
 ]]
 
 function update(  )
+	--texture_fb:read() -- read framebuffer
 	main_shader:use()
 	main_shader:set("resolution",STATE.size[1],STATE.size[2])
+
+	--draw(texture1) --draw into texture1
+	--other_shader:use()
+	--other_shader:set("s1",texture1)
+	--draw() --draw to framebuff
 end
