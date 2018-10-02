@@ -290,7 +290,9 @@ static int use_shader(lua_State* L)
 	glUseProgram(s->id);
 	return 0;
 }
-
+template<typename T>
+static void set_uniform_args(lua_State* L,GLint uloc, int arg_start,int num_args);
+template<typename T>
 static int set_uniform(lua_State* L)
 {
 	auto s = check(L, 1);
@@ -308,10 +310,18 @@ static int set_uniform(lua_State* L)
 	int num_args = lua_gettop(L)- arg_offset;
 	if( num_args<1 || num_args>4 )
 		luaL_error(L, "invalid count of arguments: %d", num_args);
+	
+	set_uniform_args<T>(L, uloc, arg_offset, num_args);
+	lua_pushinteger(L,uloc);
+	return 1;
+}
+template<>
+static void set_uniform_args<float>(lua_State* L, GLint uloc, int arg_start, int num_args)
+{
 	GLfloat buf[4] = { 0 };
-	for (int i = 0; i < num_args;i++)
+	for (int i = 0; i < num_args; i++)
 	{
-		buf[i]=luaL_checknumber(L, i + arg_offset+1);
+		buf[i] = luaL_checknumber(L, i + arg_start + 1);
 	}
 	switch (num_args)
 	{
@@ -319,19 +329,45 @@ static int set_uniform(lua_State* L)
 		glUniform1f(uloc, buf[0]);
 		break;
 	case 2:
-		glUniform2f(uloc, buf[0],buf[1]);
+		glUniform2f(uloc, buf[0], buf[1]);
 		break;
 	case 3:
-		glUniform3f(uloc, buf[0], buf[1],buf[2]);
+		glUniform3f(uloc, buf[0], buf[1], buf[2]);
 		break;
 	case 4:
-		glUniform4f(uloc, buf[0], buf[1], buf[2],buf[3]);
+		glUniform4f(uloc, buf[0], buf[1], buf[2], buf[3]);
 		break;
 	default:
 		luaL_error(L, "reached unreachable area?! !!ERROR!!");
 		break;
 	}
-	return 1;
+}
+template<>
+static void set_uniform_args<int>(lua_State* L, GLint uloc, int arg_start, int num_args)
+{
+	GLint buf[4] = { 0 };
+	for (int i = 0; i < num_args; i++)
+	{
+		buf[i] = luaL_checkinteger(L, i + arg_start + 1);
+	}
+	switch (num_args)
+	{
+	case 1:
+		glUniform1i(uloc, buf[0]);
+		break;
+	case 2:
+		glUniform2i(uloc, buf[0], buf[1]);
+		break;
+	case 3:
+		glUniform3i(uloc, buf[0], buf[1], buf[2]);
+		break;
+	case 4:
+		glUniform4i(uloc, buf[0], buf[1], buf[2], buf[3]);
+		break;
+	default:
+		luaL_error(L, "reached unreachable area?! !!ERROR!!");
+		break;
+	}
 }
 static int del_shader(lua_State* L)
 {
@@ -406,8 +442,15 @@ static int make_shader(lua_State* L, const char* vertex, const char* fragment) {
 		lua_pushcfunction(L, use_shader);
 		lua_setfield(L, -2, "use");
 
-		lua_pushcfunction(L, set_uniform); //either uniform or attribute
-		lua_setfield(L, -2, "set"); //TODO: somehow cache the get_loc?
+		lua_pushcfunction(L, set_uniform<float>); 
+		lua_setfield(L, -2, "set");
+
+		lua_pushcfunction(L, set_uniform<float>);
+		lua_setfield(L, -2, "set_f"); 
+
+		lua_pushcfunction(L, set_uniform<int>); 
+		lua_setfield(L, -2, "set_i");
+
 		/*
 		lua_pushcfunction(L, set_variable); //either uniform or attribute
 		lua_setfield(L, -2, "set");
