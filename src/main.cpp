@@ -17,9 +17,12 @@
 #include "gl_lite.h"
 
 #include "shaders.h"
+#include <unordered_map>
 void load_projects(const char* prefix,file_watcher& fwatch)
 {
-    fwatch.files.clear();
+    for (auto& f : fwatch.files)
+        f.exists = false;
+
     std::string path_prefix = prefix;
     auto pfiles = enum_files(path_prefix + "/*.lua");
     for (auto p : pfiles)
@@ -27,8 +30,20 @@ void load_projects(const char* prefix,file_watcher& fwatch)
         //TODO: add to project list
         watched_file f;
         f.path = path_prefix + "/" + p;
-        fwatch.files.emplace_back(f);
+        f.exists = true;
+        bool found = false;
+        for(auto& f1:fwatch.files) //TODO: @PERF linear search each tick for all projects
+            if (f1.path == f.path)
+            {
+                f1.exists = true;
+                found = true;
+                break;
+            }
+        if (!found)
+            fwatch.files.emplace_back(f);
     }
+
+    fwatch.files.erase(std::remove_if(fwatch.files.begin(), fwatch.files.end(), [](const watched_file& f) {return !f.exists; }),fwatch.files.end());
 }
 static int wrap_exceptions(lua_State *L, lua_CFunction f)
 {

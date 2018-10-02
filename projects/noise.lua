@@ -10,7 +10,7 @@ image = image or make_image_buffer(STATE.size[1],STATE.size[2])
 color = color or ffi.new("rgba_pixel",{255,0,0,255});
 pos=pos or {STATE.size[1]/2,STATE.size[2]/2}
 
-
+print("reload")
 function resize( w,h )
 	image=make_image_buffer(w,h)
 end
