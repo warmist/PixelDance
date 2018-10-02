@@ -165,7 +165,6 @@ struct lua_global_state
 		lua_pushlightuserdata(L, tex);
 		lua_setfield(L, -2, "texture");
 
-		
 		lua_newtable(L);
 
 		lua_pushvalue(L, -2);
@@ -186,8 +185,8 @@ int setLuaPath(lua_State* L, const char* path)
 {
 	lua_getglobal(L, "package");
 	lua_getfield(L, -1, "path"); // get field "path" from table at top of stack (-1)
-	std::string cur_path = lua_tostring(L, -1); // grab path string from top of stack
-	cur_path.append(";"); // do your path magic here
+	std::string cur_path = "";//lua_tostring(L, -1); // grab path string from top of stack
+	//cur_path.append(";"); // do your path magic here
 	cur_path.append(path);
 	lua_pop(L, 1); // get rid of the string on the stack we just pushed on line 5
 	lua_pushstring(L, cur_path.c_str()); // push the new one
@@ -206,12 +205,13 @@ struct project {
     project() {}
     ~project() { if(L)lua_close(L); };
 
-    void init_lua() {
+    void init_lua(std::string path_prefix) {
         if (L)
             lua_close(L);
         L = luaL_newstate();
         luaL_openlibs(L);
-		setLuaPath(L, ".\\libs\\?.lua");
+		std::string path = path_prefix + "\\?.llib";
+		setLuaPath(L, path.c_str());
 		lua_open_imgui(L);
 		lua_open_buffers(L);
 		lua_open_shaders(L);
@@ -262,10 +262,10 @@ struct project {
         errors.clear();
 		is_errored = false;
     }
-    void reset()
+    void reset(std::string path_prefix)
     {
         clear_errors();
-        init_lua();
+        init_lua(path_prefix);
         reload_file();
     }
 	void set_mouse()
@@ -402,7 +402,7 @@ int main(int argc, char** argv)
 
     project current_project;
 	current_project.state = { csize ,&back_buffer};
-    current_project.init_lua();
+    current_project.init_lua(argv[1]);
 	
     int selected_project = -1;
     int old_selected = selected_project;
@@ -509,17 +509,18 @@ int main(int argc, char** argv)
 
         ImGui::SameLine();
         if (ImGui::Button("Reset"))
-            current_project.reset();
+            current_project.reset(argv[1]);
 
         ImGui::BeginChild("ScrollingRegion", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar);
         for (auto& s : current_project.errors)
             ImGui::Text("%s", s.c_str());
         ImGui::EndChild();
         ImGui::End();
-
-
-        window.clear();
-		window.draw(back_buffer_sprite);
+		//if(selected_project == -1)
+		{
+			window.clear();
+			window.draw(back_buffer_sprite);
+		}
         ImGui::SFML::Render(window);
         window.display();
     }

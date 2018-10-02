@@ -1,16 +1,9 @@
-local ffi = require("ffi")
-ffi.cdef[[
-typedef struct { uint8_t red, green, blue, alpha; } rgba_pixel;
-]]
-function make_image_buffer(w,h)
-	local img={d=ffi.new("rgba_pixel[?]",w*h),w=w,h=h}
-	return img
-end
+require 'common'
+
 image = image or make_image_buffer(STATE.size[1],STATE.size[2])
-color = color or ffi.new("rgba_pixel",{255,0,0,255});
+color = color or pixel{255,0,0,255};
 pos=pos or {STATE.size[1]/2,STATE.size[2]/2}
 
-print("reload")
 function resize( w,h )
 	image=make_image_buffer(w,h)
 end
@@ -19,7 +12,7 @@ function update(  )
 	local y=pos[2]
 	local w=STATE.size[1]
 	local h=STATE.size[2]
-	for i=1,1000000 do
+	for i=1,100000 do
 		image.d[x+y*w]=color
 		color.red=color.red+math.random(-1,1)
 		color.green=color.green+math.random(-1,1)
@@ -36,5 +29,5 @@ function update(  )
 		pos[1]=x
 		pos[2]=y
 	end
-	__present(image)
+	image:present()
 end
