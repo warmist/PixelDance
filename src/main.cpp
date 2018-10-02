@@ -11,6 +11,12 @@
 #include "stb_image_write.h"
 #define WRAP_CPP_EXCEPTIONS
 
+#include "SFML\OpenGL.hpp"
+
+#define GL_LITE_IMPLEMENTATION
+#include "gl_lite.h"
+
+#include "shaders.h"
 void load_projects(const char* prefix,file_watcher& fwatch)
 {
     fwatch.files.clear();
@@ -193,6 +199,7 @@ struct project {
 		setLuaPath(L, ".\\libs\\?.lua");
 		lua_open_imgui(L);
 		lua_open_buffers(L);
+		lua_open_shaders(L);
 #ifdef WRAP_CPP_EXCEPTIONS
 		lua_pushlightuserdata(L, (void *)wrap_exceptions);
 		luaJIT_setmode(L, -1, LUAJIT_MODE_WRAPCFUNC | LUAJIT_MODE_ON);
@@ -348,12 +355,27 @@ int main(int argc, char** argv)
         printf("Usage: pixeldance.exe <path-to-projects>\n");
         return -1;
     }
+	
     file_watcher fwatch;
     load_projects(argv[1], fwatch);
-
-    sf::RenderWindow window(sf::VideoMode(1024, 1024), "PixelDance");
+	sf::ContextSettings settings;
+	settings.depthBits = 24;
+	settings.stencilBits = 8;
+	settings.antialiasingLevel = 4;
+	/*settings.majorVersion = 3;
+	settings.minorVersion = 0;
+	settings.attributeFlags = sf::ContextSettings::Attribute::Core;*/
+	//settings.sRgbCapable = true;
+    sf::RenderWindow window(sf::VideoMode(1024, 1024), "PixelDance",sf::Style::Default,settings);
     window.setFramerateLimit(60);
     ImGui::SFML::Init(window);
+	
+	if (!gl_lite_init())
+	{
+		printf("Failed to init gl_lite");
+		return -1;
+	}
+
 	auto csize = window.getSize();
 
 	sf::Texture back_buffer;
@@ -433,6 +455,7 @@ int main(int argc, char** argv)
         }
 
         ImGui::Begin("Projects");
+		ImGui::Text("FPS:%g", ImGui::GetIO().Framerate);
         const char* project_name = "<no project>";
         if (selected_project >= 0 && selected_project < fwatch.files.size())
             project_name = fwatch.files[selected_project].path.c_str();
