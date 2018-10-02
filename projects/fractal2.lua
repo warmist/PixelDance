@@ -1,68 +1,7 @@
---[[ Example:
-imgui_config=make_config{
-	{"debug_display",false},
-	{"complexity",0.5,type="float"}, --implied min=0,max=1
-	{"shapes","3"},
-	{"w",3,type="int",min=1,max=5},
-}
+require "common"
 
-Begin
-End
-Bullet
-BulletText
-RadioButton
-CollapsingHeader
-SliderFloat
-SliderAngle
-SliderInt
-InputText
-]]
-local ffi = require("ffi")
-
-function make_config(tbl,defaults)
-	local ret={}
-	defaults=defaults or {}
-	for i,v in ipairs(tbl) do
-		ret[v[1]]=defaults[v[1]] or v[2]
-		ret[i]=v
-	end
-	return ret
-end
 local size=STATE.size
 local max_size=math.min(size[1],size[2])/2
-
-ffi.cdef[[
-typedef struct { uint8_t r, g, b, a; } rgba_pixel;
-]]
-function pixel(init)
-	return ffi.new("rgba_pixel",init or {0,0,0,255})
-end
-function make_image_buffer(w,h)
-	local img={d=ffi.new("rgba_pixel[?]",w*h),w=w,h=h}
-	img.set=function ( t,x,y,v )
-		t.d[x+t.w*y]=v
-	end
-	img.get=function ( t,x,y )
-		return t.d[x+t.w*y]
-	end
-	img.present=function ( t )
-		__present(t)
-	end
-	img.save=function ( t,path,suffix )
-		__save_png(t,path,suffix)
-	end
-	return img
-end
-function make_float_buffer(w,h)
-	local img={d=ffi.new("double[?]",w*h),w=w,h=h}
-	img.set=function ( t,x,y,v )
-		t.d[x+t.w*y]=v
-	end
-	img.get=function ( t,x,y )
-		return t.d[x+t.w*y]
-	end
-	return img
-end
 
 img_buf=img_buf or make_image_buffer(size[1],size[2])
 visits=visits or make_float_buffer(size[1],size[2])
@@ -90,40 +29,6 @@ config=make_config({
 	{"gen_radius",1,type="float",min=0,max=10},
 },config)
 image_no=image_no or 0
-function draw_config( tbl )
-	for _,entry in ipairs(tbl) do
-		local name=entry[1]
-		local v=tbl[name]
-		local k=name
-		if type(v)=="boolean" then
-			if imgui.Button(k) then
-				tbl[k]=not tbl[k]
-			end
-		elseif type(v)=="string" then
-			local changing
-			changing,tbl[k]=imgui.InputText(k,tbl[k])
-			entry.changing=changing
-		else --if type(v)~="table" then
-			if entry.type=="int" then
-				local changing
-				changing,tbl[k]=imgui.SliderInt(k,tbl[k],entry.min or 0,entry.max or 100)
-				entry.changing=changing
-			elseif entry.type=="float" then
-				local changing
-				changing,tbl[k]=imgui.SliderFloat(k,tbl[k],entry.min or 0,entry.max or 1)
-				entry.changing=changing
-			elseif entry.type=="angle" then
-				local changing
-				changing,tbl[k]=imgui.SliderAngle(k,tbl[k],entry.min or 0,entry.max or 360)
-				entry.changing=changing
-			elseif entry.type=="color" then
-				local changing
-				changing,tbl[k]=imgui.ColorEdit4(k,tbl[k],true)
-				entry.changing=changing
-			end
-		end
-	end
-end
 function iterate( x,y ,n,dist)
 	local zx=0
 	local zy=0
@@ -192,8 +97,18 @@ function step_iter( x,y,v0,v1)
 	--local ny=math.sin(((y)+(v1))*(math.sin(x))/(math.sin((x)*(x))))
 	--local r = x*x+y*y
 	--return x/r+math.sin(y-r*v0),y/r-math.cos(x-r*v1)
-	local nx=math.sin(math.sin(y))/((math.cos(y))-(y/(x)))/(((math.sin(v0))-(v1/(x)))*(math.sin((y)+(v0))))
-	local ny=math.cos((x/(x+v0)/(y))*(((v0)+(v1))+(math.cos(y))))*y
+	--local nx=math.sin(math.sin(y))/((math.cos(y))-(y/(x)))/(((math.sin(v0))-(v1/(x)))*(math.sin((y)+(v0))))
+	local x_1=x
+	local x_2=x*x
+	local x_3=x*x*x
+
+	local y_1=y
+	local y_2=y*y
+	local y_3=y*y*y
+
+	local nx=((v0)+(v1))+((v1)-(v0))+x_1*(((v1)+(v1))*((v0)+(v0)))+y_1*(((v0)/(v0))*((v1)*(v0)))+y_1*x_1*(((v1)-(v0))*((v1)-(v0)))+x_2*(((v1)/(v0))-((v0)/(v1)))+y_2*(((v0)-(v1))*((v1)+(v1)))+y_2*x_2*(((v1)*(v1))/((v1)-(v0)))+x_3*(((v0)+(v1))*((v0)*(v1)))+y_3*(((v0)*(v0))-((v0)*(v1)))+y_3*x_3*(((v0)+(v0))-((v1)-(v0)))
+	local ny=((v0)/(v0))+((v1)-(v0))+x_1*(((v1)+(v1))*((v0)+(v0)))+y_1*(((v0)+(v1))-((v1)/(v0)))+y_1*x_1*(((v1)/(v1))-((v0)+(v1)))+x_2*(((v1)+(v0))/((v0)-(v1)))+y_2*(((v0)*(v1))+((v0)-(v0)))+y_2*x_2*(((v1)+(v0))*((v1)+(v0)))+x_3*(((v1)-(v1))*((v1)*(v0)))+y_3*(((v1)-(v1))/((v0)*(v0)))+y_3*x_3*(((v0)*(v1))-((v1)/(v1)))
+	--local ny=math.cos((x/(x+v0)/(y))*(((v0)+(v1))+(math.cos(y))))*y
 	return nx,ny
 	--return math.cos(x-y/v1)*x+math.sin(x*x*v0)*v1,math.sin(y-x/v0)*y+math.cos(y*y*v1)*v0
 	--return x+v1,y*math.cos(x)-v0
@@ -219,20 +134,11 @@ function smooth_visit( tx,ty )
 	visits:set(hx,hy,hh+fr_x*fr_y)
 end
 function clear_buffers(  )
-	local s=size
-	local vst=visits_ffi
-	local clear=pixel{0,0,0,0}
-	for x=0,s[1]-1 do
-		for y=0,s[2]-1 do
-			img_buf:set(x,y,clear)
-		end
-	end
-	for i=0,(s[1]*s[2])-1 do
-		visits.d[i]=0
-	end
+	img_buf:clear()
+	visits:clear()
 	img_buf:present();
 end
-function random_math( num_params,len )
+function random_math_old( num_params,len )
 	local cur_string="R"
 	local terminal=function (  )
 		if math.random()>0.3 then
@@ -249,7 +155,32 @@ function random_math( num_params,len )
 
 
 	local function M(  )
-		local ch={"math.sin(R)","math.cos(R)",--[["math.log(R)",]]"R/(R)",
+		local ch={--[["math.sin(R)","math.cos(R)",]]--[["math.log(R)",]]"(R)/(R)",
+		"(R)*(R)","(R)-(R)","(R)+(R)"}
+		return ch[math.random(1,#ch)]
+	end
+	
+	while #cur_string<len do
+		cur_string=string.gsub(cur_string,"R",M)
+	end
+	cur_string=string.gsub(cur_string,"R",terminal)
+	return cur_string
+end
+function random_math_series( num_params,start_pow,end_pow )
+	local cur_string="R"
+	local len=150
+	local terminal=function (  )
+		local v=math.random(0,num_params-1)
+		return 'v'..v
+	end
+	for i=start_pow,end_pow do
+		if i>0 then
+			cur_string=cur_string..string.format("+x_%d*(R)+y_%d*(R)+y_%d*x_%d*(R)",i,i,i,i)
+		end
+	end
+
+	local function M(  )
+		local ch={--[["math.sin(R)","math.cos(R)",]]--[["math.log(R)",]]"(R)/(R)",
 		"(R)*(R)","(R)-(R)","(R)+(R)"}
 		return ch[math.random(1,#ch)]
 	end
@@ -270,13 +201,13 @@ function gui(  )
 	end
 	--imgui.SameLine()
 	generate_num_params=generate_num_params or 1
-	last_gen_function=last_gen_function or ""
+
 	local changed
 	changed,generate_num_params=imgui.SliderInt("Num params",generate_num_params,1,10)
 	if imgui.Button("Gen function") then
-		last_gen_function=random_math(generate_num_params,50)
+		print(random_math_series(generate_num_params,0,3))
 	end
-	imgui.InputText("Formula",last_gen_function)
+
 	--imgui.SameLine()
 	if imgui.Button("Save image") then
 		local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"

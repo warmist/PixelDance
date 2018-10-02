@@ -50,7 +50,24 @@ function make_dbl_buffer(w,h)
 	end
 	return img
 end
+function make_float_buffer(w,h)
+	local img={d=ffi.new("double[?]",w*h),w=w,h=h}
 
+	img.set=function ( t,x,y,v )
+		t.d[x+t.w*y]=v
+	end
+	img.get=function ( t,x,y )
+		return t.d[x+t.w*y]
+	end
+	img.clear=function ( t,c )
+		for x=0,w-1 do
+		for y=0,h-1 do
+			t:set(x,y,c or 0)
+		end
+		end
+	end
+	return img
+end
 -------------GUI
 
 function make_config(tbl,defaults)
