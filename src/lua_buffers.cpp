@@ -138,6 +138,8 @@ static int make_lua_auto_buffer(lua_State* L)
 	{
 		return buffer_value_access<float>::make_buffer(L, x, y);
 	}
+    else 
+        return 0;
 }
 
 static const luaL_Reg lua_buffers_lib[] = {
