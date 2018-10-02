@@ -19,6 +19,7 @@
 #include "shaders.h"
 void load_projects(const char* prefix,file_watcher& fwatch)
 {
+    fwatch.files.clear();
     std::string path_prefix = prefix;
     auto pfiles = enum_files(path_prefix + "/*.lua");
     for (auto p : pfiles)
@@ -414,6 +415,9 @@ int main(int argc, char** argv)
 			}
         }
 		bool need_reload = false;
+        bool project_exists=false;
+
+        load_projects(argv[1], fwatch);
         if (fwatch.check_changes())
         {
             for (auto& f : fwatch.files)
@@ -428,13 +432,27 @@ int main(int argc, char** argv)
                 }
             }
         }
+        //check for current project deletion
+        for(auto& f:fwatch.files)
+        {
+            if((current_project.path == f.path) && f.exists)
+            {
+                project_exists=true;
+            }
+        }
         ImGui::SFML::Update(window, deltaClock.restart());
-
-		if(need_reload)
-			current_project.reload_file();
-		current_project.set_mouse();
-		
-		current_project.update();
+        if(project_exists)
+        {
+    		if(need_reload)
+    			current_project.reload_file();
+    		current_project.set_mouse();
+    		current_project.update();
+        }
+        else
+        {
+            //project no longer exists, deselect it
+            selected_project=-1;
+        }
 
         ImGui::Begin("Projects");
 		ImGui::Text("FPS:%g", ImGui::GetIO().Framerate);
