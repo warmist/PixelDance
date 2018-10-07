@@ -18,6 +18,8 @@ config=make_config({
 	{"auto_scale_color",false,type="boolean"},
 	{"ticking",100,type="int",min=1,max=10000},
 	{"ticking2",10,type="int",min=1,max=100},
+	{"line_visits",1,type="int",min=1,max=100},
+	{"arg_disp",0,type="float",min=0,max=1},
 	{"v0",-0.211,type="float",min=-5,max=5},
 	{"v1",-0.184,type="float",min=-5,max=5},
 	{"scale",1,type="float",min=0.00001,max=2},
@@ -240,7 +242,8 @@ vec4 mix_palette(float value )
 
 	float t=tg-tl;
 	vec4 c1=palette[int(tl)];
-	vec4 c2=palette[int(ceil(tg))];
+	int hidx=min(int(ceil(tg)),palette_size-1);
+	vec4 c2=palette[hidx];
 	return mix(c1,c2,t);
 }
 vec2 local_minmax(vec2 pos)
@@ -314,48 +317,7 @@ function draw_visits(  )
 		need_save=nil
 	end
 end
-function draw_visits_local(  )
-	
-	local vst=visits
 
-
-	local pix_out = pixel()
-	local c_u8=pixel{config.color[1]*255,config.color[2]*255,config.color[3]*255,config.color[4]*255}
-	local c_back=pixel{config.color2[1]*255,config.color2[2]*255,config.color2[3]*255,config.color2[4]*255}
-	local rad=3
-	for x=0,size[1]-1 do
-	for y=0,size[2]-1 do
-		local lmax=0
-		local lmin=math.huge
-		for i=1,500 do
-			local a=math.random()*2*math.pi
-			local r= rad*math.sqrt(math.random())
-			local tx=r*math.cos(a)+x
-			local ty=r*math.sin(a)+y
-			tx=mod(tx,size[1])
-			ty=mod(ty,size[2])
-			local v=vst:get(tx,ty)
-			if lmax<v then lmax=v end
-			if lmin>v then lmin=v end
-		end
-		lmax=math.log(lmax)
-		lmin=math.log(lmin)
-		local v=vst:get(x,y)
-		local nv
-		if config.auto_scale_color then
-			nv=(math.log(v)-lmin)/(lmax-lmin)
-		else
-			nv=math.log(v)/lmax
-		end
-		nv=math.min(math.max(nv,0),1)
-		--mix(pix_out,c_u8,c_back,nv)
-		mix_palette(pix_out,nv)
-		img_buf:set(x,y,pix_out)
-	end
-	end
-
-	img_buf:present()
-end
 function step_iter( x,y,v0,v1)
 	--[[
 	local nx=x*x+v0-y*y
@@ -741,7 +703,20 @@ function line_visit( x0,y0,x1,y1 )
 
     end
 end
+function rand_line_visit( x0,y0,x1,y1 )
+	local dx=x1-x0
+	local dy=y1-y0
+	local d=math.sqrt(dx*dx+dy*dy)
+	dx=dx/d
+	dy=dy/d
+	for i=1,config.line_visits do
+		local r=math.random()*d
 
+		local tx=mod(x0+dx*r,size[1])
+		local ty=mod(y0+dy*r,size[2])
+		smooth_visit(tx,ty)
+	end
+end
 function update_real(  )
 	__no_redraw()
 	__clear()
@@ -761,6 +736,7 @@ function update_real(  )
 	end]]
 	--config.one_step=true
 	--local start_calc=os.time()
+	local ad=config.arg_disp
 	local gen_radius=config.gen_radius
 	for i=1,config.ticking do
 		--TODO: generate IN screen
@@ -771,7 +747,9 @@ function update_real(  )
 		local lx
 		local ly
 		for i=1,config.ticking2 do
-			x,y=step_iter(x,y,v0,v1)
+			local rv0=(math.random()-0.5)*2*v0*ad
+			local rv1=(math.random()-0.5)*2*v1*ad
+			x,y=step_iter(x,y,v0+rv0,v1+rv1)
 			--[[
 			x=mod(x,1000)
 			y=mod(y,1000)
@@ -783,11 +761,12 @@ function update_real(  )
 			local ty=((y-cy)*iscale+0.5)*s[2]
 			--[[
 			if lx then
-				line_visit(lx,ly,tx,ty)
+				--line_visit(lx,ly,tx,ty)
+				rand_line_visit(lx,ly,tx,ty)
 			end
 			lx=tx
 			ly=ty
-			]]
+			--]]
 			-- [[
 			tx=mod(tx,s[1])
 			ty=mod(ty,s[2])
