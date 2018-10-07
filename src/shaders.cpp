@@ -301,6 +301,8 @@ static int set_uniform(lua_State* L)
 	{
 		auto uid= luaL_checkstring(L, 2);
 		uloc=glGetUniformLocation(s->id, uid);
+		//if (uloc == -1)//NOTE: the linker can optimize out the uniform and then we'll get -1 -.-
+		//	luaL_error(L,"could not find uniform named: %s", uid);
 	}
 	else
 	{
@@ -385,7 +387,57 @@ static void get_shader_log(std::vector<char>& err,GLuint shader)
 
 	glGetShaderInfoLog(shader, InfoLogLength, NULL, &err[err_end]);
 }
+const GLfloat quad_pos[] = {
+	-1.0f,-1.0f,0.0f,
+	1.0f,-1.0f,0.0f,
+	1.0f, 1.0f,0.0f,
+	-1.0f, 1.0f,0.0f,
+};
+static int draw_quad(lua_State* L)
+{
+	auto s = check(L, 1);
+	glOrtho(-1.0, 1.0, -1.0, 1.0, -1.0, 50);
+	auto pos_idx=glGetAttribLocation(s->id,"position");
 
+	glEnableVertexAttribArray(pos_idx);
+	glVertexAttribPointer(pos_idx, 3, GL_FLOAT, false, 0, quad_pos); // vertex_data is a float*, 3 per vertex, representing the position of each vertex
+	glDrawArrays(GL_QUADS, 0, 4); // vertex_count is an integer containing the number of indices to be rendered
+	glDisableVertexAttribArray(pos_idx);
+	return 0;
+}
+void debug_program(shader_program& s)
+{
+	GLint i;
+	GLint count;
+
+	GLint size; // size of the variable
+	GLenum type; // type of the variable (float, vec3 or mat4, etc)
+
+	const GLsizei bufSize = 16; // maximum name length
+	GLchar name[bufSize]; // variable name in GLSL
+	GLsizei length; // name length
+
+	glGetProgramiv(s.id, GL_ACTIVE_ATTRIBUTES, &count);
+	printf("Active Attributes: %d\n", count);
+
+	for (i = 0; i < count; i++)
+	{
+		glGetActiveAttrib(s.id, (GLuint)i, bufSize, &length, &size, &type, name);
+
+		printf("Attribute #%d Type: %u Name: %s\n", i, type, name);
+	}
+
+	glGetProgramiv(s.id, GL_ACTIVE_UNIFORMS, &count);
+	printf("Active Uniforms: %d\n", count);
+
+	for (i = 0; i < count; i++)
+	{
+		glGetActiveUniform(s.id, (GLuint)i, bufSize, &length, &size, &type, name);
+
+		printf("Uniform #%d Type: %u Name: %s\n", i, type, name);
+	}
+
+}
 static int make_shader(lua_State* L, const char* vertex, const char* fragment) {
 	//TODO: check ret->id
 	auto make_shader=[L](const char* source,GLuint type) {
@@ -433,7 +485,7 @@ static int make_shader(lua_State* L, const char* vertex, const char* fragment) {
 			luaL_error(L, "error linking shader:%s", err.data());
 		}
 	}
-	
+	debug_program(*ret);
 	if (luaL_newmetatable(L, "shader"))
 	{
 		lua_pushcfunction(L, del_shader);
@@ -451,6 +503,8 @@ static int make_shader(lua_State* L, const char* vertex, const char* fragment) {
 		lua_pushcfunction(L, set_uniform<int>); 
 		lua_setfield(L, -2, "set_i");
 
+		lua_pushcfunction(L, draw_quad);
+		lua_setfield(L, -2, "draw_quad");
 		/*
 		lua_pushcfunction(L, set_variable); //either uniform or attribute
 		lua_setfield(L, -2, "set");
@@ -472,14 +526,14 @@ const char* default_vertex_shader =
 R"(
 #version 330
 
-layout(location = 0) in vec3 vertexPosition_modelspace;
+layout(location = 0) in vec3 position;
 
-varying vec3 pos;
+out vec3 pos;
 void main()
 {
-    gl_Position.xyz = vertexPosition_modelspace-vec3(1,1,0);
+    gl_Position.xyz = position;
     gl_Position.w = 1.0;
-    pos=vertexPosition_modelspace;
+    pos=position;
 }
 )";
 int make_lua_shader_prog(lua_State* L )

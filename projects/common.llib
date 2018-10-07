@@ -51,7 +51,7 @@ function make_dbl_buffer(w,h)
 	return img
 end
 function make_float_buffer(w,h)
-	local img={d=ffi.new("double[?]",w*h),w=w,h=h}
+	local img={d=ffi.new("float[?]",w*h),w=w,h=h}
 
 	img.set=function ( t,x,y,v )
 		t.d[x+t.w*y]=v

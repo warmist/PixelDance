@@ -71,6 +71,13 @@ distribute, and modify this file as you see fit.
 #define GL_VERTEX_SHADER                  0x8B31
 #define GL_INFO_LOG_LENGTH                0x8B84
 #define GL_LINK_STATUS                    0x8B82
+#define GL_TEXTURE_2D					  0x0DE1
+#define GL_ACTIVE_ATTRIBUTES			  0x8B89
+#define GL_ACTIVE_UNIFORMS				  0x8B86
+#define GL_CLAMP_TO_BORDER                0x812D
+#define GL_RGBA32F                        0x8814
+#define GL_RGB32F                         0x8815
+#define GL_R32F                           0x822E
 
 typedef char GLchar;
 typedef ptrdiff_t GLintptr;
@@ -92,6 +99,7 @@ typedef ptrdiff_t GLsizeiptr;
     GLE(void,      AttachShader,            GLuint program, GLuint shader) \
     GLE(void,      BindBuffer,              GLenum target, GLuint buffer) \
     GLE(void,      BindFramebuffer,         GLenum target, GLuint framebuffer) \
+	GLE(void,	   BindAttribLocation,		GLuint program,GLuint index,const GLchar *name)\
     GLE(void,      BufferData,              GLenum target, GLsizeiptr size, const GLvoid *data, GLenum usage) \
     GLE(void,      BufferSubData,           GLenum target, GLintptr offset, GLsizeiptr size, const GLvoid * data) \
     GLE(GLenum,    CheckFramebufferStatus,  GLenum target) \
@@ -104,6 +112,7 @@ typedef ptrdiff_t GLsizeiptr;
 	GLE(void,      DeleteProgram,           GLuint program)\
 	GLE(void,      DeleteShader,            GLuint shader)\
     GLE(void,      EnableVertexAttribArray, GLuint index) \
+	GLE(void,      DisableVertexAttribArray,GLuint index) \
     GLE(void,      DrawBuffers,             GLsizei n, const GLenum *bufs) \
     GLE(void,      FramebufferTexture2D,    GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level) \
     GLE(void,      GenBuffers,              GLsizei n, GLuint *buffers) \
@@ -127,8 +136,10 @@ typedef ptrdiff_t GLsizeiptr;
     GLE(void,      UniformMatrix4fv,        GLint location, GLsizei count, GLboolean transpose, const GLfloat *value) \
     GLE(void,      UseProgram,              GLuint program) \
     GLE(void,      VertexAttribPointer,     GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid * pointer) \
+	GLE(void,	   GetActiveAttrib,			GLuint program, GLuint index,GLsizei bufSize, GLsizei * length, GLint * size, GLenum * type, GLchar * name)\
+	GLE(void,	   GetActiveUniform,		GLuint program, GLuint index,GLsizei bufSize, GLsizei * length, GLint * size, GLenum * type, GLchar * name)\
     /* end */
-
+//GLE(void, DeleteTextures, GLsizei count, const GLuint * textures)
 #define GLE(ret, name, ...) typedef ret GLDECL name##proc(__VA_ARGS__); extern name##proc * gl##name;
 GLLITE_GL_LIST
 GLLITE_GL_LIST_WIN32

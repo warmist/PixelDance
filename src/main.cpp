@@ -17,6 +17,7 @@
 #include "gl_lite.h"
 
 #include "shaders.h"
+#include "textures.hpp"
 #include <unordered_map>
 void load_projects(const char* prefix,file_watcher& fwatch)
 {
@@ -195,6 +196,17 @@ int setLuaPath(lua_State* L, const char* path)
 	return 0; // all done!
 }
 static int lua_get_my_source(lua_State* L);
+static int clear_screen(lua_State* L)
+{
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	return 0;
+}
+bool auto_redraw = true;
+static int no_auto_redraw(lua_State* L)
+{
+	auto_redraw = false;
+	return 0;
+}
 struct project {
     lua_State *L=nullptr;
     std::string path;
@@ -215,6 +227,7 @@ struct project {
 		lua_open_imgui(L);
 		lua_open_buffers(L);
 		lua_open_shaders(L);
+		lua_open_textures(L);
 #ifdef WRAP_CPP_EXCEPTIONS
 		lua_pushlightuserdata(L, (void *)wrap_exceptions);
 		luaJIT_setmode(L, -1, LUAJIT_MODE_WRAPCFUNC | LUAJIT_MODE_ON);
@@ -231,6 +244,12 @@ struct project {
 
         lua_pushcfunction(L, save_image);
         lua_setglobal(L, "__save_png");
+
+		lua_pushcfunction(L, clear_screen);
+		lua_setglobal(L, "__clear");
+
+		lua_pushcfunction(L, no_auto_redraw);
+		lua_setglobal(L, "__no_redraw");
 
 		state.write(L);
     }
@@ -516,11 +535,12 @@ int main(int argc, char** argv)
             ImGui::Text("%s", s.c_str());
         ImGui::EndChild();
         ImGui::End();
-		//if(selected_project == -1)
+		if(auto_redraw)
 		{
 			window.clear();
 			window.draw(back_buffer_sprite);
 		}
+		auto_redraw = true;
         ImGui::SFML::Render(window);
         window.display();
     }
