@@ -16,10 +16,10 @@ static int use_texture(lua_State* L)
 	auto num=luaL_checkint(L, 2);
 	glActiveTexture(num+GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, s->id);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	return 0;
 }
 struct gl_tex_format {
@@ -32,16 +32,37 @@ static const gl_tex_format formats[] = {
 	{ GL_RGBA32F,GL_RGBA,GL_FLOAT },
 	{ GL_R32F,GL_RED,GL_FLOAT },
 };
+//if second arg is not ptr to data, create empty texture!
 static int set_texture_data(lua_State* L)
 {
 	auto s = check(L, 1);
-	auto data = lua_topointer(L, 2); //TODO: check pointer?
+	const void* data=nullptr;
+	int arg = 3;
+	if (lua_type(L, 2) == 10) //cdata
+	{
+		data = lua_topointer(L, 2); //TODO: check pointer?
+	}
+	else
+		arg = 2;
+	auto w = luaL_checkint(L, arg++);
+	auto h = luaL_checkint(L, arg++);
+	auto format = luaL_optint(L, arg++, 0);
+
+	auto f = formats[format];
+	glTexImage2D(GL_TEXTURE_2D, 0, f.internal_format, w, h, 0, f.format, f.type, data);
+	return 0;
+}
+static int get_texture_data(lua_State* L)
+{
+	auto s = check(L, 1);
+
+	void* data = const_cast<void*>(lua_topointer(L, 2));
 	auto w = luaL_checkint(L, 3);
 	auto h = luaL_checkint(L, 4);
 	auto format = luaL_optint(L, 5, 0);
 
 	auto f = formats[format];
-	glTexImage2D(GL_TEXTURE_2D, 0, f.internal_format, w, h, 0, f.format, f.type, data);
+	glGetTexImage(GL_TEXTURE_2D, 0, f.format, f.type, data);
 	return 0;
 }
 static int del_texture(lua_State* L)
@@ -68,6 +89,9 @@ static int make_lua_texture(lua_State* L)
 
 		lua_pushcfunction(L, set_texture_data);
 		lua_setfield(L, -2, "set");
+
+		lua_pushcfunction(L, get_texture_data);
+		lua_setfield(L, -2, "read");
 
 		lua_pushvalue(L, -1);
 		lua_setfield(L, -2, "__index");

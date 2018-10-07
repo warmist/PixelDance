@@ -207,6 +207,16 @@ static int no_auto_redraw(lua_State* L)
 	auto_redraw = false;
 	return 0;
 }
+static int read_fb(lua_State* L)
+{
+	void* data = const_cast<void*>(lua_topointer(L, 1));
+	int w = luaL_checkint(L, 2);
+	int h = luaL_checkint(L, 3);
+	int sx = luaL_optint(L, 4, 0);
+	int sy = luaL_optint(L, 5, 0);
+	glReadPixels(sx, sy, w, h, GL_RGBA, GL_UNSIGNED_BYTE, data);
+	return 0;
+}
 struct project {
     lua_State *L=nullptr;
     std::string path;
@@ -250,6 +260,9 @@ struct project {
 
 		lua_pushcfunction(L, no_auto_redraw);
 		lua_setglobal(L, "__no_redraw");
+
+		lua_pushcfunction(L, read_fb);
+		lua_setglobal(L, "__read_fb");
 
 		state.write(L);
     }

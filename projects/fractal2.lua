@@ -258,8 +258,8 @@ vec2 local_minmax(vec2 pos)
 			float v=texture(tex_main,pos+delta).x;
 			if(max<v)max=v;
 			if(min>v)min=v;
-			avg+=v*dist*dist;
-			wsum+=dist*dist;
+			avg+=v*(1/(dist*dist+1));
+			wsum+=(1/(dist*dist+1));
 		}
 	avg/=wsum;
 	return vec2(log(avg/2+1),log(avg*2+1));
@@ -267,8 +267,8 @@ vec2 local_minmax(vec2 pos)
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float nv=texture(tex_main,normed).x;
-	//vec2 lmm=min_max;
-	vec2 lmm=local_minmax(normed);
+	vec2 lmm=min_max;
+	//vec2 lmm=local_minmax(normed);
 	if(auto_scale_color==1)
 		nv=(log(nv+1)-lmm.x)/(lmm.y-lmm.x);
 	else
@@ -281,7 +281,7 @@ void main(){
 	color = mix_palette(nv);
 }
 ]==]
-
+local need_save
 local visit_tex = textures.Make()
 last_pos=last_pos or {0,0}
 function draw_visits(  )
@@ -309,6 +309,10 @@ function draw_visits(  )
 	if config.auto_scale_color then auto_scale=1 end
 	log_shader:set_i("auto_scale_color",auto_scale)
 	log_shader:draw_quad()
+	if need_save then
+		save_img(tile_count)
+		need_save=nil
+	end
 end
 function draw_visits_local(  )
 	
@@ -572,7 +576,9 @@ function gui(  )
 	tile_count=tile_count or 1
 	_,tile_count=imgui.SliderInt("tile count:",tile_count,1,8)
 	if imgui.Button("Save image") then
-		save_img(tile_count)
+		--this saves too much (i.e. all gui and stuff, we need to do it in correct place (or render to texture)
+		--save_img(tile_count)
+		need_save=tile_count
 	end
 	local m, mx,my=is_mouse_down() 
 	--if m then

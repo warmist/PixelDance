@@ -140,6 +140,7 @@ typedef ptrdiff_t GLsizeiptr;
 	GLE(void,	   GetActiveUniform,		GLuint program, GLuint index,GLsizei bufSize, GLsizei * length, GLint * size, GLenum * type, GLchar * name)\
     /* end */
 //GLE(void, DeleteTextures, GLsizei count, const GLuint * textures)
+//GLE(void, GetTexImage, GLenum target, GLint level, GLenum format, GLenum type, GLvoid * img)
 #define GLE(ret, name, ...) typedef ret GLDECL name##proc(__VA_ARGS__); extern name##proc * gl##name;
 GLLITE_GL_LIST
 GLLITE_GL_LIST_WIN32
