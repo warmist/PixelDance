@@ -1,3 +1,4 @@
+
 require "common"
 
 local size=STATE.size
@@ -22,6 +23,7 @@ config=make_config({
 	{"arg_disp",0,type="float",min=0,max=1},
 	{"v0",-0.211,type="float",min=-5,max=5},
 	{"v1",-0.184,type="float",min=-5,max=5},
+	{"move_dist",0.1,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
 	--{"one_step",false,type="boolean"},
 	--{"super_sample",1,type="int",min=1,max=4},
@@ -127,7 +129,32 @@ function hslToRgb(h, s, l, a)
 
   return r * 255, g * 255, b * 255, a * 255
 end
+function hslToRgb_normed(h, s, l, a)
+  local r, g, b
 
+  if s == 0 then
+    r, g, b = l, l, l -- achromatic
+  else
+    function hue2rgb(p, q, t)
+      if t < 0   then t = t + 1 end
+      if t > 1   then t = t - 1 end
+      if t < 1/6 then return p + (q - p) * 6 * t end
+      if t < 1/2 then return q end
+      if t < 2/3 then return p + (q - p) * (2/3 - t) * 6 end
+      return p
+    end
+
+    local q
+    if l < 0.5 then q = l * (1 + s) else q = l + s - l * s end
+    local p = 2 * l - q
+
+    r = hue2rgb(p, q, h + 1/3)
+    g = hue2rgb(p, q, h)
+    b = hue2rgb(p, q, h - 1/3)
+  end
+
+  return {r , g , b , a}
+end
 --[[
  * Converts an RGB color value to HSV. Conversion formula
  * adapted from http://en.wikipedia.org/wiki/HSV_color_space.
@@ -325,7 +352,7 @@ function step_iter( x,y,v0,v1)
 	--print(x,y,nx,ny)
 	--return nzx,nzy
 	--]]
-	-- [[
+	--[[
 	local nx=(((v0)-(v1)/((x)*(v0)))-(math.cos((v0)-(x))))*((math.cos((v1)*(y)))+(math.sin(x)/(math.cos(x))))
 	local ny=math.sin(((y)+(v1))*(math.sin(x))/(math.sin((x)*(x))))
 	--]]
@@ -340,20 +367,23 @@ function step_iter( x,y,v0,v1)
 	local y_2=y*y
 	local y_3=y*y*y
 
-	--local r=math.sqrt(x_2+y_2)
+	local r=math.sqrt(x_2+y_2)
 	--[[
 	local nx=((v0)+(v1))+((v1)-(v0))+x_1*(((v1)+(v1))*((v0)+(v0)))+y_1*(((v0)/(v0))*((v1)*(v0)))+y_1*x_1*(((v1)-(v0))*((v1)-(v0)))+x_2*(((v1)/(v0))-((v0)/(v1)))+y_2*(((v0)-(v1))*((v1)+(v1)))+y_2*x_2*(((v1)*(v1))/((v1)-(v0)))+x_3*(((v0)+(v1))*((v0)*(v1)))+y_3*(((v0)*(v0))-((v0)*(v1)))+y_3*x_3*(((v0)+(v0))-((v1)-(v0)))
 	local ny=((v0)/(v0))+((v1)-(v0))+x_1*(((v1)+(v1))*((v0)+(v0)))+y_1*(((v0)+(v1))-((v1)/(v0)))+y_1*x_1*(((v1)/(v1))-((v0)+(v1)))+x_2*(((v1)+(v0))/((v0)-(v1)))+y_2*(((v0)*(v1))+((v0)-(v0)))+y_2*x_2*(((v1)+(v0))*((v1)+(v0)))+x_3*(((v1)-(v1))*((v1)*(v0)))+y_3*(((v1)-(v1))/((v0)*(v0)))+y_3*x_3*(((v0)*(v1))-((v1)/(v1)))
 	--]]
-	--local nx=((v1)*(v1))/((v0)/(v1))+x_1*(((v0)-(v0))*((v1)-(v1)))+y_1*(((v1)-(v1))*((v0)+(v1)))+y_1*x_1*(((v0)+(v0))+((v1)/(v0)))+x_2*(((v0)*(v1))+((v1)+(v0)))+y_2*(((v0)+(v1))+((v1)+(v1)))+y_2*x_2*(((v0)+(v0))*((v1)/(v1)))+x_3*(((v0)+(v0))-((v0)/(v1)))+y_3*(((v0)+(v0))*((v1)*(v1)))+y_3*x_3*(((v0)*(v0))-((v0)+(v0)))
-	--local ny=((v0)*(v0))+((v1)-(v1))+x_1*(((v0)-(v0))*((v1)*(v1)))+y_1*(((v1)*(v0))+((v0)*(v1)))+y_1*x_1*(((v1)-(v1))-((v1)+(v1)))+x_2*(((v0)/(v0))-((v0)-(v0)))+y_2*(((v1)*(v0))+((v1)*(v0)))+y_2*x_2*(((v0)*(v0))-((v0)/(v0)))+x_3*(((v1)*(v0))*((v0)+(v0)))+y_3*(((v1)*(v1))*((v1)*(v0)))+y_3*x_3*(((v1)*(v1))/((v0)+(v0)))
+	--[[
+	local nx=((v1)*(v1))/((v0)/(v1))+x_1*(((v0)-(v0))*((v1)-(v1)))+y_1*(((v1)-(v1))*((v0)+(v1)))+y_1*x_1*(((v0)+(v0))+((v1)/(v0)))+x_2*(((v0)*(v1))+((v1)+(v0)))+y_2*(((v0)+(v1))+((v1)+(v1)))+y_2*x_2*(((v0)+(v0))*((v1)/(v1)))+x_3*(((v0)+(v0))-((v0)/(v1)))+y_3*(((v0)+(v0))*((v1)*(v1)))+y_3*x_3*(((v0)*(v0))-((v0)+(v0)))
+	local ny=((v0)*(v0))+((v1)-(v1))+x_1*(((v0)-(v0))*((v1)*(v1)))+y_1*(((v1)*(v0))+((v0)*(v1)))+y_1*x_1*(((v1)-(v1))-((v1)+(v1)))+x_2*(((v0)/(v0))-((v0)-(v0)))+y_2*(((v1)*(v0))+((v1)*(v0)))+y_2*x_2*(((v0)*(v0))-((v0)/(v0)))+x_3*(((v1)*(v0))*((v0)+(v0)))+y_3*(((v1)*(v1))*((v1)*(v0)))+y_3*x_3*(((v1)*(v1))/((v0)+(v0)))
+	--]]
 	--[[local cs=math.cos(v1)
 	local ss=math.sin(v1)
 	local rx=x*cs-y*ss
 	local ry=y*cs+x*ss]]
 
 	-- make a ring with radius v0
-	--[[local nx,ny
+	-- [[
+	local nx,ny
 	if r>v0 then
 		nx=x-(x/r)*v1
 		ny=y-(y/r)*v1
@@ -361,8 +391,16 @@ function step_iter( x,y,v0,v1)
 		nx=x+(x/r)*v1
 		ny=y+(y/r)*v1
 	end
-	]]
+	--]]
 	--local ny=math.cos((x/(x+v0)/(y))*(((v0)+(v1))+(math.cos(y))))*y
+	--if r>config.move_dist then
+	if r<0.00001 then
+		r=1
+	end
+	local d=config.move_dist/r
+	nx=nx*d
+	ny=ny*d
+	--end
 	return nx,ny
 	--return math.cos(x-y/v1)*x+math.sin(x*x*v0)*v1,math.sin(y-x/v0)*y+math.cos(y*y*v1)*v0
 	--return x+v1,y*math.cos(x)-v0
@@ -451,7 +489,43 @@ function random_math_series( num_params,start_pow,end_pow )
 	return cur_string
 end
 palette=palette or {colors={{0,0,0,1},{0.8,0,0,1},{0,0,0,1},{0,0.2,0.2,1},{0,0,0,1}}}
+
+function gen_palette( )
+	local ret={}
+	palette.colors=ret
+
+	local h1=math.random()
+	local s=math.random()*0.3+0.7
+	local l=math.random()*0.6+0.2
+	local function gen_shades(tbl, h_start,s_start,l_start,l_end,count)
+		local diff=l_end-l_start
+		for i=0,count-1 do
+			table.insert(tbl,hslToRgb_normed(h_start,s_start,l_start+diff*(i/(count-1)),1))
+		end
+	end
+	-- [[ complementary
+	gen_shades(ret,h1,s,l,0.05,3)
+	gen_shades(ret,1-h1,s,0.05,l,3)
+	--]]
+	--[[ triadic
+	gen_shades(ret,h1,s,0,l,5)
+	gen_shades(ret,math.fmod(h1+0.33,1),s,l,0.1,5)
+	gen_shades(ret,math.fmod(h1+0.66,1),s,0.1,l,3)
+	--]]
+	--[[ anologous
+	gen_shades(ret,h1,s,0.2,l,3)
+	gen_shades(ret,math.fmod(h1+0.05,1),s,0.2,l,3)
+	gen_shades(ret,math.fmod(h1+0.1,1),s,l,0,3)
+	gen_shades(ret,math.fmod(h1+0.15,1),s,l,0,3)
+	gen_shades(ret,math.fmod(h1+0.2,1),s,l,0,3)
+	--]]
+	--TODO: compound
+	--
+end
 function palette_chooser()
+	if imgui.Button("Randomize") then
+		gen_palette()
+	end
 	if palette.colors[palette.current]==nil then
 		palette.current=1
 	end
@@ -503,9 +577,11 @@ function save_img(tile_count)
 				config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
 			end
 		end
+		img_buf:read_frame()
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 		image_no=image_no+1
 	else
+		img_buf:read_frame()
 		local w=img_buf.w
 		local h=img_buf.h
 		local tile_image=make_image_buffer(w*tile_count,h*tile_count)
@@ -661,7 +737,7 @@ function auto_clear(  )
 		end
 	end
 	local need_clear=false
-	for i=0,4 do
+	for i=0,5 do
 		if config[cfg_pos+i].changing then
 			need_clear=true
 		end
@@ -684,7 +760,9 @@ end
 function line_visit( x0,y0,x1,y1 )
 	local dx = x1 - x0;
     local dy = y1 - y0;
-
+    if math.sqrt(dx*dx+dy*dy)>5000 then
+    	return
+    end
     add_visit(mod(x0,size[1]),mod(y0,size[1]),1)
     if (dx ~= 0) then
         local m = dy / dx;
@@ -759,25 +837,33 @@ function update_real(  )
 			end
 			local tx=((x-cx)*iscale+0.5)*s[1]
 			local ty=((y-cy)*iscale+0.5)*s[2]
-			--[[
+			--[[ LINE-ISH VISITING
 			if lx then
-				--line_visit(lx,ly,tx,ty)
+				--line_visit(lx,ly,tx,ty) --VERY SLOW!!
 				rand_line_visit(lx,ly,tx,ty)
 			end
 			lx=tx
 			ly=ty
 			--]]
-			-- [[
+			-- [[ TILING FRACTAL
 			tx=mod(tx,s[1])
 			ty=mod(ty,s[2])
 			smooth_visit(tx,ty)
 			--]]
-			-- [[
-			--local v=visits:get(math.floor(tx),math.floor(ty))
-			--visits:set(math.floor(tx),math.floor(ty),v+1)
+			--[[ SIMPLE SMOOTH VISITING
+			if tx>=0 and tx<s[1]-1 and ty>=0 and ty<s[2]-1 then
+				smooth_visit(tx,ty)
+			else
+				break
+			end
+			--]]
+			--[[ NON_SMOOTH VISITING
+			local v=visits:get(math.floor(tx),math.floor(ty))
+			visits:set(math.floor(tx),math.floor(ty),v+1)
+			--]]
 		end
 		
-		--]]
+		
 	end
 	--local end_calc=os.time()
 	--local time_delta=os.difftime(end_calc,start_calc)
