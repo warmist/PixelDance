@@ -326,7 +326,7 @@ function draw_visits(  )
 		if lmin>v then lmin=v end
 	end
 	end
-	lmax=math.log(lmax+1)
+	lmax=math.log(lmax+1+0.5)
 	lmin=math.log(lmin+1)
 
 	log_shader:use()
@@ -360,12 +360,12 @@ function step_iter( x,y,v0,v1)
 	--return x/r+math.sin(y-r*v0),y/r-math.cos(x-r*v1)
 	--local nx=math.sin(math.sin(y))/((math.cos(y))-(y/(x)))/(((math.sin(v0))-(v1/(x)))*(math.sin((y)+(v0))))
 	local x_1=x
-	local x_2=x*x
-	local x_3=x*x*x
+	local x_2=x*x/2
+	local x_3=x*x*x/6
 
 	local y_1=y
-	local y_2=y*y
-	local y_3=y*y*y
+	local y_2=y*y/2
+	local y_3=y*y*y/6
 
 	local r=math.sqrt(x_2+y_2)
 	--[[
@@ -376,10 +376,11 @@ function step_iter( x,y,v0,v1)
 	local nx=((v1)*(v1))/((v0)/(v1))+x_1*(((v0)-(v0))*((v1)-(v1)))+y_1*(((v1)-(v1))*((v0)+(v1)))+y_1*x_1*(((v0)+(v0))+((v1)/(v0)))+x_2*(((v0)*(v1))+((v1)+(v0)))+y_2*(((v0)+(v1))+((v1)+(v1)))+y_2*x_2*(((v0)+(v0))*((v1)/(v1)))+x_3*(((v0)+(v0))-((v0)/(v1)))+y_3*(((v0)+(v0))*((v1)*(v1)))+y_3*x_3*(((v0)*(v0))-((v0)+(v0)))
 	local ny=((v0)*(v0))+((v1)-(v1))+x_1*(((v0)-(v0))*((v1)*(v1)))+y_1*(((v1)*(v0))+((v0)*(v1)))+y_1*x_1*(((v1)-(v1))-((v1)+(v1)))+x_2*(((v0)/(v0))-((v0)-(v0)))+y_2*(((v1)*(v0))+((v1)*(v0)))+y_2*x_2*(((v0)*(v0))-((v0)/(v0)))+x_3*(((v1)*(v0))*((v0)+(v0)))+y_3*(((v1)*(v1))*((v1)*(v0)))+y_3*x_3*(((v1)*(v1))/((v0)+(v0)))
 	--]]
-	--[[local cs=math.cos(v1)
-	local ss=math.sin(v1)
-	local rx=x*cs-y*ss
-	local ry=y*cs+x*ss]]
+	--[[
+	local nx=((v0)-(v0))-((v1)-(v0))+x_1*(((v0)/(v0))-((v1)-(v1)))+y_1*(((v1)+(v0))-((v0)+(v1)))+y_1*x_1*(((v1)+(v0))*((v1)-(v1)))+x_2*(((v0)+(v1))+((v1)/(v0)))+y_2*(((v0)/(v0))+((v0)+(v1)))+y_2*x_2*(((v0)*(v1))*((v1)+(v1)))+x_3*(((v0)-(v0))+((v0)+(v0)))+y_3*(((v1)+(v1))/((v0)*(v1)))+y_3*x_3*(((v1)/(v1))+((v0)/(v1)))
+	local ny=((v1)*(v0))/((v0)/(v1))+x_1*(((v1)*(v1))-((v1)-(v0)))+y_1*(((v0)+(v0))-((v0)-(v0)))+y_1*x_1*(((v1)/(v1))-((v1)/(v0)))+x_2*(((v0)/(v1))/((v0)+(v0)))+y_2*(((v0)/(v0))*((v0)-(v1)))+y_2*x_2*(((v0)*(v0))+((v0)+(v0)))+x_3*(((v0)/(v0))+((v0)/(v0)))+y_3*(((v0)-(v0))+((v1)/(v1)))+y_3*x_3*(((v0)*(v1))+((v0)-(v0)))
+	--]]
+	
 
 	-- make a ring with radius v0
 	-- [[
@@ -393,7 +394,16 @@ function step_iter( x,y,v0,v1)
 	end
 	--]]
 	--local ny=math.cos((x/(x+v0)/(y))*(((v0)+(v1))+(math.cos(y))))*y
-	--if r>config.move_dist then
+
+	-- [[
+	local cs=math.cos(v1)
+	local ss=math.sin(v1)
+	local rx=nx*cs-ny*ss
+	local ry=ny*cs+nx*ss
+	nx=rx
+	ny=ry
+	--]]
+
 	if r<0.00001 then
 		r=1
 	end
@@ -405,30 +415,23 @@ function step_iter( x,y,v0,v1)
 	--return math.cos(x-y/v1)*x+math.sin(x*x*v0)*v1,math.sin(y-x/v0)*y+math.cos(y*y*v1)*v0
 	--return x+v1,y*math.cos(x)-v0
 end
-
+function add_visit( x,y,v )
+	visits:set(x,y, visits:get(x,y)+v)
+end
 function smooth_visit( tx,ty )
 	local lx=math.floor(tx)
-	local hx=lx+1
-	if hx>=size[1] then
-		hx=hx-size[1]
-	end
 	local ly=math.floor(ty)
-	local hy=ly+1
-	if hy>=size[2] then
-		hy=hy-size[2]
-	end
+	local hx,hy=coord_mapping(lx+1,ly+1)
+	hx=math.floor(hx)
+	hy=math.floor(hy)
 	local fr_x=tx-lx
 	local fr_y=ty-ly
 
-	local ll=visits:get(lx,ly)
-	local lh=visits:get(lx,hy)
-	local hl=visits:get(hx,ly)
-	local hh=visits:get(hx,hy)
 	--TODO: writes to out of bounds (hx/hy out of bounds)
-	visits:set(lx,ly,ll+(1-fr_x)*(1-fr_y))
-	visits:set(lx,hy,lh+(1-fr_x)*fr_y)
-	visits:set(hx,ly,hl+fr_x*(1-fr_y))
-	visits:set(hx,hy,hh+fr_x*fr_y)
+	add_visit(lx,ly,(1-fr_x)*(1-fr_y))
+	add_visit(lx,hy,(1-fr_x)*fr_y)
+	add_visit(hx,ly,fr_x*(1-fr_y))
+	add_visit(hx,hy,fr_x*fr_y)
 end
 function clear_buffers(  )
 	img_buf:clear()
@@ -504,8 +507,8 @@ function gen_palette( )
 		end
 	end
 	-- [[ complementary
-	gen_shades(ret,h1,s,l,0.05,3)
-	gen_shades(ret,1-h1,s,0.05,l,3)
+	gen_shades(ret,h1,s,l,0.05,5)
+	gen_shades(ret,1-h1,s,0.05,l,5)
 	--]]
 	--[[ triadic
 	gen_shades(ret,h1,s,0,l,5)
@@ -587,7 +590,8 @@ function save_img(tile_count)
 		local tile_image=make_image_buffer(w*tile_count,h*tile_count)
 		for x=0,(w-1)*tile_count do
 		for y=0,(h-1)*tile_count do
-			tile_image:set(x,y,img_buf:get(x%w,y%h))
+			local tx,ty=coord_mapping(x,y)
+			tile_image:set(x,y,img_buf:get(tx,ty))
 		end
 		end
 		tile_image:save(string.format("tiled_%d.png",os.time(os.date("!*t"))),config_serial)
@@ -620,7 +624,7 @@ function gui(  )
 	end
 	local m, mx,my=is_mouse_down() 
 	--if m then
-	if mx>0 and mx< size[1] and my>0 and my<size[2] then
+	if mx>=0 and mx< size[1] and my>=0 and my<size[2] then
 		local mv=visits:get(math.floor(mx),math.floor(my))
 		imgui.Text(string.format("Mouse: %d %d value:%g",mx,my,mv))
 	end
@@ -635,7 +639,6 @@ function update( )
 		update_func()
 	end
 end
-bins={}
 function mix_palette(out,input_t )
 	if #palette.colors<=1 then
 		return
@@ -754,9 +757,7 @@ function mod(a,b)
 		return r
     end
 end
-function add_visit( x,y,v )
-	visits:set(x,y, visits:get(x,y)+v)
-end
+
 function line_visit( x0,y0,x1,y1 )
 	local dx = x1 - x0;
     local dy = y1 - y0;
@@ -794,6 +795,22 @@ function rand_line_visit( x0,y0,x1,y1 )
 		local ty=mod(y0+dy*r,size[2])
 		smooth_visit(tx,ty)
 	end
+end
+function coord_mapping( tx,ty )
+	local s=STATE.size
+	--return x,y
+	--return mod(x,s[1]),mod(y,s[2])
+	local div_x=math.floor(tx/s[1])
+	local div_y=math.floor(ty/s[2])
+	tx=mod(tx,s[1])
+	ty=mod(ty,s[2])
+	if div_x%2==1 then
+		tx=s[1]-tx-1
+	end
+	if div_y%2==1 then
+		ty=s[2]-ty-1
+	end
+	return tx,ty
 end
 function update_real(  )
 	__no_redraw()
@@ -846,9 +863,10 @@ function update_real(  )
 			ly=ty
 			--]]
 			-- [[ TILING FRACTAL
-			tx=mod(tx,s[1])
-			ty=mod(ty,s[2])
-			smooth_visit(tx,ty)
+			tx,ty=coord_mapping(tx,ty)
+			if tx>=0 and math.floor(tx)<s[1] and ty>=0 and math.floor(ty)<s[2] then
+				smooth_visit(tx,ty)
+			end
 			--]]
 			--[[ SIMPLE SMOOTH VISITING
 			if tx>=0 and tx<s[1]-1 and ty>=0 and ty<s[2]-1 then
@@ -875,10 +893,5 @@ function update_real(  )
 	--[[if math.fmod(tick,100)==0 then
 		save_img(1)
 	end]]
-	if math.fmod(tick,50)==0 then
-		for i,v in pairs(bins) do
-			print(i,v)
-		end
-	end
 	tick=tick+1
 end
