@@ -7,6 +7,7 @@
 #include "filesys.h"
 #include "limgui.h"
 #include "lua_buffers.h"
+#include "lua_random.h"
 #include "stb_image.h"
 #include "stb_image_write.h"
 #define WRAP_CPP_EXCEPTIONS
@@ -238,6 +239,7 @@ struct project {
 		lua_open_buffers(L);
 		lua_open_shaders(L);
 		lua_open_textures(L);
+		lua_open_random(L);
 #ifdef WRAP_CPP_EXCEPTIONS
 		lua_pushlightuserdata(L, (void *)wrap_exceptions);
 		luaJIT_setmode(L, -1, LUAJIT_MODE_WRAPCFUNC | LUAJIT_MODE_ON);
