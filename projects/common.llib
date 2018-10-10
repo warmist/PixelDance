@@ -38,7 +38,9 @@ function make_image_buffer(w,h)
 	end
 	return img
 end
-
+function flt_pixel(init)
+	return ffi.new("float_pixel",init or {0,0,0,1})
+end
 function make_flt_buffer(w,h)
 	local img={d=ffi.new("float_pixel[?]",w*h),w=w,h=h,type=1}
 

@@ -452,7 +452,7 @@ static int make_shader(lua_State* L, const char* vertex, const char* fragment) {
 		{
 			std::vector<char> err;
 			get_shader_log(err, ret_s);
-			luaL_error(L, "error compiling shader:%s", err.data());
+			luaL_error(L, "\n\terror compiling shader:%s", err.data());
 		}
 		return ret_s;
 	};
@@ -485,7 +485,9 @@ static int make_shader(lua_State* L, const char* vertex, const char* fragment) {
 			luaL_error(L, "error linking shader:%s", err.data());
 		}
 	}
+#ifdef SHADER_DEBUG
 	debug_program(*ret);
+#endif
 	if (luaL_newmetatable(L, "shader"))
 	{
 		lua_pushcfunction(L, del_shader);
