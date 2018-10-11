@@ -264,7 +264,7 @@ vec4 mix_palette(float value )
 	if (palette_size==0)
 		return vec4(0);
 	value=clamp(value,0,1);
-	float tg=value*(float(palette_size)); //[0,1]-->[0,#colors]
+	float tg=value*(float(palette_size)-1); //[0,1]-->[0,#colors]
 	float tl=floor(tg);
 
 	float t=tg-tl;
@@ -322,11 +322,13 @@ function draw_visits(  )
 	for x=0,size[1]-1 do
 	for y=0,size[2]-1 do
 		local v=vst:get(x,y)
-		if lmax<v then lmax=v end
-		if lmin>v then lmin=v end
+		if v~=0 then --skip non-visited tiles
+			if lmax<v then lmax=v end
+			if lmin>v then lmin=v end
+		end
 	end
 	end
-	lmax=math.log(lmax+1+0.5)
+	lmax=math.log(lmax+1)
 	lmin=math.log(lmin+1)
 
 	log_shader:use()
@@ -355,7 +357,7 @@ function step_iter( x,y,v0,v1)
 	--print(x,y,nx,ny)
 	--return nzx,nzy
 	--]]
-	-- [[
+	--[[
 	local nx=(((v0)-(v1)/((x)*(v0)))-(math.cos((v0)-(x))))*((math.cos((v1)*(y)))+(math.sin(x)/(math.cos(x))))
 	local ny=math.sin(((y)+(v1))*(math.sin(x))/(math.sin((x)*(x))))
 	--]]
@@ -371,7 +373,7 @@ function step_iter( x,y,v0,v1)
 	local y_3=y*y*y/6
 
 	local r=math.sqrt(x_2+y_2)
-	--[[
+	-- [[
 	local nx=math.sqrt(math.abs(math.cos(x_1-y_2)*v0+math.sin(y_2-x_3)*v1))-math.sqrt(math.abs(math.sin(x_1-y_2)*v1+math.cos(y_2-x_3)*v0))
 	local ny=math.sin(y_1-x_2)*v1+math.cos(x_2-y_3)*v0
 	--]]
@@ -432,20 +434,26 @@ end
 function add_visit( x,y,v )
 	visits:set(x,y, visits:get(x,y)+v)
 end
+function safe_visit( x,y,v )
+	if x>=0 and x<STATE.size[1] and y>=0 and y<STATE.size[2] then
+		add_visit(x,y,v)
+	end
+end
 function smooth_visit( tx,ty )
 	local lx=math.floor(tx)
 	local ly=math.floor(ty)
 	local hx,hy=coord_mapping(lx+1,ly+1)
-	hx=math.floor(hx)
-	hy=math.floor(hy)
+	hx=math.ceil(hx)
+	hy=math.ceil(hy)
 	local fr_x=tx-lx
 	local fr_y=ty-ly
 
 	--TODO: writes to out of bounds (hx/hy out of bounds)
-	add_visit(lx,ly,(1-fr_x)*(1-fr_y))
-	add_visit(lx,hy,(1-fr_x)*fr_y)
-	add_visit(hx,ly,fr_x*(1-fr_y))
-	add_visit(hx,hy,fr_x*fr_y)
+
+	safe_visit(lx,ly,(1-fr_x)*(1-fr_y))
+	safe_visit(lx,hy,(1-fr_x)*fr_y)
+	safe_visit(hx,ly,fr_x*(1-fr_y))
+	safe_visit(hx,hy,fr_x*fr_y)
 end
 function clear_buffers(  )
 	img_buf:clear()
@@ -604,7 +612,7 @@ function save_img(tile_count)
 		local tile_image=make_image_buffer(w*tile_count,h*tile_count)
 		for x=0,(w-1)*tile_count do
 		for y=0,(h-1)*tile_count do
-			local tx,ty=coord_mapping(x,y)
+			local tx,ty=coord_mapping(x-w*tile_count/2+w/2,y-h*tile_count/2+h/2)
 			tx=math.floor(tx)
 			ty=math.floor(ty)
 			if tx>=0 and math.floor(tx)<w and ty>=0 and math.floor(ty)<h then
@@ -818,8 +826,8 @@ function rot_coord( x,y,angle )
 	local c=math.cos(angle)
 	local s=math.sin(angle)
 	--[[
-		| c  -s |
-		| s c |
+		| c -s |
+		| s  c |
 	--]]
 	return x*c-y*s,x*s+y*c
 end
@@ -832,15 +840,186 @@ function reflect_coord( x,y,angle )
 	--]]
 	return x*c+y*s,x*s-y*c
 end
+function barycentric( x,y,ax,ay,bx,by,cx,cy )
+	local v0x=bx-ax
+	local v0y=by-ay
+
+	local v1x=cx-ax
+	local v1y=cy-ay
+
+	local v2x=x-ax
+	local v2y=y-ay
+
+	local d00=v0x*v0x+v0y*v0y
+	local d01=v0x*v1x+v0y*v1y
+	local d11=v1x*v1x+v1y*v1y
+	local d20=v2x*v0x+v2y*v0y
+	local d21=v2x*v1x+v2y*v1y
+
+	local denom=d00*d11-d01*d01
+	local v=(d11*d20-d01*d21)/denom
+	local w=(d00*d21-d01*d20)/denom
+	local u=1-v-w
+	return v,w,u
+end
+function from_barycentric( v,w,u,ax,ay,bx,by,cx,cy )
+	local x=v*ax+w*bx+u*cx
+	local y=v*ay+w*by+u*cy
+	return x,y
+end
+function mod_reflect( a,max )
+	local ad=math.floor(a/max)
+	a=mod(a,max)
+	if ad%2==1 then
+		a=max-a
+	end
+	return a
+end
+function to_hex_coord( x,y )
+	local size=300
+	local q=(math.sqrt(3)/3*x-(1/3)*y)/size
+	local r=((2/3)*y)/size
+	return q,r
+end
+function from_hex_coord( q,r )
+	local size=300
+	local x=(math.sqrt(3)*q+(math.sqrt(3)/2)*r)*size
+	local r=((3/2)*r)*size
+	return x,r
+end
+function round( x )
+	return math.floor(x+0.5)
+end
+function axial_to_cube( q,r )
+	return q,-q-r,r
+end
+function cube_to_axial(x,y,z )
+	return x,z
+end
+function cube_round( x,y,z )
+	local rx = round(x)
+    local ry = round(y)
+    local rz = round(z)
+
+    local x_diff = math.abs(rx - x)
+    local y_diff = math.abs(ry - y)
+    local z_diff = math.abs(rz - z)
+
+    if x_diff > y_diff and x_diff > z_diff then
+        rx = -ry-rz
+    elseif y_diff > z_diff then
+        ry = -rx-rz
+    else
+        rz = -rx-ry
+    end
+
+    return rx, ry, rz
+end
 
 function coord_mapping( tx,ty )
 	local s=STATE.size
+	local dist=10
+	local sx=s[1]/2
+	local sy=s[2]/2
+
+	local cx,cy=tx-sx,ty-sy
+	--[[
+	local r=math.sqrt(cx*cx+cy*cy)
+	local a=math.atan2(cy,cx)
+
+	r=mod_reflect(r,dist)
+	a=mod(a,math.pi/2)
+
+	cx=math.cos(a)*r
+	cy=math.sin(a)*r
+	--]]
+
+	cx,cy=to_hex_coord(cx,cy)
+	local rx,ry,rz=axial_to_cube(cx,cy)
+	local rrx,rry,rrz=cube_round(rx,ry,rz)
+	rx=rx-rrx
+	ry=ry-rry
+	rz=rz-rrz
+	--[[if rrx%2==1 and rrz%2==1 then
+		rz=-rz
+		rx=-rx
+	end]]
+	--print(max_rz,min_rz,math.sqrt(3))
+	cx,cy=cube_to_axial(rx,ry,rz)
+	cx,cy=from_hex_coord(cx,cy)
+	return cx+sx,cy+sy
+	--[=[
+	local angle=2*math.pi/3
+	
+
+	local ax,ay=math.cos(angle)*dist,math.sin(angle)*dist
+	local bx,by=math.cos(2*angle)*dist,math.sin(2*angle)*dist
+	local cx,cy=math.cos(3*angle)*dist,math.sin(3*angle)*dist
+	local v,w,u=barycentric(tx-sx,ty-sy,ax,ay,bx,by,cx,cy)
+	--print(tx,ty,v,w,u)
+	if v<0 then
+		w=mod(w,1)
+		u=mod(u,1)
+		v=mod(1-w-u,1)
+	elseif u<0 then
+		v=mod(v,1)
+		w=mod(w,1)
+		u=mod(1-v-w,1)
+	else
+		v=mod(v,1)
+		u=mod(u,1)
+		w=mod(1-v-u,1)
+	end
+
+	local nx,ny=from_barycentric(v,w,u,ax,ay,bx,by,cx,cy)
+	return nx+sx,ny+sy
+	--]=]
+	--[=[
 	local nx = tx
 	local ny = ty
 	nx=nx-s[1]/2
 	ny=ny-s[2]/2
+	local dist=200
+	local angle=math.pi/6
+	local dx=math.cos(angle)*dist
+	local dy=math.sin(angle)*dist
+	nx=nx+dx
+	ny=ny+dy
+	--ny=ny-s[2]/2
+	nx,ny=rot_coord(nx,ny,angle)
+	nx=mod(nx,dist)
+	--nx,ny=rot_coord(nx,ny,-angle)
+	nx=nx-dx
+	ny=ny-dy
+
 	
+
+	--[[dx=math.cos(-angle)*dist
+	dy=math.sin(-angle)*dist
+	nx=nx+dx
+	ny=ny+dy
+	nx,ny=rot_coord(nx,ny,-angle)
+	nx=mod(nx,dist)
+	nx,ny=rot_coord(nx,ny,angle)
+	nx=nx-dx
+	ny=ny-dy
+
+	dx=math.cos(2*angle)*dist
+	dy=math.sin(2*angle)*dist
+	nx=nx+dx
+	ny=ny+dy
+	nx,ny=rot_coord(nx,ny,2*angle)
+	nx=mod(nx,dist)
+	nx,ny=rot_coord(nx,ny,-2*angle)
+	nx=nx-dx
+	ny=ny-dy
+	]]
+	nx=nx+s[1]/2
+	ny=ny+s[2]/2
+	
+	--ny=ny+s[2]/2
 	return nx,ny
+	--]=]
 	--[=[
 	
 	local cx=tx-s[1]/2
@@ -848,8 +1027,7 @@ function coord_mapping( tx,ty )
 	local rmax=math.min(s[1],s[2])/2
 	
 
-	local r=math.sqrt(cx*cx+cy*cy)
-	local a=math.atan2(cy,cx)
+	
 	--r=math.fmod(r,math.min(s[1],s[2])/2)
 	
 	local num=6
@@ -996,12 +1174,16 @@ function update_real(  )
 			lx=tx
 			ly=ty
 			--]]
-			-- [[ TILING FRACTAL
+			--[[ TILING FRACTAL
+			tx,ty=coord_mapping(tx,ty)
+			smooth_visit(tx,ty)
+			--]]
+			-- [[
 			tx,ty=coord_mapping(tx,ty)
 			if tx>=0 and math.floor(tx)<s[1] and ty>=0 and math.floor(ty)<s[2] then
 				add_visit(math.floor(tx),math.floor(ty),1)
-				--smooth_visit(tx,ty)
 			end
+			--]]
 			--]]
 			--[[ SIMPLE SMOOTH VISITING
 			if tx>=0 and tx<s[1]-1 and ty>=0 and ty<s[2]-1 then
