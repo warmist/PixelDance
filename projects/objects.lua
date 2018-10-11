@@ -1,73 +1,14 @@
-local ffi=require "ffi"
-function make_config(tbl,defaults)
-	local ret={}
-	defaults=defaults or {}
-	for i,v in ipairs(tbl) do
-		ret[v[1]]=defaults[v[1]] or v[2]
-		ret[i]=v
-	end
-	return ret
-end
-local max_size=math.min(STATE.size[1],STATE.size[2])/2
+require "common"
+
 local size=STATE.size
-
-ffi.cdef[[
-typedef struct { uint8_t r, g, b, a; } rgba_pixel;
-typedef struct { double r, g, b; } dbl_pixel;
-]]
-function pixel(init)
-	return ffi.new("rgba_pixel",init or {0,0,0,255})
-end
-function make_image_buffer(w,h)
-	local img={d=ffi.new("rgba_pixel[?]",w*h),w=w,h=h}
-
-	img.set=function ( t,x,y,v )
-		t.d[x+t.w*y]=v
-	end
-	img.get=function ( t,x,y )
-		return t.d[x+t.w*y]
-	end
-	img.present=function ( t )
-		__present(t)
-	end
-	img.save=function ( t,path,suffix )
-		__save_png(t,path,suffix)
-	end
-	img.clear=function (v, c )
-		for x=0,w-1 do
-		for y=0,h-1 do
-			v:set(x,y,c or {0,0,0,255})
-		end
-		end
-	end
-	img:clear()
-	return img
-end
-function make_dbl_buffer(w,h)
-	local img={d=ffi.new("dbl_pixel[?]",w*h),w=w,h=h}
-
-	img.set=function ( t,x,y,v )
-		t.d[x+t.w*y]=v
-	end
-	img.get=function ( t,x,y )
-		return t.d[x+t.w*y]
-	end
-	img.clear=function ( t,c )
-		for x=0,w-1 do
-		for y=0,h-1 do
-			t:set(x,y,c or {0,0,0})
-		end
-		end
-	end
-	return img
-end
+local max_size=math.min(size[1],size[2])/2
 img_buf=img_buf or make_image_buffer(size[1],size[2])
-dbl_buf=dbl_buf or make_dbl_buffer(size[1],size[2])
-
+visits=visits or make_flt_buffer(size[1],size[2])
 function resize( w,h )
+	visits=make_flt_buffer(size[1],size[2])
 	img_buf=make_image_buffer(size[1],size[2])
-	dbl_buf=make_dbl_buffer(size[1],size[2])
 end
+
 config=make_config({
 	{"k",1,type="float"},
 	{"dt",0.002,type="float"},
@@ -213,12 +154,82 @@ function update_objects(  )
 	end
 	
 end
+local log_shader=shaders.Make[==[
+#version 330
+
+out vec4 color;
+in vec3 pos;
+
+uniform vec2 min_max;
+uniform sampler2D tex_main;
+uniform int auto_scale_color;
+
+
+void main(){
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	vec3 col=texture(tex_main,normed).xyz;
+	vec2 lmm=min_max;
+
+	if(auto_scale_color==1)
+		col=(log(col+vec3(1,1,1))-vec3(lmm.x))/(lmm.y-lmm.x);
+	else
+		col=log(col+vec3(1))/lmm.y;
+	col=clamp(col,0,1);
+	//nv=math.min(math.max(nv,0),1);
+	//--mix(pix_out,c_u8,c_back,nv)
+	//mix_palette(pix_out,nv)
+	//img_buf:set(x,y,pix_out)
+	color = vec4(col,1);
+}
+]==]
+local need_save
+local visit_tex = textures.Make()
+last_pos=last_pos or {0,0}
+function save_img(tile_count)
+	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
+	for k,v in pairs(config) do
+		if type(v)~="table" then
+			config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
+		end
+	end
+	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
+	image_no=image_no+1
+end
+function draw_visits(  )
+	local lmax=0
+	local lmin=math.huge
+	local vst=visits
+
+	for x=0,size[1]-1 do
+	for y=0,size[2]-1 do
+		local vp=vst:get(x,y)
+		local v=vp.r*vp.r+vp.g*vp.g+vp.b*vp.b
+		if lmax<v then lmax=v end
+		if lmin>v then lmin=v end
+	end
+	end
+	lmax=math.log(math.sqrt(lmax)+1)
+	lmin=math.log(math.sqrt(lmin)+1)
+	log_shader:use()
+	visit_tex:use(0)
+	visits:write_texture(visit_tex)
+	log_shader:set("min_max",lmin,lmax)
+	log_shader:set_i("tex_main",0)
+	local auto_scale=1
+	--if config.auto_scale_color then auto_scale=1 end
+	log_shader:set_i("auto_scale_color",auto_scale)
+	log_shader:draw_quad()
+	if need_save then
+		save_img(tile_count)
+		need_save=nil
+	end
+end
 function update_image()
 	local mm=0
 	for x=0,size[1]-1 do
 	for y=0,size[2]-1 do
 
-		local v=dbl_buf:get(x,y)
+		local v=visits:get(x,y)
 		local vv=v.r*v.r+v.g*v.g+v.b*v.b
 		if mm<vv then mm=vv end
 	end
@@ -230,7 +241,7 @@ function update_image()
 
 	for x=0,size[1]-1 do
 	for y=0,size[2]-1 do
-		local v=dbl_buf:get(x,y)
+		local v=visits:get(x,y)
 		local nvr=math.log(v.r)/mm
 		local nvg=math.log(v.g)/mm
 		local nvb=math.log(v.b)/mm
@@ -255,6 +266,7 @@ function create_object( x,y,color,vx,vy )
 end
 tick_num=tick_num or 0
 function update(  )
+	
 	local m,x,y=is_mouse_down()
 	if m then
 		create_object(x,y)
@@ -267,7 +279,7 @@ function update(  )
 	end
 	if imgui.Button("Clear") then
 		img_buf:clear()
-		dbl_buf:clear()
+		visits:clear()
 	end
 	if imgui.Button("Clear Objects") then
 		object_list={}
@@ -284,7 +296,7 @@ function update(  )
 		update_objects()
 		if config.do_log_normed then
 			for i,v in ipairs(object_list) do
-				local c=dbl_buf:get(math.floor(v.x),math.floor(v.y))
+				local c=visits:get(math.floor(v.x),math.floor(v.y))
 				c.r=c.r+v.color[1]
 				c.g=c.g+v.color[2]
 				c.b=c.b+v.color[3]
@@ -298,9 +310,9 @@ function update(  )
 		end
 	end
 	if config.do_log_normed then
-		if tick_num%100==0 then
-			update_image()
-		end
+		__no_redraw()
+		__clear()
+		draw_visits()
 	else
 		img_buf:present()
 	end
