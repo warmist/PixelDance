@@ -292,7 +292,7 @@ vec2 local_minmax(vec2 pos)
 			wsum+=(1/(dist*dist+1));
 		}
 	avg/=wsum;
-	return vec2(log(avg/2+1),log(avg*2+1));
+	return vec2(log(avg/10+1),log(avg*10+1));
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -347,12 +347,15 @@ end
 
 function step_iter( x,y,v0,v1)
 	--[[
+	local nx,ny=x,y
+	--]]
+	--[[
 	local nx=x*x+v0-y*y
 	local ny=2*x*y+v1
 	--print(x,y,nx,ny)
 	--return nzx,nzy
 	--]]
-	--[[
+	-- [[
 	local nx=(((v0)-(v1)/((x)*(v0)))-(math.cos((v0)-(x))))*((math.cos((v1)*(y)))+(math.sin(x)/(math.cos(x))))
 	local ny=math.sin(((y)+(v1))*(math.sin(x))/(math.sin((x)*(x))))
 	--]]
@@ -369,6 +372,10 @@ function step_iter( x,y,v0,v1)
 
 	local r=math.sqrt(x_2+y_2)
 	--[[
+	local nx=math.sqrt(math.abs(math.cos(x_1-y_2)*v0+math.sin(y_2-x_3)*v1))-math.sqrt(math.abs(math.sin(x_1-y_2)*v1+math.cos(y_2-x_3)*v0))
+	local ny=math.sin(y_1-x_2)*v1+math.cos(x_2-y_3)*v0
+	--]]
+	--[[
 	local nx=((v0)+(v1))+((v1)-(v0))+x_1*(((v1)+(v1))*((v0)+(v0)))+y_1*(((v0)/(v0))*((v1)*(v0)))+y_1*x_1*(((v1)-(v0))*((v1)-(v0)))+x_2*(((v1)/(v0))-((v0)/(v1)))+y_2*(((v0)-(v1))*((v1)+(v1)))+y_2*x_2*(((v1)*(v1))/((v1)-(v0)))+x_3*(((v0)+(v1))*((v0)*(v1)))+y_3*(((v0)*(v0))-((v0)*(v1)))+y_3*x_3*(((v0)+(v0))-((v1)-(v0)))
 	local ny=((v0)/(v0))+((v1)-(v0))+x_1*(((v1)+(v1))*((v0)+(v0)))+y_1*(((v0)+(v1))-((v1)/(v0)))+y_1*x_1*(((v1)/(v1))-((v0)+(v1)))+x_2*(((v1)+(v0))/((v0)-(v1)))+y_2*(((v0)*(v1))+((v0)-(v0)))+y_2*x_2*(((v1)+(v0))*((v1)+(v0)))+x_3*(((v1)-(v1))*((v1)*(v0)))+y_3*(((v1)-(v1))/((v0)*(v0)))+y_3*x_3*(((v0)*(v1))-((v1)/(v1)))
 	--]]
@@ -380,10 +387,16 @@ function step_iter( x,y,v0,v1)
 	local nx=((v0)-(v0))-((v1)-(v0))+x_1*(((v0)/(v0))-((v1)-(v1)))+y_1*(((v1)+(v0))-((v0)+(v1)))+y_1*x_1*(((v1)+(v0))*((v1)-(v1)))+x_2*(((v0)+(v1))+((v1)/(v0)))+y_2*(((v0)/(v0))+((v0)+(v1)))+y_2*x_2*(((v0)*(v1))*((v1)+(v1)))+x_3*(((v0)-(v0))+((v0)+(v0)))+y_3*(((v1)+(v1))/((v0)*(v1)))+y_3*x_3*(((v1)/(v1))+((v0)/(v1)))
 	local ny=((v1)*(v0))/((v0)/(v1))+x_1*(((v1)*(v1))-((v1)-(v0)))+y_1*(((v0)+(v0))-((v0)-(v0)))+y_1*x_1*(((v1)/(v1))-((v1)/(v0)))+x_2*(((v0)/(v1))/((v0)+(v0)))+y_2*(((v0)/(v0))*((v0)-(v1)))+y_2*x_2*(((v0)*(v0))+((v0)+(v0)))+x_3*(((v0)/(v0))+((v0)/(v0)))+y_3*(((v0)-(v0))+((v1)/(v1)))+y_3*x_3*(((v0)*(v1))+((v0)-(v0)))
 	--]]
-	
-
+	--[[
+	local nx=math.log(math.abs(x_1*v1))
+	local ny=math.log(math.abs(y_1*v0))
+	--]]
+	--[[
+	local nx=x_1/(y_1-x_1*v0)
+	local ny=x_2/(y_2-x_2*v1)
+	--]]
 	-- make a ring with radius v0
-	-- [[
+	--[[
 	local nx,ny
 	if r>v0 then
 		nx=x-(x/r)*v1
@@ -395,7 +408,7 @@ function step_iter( x,y,v0,v1)
 	--]]
 	--local ny=math.cos((x/(x+v0)/(y))*(((v0)+(v1))+(math.cos(y))))*y
 
-	-- [[
+	--[[
 	local cs=math.cos(v1)
 	local ss=math.sin(v1)
 	local rx=nx*cs-ny*ss
@@ -403,13 +416,14 @@ function step_iter( x,y,v0,v1)
 	nx=rx
 	ny=ry
 	--]]
-
+	-- [[
 	if r<0.00001 then
 		r=1
 	end
 	local d=config.move_dist/r
 	nx=nx*d
 	ny=ny*d
+	--]]
 	--end
 	return nx,ny
 	--return math.cos(x-y/v1)*x+math.sin(x*x*v0)*v1,math.sin(y-x/v0)*y+math.cos(y*y*v1)*v0
@@ -591,7 +605,11 @@ function save_img(tile_count)
 		for x=0,(w-1)*tile_count do
 		for y=0,(h-1)*tile_count do
 			local tx,ty=coord_mapping(x,y)
-			tile_image:set(x,y,img_buf:get(tx,ty))
+			tx=math.floor(tx)
+			ty=math.floor(ty)
+			if tx>=0 and math.floor(tx)<w and ty>=0 and math.floor(ty)<h then
+				tile_image:set(x,y,img_buf:get(tx,ty))
+			end
 		end
 		end
 		tile_image:save(string.format("tiled_%d.png",os.time(os.date("!*t"))),config_serial)
@@ -796,10 +814,108 @@ function rand_line_visit( x0,y0,x1,y1 )
 		smooth_visit(tx,ty)
 	end
 end
+function rot_coord( x,y,angle )
+	local c=math.cos(angle)
+	local s=math.sin(angle)
+	--[[
+		| c  -s |
+		| s c |
+	--]]
+	return x*c-y*s,x*s+y*c
+end
+function reflect_coord( x,y,angle )
+	local c=math.cos(2*angle)
+	local s=math.sin(2*angle)
+	--[[
+		| c  s |
+		| s -c |
+	--]]
+	return x*c+y*s,x*s-y*c
+end
+
 function coord_mapping( tx,ty )
 	local s=STATE.size
-	--return x,y
-	--return mod(x,s[1]),mod(y,s[2])
+	local nx = tx
+	local ny = ty
+	nx=nx-s[1]/2
+	ny=ny-s[2]/2
+	
+	return nx,ny
+	--[=[
+	
+	local cx=tx-s[1]/2
+	local cy=ty-s[2]/2
+	local rmax=math.min(s[1],s[2])/2
+	
+
+	local r=math.sqrt(cx*cx+cy*cy)
+	local a=math.atan2(cy,cx)
+	--r=math.fmod(r,math.min(s[1],s[2])/2)
+	
+	local num=6
+	local top=math.cos(math.pi/num)
+	local bottom=math.cos(a-(math.pi*2/num)*math.floor((num*a+math.pi)/(math.pi*2)))
+
+	local dr=top/bottom
+	dr=(dr*rmax)
+	local d=math.floor(r/dr)
+	a=a-(math.pi*2/num)*d
+	r=math.fmod(r,dr)
+	if d%2==1 then
+		r=dr-r
+	end
+	local nx=math.cos(a)*r+s[1]/2
+	local ny=math.sin(a)*r+s[2]/2
+	return nx,ny
+	--]=]
+	--[=[
+	local rx,ry
+	if tx>s[1]/2 then
+		rx,ry=rot_coord(tx-s[1]/2,ty-s[2]/2,math.pi/4)
+		rx=rx+s[1]/2
+		ry=ry+s[2]/2
+	else
+		rx,ry=tx,ty
+	end
+	return math.fmod(rx,s[1]),math.fmod(ry,s[2])
+	--]=]
+	--[[ PENTAGON
+	local k = {0.809016994,0.587785252,0.726542528};
+	ty=-ty;
+	tx=math.abs(tx)
+	local ntx=tx
+	local nty=ty
+	local v=2*math.min((-k[1]*ntx+k[2]*nty),0)
+	ntx=ntx-v*(-k[1])
+	nty=nty-v*(k[2])
+	local v2=2*math.min((k[1]*ntx+k[2]*nty),0)
+	ntx=ntx-v*(k[1])
+	nty=nty-v*(k[2])
+	return ntx,nty
+	--[=[
+
+	void t_rot(inout vec2 st,float angle)
+	{
+		float c=cos(angle);
+		float s=sin(angle);
+		mat2 m=mat2(c,-s,s,c);
+		st*=m;
+	}
+	void t_ref(inout vec2 st,float angle)
+	{
+		float c=cos(2*angle);
+		float s=sin(2*angle);
+		mat2 m=mat2(c,s,s,-c);
+		st*=m;
+	}
+
+    p -= 2.0*min(dot(vec2(-k.x,k.y),p),0.0)*vec2(-k.x,k.y);
+    p -= 2.0*min(dot(vec2( k.x,k.y),p),0.0)*vec2( k.x,k.y);
+    --]=]
+	--]]
+	--return tx,ty
+	--return mod(tx,s[1]),mod(ty,s[2])
+	--[[
 	local div_x=math.floor(tx/s[1])
 	local div_y=math.floor(ty/s[2])
 	tx=mod(tx,s[1])
@@ -811,6 +927,21 @@ function coord_mapping( tx,ty )
 		ty=s[2]-ty-1
 	end
 	return tx,ty
+	--]]
+	--[[
+	local div=math.floor(tx/s[1]+ty/s[2])
+	tx=mod(tx,s[1])
+	ty=mod(ty,s[2])
+	if div>0 then
+		return s[1]-ty-1,tx
+	end
+	return tx,ty
+	--]]
+end
+function rand_circl(  )
+	local a=math.random()*math.pi*2
+	local r=math.sqrt(math.random())*config.gen_radius
+	return math.cos(a)*r,math.sin(a)*r
 end
 function update_real(  )
 	__no_redraw()
@@ -837,8 +968,11 @@ function update_real(  )
 		--TODO: generate IN screen
 		--[[local x = math.random()-0.5
 		local y = math.random()-0.5]]
+		-- [[
 		local x=math.random()*gen_radius-gen_radius/2
 		local y=math.random()*gen_radius-gen_radius/2
+		--]]
+		--local x,y=rand_circl()
 		local lx
 		local ly
 		for i=1,config.ticking2 do
@@ -865,7 +999,8 @@ function update_real(  )
 			-- [[ TILING FRACTAL
 			tx,ty=coord_mapping(tx,ty)
 			if tx>=0 and math.floor(tx)<s[1] and ty>=0 and math.floor(ty)<s[2] then
-				smooth_visit(tx,ty)
+				add_visit(math.floor(tx),math.floor(ty),1)
+				--smooth_visit(tx,ty)
 			end
 			--]]
 			--[[ SIMPLE SMOOTH VISITING
