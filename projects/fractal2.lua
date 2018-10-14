@@ -3,9 +3,10 @@ require "common"
 
 local size=STATE.size
 local max_size=math.min(size[1],size[2])/2
-
+local max_palette_size=20
 img_buf=img_buf or make_image_buffer(size[1],size[2])
 visits=visits or make_float_buffer(size[1],size[2])
+palette_img=make_flt_buffer(max_size,1)
 function resize( w,h )
 	img_buf=make_image_buffer(size[1],size[2])
 	visits=make_float_buffer(size[1],size[2])
@@ -17,6 +18,7 @@ tick=tick or 0
 config=make_config({
 	{"render",false,type="boolean"},
 	{"auto_scale_color",false,type="boolean"},
+	{"gamma",2.2,type="float",min=0,max=10},
 	{"ticking",100,type="int",min=1,max=10000},
 	{"ticking2",10,type="int",min=1,max=100},
 	{"line_visits",1,type="int",min=1,max=100},
@@ -257,9 +259,19 @@ uniform int palette_size;
 
 uniform vec2 min_max;
 uniform sampler2D tex_main;
+uniform sampler2D tex_palette;
 uniform int auto_scale_color;
+uniform float gamma;
 
 vec4 mix_palette(float value )
+{
+	if (palette_size==0)
+		return vec4(0);
+
+	//value=clamp(value,0,1);
+	return texture(tex_palette,vec2(value,0));
+}
+vec4 mix_palette2(float value )
 {
 	if (palette_size==0)
 		return vec4(0);
@@ -308,11 +320,15 @@ void main(){
 	//--mix(pix_out,c_u8,c_back,nv)
 	//mix_palette(pix_out,nv)
 	//img_buf:set(x,y,pix_out)
-	color = mix_palette(nv);
+	color = mix_palette2(nv);
+
+    color.rgb = pow(color.rgb, vec3(1.0/gamma));
+    
 }
 ]==]
 local need_save
 local visit_tex = textures.Make()
+local palette_tex=textures.Make()
 last_pos=last_pos or {0,0}
 function draw_visits(  )
 	local lmax=0
@@ -332,11 +348,21 @@ function draw_visits(  )
 	lmin=math.log(lmin+1)
 
 	log_shader:use()
-	set_shader_palette()
 	visit_tex:use(0)
 	visit_tex:set(visits.d,visits.w,visits.h,2)
+	set_shader_palette()
+	
+	--[[ Seems wrong for some reason ?
+	update_palette_img()
+	palette_tex:use(1,1,1)
+	palette_img:write_texture(palette_tex)
+	log_shader:set_i("tex_palette",1)
+	]]
 	log_shader:set("min_max",lmin,lmax)
 	log_shader:set_i("tex_main",0)
+	
+	log_shader:set_i("palette_size",#palette.colors)
+	log_shader:set("gamma",config.gamma)
 	local auto_scale=0
 	if config.auto_scale_color then auto_scale=1 end
 	log_shader:set_i("auto_scale_color",auto_scale)
@@ -514,7 +540,21 @@ function random_math_series( num_params,start_pow,end_pow )
 	return cur_string
 end
 palette=palette or {colors={{0,0,0,1},{0.8,0,0,1},{0,0,0,1},{0,0.2,0.2,1},{0,0,0,1}}}
-
+function update_palette_img(  )
+	if palette_img.w~=#palette.colors then
+		palette_img=make_flt_buffer(#palette.colors,1)
+	end
+	for i,v in ipairs(palette.colors) do
+		palette_img:set(i-1,0,v)
+	end
+end
+function set_shader_palette()
+	log_shader:set_i("palette_size",#palette.colors)
+	for i=1,#palette.colors do
+		local c=palette.colors[i]
+		log_shader:set(string.format("palette[%d]",i-1),c[1],c[2],c[3],c[4])
+	end
+end
 function gen_palette( )
 	local ret={}
 	palette.colors=ret
@@ -559,7 +599,7 @@ function palette_chooser()
 		_,palette.current=imgui.SliderInt("Color id",palette.current,1,#palette.colors)
 	end
 	imgui.SameLine()
-	if #palette.colors<15 then
+	if #palette.colors<max_palette_size then
 		if imgui.Button("Add") then
 			table.insert(palette.colors,{0,0,0,1})
 			if palette.current<1 then
@@ -581,13 +621,6 @@ function palette_chooser()
 	end
 	if #palette.colors>0 then
 		_,palette.colors[palette.current]=imgui.ColorEdit4("Current color",palette.colors[palette.current],true)
-	end
-end
-function set_shader_palette()
-	log_shader:set_i("palette_size",#palette.colors)
-	for i=1,#palette.colors do
-		local c=palette.colors[i]
-		log_shader:set(string.format("palette[%d]",i-1),c[1],c[2],c[3],c[4])
 	end
 end
 function is_mouse_down(  )

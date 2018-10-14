@@ -16,10 +16,22 @@ static int use_texture(lua_State* L)
 	auto num=luaL_checkint(L, 2);
 	glActiveTexture(num+GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, s->id);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	auto mode = luaL_optint(L, 3, 0);
+	auto mode_wrap = luaL_optint(L, 4, 0);
+	auto filter = GL_NEAREST;
+	if (mode == 1)
+	{
+		filter = GL_LINEAR;
+	}
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+	auto wrap_mode = GL_REPEAT;
+	if (mode_wrap == 1)
+	{
+		wrap_mode = GL_CLAMP;
+	}
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_mode);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_mode);
 	return 0;
 }
 struct gl_tex_format {
