@@ -350,7 +350,7 @@ function draw_visits(  )
 	log_shader:use()
 	visit_tex:use(0)
 	visit_tex:set(visits.d,visits.w,visits.h,2)
-	set_shader_palette()
+	set_shader_palette(log_shader)
 	
 	--[[ Seems wrong for some reason ?
 	update_palette_img()
@@ -400,6 +400,10 @@ function step_iter( x,y,v0,v1)
 
 	local r=math.sqrt(x_2+y_2)
 	-- [[
+	local nx=math.sqrt(x_1);
+	local ny=y_1/2;
+	--]]
+	--[[
 	local nx=math.sqrt(math.abs(math.cos(x_1-y_2)*v0+math.sin(y_2-x_3)*v1))-math.sqrt(math.abs(math.sin(x_1-y_2)*v1+math.cos(y_2-x_3)*v0))
 	local ny=math.sin(y_1-x_2)*v1+math.cos(x_2-y_3)*v0
 	--]]
@@ -449,8 +453,8 @@ function step_iter( x,y,v0,v1)
 		r=1
 	end
 	local d=config.move_dist/r
-	nx=nx*d
-	ny=ny*d
+	--nx=nx*d
+	--ny=ny*d
 	--]]
 	--end
 	return nx,ny
@@ -548,11 +552,11 @@ function update_palette_img(  )
 		palette_img:set(i-1,0,v)
 	end
 end
-function set_shader_palette()
-	log_shader:set_i("palette_size",#palette.colors)
+function set_shader_palette(s)
+	s:set_i("palette_size",#palette.colors)
 	for i=1,#palette.colors do
 		local c=palette.colors[i]
-		log_shader:set(string.format("palette[%d]",i-1),c[1],c[2],c[3],c[4])
+		s:set(string.format("palette[%d]",i-1),c[1],c[2],c[3],c[4])
 	end
 end
 function gen_palette( )
@@ -693,9 +697,10 @@ end
 function update( )
 	gui()
 	if config.render then
-		update_real()
-	else
+		--update_real()
 		update_func()
+	else
+		update_func_shader()
 	end
 end
 function mix_palette(out,input_t )
@@ -740,6 +745,75 @@ function mix_palette(out,input_t )
 	end
 	out.a=(c1[4]*it+c2[4]*t)*255
 end
+
+local func_shader=shaders.Make[==[
+#version 330
+
+out vec4 color;
+in vec3 pos;
+
+uniform vec4 palette[15];
+uniform int palette_size;
+
+uniform float gamma;
+uniform vec2 params;
+uniform vec2 center;
+uniform float scale;
+uniform float move_dist;
+
+vec4 mix_palette2(float value )
+{
+	if (palette_size==0)
+		return vec4(0);
+	value=clamp(value,0,1);
+	float tg=value*(float(palette_size)-1); //[0,1]-->[0,#colors]
+	float tl=floor(tg);
+
+	float t=tg-tl;
+	vec4 c1=palette[int(tl)];
+	int hidx=min(int(ceil(tg)),palette_size-1);
+	vec4 c2=palette[hidx];
+	return mix(c1,c2,t);
+}
+
+vec2 fun(vec2 pos)
+{
+	float v0=params.x;
+	float v1=params.y;
+
+	float x_1=pos.x;
+	float x_2=pos.x*pos.x;
+	float x_3=pos.x*pos.x*pos.x;
+
+	float y_1=pos.y;
+	float y_2=pos.y*pos.y;
+	float y_3=pos.y*pos.y*pos.y;
+
+/*
+	float nx=sqrt(abs(cos(x_1-y_2)*v0+sin(y_2-x_3)*v1))-sqrt(abs(sin(x_1-y_2)*v1+cos(y_2-x_3)*v0));
+	float ny=sin(y_1-x_2)*v1+cos(x_2-y_3)*v0;
+*/
+	float nx=sqrt(x_1);
+	float ny=y_1/2;
+
+	vec2 ret=vec2(nx,ny);
+	float r=length(ret);
+	if (r<0.0001) r=1;
+	float d=move_dist/r;
+	return ret;//*d;
+}
+void main(){
+
+	vec2 tpos=(pos.xy*0.5)*scale+center*vec2(1,-1);
+	vec2 np=fun(tpos);
+
+	float nv=length(np-tpos)*10;
+	nv=mod(nv,1);
+	color = mix_palette2(nv);
+    color.rgb = pow(color.rgb, vec3(1.0/gamma));
+}
+]==]
+
 function update_func(  )
 	local s=STATE.size
 	local hw=s[1]/2
@@ -749,18 +823,25 @@ function update_func(  )
 	local v0=config.v0
 	local v1=config.v1
 
+	local cx=config.cx
+	local cy=config.cy
+
 	local vst=visits
 	local max=0
 	local min=999999999999
 	local avg=0
 	for x=0,s[1]-1 do
 	for y=0,s[2]-1 do
-		local tx=(x/s[1]-0.5)*scale
-		local ty=(y/s[2]-0.5)*scale
+		--[[
+		local tx=((x-cx)*iscale+0.5)*s[1]
+		local ty=((y-cy)*iscale+0.5)*s[2]
+		--]]
+		local tx=(x/s[1]-0.5)*scale+cx
+		local ty=(y/s[2]-0.5)*scale+cy
 		local nx,ny=step_iter(tx,ty,v0,v1)
 		local dx=nx-tx
 		local dy=ny-ty
-		local dist=dx*dx+dy*dy
+		local dist=math.sqrt(dx*dx+dy*dy)
 		if dist>max then max=dist end
 		if dist<min then min=dist end
 		avg=avg+dist
@@ -789,6 +870,23 @@ function update_func(  )
 	end
 
 	img_buf:present()
+end
+function update_func_shader( ... )
+	__no_redraw()
+	__clear()
+	func_shader:use()
+	set_shader_palette(func_shader)
+	func_shader:set_i("palette_size",#palette.colors)
+	func_shader:set("gamma",config.gamma)
+	func_shader:set("params",config.v0,config.v1)
+	func_shader:set("center",config.cx,config.cy)
+	func_shader:set("scale",config.scale)
+	func_shader:set("move_dist",config.move_dist)
+	func_shader:draw_quad()
+	if need_save then
+		save_img(tile_count)
+		need_save=nil
+	end
 end
 function auto_clear(  )
 	local cfg_pos=0
