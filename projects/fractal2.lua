@@ -923,6 +923,7 @@ function coord_mapping( tx,ty )
 	local sy=s[2]/2
 
 	local cx,cy=tx-sx,ty-sy
+	return tx,ty
 	--[[
 	local r=math.sqrt(cx*cx+cy*cy)
 	local a=math.atan2(cy,cx)
@@ -933,13 +934,15 @@ function coord_mapping( tx,ty )
 	cx=math.cos(a)*r
 	cy=math.sin(a)*r
 	--]]
-
+	--https://www.redblobgames.com/grids/hexagons/#pixel-to-hex
+	--[=[
 	cx,cy=to_hex_coord(cx,cy)
 	local rx,ry,rz=axial_to_cube(cx,cy)
 	local rrx,rry,rrz=cube_round(rx,ry,rz)
 	rx=rx-rrx
 	ry=ry-rry
 	rz=rz-rrz
+	--]]
 	--[[if rrx%2==1 and rrz%2==1 then
 		rz=-rz
 		rx=-rx
@@ -1180,8 +1183,8 @@ function update_real(  )
 			--]]
 			-- [[
 			tx,ty=coord_mapping(tx,ty)
-			if tx>=0 and math.floor(tx)<s[1] and ty>=0 and math.floor(ty)<s[2] then
-				add_visit(math.floor(tx),math.floor(ty),1)
+			if tx>=0 and math.floor(tx+0.5)<s[1] and ty>=0 and math.floor(ty+0.5)<s[2] then
+				add_visit(math.floor(tx+0.5),math.floor(ty+0.5),1)
 			end
 			--]]
 			--]]
