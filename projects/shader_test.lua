@@ -22,10 +22,33 @@ void main(){
 	float v2=(sin(pos.y*res.y/4)+1)/2;
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec4 t=texture(tex_main,normed);
+	t.x=t.x-0.015*pos.x;
+	t.z=t.z-0.015*pos.y;
+	t.y=0;
+	//t.y=cos(t.x)*0.5+0.5+t.y;
+	//t.z=t.z+cos(t.x+0.2)*0.5+0.5;
+	color = vec4(t.r,t.g,t.b,1);
+}
+]]
+local sec_shader=shaders.Make[[
+#version 330
+
+out vec4 color;
+in vec3 pos;
+
+uniform vec2 res;
+uniform sampler2D tex_main;
+
+void main(){
+	float v=(sin(pos.x*res.x/4)+1)/2;
+	float v2=(sin(pos.y*res.y/4)+1)/2;
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	vec4 t=texture(tex_main,normed);
 	color = vec4(t.r,t.g,t.b,1);
 }
 ]]
 local main_tex = textures.Make()
+local draw_tex = textures.Make()
 function update(  )
 	__no_redraw()
 	__clear()
@@ -38,9 +61,25 @@ function update(  )
 	main_shader:use()
 	main_tex:use(0)
 	main_tex:set(img_buf.d,img_buf.w,img_buf.h)
+	draw_tex:use(1)
+	draw_tex:set(img_buf.d,img_buf.w,img_buf.h)
+
+	draw_tex:render_to()
 	main_shader:set("res",STATE.size[1],STATE.size[2])
 	main_shader:set_i("tex_main",0)
-	main_shader:draw_quad()
+	for i=1,10 do
+		main_shader:draw_quad()
+	end
+	img_buf:read_texture(draw_tex)
+	__render_to_window()
+
+	sec_shader:use()
+	draw_tex:use(0)
+	sec_shader:set_i("tex_main",0)
+	sec_shader:draw_quad()
+	if imgui.Button("Hello") then
+
+	end
 	--draw(texture1) --draw into texture1
 	--other_shader:use()
 	--other_shader:set("s1",texture1)

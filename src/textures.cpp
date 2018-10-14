@@ -65,6 +65,27 @@ static int get_texture_data(lua_State* L)
 	glGetTexImage(GL_TEXTURE_2D, 0, f.format, f.type, data);
 	return 0;
 }
+GLuint fbuffer = -1;
+static int set_render_target(lua_State* L)
+{
+	auto s = check(L, 1);
+	if (fbuffer == -1)
+	{
+		glGenFramebuffers(1, &fbuffer);
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, fbuffer);
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, s->id, 0);
+
+	/*??*/
+	GLenum DrawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
+	glDrawBuffers(1, DrawBuffers);
+
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		lua_pushboolean(L, false);
+	else
+		lua_pushboolean(L, true);
+	return 1;
+}
 static int del_texture(lua_State* L)
 {
 	auto s = check(L, 1);
@@ -92,6 +113,9 @@ static int make_lua_texture(lua_State* L)
 
 		lua_pushcfunction(L, get_texture_data);
 		lua_setfield(L, -2, "read");
+
+		lua_pushcfunction(L, set_render_target);
+		lua_setfield(L, -2, "render_to");
 
 		lua_pushvalue(L, -1);
 		lua_setfield(L, -2, "__index");

@@ -138,6 +138,7 @@ typedef ptrdiff_t GLsizeiptr;
     GLE(void,      VertexAttribPointer,     GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid * pointer) \
 	GLE(void,	   GetActiveAttrib,			GLuint program, GLuint index,GLsizei bufSize, GLsizei * length, GLint * size, GLenum * type, GLchar * name)\
 	GLE(void,	   GetActiveUniform,		GLuint program, GLuint index,GLsizei bufSize, GLsizei * length, GLint * size, GLenum * type, GLchar * name)\
+	GLE(void,	   FramebufferTexture,		GLenum target,GLenum attachment,GLuint texture,GLint level)\
     /* end */
 //GLE(void, DeleteTextures, GLsizei count, const GLuint * textures)
 //GLE(void, GetTexImage, GLenum target, GLint level, GLenum format, GLenum type, GLvoid * img)

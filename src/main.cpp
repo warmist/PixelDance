@@ -218,6 +218,11 @@ static int read_fb(lua_State* L)
 	glReadPixels(sx, sy, w, h, GL_RGBA, GL_UNSIGNED_BYTE, data);
 	return 0;
 }
+static int unset_render_target(lua_State* L)
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	return 0;
+}
 struct project {
     lua_State *L=nullptr;
     std::string path;
@@ -259,6 +264,9 @@ struct project {
 
 		lua_pushcfunction(L, clear_screen);
 		lua_setglobal(L, "__clear");
+
+		lua_pushcfunction(L, unset_render_target);
+		lua_setglobal(L, "__render_to_window");
 
 		lua_pushcfunction(L, no_auto_redraw);
 		lua_setglobal(L, "__no_redraw");
