@@ -78,6 +78,11 @@ distribute, and modify this file as you see fit.
 #define GL_RGBA32F                        0x8814
 #define GL_RGB32F                         0x8815
 #define GL_R32F                           0x822E
+#define GL_RG32F                          0x8230
+#define GL_RG                             0x8227
+#define GL_CLAMP_VERTEX_COLOR_ARB         0x891A
+#define GL_CLAMP_FRAGMENT_COLOR_ARB       0x891B
+#define GL_CLAMP_READ_COLOR_ARB           0x891C
 
 typedef char GLchar;
 typedef ptrdiff_t GLintptr;
@@ -139,6 +144,9 @@ typedef ptrdiff_t GLsizeiptr;
 	GLE(void,	   GetActiveAttrib,			GLuint program, GLuint index,GLsizei bufSize, GLsizei * length, GLint * size, GLenum * type, GLchar * name)\
 	GLE(void,	   GetActiveUniform,		GLuint program, GLuint index,GLsizei bufSize, GLsizei * length, GLint * size, GLenum * type, GLchar * name)\
 	GLE(void,	   FramebufferTexture,		GLenum target,GLenum attachment,GLuint texture,GLint level)\
+	GLE(void,	   Enablei,					GLenum cap, GLuint index)\
+	GLE(void,	   Disablei,				GLenum cap, GLuint index)\
+	GLE(void,      ClampColorARB,			GLenum target,GLenum clamp)\
     /* end */
 //GLE(void, DeleteTextures, GLsizei count, const GLuint * textures)
 //GLE(void, GetTexImage, GLenum target, GLint level, GLenum format, GLenum type, GLvoid * img)
