@@ -43,6 +43,7 @@ static const gl_tex_format formats[] = {
 	{ GL_RGBA8,GL_RGBA,GL_UNSIGNED_BYTE },
 	{ GL_RGBA32F,GL_RGBA,GL_FLOAT },
 	{ GL_R32F,GL_RED,GL_FLOAT },
+	{ GL_RG32F,GL_RG,GL_FLOAT},
 };
 //if second arg is not ptr to data, create empty texture!
 static int set_texture_data(lua_State* L)
@@ -85,12 +86,24 @@ static int set_render_target(lua_State* L)
 	{
 		glGenFramebuffers(1, &fbuffer);
 	}
+	auto w = luaL_optinteger(L, 2, 0);
+	auto h = luaL_optinteger(L, 3, 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbuffer);
 	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, s->id, 0);
 
 	/*??*/
 	GLenum DrawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
 	glDrawBuffers(1, DrawBuffers);
+	/*glDisable(GL_BLEND);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_DEPTH_TEST);*/
+	//glDisable(GL_DEPTH);
+	glClampColorARB(GL_CLAMP_VERTEX_COLOR_ARB, GL_FALSE);
+	glClampColorARB(GL_CLAMP_READ_COLOR_ARB, GL_FALSE);
+	glClampColorARB(GL_CLAMP_FRAGMENT_COLOR_ARB, GL_FALSE);
+	if (w != 0)
+		glViewport(0, 0, w, h);
 
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 		lua_pushboolean(L, false);

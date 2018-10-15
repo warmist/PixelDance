@@ -4,8 +4,11 @@ require "common"
 local size=STATE.size
 local max_size=math.min(size[1],size[2])/2
 local max_palette_size=20
+local sample_count=200
 img_buf=img_buf or make_image_buffer(size[1],size[2])
 visits=visits or make_float_buffer(size[1],size[2])
+samples=make_flt_half_buffer(sample_count,sample_count)
+samples2=make_flt_half_buffer(sample_count,sample_count)
 palette_img=make_flt_buffer(max_size,1)
 function resize( w,h )
 	img_buf=make_image_buffer(size[1],size[2])
@@ -16,9 +19,8 @@ end
 
 tick=tick or 0
 config=make_config({
-	{"render",false,type="boolean"},
+	{"render",true,type="boolean"},
 	{"auto_scale_color",false,type="boolean"},
-	{"gamma",2.2,type="float",min=0,max=10},
 	{"ticking",100,type="int",min=1,max=10000},
 	{"ticking2",10,type="int",min=1,max=100},
 	{"line_visits",1,type="int",min=1,max=100},
@@ -27,11 +29,14 @@ config=make_config({
 	{"v1",-0.184,type="float",min=-5,max=5},
 	{"move_dist",0.1,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
-	--{"one_step",false,type="boolean"},
-	--{"super_sample",1,type="int",min=1,max=4},
 	{"cx",0,type="float",min=-1,max=1},
 	{"cy",0,type="float",min=-1,max=1},
 	{"gen_radius",1,type="float",min=0,max=10},
+--[[
+	{"gamma",1,type="float",min=0,max=10},
+	{"contrast",1,type="float",min=0,max=10},
+	{"brightness",0,type="float",min=0,max=10},
+--]]
 },config)
 image_no=image_no or 0
 function iterate( x,y ,n,dist)
@@ -261,7 +266,6 @@ uniform vec2 min_max;
 uniform sampler2D tex_main;
 uniform sampler2D tex_palette;
 uniform int auto_scale_color;
-uniform float gamma;
 
 vec4 mix_palette(float value )
 {
@@ -321,9 +325,11 @@ void main(){
 	//mix_palette(pix_out,nv)
 	//img_buf:set(x,y,pix_out)
 	color = mix_palette2(nv);
-
+/*
     color.rgb = pow(color.rgb, vec3(1.0/gamma));
-    
+	color.rgb*=contrast;
+	color.rgb+=vec3(brightness);
+*/
 }
 ]==]
 local need_save
@@ -362,7 +368,11 @@ function draw_visits(  )
 	log_shader:set_i("tex_main",0)
 	
 	log_shader:set_i("palette_size",#palette.colors)
+--[[
 	log_shader:set("gamma",config.gamma)
+	log_shader:set("brightness",config.brightness)
+	log_shader:set("contrast",config.contrast)
+--]]
 	local auto_scale=0
 	if config.auto_scale_color then auto_scale=1 end
 	log_shader:set_i("auto_scale_color",auto_scale)
@@ -398,12 +408,12 @@ function step_iter( x,y,v0,v1)
 	local y_2=y*y/2
 	local y_3=y*y*y/6
 
-	local r=math.sqrt(x_2+y_2)
-	-- [[
-	local nx=math.sqrt(x_1);
-	local ny=y_1/2;
-	--]]
+	local r=math.sqrt(x*x+y*y)
 	--[[
+	local nx=x_2*v0-y_2;
+	local ny=y_2*v1/x_2;
+	--]]
+	-- [[
 	local nx=math.sqrt(math.abs(math.cos(x_1-y_2)*v0+math.sin(y_2-x_3)*v1))-math.sqrt(math.abs(math.sin(x_1-y_2)*v1+math.cos(y_2-x_3)*v0))
 	local ny=math.sin(y_1-x_2)*v1+math.cos(x_2-y_3)*v0
 	--]]
@@ -449,12 +459,13 @@ function step_iter( x,y,v0,v1)
 	ny=ry
 	--]]
 	-- [[
-	if r<0.00001 then
-		r=1
+	local delta=math.sqrt(nx*nx+ny*ny)
+	if delta<1 then
+		delta=1
 	end
 	local d=config.move_dist/r
-	--nx=nx*d
-	--ny=ny*d
+	nx=nx*d
+	ny=ny*d
 	--]]
 	--end
 	return nx,ny
@@ -543,7 +554,7 @@ function random_math_series( num_params,start_pow,end_pow )
 	cur_string=string.gsub(cur_string,"R",terminal)
 	return cur_string
 end
-palette=palette or {colors={{0,0,0,1},{0.8,0,0,1},{0,0,0,1},{0,0.2,0.2,1},{0,0,0,1}}}
+palette=palette or {show=false,colors={{0,0,0,1},{0.8,0,0,1},{0,0,0,1},{0,0.2,0.2,1},{0,0,0,1}}}
 function update_palette_img(  )
 	if palette_img.w~=#palette.colors then
 		palette_img=make_flt_buffer(#palette.colors,1)
@@ -592,39 +603,49 @@ function gen_palette( )
 	--
 end
 function palette_chooser()
+	if imgui.RadioButton("Show palette",palette.show) then
+		palette.show=not palette.show
+	end
+	imgui.SameLine()
 	if imgui.Button("Randomize") then
 		gen_palette()
 	end
+	
+	
+
 	if palette.colors[palette.current]==nil then
 		palette.current=1
 	end
 	palette.current=palette.current or 1
-	if #palette.colors>0 then
-		_,palette.current=imgui.SliderInt("Color id",palette.current,1,#palette.colors)
-	end
-	imgui.SameLine()
-	if #palette.colors<max_palette_size then
-		if imgui.Button("Add") then
-			table.insert(palette.colors,{0,0,0,1})
-			if palette.current<1 then
+	
+	if palette.show then
+		if #palette.colors>0 then
+			_,palette.current=imgui.SliderInt("Color id",palette.current,1,#palette.colors)
+		end
+		imgui.SameLine()
+		if #palette.colors<max_palette_size then
+			if imgui.Button("Add") then
+				table.insert(palette.colors,{0,0,0,1})
+				if palette.current<1 then
+					palette.current=1
+				end
+			end
+		end
+		if #palette.colors>0 then
+			imgui.SameLine()
+			if imgui.Button("Remove") then
+				table.remove(palette.colors,palette.current)
 				palette.current=1
 			end
-		end
-	end
-	if #palette.colors>0 then
-		imgui.SameLine()
-		if imgui.Button("Remove") then
-			table.remove(palette.colors,palette.current)
-			palette.current=1
-		end
-		if imgui.Button("Print") then
-			for i,v in ipairs(palette.colors) do
-				print(string.format("#%02X%02X%02X%02X",math.floor(v[1]*255),math.floor(v[2]*255),math.floor(v[3]*255),math.floor(v[4]*255)))
+			if imgui.Button("Print") then
+				for i,v in ipairs(palette.colors) do
+					print(string.format("#%02X%02X%02X%02X",math.floor(v[1]*255),math.floor(v[2]*255),math.floor(v[3]*255),math.floor(v[4]*255)))
+				end
 			end
 		end
-	end
-	if #palette.colors>0 then
-		_,palette.colors[palette.current]=imgui.ColorEdit4("Current color",palette.colors[palette.current],true)
+		if #palette.colors>0 then
+			_,palette.colors[palette.current]=imgui.ColorEdit4("Current color",palette.colors[palette.current],true)
+		end
 	end
 end
 function is_mouse_down(  )
@@ -639,11 +660,11 @@ function save_img(tile_count)
 				config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
 			end
 		end
-		img_buf:read_frame()
+		--img_buf:read_frame()
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 		image_no=image_no+1
 	else
-		img_buf:read_frame()
+		--img_buf:read_frame()
 		local w=img_buf.w
 		local h=img_buf.h
 		local tile_image=make_image_buffer(w*tile_count,h*tile_count)
@@ -692,13 +713,16 @@ function gui(  )
 		imgui.Text(string.format("Mouse: %d %d value:%g",mx,my,mv))
 	end
 	--end
+	if imgui.Button("Tick") then
+		do_samples=true
+	end
 	imgui.End()
 end
 function update( )
 	gui()
 	if config.render then
-		--update_real()
-		update_func()
+		update_real()
+		--update_func()
 	else
 		update_func_shader()
 	end
@@ -755,7 +779,6 @@ in vec3 pos;
 uniform vec4 palette[15];
 uniform int palette_size;
 
-uniform float gamma;
 uniform vec2 params;
 uniform vec2 center;
 uniform float scale;
@@ -782,38 +805,36 @@ vec2 fun(vec2 pos)
 	float v1=params.y;
 
 	float x_1=pos.x;
-	float x_2=pos.x*pos.x;
-	float x_3=pos.x*pos.x*pos.x;
+	float x_2=pos.x*pos.x/2;
+	float x_3=pos.x*pos.x*pos.x/6;
 
 	float y_1=pos.y;
-	float y_2=pos.y*pos.y;
-	float y_3=pos.y*pos.y*pos.y;
+	float y_2=pos.y*pos.y/2;
+	float y_3=pos.y*pos.y*pos.y/6;
 
-/*
 	float nx=sqrt(abs(cos(x_1-y_2)*v0+sin(y_2-x_3)*v1))-sqrt(abs(sin(x_1-y_2)*v1+cos(y_2-x_3)*v0));
 	float ny=sin(y_1-x_2)*v1+cos(x_2-y_3)*v0;
-*/
-	float nx=sqrt(x_1);
-	float ny=y_1/2;
 
 	vec2 ret=vec2(nx,ny);
 	float r=length(ret);
 	if (r<0.0001) r=1;
 	float d=move_dist/r;
-	return ret;//*d;
+	return ret*d;
 }
+
 void main(){
 
 	vec2 tpos=(pos.xy*0.5)*scale+center*vec2(1,-1);
 	vec2 np=fun(tpos);
 
-	float nv=length(np-tpos)*10;
+	float nv=length(np-tpos);
 	nv=mod(nv,1);
-	color = mix_palette2(nv);
-    color.rgb = pow(color.rgb, vec3(1.0/gamma));
+	color=mix_palette2(nv);
 }
 ]==]
-
+function gl_mod( x,y )
+	return x-y*math.floor(x/y)
+end
 function update_func(  )
 	local s=STATE.size
 	local hw=s[1]/2
@@ -826,6 +847,7 @@ function update_func(  )
 	local cx=config.cx
 	local cy=config.cy
 
+	-- [==[
 	local vst=visits
 	local max=0
 	local min=999999999999
@@ -864,11 +886,23 @@ function update_func(  )
 		--local dist=visits:get(x,y)
 		local dist=vst:get(x,y)
 		--mix(pix_out,c_u8,c_back,dist)
-		mix_palette(pix_out,math.fmod(dist,1))
+		mix_palette(pix_out,gl_mod(dist,1))
+		--pix_out={0,0,0,1}
 		img_buf:set(x,y,pix_out)
 	end
 	end
-
+	--]==]
+	--[==[
+	local pix_out=pixel()
+	for x=0,s[1]-1 do
+	for y=0,s[2]-1 do
+		local tx=(x/s[1]-0.5)*scale+cx
+		local ty=(y/s[2]-0.5)*scale+cy
+		mix_palette(pix_out,gl_mod(tx,1))
+		img_buf:set(x,y,pix_out)
+	end
+	end
+	--]==]
 	img_buf:present()
 end
 function update_func_shader( ... )
@@ -877,7 +911,6 @@ function update_func_shader( ... )
 	func_shader:use()
 	set_shader_palette(func_shader)
 	func_shader:set_i("palette_size",#palette.colors)
-	func_shader:set("gamma",config.gamma)
 	func_shader:set("params",config.v0,config.v1)
 	func_shader:set("center",config.cx,config.cy)
 	func_shader:set("scale",config.scale)
@@ -1052,9 +1085,10 @@ function coord_mapping( tx,ty )
 	local dist=10
 	local sx=s[1]/2
 	local sy=s[2]/2
-
+	--[[
 	local cx,cy=tx-sx,ty-sy
 	return tx,ty
+	--]]
 	--[[
 	local r=math.sqrt(cx*cx+cy*cy)
 	local a=math.atan2(cy,cx)
@@ -1226,7 +1260,7 @@ function coord_mapping( tx,ty )
     --]=]
 	--]]
 	--return tx,ty
-	--return mod(tx,s[1]),mod(ty,s[2])
+	return mod(tx,s[1]),mod(ty,s[2])
 	--[[
 	local div_x=math.floor(tx/s[1])
 	local div_y=math.floor(ty/s[2])
@@ -1255,6 +1289,107 @@ function rand_circl(  )
 	local r=math.sqrt(math.random())*config.gen_radius
 	return math.cos(a)*r,math.sin(a)*r
 end
+local sample_shader=shaders.Make[[
+#version 330
+
+layout(location=0)out vec4 color;
+in vec3 pos;
+
+uniform vec2 res;
+uniform sampler2D tex_main;
+
+uniform vec2 params;
+uniform vec2 center;
+uniform float scale;
+uniform float move_dist;
+
+uniform int ticks;
+
+vec2 fun(vec2 pos)
+{
+	float v0=params.x;
+	float v1=params.y;
+
+	float x_1=pos.x;
+	float x_2=pos.x*pos.x/2;
+	float x_3=pos.x*pos.x*pos.x/6;
+
+	float y_1=pos.y;
+	float y_2=pos.y*pos.y/2;
+	float y_3=pos.y*pos.y*pos.y/6;
+
+	float nx=sqrt(abs(cos(x_1-y_2)*v0+sin(y_2-x_3)*v1))-sqrt(abs(sin(x_1-y_2)*v1+cos(y_2-x_3)*v0));
+	float ny=sin(y_1-x_2)*v1+cos(x_2-y_3)*v0;
+
+	vec2 ret=vec2(nx,ny);
+	float r=length(pos);
+	if (r<0.0001) r=1;
+	float d=move_dist/r;
+	return ret*d;
+}
+
+void main(){
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	vec4 t=texture(tex_main,normed);
+	for(int i=0;i<ticks;i++)
+		t.xy=fun(t.xy);
+	color = vec4(t.x,t.y,0,1);
+}
+]]
+local from_sample = textures.Make()
+local to_sample = textures.Make()
+function shader_iter()
+	local gen_radius=config.gen_radius
+	for i=0,samples.w*samples.h-1 do
+		local x=math.random()*gen_radius-gen_radius/2
+		local y=math.random()*gen_radius-gen_radius/2
+		samples.d[i]={x,y,0,0}
+	end
+	local cx=config.cx
+	local cy=config.cy
+	local iscale=1/config.scale
+	sample_shader:use()
+
+	from_sample:use(0)
+	samples:write_texture(from_sample)
+	to_sample:use(1)
+	samples2:write_texture(to_sample) --could skip copy?
+
+	sample_shader:set_i("tex_main",0)
+	sample_shader:set("params",config.v0,config.v1)
+	sample_shader:set("center",cx,cy)
+	sample_shader:set("scale",config.scale)
+	sample_shader:set("move_dist",config.move_dist)
+	sample_shader:set_i("ticks",config.ticking2)
+			
+	if not to_sample:render_to(samples.w,samples.h) then
+		error("failed to set framebuffer up")
+	end
+	__clear()
+	sample_shader:draw_quad()
+
+	samples2:read_texture(to_sample)
+		local s=STATE.size
+		for x=0,samples2.w-1 do
+			for y=0,samples2.h-1 do
+				local v=samples2:get(x,y)
+				--print(v.r,v.g,v.b,v.a)
+				local tx=((v.r-cx)*iscale+0.5)*s[1]
+				local ty=((v.g-cy)*iscale+0.5)*s[2]
+				--print(tx,ty)
+				tx,ty=coord_mapping(tx,ty)
+				if tx>=0 and math.floor(tx+0.5)<s[1] and ty>=0 and math.floor(ty+0.5)<s[2] then
+					add_visit(math.floor(tx+0.5),math.floor(ty+0.5),1)
+				end
+			end
+		end
+
+	
+	__render_to_window()
+
+    
+	
+end
 function update_real(  )
 	__no_redraw()
 	__clear()
@@ -1276,6 +1411,7 @@ function update_real(  )
 	--local start_calc=os.time()
 	local ad=config.arg_disp
 	local gen_radius=config.gen_radius
+	-- [===[
 	for i=1,config.ticking do
 		--TODO: generate IN screen
 		--[[local x = math.random()-0.5
@@ -1334,11 +1470,17 @@ function update_real(  )
 		
 		
 	end
+	--]===]
 	--local end_calc=os.time()
 	--local time_delta=os.difftime(end_calc,start_calc)
 	--print("Calculation took:",time_delta," or:",time_delta/(config.ticking*config.ticking2), " per iteration")
 	--if math.fmod(tick,10)==0 then
-		draw_visits()
+	--do_samples=true
+	if config.ticking==0 then
+		shader_iter()
+		do_samples=nil
+	end
+	draw_visits()
 		--draw_visits_local()
 	--end
 	--[[if math.fmod(tick,100)==0 then

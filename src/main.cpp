@@ -221,6 +221,8 @@ static int read_fb(lua_State* L)
 static int unset_render_target(lua_State* L)
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	auto s = ImGui::GetIO().DisplaySize;
+	glViewport(0, 0, s.x, s.y);
 	return 0;
 }
 struct project {
@@ -424,7 +426,7 @@ int main(int argc, char** argv)
 	settings.attributeFlags = sf::ContextSettings::Attribute::Core;*/
 	//settings.sRgbCapable = true;
     sf::RenderWindow window(sf::VideoMode(1024, 1024), "PixelDance",sf::Style::Default,settings);
-    window.setFramerateLimit(60);
+   // window.setFramerateLimit(60);
     ImGui::SFML::Init(window);
 	
 	if (!gl_lite_init())
