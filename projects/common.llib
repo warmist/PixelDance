@@ -2,93 +2,55 @@ local ffi = require("ffi")
 ffi.cdef[[
 typedef struct { uint8_t r, g, b, a; } rgba_pixel;
 typedef struct { float r, g, b,a; } float_pixel;
+typedef struct { float r, g; } float_half_pixel;
 ]]
 
-function pixel(init)
-	return ffi.new("rgba_pixel",init or {0,0,0,255})
-end
-function make_image_buffer(w,h)
-	local img={d=ffi.new("rgba_pixel[?]",w*h),w=w,h=h,type=0}
-	img.set=function ( t,x,y,v )
-		t.d[x+t.w*y]=v
-	end
-	img.get=function ( t,x,y )
-		return t.d[x+t.w*y]
-	end
-	img.present=function ( t )
-		__present(t)
-	end
-	img.save=function ( t,path,suffix )
-		__read_fb(t.d,t.w,t.h)
-		__save_png(t,path,suffix)
-	end
-	img.clear=function ( t,c )
-		local pix=c or pixel()
-		for x=0,w-1 do
-		for y=0,h-1 do
-			t:set(x,y,pix)
+function make_buffer( typename,type_id,default_pixel )
+	return function(w,h)
+		local img={d=ffi.new(typename.."[?]",w*h),w=w,h=h,type=type_id}
+		img.pixel=function ( init )
+			return ffi.new(typename,init or default_pixel)
 		end
+		img.set=function ( t,x,y,v )
+			t.d[x+t.w*y]=v
 		end
+		img.get=function ( t,x,y )
+			return t.d[x+t.w*y]
+		end
+		if type_id==0 then
+			img.present=function ( t )
+				__present(t)
+			end
+		end
+		img.read_frame=function ( t )
+			__read_fb(t.d,t.w,t.h)
+		end
+		img.save=function ( t,path,suffix )
+			__save_png(t,path,suffix)
+		end
+		img.clear=function ( t,c )
+			local pix=c or t.pixel()
+			for x=0,w-1 do
+			for y=0,h-1 do
+				t:set(x,y,pix)
+			end
+			end
+		end
+		img.write_texture=function(t, tex )
+			tex:set(t.d,t.w,t.h,t.type)
+		end
+		img.read_texture=function(t, tex )
+			tex:read(t.d,t.w,t.h,t.type)
+		end
+		return img
 	end
-	img.write_texture=function(t, tex )
-		tex:set(t.d,t.w,t.h,t.type)
-	end
-	img.read_texture=function(t, tex )
-		tex:read(t.d,t.w,t.h,t.type)
-	end
-	return img
 end
-function flt_pixel(init)
-	return ffi.new("float_pixel",init or {0,0,0,1})
-end
-function make_flt_buffer(w,h)
-	local img={d=ffi.new("float_pixel[?]",w*h),w=w,h=h,type=1}
 
-	img.set=function ( t,x,y,v )
-		t.d[x+t.w*y]=v
-	end
-	img.get=function ( t,x,y )
-		return t.d[x+t.w*y]
-	end
-	img.clear=function ( t,c )
-		for x=0,w-1 do
-		for y=0,h-1 do
-			t:set(x,y,c or {0,0,0,0})
-		end
-		end
-	end
-	img.write_texture=function(t, tex )
-		tex:set(t.d,t.w,t.h,t.type)
-	end
-	img.read_texture=function(t, tex )
-		tex:read(t.d,t.w,t.h,t.type)
-	end
-	return img
-end
-function make_float_buffer(w,h)
-	local img={d=ffi.new("float[?]",w*h),w=w,h=h,type=2}
+make_image_buffer= make_buffer("rgba_pixel",0,{0,0,0,255})
+make_flt_buffer= make_buffer("float_pixel",1,{0,0,0,1})
+make_float_buffer=make_buffer("float",2,0)
+make_flt_half_buffer=make_buffer("float_half_pixel",3,{0,0})
 
-	img.set=function ( t,x,y,v )
-		t.d[x+t.w*y]=v
-	end
-	img.get=function ( t,x,y )
-		return t.d[x+t.w*y]
-	end
-	img.clear=function ( t,c )
-		for x=0,w-1 do
-		for y=0,h-1 do
-			t:set(x,y,c or 0)
-		end
-		end
-	end
-	img.write_texture=function(t, tex )
-		tex:set(t.d,t.w,t.h,t.type)
-	end
-	img.read_texture=function(t, tex )
-		tex:read(t.d,t.w,t.h,t.type)
-	end
-	return img
-end
 -------------GUI
 
 function make_config(tbl,defaults)
