@@ -4,7 +4,7 @@ require "common"
 local size=STATE.size
 local max_size=math.min(size[1],size[2])/2
 local max_palette_size=20
-local sample_count=200
+local sample_count=400
 img_buf=img_buf or make_image_buffer(size[1],size[2])
 visits=visits or make_float_buffer(size[1],size[2])
 samples=make_flt_half_buffer(sample_count,sample_count)
@@ -22,11 +22,11 @@ config=make_config({
 	{"render",true,type="boolean"},
 	{"auto_scale_color",false,type="boolean"},
 	{"ticking",100,type="int",min=1,max=10000},
-	{"ticking2",10,type="int",min=1,max=100},
 	{"line_visits",1,type="int",min=1,max=100},
 	{"arg_disp",0,type="float",min=0,max=1},
 	{"v0",-0.211,type="float",min=-5,max=5},
 	{"v1",-0.184,type="float",min=-5,max=5},
+	{"ticking2",10,type="int",min=1,max=100},
 	{"move_dist",0.1,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
 	{"cx",0,type="float",min=-1,max=1},
@@ -460,12 +460,12 @@ function step_iter( x,y,v0,v1)
 	--]]
 	-- [[
 	local delta=math.sqrt(nx*nx+ny*ny)
-	if delta<1 then
+	if delta<0.00001 then
 		delta=1
 	end
-	local d=config.move_dist/r
-	nx=nx*d
-	ny=ny*d
+	local d=config.move_dist/delta
+	nx=x+nx*d
+	ny=y+ny*d
 	--]]
 	--end
 	return nx,ny
@@ -660,11 +660,11 @@ function save_img(tile_count)
 				config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
 			end
 		end
-		--img_buf:read_frame()
+		img_buf:read_frame()
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 		image_no=image_no+1
 	else
-		--img_buf:read_frame()
+		img_buf:read_frame()
 		local w=img_buf.w
 		local h=img_buf.h
 		local tile_image=make_image_buffer(w*tile_count,h*tile_count)
@@ -1322,10 +1322,10 @@ vec2 fun(vec2 pos)
 	float ny=sin(y_1-x_2)*v1+cos(x_2-y_3)*v0;
 
 	vec2 ret=vec2(nx,ny);
-	float r=length(pos);
+	float r=length(ret);
 	if (r<0.0001) r=1;
 	float d=move_dist/r;
-	return ret*d;
+	return pos+ret*d;
 }
 
 void main(){
@@ -1341,8 +1341,10 @@ local to_sample = textures.Make()
 function shader_iter()
 	local gen_radius=config.gen_radius
 	for i=0,samples.w*samples.h-1 do
-		local x=math.random()*gen_radius-gen_radius/2
-		local y=math.random()*gen_radius-gen_radius/2
+		--local x=math.random()*gen_radius-gen_radius/2
+		--local y=math.random()*gen_radius-gen_radius/2
+		local x=gaussian(0,0.125)
+		local y=gaussian(0,0.125)
 		samples.d[i]={x,y,0,0}
 	end
 	local cx=config.cx
@@ -1377,9 +1379,14 @@ function shader_iter()
 				local tx=((v.r-cx)*iscale+0.5)*s[1]
 				local ty=((v.g-cy)*iscale+0.5)*s[2]
 				--print(tx,ty)
-				tx,ty=coord_mapping(tx,ty)
+
+				tx,ty=coord_mapping(tx+gaussian(0,1),ty+gaussian(0,1))
 				if tx>=0 and math.floor(tx+0.5)<s[1] and ty>=0 and math.floor(ty+0.5)<s[2] then
-					add_visit(math.floor(tx+0.5),math.floor(ty+0.5),1)
+					local v=gaussian(0,1)+1
+					if v>0 then
+						if v>1 then v=1 end
+						add_visit(math.floor(tx+0.5),math.floor(ty+0.5),v)
+					end
 				end
 			end
 		end
