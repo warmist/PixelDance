@@ -584,19 +584,19 @@ function gen_palette( )
 		end
 	end
 	-- [[ complementary
-	gen_shades(ret,h1,s,l,0.05,5)
-	gen_shades(ret,1-h1,s,0.05,l,5)
+	gen_shades(ret,h1,s,l,0.15,5)
+	gen_shades(ret,1-h1,s,0.15,l,5)
 	--]]
 	--[[ triadic
-	gen_shades(ret,h1,s,0,l,5)
-	gen_shades(ret,math.fmod(h1+0.33,1),s,l,0.1,5)
-	gen_shades(ret,math.fmod(h1+0.66,1),s,0.1,l,3)
+	gen_shades(ret,h1,s,l,0.2,5)
+	gen_shades(ret,math.fmod(h1+0.33,1),s,0.2,l/2,5)
+	gen_shades(ret,math.fmod(h1+0.66,1),s,l/2,l,3)
 	--]]
 	--[[ anologous
 	gen_shades(ret,h1,s,0.2,l,3)
 	gen_shades(ret,math.fmod(h1+0.05,1),s,0.2,l,3)
-	gen_shades(ret,math.fmod(h1+0.1,1),s,l,0,3)
-	gen_shades(ret,math.fmod(h1+0.15,1),s,l,0,3)
+	gen_shades(ret,math.fmod(h1+0.1,1),s/2,l,0,3)
+	gen_shades(ret,math.fmod(h1+0.15,1),s/2,l,0,3)
 	gen_shades(ret,math.fmod(h1+0.2,1),s,l,0,3)
 	--]]
 	--TODO: compound
@@ -930,7 +930,7 @@ function auto_clear(  )
 		end
 	end
 	local need_clear=false
-	for i=0,5 do
+	for i=0,6 do
 		if config[cfg_pos+i].changing then
 			need_clear=true
 		end
@@ -1289,6 +1289,8 @@ function rand_circl(  )
 	local r=math.sqrt(math.random())*config.gen_radius
 	return math.cos(a)*r,math.sin(a)*r
 end
+local visit_tex_tmp1=textures.Make()
+local visit_tex_tmp2=textures.Make()
 local sample_shader=shaders.Make[[
 #version 330
 
@@ -1343,8 +1345,8 @@ function shader_iter()
 	for i=0,samples.w*samples.h-1 do
 		--local x=math.random()*gen_radius-gen_radius/2
 		--local y=math.random()*gen_radius-gen_radius/2
-		local x=gaussian(0,0.125)
-		local y=gaussian(0,0.125)
+		local x=gaussian(0,gen_radius)
+		local y=gaussian(0,gen_radius)
 		samples.d[i]={x,y,0,0}
 	end
 	local cx=config.cx
@@ -1371,31 +1373,26 @@ function shader_iter()
 	sample_shader:draw_quad()
 
 	samples2:read_texture(to_sample)
-		local s=STATE.size
-		for x=0,samples2.w-1 do
-			for y=0,samples2.h-1 do
-				local v=samples2:get(x,y)
-				--print(v.r,v.g,v.b,v.a)
-				local tx=((v.r-cx)*iscale+0.5)*s[1]
-				local ty=((v.g-cy)*iscale+0.5)*s[2]
-				--print(tx,ty)
+	__render_to_window()
+	local s=STATE.size
+	for x=0,samples2.w-1 do
+		for y=0,samples2.h-1 do
+			local v=samples2:get(x,y)
+			--print(v.r,v.g,v.b,v.a)
+			local tx=((v.r-cx)*iscale+0.5)*s[1]
+			local ty=((v.g-cy)*iscale+0.5)*s[2]
+			--print(tx,ty)
 
-				tx,ty=coord_mapping(tx+gaussian(0,1),ty+gaussian(0,1))
-				if tx>=0 and math.floor(tx+0.5)<s[1] and ty>=0 and math.floor(ty+0.5)<s[2] then
-					local v=gaussian(0,1)+1
-					if v>0 then
-						if v>1 then v=1 end
-						add_visit(math.floor(tx+0.5),math.floor(ty+0.5),v)
-					end
+			tx,ty=coord_mapping(tx+gaussian(0,config.arg_disp),ty+gaussian(0,config.arg_disp))
+			if tx>=0 and math.floor(tx+0.5)<s[1] and ty>=0 and math.floor(ty+0.5)<s[2] then
+				local v=1--gaussian(0,1)+1
+				if v>0 then
+					if v>1 then v=1 end
+					add_visit(math.floor(tx+0.5),math.floor(ty+0.5),v)
 				end
 			end
 		end
-
-	
-	__render_to_window()
-
-    
-	
+	end
 end
 function update_real(  )
 	__no_redraw()
@@ -1431,9 +1428,7 @@ function update_real(  )
 		local lx
 		local ly
 		for i=1,config.ticking2 do
-			local rv0=(math.random()-0.5)*2*v0*ad
-			local rv1=(math.random()-0.5)*2*v1*ad
-			x,y=step_iter(x,y,v0+rv0,v1+rv1)
+			x,y=step_iter(x,y,v0,v1)
 			--[[
 			x=mod(x,1000)
 			y=mod(y,1000)
