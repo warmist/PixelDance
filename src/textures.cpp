@@ -86,8 +86,11 @@ static int set_render_target(lua_State* L)
 	{
 		glGenFramebuffers(1, &fbuffer);
 	}
+
 	auto w = luaL_optinteger(L, 2, 0);
 	auto h = luaL_optinteger(L, 3, 0);
+	if (w != 0)
+		glViewport(0, 0, w, h);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbuffer);
 	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, s->id, 0);
 
@@ -102,8 +105,7 @@ static int set_render_target(lua_State* L)
 	glClampColorARB(GL_CLAMP_VERTEX_COLOR_ARB, GL_FALSE);
 	glClampColorARB(GL_CLAMP_READ_COLOR_ARB, GL_FALSE);
 	glClampColorARB(GL_CLAMP_FRAGMENT_COLOR_ARB, GL_FALSE);
-	if (w != 0)
-		glViewport(0, 0, w, h);
+
 
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 		lua_pushboolean(L, false);

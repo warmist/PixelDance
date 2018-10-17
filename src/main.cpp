@@ -426,7 +426,7 @@ int main(int argc, char** argv)
 	settings.attributeFlags = sf::ContextSettings::Attribute::Core;*/
 	//settings.sRgbCapable = true;
     sf::RenderWindow window(sf::VideoMode(1024, 1024), "PixelDance",sf::Style::Default,settings);
-   // window.setFramerateLimit(60);
+    window.setFramerateLimit(60);
     ImGui::SFML::Init(window);
 	
 	if (!gl_lite_init())
