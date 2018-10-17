@@ -4,7 +4,7 @@ require "colors"
 
 local size=STATE.size
 local max_palette_size=20
-local sample_count=10
+local sample_count=5
 img_buf=img_buf or make_image_buffer(size[1],size[2])
 visits=visits or make_float_buffer(size[1],size[2])
 function resize( w,h )
@@ -979,17 +979,52 @@ function rand_circl(  )
 end
 local add_visit_shader=shaders.Make[==[
 #version 330
+#line 982
 
 layout(location=0)out vec4 color;
 in vec3 pos;
 
 uniform vec2 res;
 uniform sampler2D visits_in;
+
 uniform sampler2D points_input;
 
+uniform vec2 params;
+uniform float move_dist;
+uniform int ticks;
 
 uniform vec2 center;
 uniform float iscale;
+
+vec2 fun(vec2 pos)
+{
+	float v0=params.x;
+	float v1=params.y;
+
+	float x_1=pos.x;
+	float x_2=pos.x*pos.x/2;
+	float x_3=pos.x*pos.x*pos.x/6;
+
+	float y_1=pos.y;
+	float y_2=pos.y*pos.y/2;
+	float y_3=pos.y*pos.y*pos.y/6;
+
+	float nx=sqrt(abs(cos(x_1-y_2)*v0+sin(y_2-x_3)*v1))-sqrt(abs(sin(x_1-y_2)*v1+cos(y_2-x_3)*v0));
+	float ny=sin(y_1-x_2)*v1+cos(x_2-y_3)*v0;
+
+	vec2 ret=vec2(nx,ny);
+	float r=length(ret);
+	if (r<0.0001) r=1;
+	float d=move_dist/r;
+	return pos+ret*d;
+}
+vec2 calc_fun(vec2 tx)
+{
+	vec4 t=texture(points_input,tx);
+	for(int i=0;i<ticks;i++)
+		t.xy=fun(t.xy);
+	return t.xy;
+}
 vec2 to_global(vec2 input)
 {
 	return (input-center)*iscale+0.5;
@@ -1000,7 +1035,7 @@ void main(){
 	for(int x=0;x<res.x;x++)
 		for(int y=0;y<res.y;y++)
 			{
-				vec2 t=texture(points_input,vec2(x,y)/vec2(res)).xy;
+				vec2 t=calc_fun(vec2(x,y)/vec2(res));
 				t=to_global(t);
 				t=mod(t,1);
 				float d1=length(normed.xy-t-vec2(1,0));
@@ -1011,8 +1046,8 @@ void main(){
 				float d12=min(d1,d2);
 				float d34=min(d3,d4);
 				float d=min(d12,d34);
-				d=min(d,d5);
-				w+=clamp(1/(d*d),0,100000000);
+				d=min(d,d5)*500;
+				w+=1-smoothstep(0,1,d);//1/(d*d+0.00001);
 			}
 	color = texture(visits_in,normed);
 	color.x+=w;
@@ -1021,45 +1056,49 @@ void main(){
 
 visit_tex_tmp1=textures.Make()
 visit_tex_tmp2=textures.Make()
-function visit_iter(sample_tex,iteration)
-	add_visit_shader:use()
+samples=make_flt_half_buffer(sample_count,sample_count)
+local samples_tex = textures.Make()
+function visit_iter()
 
-	visit_tex_tmp1:use(0)
-	if iteration==0 then
-		visits:write_texture(visit_tex_tmp1)
-	else
-		visit_tex_tmp1:set(visits.w,visits.h,visits.type)
+	local gen_radius=config.gen_radius
+	for i=0,samples.w*samples.h-1 do
+		--local x=math.random()*gen_radius-gen_radius/2
+		--local y=math.random()*gen_radius-gen_radius/2
+		local x=gaussian(0,gen_radius)
+		local y=gaussian(0,gen_radius)
+		samples.d[i]={x,y,0,0}
 	end
+
+	add_visit_shader:use()
+	visit_tex_tmp1:use(0)
+	visits:write_texture(visit_tex_tmp1)
+
 	visit_tex_tmp2:use(1)
 	visit_tex_tmp2:set(visits.w,visits.h,visits.type)
-	
-	sample_tex:use(2)
 
-	add_visit_shader:set_i("visits_in",iteration%2)
+	samples_tex:use(2)
+	samples:write_texture(samples_tex)
+
+	add_visit_shader:set_i("visits_in",0)
 	add_visit_shader:set_i("points_input",2)
 
 	add_visit_shader:set("center",config.cx,config.cy)
 	add_visit_shader:set("iscale",1/config.scale)
 	add_visit_shader:set("res",samples.w,samples.h)
+
+	add_visit_shader:set("params",config.v0,config.v1)
+	add_visit_shader:set("move_dist",config.move_dist)
+	add_visit_shader:set_i("ticks",config.IFS_steps)
+
 	local target = visit_tex_tmp2
-	if iteration%2 == 1 then
-		target=visit_tex_tmp1
-	end
 	if not target:render_to(visits.w,visits.h) then
 		error("failed to set framebuffer up")
 	end
 	--__clear()
 	add_visit_shader:draw_quad()
-	__render_to_window()
-end
-function visit_iter_last( iteration )
-	--visits:clear()
-	local target = visit_tex_tmp2
-	if iteration%2 == 1 then
-		target=visit_tex_tmp1
-	end
 	target:use(0)
 	visits:read_texture(target)
+	__render_to_window()
 end
 local sample_shader=shaders.Make[[
 #version 330
@@ -1071,9 +1110,9 @@ uniform vec2 res;
 uniform sampler2D tex_main;
 
 uniform vec2 params;
+uniform float move_dist;
 uniform vec2 center;
 uniform float scale;
-uniform float move_dist;
 
 uniform int ticks;
 
@@ -1109,8 +1148,7 @@ void main(){
 }
 ]]
 
-samples=make_flt_half_buffer(sample_count,sample_count)
-local from_sample = textures.Make()
+
 local to_sample = textures.Make()
 
 function shader_iter()
@@ -1133,9 +1171,9 @@ function shader_iter()
 	to_sample:set(samples.w,samples.h,samples.type)
 
 	sample_shader:set_i("tex_main",0)
-	sample_shader:set("params",config.v0,config.v1)
 	sample_shader:set("center",cx,cy)
 	sample_shader:set("scale",config.scale)
+	sample_shader:set("params",config.v0,config.v1)
 	sample_shader:set("move_dist",config.move_dist)
 	sample_shader:set_i("ticks",config.IFS_steps)
 
@@ -1252,14 +1290,9 @@ function update_real(  )
 	end
 
 	if config.ticking==0 then
-		local last=10
-		for i=0,last do
-			shader_iter()
-			visit_iter(to_sample,i)
+		for i=0,5 do
+			visit_iter()
 		end
-		visit_iter_last(last)
-		shader_iter()
-		do_samples=nil
 	end
 	draw_visits()
 end
