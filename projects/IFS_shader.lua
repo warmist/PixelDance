@@ -1246,16 +1246,18 @@ function update_real(  )
 		local ly
 		for i=1,config.IFS_steps do
 			x,y=step_iter(x,y,v0,v1)
+		end
 			--[[
 			x=mod(x,1000)
 			y=mod(y,1000)
 			--]]
-			if x*x+y*y>1e2 then
-				break
-			end
+			
 			local tx=((x-cx)*iscale+0.5)*s[1]
 			local ty=((y-cy)*iscale+0.5)*s[2]
 			--[[ LINE-ISH VISITING
+			if x*x+y*y>1e2 then
+				break
+			end
 			if lx then
 				--line_visit(lx,ly,tx,ty) --VERY SLOW!!
 				rand_line_visit(lx,ly,tx,ty)
@@ -1285,7 +1287,7 @@ function update_real(  )
 			local v=visits:get(math.floor(tx),math.floor(ty))
 			visits:set(math.floor(tx),math.floor(ty),v+1)
 			--]]
-		end
+		
 
 	end
 

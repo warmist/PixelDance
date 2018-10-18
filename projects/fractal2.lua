@@ -1,5 +1,6 @@
 
 require "common"
+require "colors"
 
 local size=STATE.size
 local max_size=math.min(size[1],size[2])/2
@@ -61,196 +62,6 @@ function super_sample(x,y,n,dist,samples_count,sample_dist )
 		ret=ret+iterate( x+dx,y+dy ,n,dist)
 	end
 	return ret/samples_count
-end
---[[
- * Converts an RGB color value to HSL. Conversion formula
- * adapted from http://en.wikipedia.org/wiki/HSL_color_space.
- * Assumes r, g, and b are contained in the set [0, 255] and
- * returns h, s, and l in the set [0, 1].
- *
- * @param   Number  r       The red color value
- * @param   Number  g       The green color value
- * @param   Number  b       The blue color value
- * @return  Array           The HSL representation
-]]
-function rgbToHsl(r, g, b, a)
-  r, g, b = r / 255, g / 255, b / 255
-
-  local max, min = math.max(r, g, b), math.min(r, g, b)
-  local h, s, l
-
-  l = (max + min) / 2
-
-  if max == min then
-    h, s = 0, 0 -- achromatic
-  else
-    local d = max - min
-    local s
-    if l > 0.5 then s = d / (2 - max - min) else s = d / (max + min) end
-    if max == r then
-      h = (g - b) / d
-      if g < b then h = h + 6 end
-    elseif max == g then h = (b - r) / d + 2
-    elseif max == b then h = (r - g) / d + 4
-    end
-    h = h / 6
-  end
-
-  return h, s, l, a or 255
-end
-
---[[
- * Converts an HSL color value to RGB. Conversion formula
- * adapted from http://en.wikipedia.org/wiki/HSL_color_space.
- * Assumes h, s, and l are contained in the set [0, 1] and
- * returns r, g, and b in the set [0, 255].
- *
- * @param   Number  h       The hue
- * @param   Number  s       The saturation
- * @param   Number  l       The lightness
- * @return  Array           The RGB representation
-]]
-function hslToRgb(h, s, l, a)
-  local r, g, b
-
-  if s == 0 then
-    r, g, b = l, l, l -- achromatic
-  else
-    function hue2rgb(p, q, t)
-      if t < 0   then t = t + 1 end
-      if t > 1   then t = t - 1 end
-      if t < 1/6 then return p + (q - p) * 6 * t end
-      if t < 1/2 then return q end
-      if t < 2/3 then return p + (q - p) * (2/3 - t) * 6 end
-      return p
-    end
-
-    local q
-    if l < 0.5 then q = l * (1 + s) else q = l + s - l * s end
-    local p = 2 * l - q
-
-    r = hue2rgb(p, q, h + 1/3)
-    g = hue2rgb(p, q, h)
-    b = hue2rgb(p, q, h - 1/3)
-  end
-
-  return r * 255, g * 255, b * 255, a * 255
-end
-function hslToRgb_normed(h, s, l, a)
-  local r, g, b
-
-  if s == 0 then
-    r, g, b = l, l, l -- achromatic
-  else
-    function hue2rgb(p, q, t)
-      if t < 0   then t = t + 1 end
-      if t > 1   then t = t - 1 end
-      if t < 1/6 then return p + (q - p) * 6 * t end
-      if t < 1/2 then return q end
-      if t < 2/3 then return p + (q - p) * (2/3 - t) * 6 end
-      return p
-    end
-
-    local q
-    if l < 0.5 then q = l * (1 + s) else q = l + s - l * s end
-    local p = 2 * l - q
-
-    r = hue2rgb(p, q, h + 1/3)
-    g = hue2rgb(p, q, h)
-    b = hue2rgb(p, q, h - 1/3)
-  end
-
-  return {r , g , b , a}
-end
---[[
- * Converts an RGB color value to HSV. Conversion formula
- * adapted from http://en.wikipedia.org/wiki/HSV_color_space.
- * Assumes r, g, and b are contained in the set [0, 255] and
- * returns h, s, and v in the set [0, 1].
- *
- * @param   Number  r       The red color value
- * @param   Number  g       The green color value
- * @param   Number  b       The blue color value
- * @return  Array           The HSV representation
-]]
-function rgbToHsv(r, g, b, a)
-  r, g, b, a = r / 255, g / 255, b / 255, a / 255
-  local max, min = math.max(r, g, b), math.min(r, g, b)
-  local h, s, v
-  v = max
-
-  local d = max - min
-  if max == 0 then s = 0 else s = d / max end
-
-  if max == min then
-    h = 0 -- achromatic
-  else
-    if max == r then
-    h = (g - b) / d
-    if g < b then h = h + 6 end
-    elseif max == g then h = (b - r) / d + 2
-    elseif max == b then h = (r - g) / d + 4
-    end
-    h = h / 6
-  end
-
-  return h, s, v, a
-end
-
---[[
- * Converts an HSV color value to RGB. Conversion formula
- * adapted from http://en.wikipedia.org/wiki/HSV_color_space.
- * Assumes h, s, and v are contained in the set [0, 1] and
- * returns r, g, and b in the set [0, 255].
- *
- * @param   Number  h       The hue
- * @param   Number  s       The saturation
- * @param   Number  v       The value
- * @return  Array           The RGB representation
-]]
-function hsvToRgb(h, s, v, a)
-  local r, g, b
-
-  local i = math.floor(h * 6);
-  local f = h * 6 - i;
-  local p = v * (1 - s);
-  local q = v * (1 - f * s);
-  local t = v * (1 - (1 - f) * s);
-
-  i = i % 6
-
-  if i == 0 then r, g, b = v, t, p
-  elseif i == 1 then r, g, b = q, v, p
-  elseif i == 2 then r, g, b = p, v, t
-  elseif i == 3 then r, g, b = p, q, v
-  elseif i == 4 then r, g, b = t, p, v
-  elseif i == 5 then r, g, b = v, p, q
-  end
-
-  return r * 255, g * 255, b * 255, a * 255
-end
-
-function mix(out, c1,c2,t )
-	local it=1-t
-	--hsv mix
-	if false then
-		local hsv1={rgbToHsv(c1.r,c1.g,c1.b,255)}
-		local hsv2={rgbToHsv(c2.r,c2.g,c2.b,255)}
-		local hsv_out={}
-		for i=1,3 do
-			hsv_out[i]=hsv1[i]*it+hsv2[i]*t
-		end
-		local rgb_out={hsvToRgb(hsv_out[1],hsv_out[2],hsv_out[3],255)}
-		out.r=rgb_out[1]
-		out.g=rgb_out[2]
-		out.b=rgb_out[3]
-		--]]
-	else
-		out.r=c1.r*it+c2.r*t
-		out.g=c1.g*it+c2.g*t
-		out.b=c1.b*it+c2.b*t
-	end
-	out.a=c1.a*it+c2.a*t
 end
 
 local log_shader=shaders.Make[==[
@@ -400,6 +211,7 @@ function step_iter( x,y,v0,v1)
 	--local r = x*x+y*y
 	--return x/r+math.sin(y-r*v0),y/r-math.cos(x-r*v1)
 	--local nx=math.sin(math.sin(y))/((math.cos(y))-(y/(x)))/(((math.sin(v0))-(v1/(x)))*(math.sin((y)+(v0))))
+
 	local x_1=x
 	local x_2=x*x/2
 	local x_3=x*x*x/6
@@ -408,12 +220,30 @@ function step_iter( x,y,v0,v1)
 	local y_2=y*y/2
 	local y_3=y*y*y/6
 
+	local x_i1=1/x
+	local x_i2=1/(x*x*2)
+	local x_i3=1/(x*x*x*6)
+
+	local y_i1=1/y
+	local y_i2=1/(y*y*2)
+	local y_i3=1/(y*y*y*6)
+
 	local r=math.sqrt(x*x+y*y)
 	--[[
 	local nx=x_2*v0-y_2;
 	local ny=y_2*v1/x_2;
 	--]]
-	-- [[
+	--[[
+	local nx=(v1)-(v1)+x_1*(math.sin(v0))+y_1*((v0)/(v0))+y_1*x_1*(math.log(math.abs(v0)+1))+x_2*(math.sin(v0))+y_2*(math.sin(v0))+y_2*x_2*((v0)/(v1))+x_3*(math.sin(v0))+y_3*(math.sin(v0))+y_3*x_3*(math.log(math.abs(v1)+1))
+	local ny=(v1)/(v0)+x_1*(math.log(math.abs(v1)+1))+y_1*(math.cos(v0))+y_1*x_1*(math.sin(v0))+x_2*((v1)-(v0))+y_2*(math.log(math.abs(v0)+1))+y_2*x_2*((v1)-(v1))+x_3*((v0)/(v1))+y_3*(math.cos(v0))+y_3*x_3*((v1)*(v0))
+	--]]
+	local nx=v0+x_i3*(v0)+y_i3*(v0)+y_i3*x_i3*(v0)+x_i2*(v1)+y_i2*(v0)+y_i2*x_i2*(v0)+x_i1*(v0)+y_i1*(v0)+y_i1*x_i1*(v0)+x_1*(v1)+y_1*(v0)+y_1*x_1*(v0)+x_2*(v0)+y_2*(v0)+y_2*x_2*(v0)+x_3*(v0)+y_3*(v1)+y_3*x_3*(v0)
+	local ny=v1+x_i3*(v0)+y_i3*(v1)+y_i3*x_i3*(v1)+x_i2*(v0)+y_i2*(v0)+y_i2*x_i2*(v1)+x_i1*(v0)+y_i1*(v1)+y_i1*x_i1*(v0)+x_1*(v1)+y_1*(v0)+y_1*x_1*(v0)+x_2*(v0)+y_2*(v0)+y_2*x_2*(v1)+x_3*(v1)+y_3*(v0)+y_3*x_3*(v0)
+	--[[
+	local nx=((v1)+(v1))+((v1)/(v0))+x_1*(((v0)-(v1))-((v0)/(v1)))+y_1*(((v1)*(v1))+((v1)-(v1)))+y_1*x_1*(((v1)/(v1))*((v1)-(v0)))+x_2*(((v1)+(v1))*((v0)+(v0)))+y_2*(((v1)-(v0))*((v1)*(v0)))+y_2*x_2*(((v0)-(v1))*((v1)/(v0)))+x_3*(((v0)+(v1))*((v0)-(v0)))+y_3*(((v1)/(v0))/((v0)/(v1)))+y_3*x_3*(((v0)+(v0))+((v1)-(v0)))
+	local ny=((v0)+(v1))+((v1)+(v1))+x_1*(((v0)+(v0))-((v0)*(v1)))+y_1*(((v0)/(v1))*((v0)+(v0)))+y_1*x_1*(((v0)+(v0))-((v1)+(v0)))+x_2*(((v0)+(v1))-((v0)*(v1)))+y_2*(((v0)-(v1))-((v0)-(v0)))+y_2*x_2*(((v1)-(v0))*((v0)*(v1)))+x_3*(((v1)/(v0))+((v0)-(v0)))+y_3*(((v1)-(v1))*((v1)/(v0)))+y_3*x_3*(((v0)/(v0))-((v1)+(v1)))
+	--]]
+	--[[
 	local nx=math.sqrt(math.abs(math.cos(x_1-y_2)*v0+math.sin(y_2-x_3)*v1))-math.sqrt(math.abs(math.sin(x_1-y_2)*v1+math.cos(y_2-x_3)*v0))
 	local ny=math.sin(y_1-x_2)*v1+math.cos(x_2-y_3)*v0
 	--]]
@@ -480,21 +310,24 @@ function safe_visit( x,y,v )
 		add_visit(x,y,v)
 	end
 end
-function smooth_visit( tx,ty )
+function smooth_visit( tx,ty,w )
 	local lx=math.floor(tx)
 	local ly=math.floor(ty)
-	local hx,hy=coord_mapping(lx+1,ly+1)
-	hx=math.ceil(hx)
-	hy=math.ceil(hy)
+	local hx=math.floor(tx+1)
+	local hy=math.floor(ty+1)
 	local fr_x=tx-lx
 	local fr_y=ty-ly
+	local gx11,gy11=coord_mapping(lx,ly)
+	safe_visit(gx11,gy11,(1-fr_x)*(1-fr_y)*w)
 
-	--TODO: writes to out of bounds (hx/hy out of bounds)
+	local gx12,gy12=coord_mapping(lx,hy)
+	safe_visit(gx12,gy12,(1-fr_x)*fr_y*w)
 
-	safe_visit(lx,ly,(1-fr_x)*(1-fr_y))
-	safe_visit(lx,hy,(1-fr_x)*fr_y)
-	safe_visit(hx,ly,fr_x*(1-fr_y))
-	safe_visit(hx,hy,fr_x*fr_y)
+	local gx21,gy21=coord_mapping(hx,ly)
+	safe_visit(gx21,gy21,fr_x*(1-fr_y)*w)
+
+	local gx22,gy22=coord_mapping(hx,hy)
+	safe_visit(gx22,gy22,fr_x*fr_y*w)
 end
 function clear_buffers(  )
 	img_buf:clear()
@@ -539,11 +372,13 @@ function random_math_series( num_params,start_pow,end_pow )
 	for i=start_pow,end_pow do
 		if i>0 then
 			cur_string=cur_string..string.format("+x_%d*(R)+y_%d*(R)+y_%d*x_%d*(R)",i,i,i,i)
+		elseif i<0 then
+			cur_string=cur_string..string.format("+x_i%d*(R)+y_i%d*(R)+y_i%d*x_i%d*(R)",-i,-i,-i,-i)
 		end
 	end
 
 	local function M(  )
-		local ch={--[["math.sin(R)","math.cos(R)",]]--[["math.log(R)",]]"(R)/(R)",
+		local ch={"math.sin(R)","math.cos(R)","math.log(math.abs(R)+1)","(R)/(R)",
 		"(R)*(R)","(R)-(R)","(R)+(R)"}
 		return ch[math.random(1,#ch)]
 	end
@@ -570,20 +405,47 @@ function set_shader_palette(s)
 		s:set(string.format("palette[%d]",i-1),c[1],c[2],c[3],c[4])
 	end
 end
+function iterate_color(tbl, hsl1,hsl2,steps )
+	local hd=hsl2[1]-hsl1[1]
+	local sd=hsl2[2]-hsl1[2]
+	local ld=hsl2[3]-hsl1[3]
+
+	for i=0,steps-1 do
+		local v=i/steps
+		table.insert(tbl,hslToRgb_normed(hsl1[1]+hd*v,hsl1[2]+sd*v,hsl1[3]+ld*v,1))
+	end
+end
 function gen_palette( )
 	local ret={}
 	palette.colors=ret
 
 	local h1=math.random()
-	local s=math.random()*0.3+0.7
+	local s=math.random()*0.6+0.2
 	local l=math.random()*0.6+0.2
+	
 	local function gen_shades(tbl, h_start,s_start,l_start,l_end,count)
 		local diff=l_end-l_start
 		for i=0,count-1 do
 			table.insert(tbl,hslToRgb_normed(h_start,s_start,l_start+diff*(i/(count-1)),1))
 		end
 	end
-	-- [[ complementary
+	--[[ complementary2
+	local s2=math.random()*0.6+0.2
+	local l2=math.random()*0.6+0.2
+	iterate_color(ret,{h1,s,l},{1-h1,s,l2},10)
+	--]]
+	-- [[ triadic2
+	local s2=math.random()*0.6+0.2
+	local l2=math.random()*0.6+0.2
+	local s3=math.random()*0.6+0.2
+	local l3=math.random()*0.6+0.2
+	local h2=math.fmod(h1+0.33,1)
+	local h3=math.fmod(h1+0.66,1)
+	iterate_color(ret,{h1,s,l},{h2,s2,l2},5)
+	iterate_color(ret,{h2,s2,l2},{h3,s3,l3},5)
+	--iterate_color(ret,{h3,s3,l3},{h1,s,l},5)
+	--]]
+	--[[ complementary
 	gen_shades(ret,h1,s,l,0.15,5)
 	gen_shades(ret,1-h1,s,0.15,l,5)
 	--]]
@@ -662,7 +524,6 @@ function save_img(tile_count)
 		end
 		img_buf:read_frame()
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
-		image_no=image_no+1
 	else
 		img_buf:read_frame()
 		local w=img_buf.w
@@ -695,7 +556,7 @@ function gui(  )
 	local changed
 	changed,generate_num_params=imgui.SliderInt("Num params",generate_num_params,1,10)
 	if imgui.Button("Gen function") then
-		print(random_math_series(generate_num_params,0,3))
+		print(random_math_series(generate_num_params,-3,3))
 	end
 
 	--imgui.SameLine()
@@ -983,7 +844,7 @@ function rand_line_visit( x0,y0,x1,y1 )
 
 		local tx=mod(x0+dx*r,size[1])
 		local ty=mod(y0+dy*r,size[2])
-		smooth_visit(tx,ty)
+		smooth_visit(tx,ty,1)
 	end
 end
 function rot_coord( x,y,angle )
@@ -1082,22 +943,24 @@ end
 
 function coord_mapping( tx,ty )
 	local s=STATE.size
-	local dist=10
+	local dist=s[1]
 	local sx=s[1]/2
 	local sy=s[2]/2
-	--[[
+	-- [[
 	local cx,cy=tx-sx,ty-sy
-	return tx,ty
+	--return tx,ty
 	--]]
-	--[[
+	-- [[
 	local r=math.sqrt(cx*cx+cy*cy)
 	local a=math.atan2(cy,cx)
 
 	r=mod_reflect(r,dist)
-	a=mod(a,math.pi/2)
+	a=mod(a,math.pi/6)
 
 	cx=math.cos(a)*r
 	cy=math.sin(a)*r
+
+	return cx,cy
 	--]]
 	--https://www.redblobgames.com/grids/hexagons/#pixel-to-hex
 	--[=[
@@ -1260,7 +1123,7 @@ function coord_mapping( tx,ty )
     --]=]
 	--]]
 	--return tx,ty
-	return mod(tx,s[1]),mod(ty,s[2])
+	--return mod(tx,s[1]),mod(ty,s[2])
 	--[[
 	local div_x=math.floor(tx/s[1])
 	local div_y=math.floor(ty/s[2])
@@ -1289,110 +1152,38 @@ function rand_circl(  )
 	local r=math.sqrt(math.random())*config.gen_radius
 	return math.cos(a)*r,math.sin(a)*r
 end
-local visit_tex_tmp1=textures.Make()
-local visit_tex_tmp2=textures.Make()
-local sample_shader=shaders.Make[[
-#version 330
-
-layout(location=0)out vec4 color;
-in vec3 pos;
-
-uniform vec2 res;
-uniform sampler2D tex_main;
-
-uniform vec2 params;
-uniform vec2 center;
-uniform float scale;
-uniform float move_dist;
-
-uniform int ticks;
-
-vec2 fun(vec2 pos)
-{
-	float v0=params.x;
-	float v1=params.y;
-
-	float x_1=pos.x;
-	float x_2=pos.x*pos.x/2;
-	float x_3=pos.x*pos.x*pos.x/6;
-
-	float y_1=pos.y;
-	float y_2=pos.y*pos.y/2;
-	float y_3=pos.y*pos.y*pos.y/6;
-
-	float nx=sqrt(abs(cos(x_1-y_2)*v0+sin(y_2-x_3)*v1))-sqrt(abs(sin(x_1-y_2)*v1+cos(y_2-x_3)*v0));
-	float ny=sin(y_1-x_2)*v1+cos(x_2-y_3)*v0;
-
-	vec2 ret=vec2(nx,ny);
-	float r=length(ret);
-	if (r<0.0001) r=1;
-	float d=move_dist/r;
-	return pos+ret*d;
-}
-
-void main(){
-	vec2 normed=(pos.xy+vec2(1,1))/2;
-	vec4 t=texture(tex_main,normed);
-	for(int i=0;i<ticks;i++)
-		t.xy=fun(t.xy);
-	color = vec4(t.x,t.y,0,1);
-}
-]]
-local from_sample = textures.Make()
-local to_sample = textures.Make()
-function shader_iter()
-	local gen_radius=config.gen_radius
-	for i=0,samples.w*samples.h-1 do
-		--local x=math.random()*gen_radius-gen_radius/2
-		--local y=math.random()*gen_radius-gen_radius/2
-		local x=gaussian(0,gen_radius)
-		local y=gaussian(0,gen_radius)
-		samples.d[i]={x,y,0,0}
-	end
-	local cx=config.cx
-	local cy=config.cy
-	local iscale=1/config.scale
-	sample_shader:use()
-
-	from_sample:use(0)
-	samples:write_texture(from_sample)
-	to_sample:use(1)
-	samples2:write_texture(to_sample) --could skip copy?
-
-	sample_shader:set_i("tex_main",0)
-	sample_shader:set("params",config.v0,config.v1)
-	sample_shader:set("center",cx,cy)
-	sample_shader:set("scale",config.scale)
-	sample_shader:set("move_dist",config.move_dist)
-	sample_shader:set_i("ticks",config.ticking2)
-			
-	if not to_sample:render_to(samples.w,samples.h) then
-		error("failed to set framebuffer up")
-	end
-	__clear()
-	sample_shader:draw_quad()
-
-	samples2:read_texture(to_sample)
-	__render_to_window()
+function simple_visit( tx,ty ,w)
 	local s=STATE.size
-	for x=0,samples2.w-1 do
-		for y=0,samples2.h-1 do
-			local v=samples2:get(x,y)
-			--print(v.r,v.g,v.b,v.a)
-			local tx=((v.r-cx)*iscale+0.5)*s[1]
-			local ty=((v.g-cy)*iscale+0.5)*s[2]
-			--print(tx,ty)
-
-			tx,ty=coord_mapping(tx+gaussian(0,config.arg_disp),ty+gaussian(0,config.arg_disp))
-			if tx>=0 and math.floor(tx+0.5)<s[1] and ty>=0 and math.floor(ty+0.5)<s[2] then
-				local v=1--gaussian(0,1)+1
-				if v>0 then
-					if v>1 then v=1 end
-					add_visit(math.floor(tx+0.5),math.floor(ty+0.5),v)
-				end
-			end
-		end
+	tx,ty=coord_mapping(tx,ty)
+	tx=math.floor(tx+0.5)
+	ty=math.floor(ty+0.5)
+	if tx>=0 and tx<s[1] and ty>=0 and ty<s[2] then
+		add_visit(tx,ty,w)
 	end
+end
+function gauss_smooth_visit( tx,ty,w,n )
+	local s=STATE.size
+	for i=1,n do
+		local gx=gaussian(0,1)
+		local gy=gaussian(0,1)
+		local w2=math.exp(-(gx*gx+gy*gy))
+		simple_visit(tx+gx,ty+gy,w*w2)
+	end
+end
+function circle_visit( tx,ty,w,r )
+	for y=1,r-1 do
+		local xs=math.sqrt(r*r-y*y)
+		simple_visit(tx+xs,ty+y,w);
+		simple_visit(tx-xs,ty+y,w);
+		simple_visit(tx+xs,ty-y,w);
+		simple_visit(tx-xs,ty-y,w);
+	end
+end
+function cross_visit( tx,ty,w )
+	simple_visit(tx+1,ty+1,w*0.25);
+	simple_visit(tx-1,ty+1,w*0.2);
+	simple_visit(tx+1,ty-1,w*0.1);
+	simple_visit(tx-1,ty-1,w*0.133);
 end
 function update_real(  )
 	__no_redraw()
@@ -1408,37 +1199,34 @@ function update_real(  )
 	local v1=config.v1
 	local cx=config.cx
 	local cy=config.cy
-	--[[if config.one_step then
-		return
-	end]]
-	--config.one_step=true
-	--local start_calc=os.time()
+
+
 	local ad=config.arg_disp
 	local gen_radius=config.gen_radius
-	-- [===[
 	for i=1,config.ticking do
 		--TODO: generate IN screen
 		--[[local x = math.random()-0.5
 		local y = math.random()-0.5]]
-		-- [[
+		--[[
 		local x=math.random()*gen_radius-gen_radius/2
 		local y=math.random()*gen_radius-gen_radius/2
 		--]]
+		local x=gaussian(0,gen_radius)
+		local y=gaussian(0,gen_radius)
+		--local w=math.exp(-(x*x+y*y))
+		local w=1
 		--local x,y=rand_circl()
 		local lx
 		local ly
 		for i=1,config.ticking2 do
 			x,y=step_iter(x,y,v0,v1)
-			--[[
-			x=mod(x,1000)
-			y=mod(y,1000)
-			--]]
-			if x*x+y*y>1e2 then
-				break
-			end
+
 			local tx=((x-cx)*iscale+0.5)*s[1]
 			local ty=((y-cy)*iscale+0.5)*s[2]
 			--[[ LINE-ISH VISITING
+			if x*x+y*y>1e2 then
+				break
+			end
 			if lx then
 				--line_visit(lx,ly,tx,ty) --VERY SLOW!!
 				rand_line_visit(lx,ly,tx,ty)
@@ -1446,16 +1234,12 @@ function update_real(  )
 			lx=tx
 			ly=ty
 			--]]
-			--[[ TILING FRACTAL
-			tx,ty=coord_mapping(tx,ty)
-			smooth_visit(tx,ty)
+			-- [[ TILING FRACTAL
+			--smooth_visit(tx,ty,w)
 			--]]
-			-- [[
-			tx,ty=coord_mapping(tx,ty)
-			if tx>=0 and math.floor(tx+0.5)<s[1] and ty>=0 and math.floor(ty+0.5)<s[2] then
-				add_visit(math.floor(tx+0.5),math.floor(ty+0.5),1)
-			end
-			--]]
+			--simple_visit(tx,ty,w)
+			gauss_smooth_visit(tx,ty,w,5)
+			--cross_visit(tx,ty,w)
 			--]]
 			--[[ SIMPLE SMOOTH VISITING
 			if tx>=0 and tx<s[1]-1 and ty>=0 and ty<s[2]-1 then
@@ -1469,24 +1253,9 @@ function update_real(  )
 			visits:set(math.floor(tx),math.floor(ty),v+1)
 			--]]
 		end
-		
-		
 	end
-	--]===]
-	--local end_calc=os.time()
-	--local time_delta=os.difftime(end_calc,start_calc)
-	--print("Calculation took:",time_delta," or:",time_delta/(config.ticking*config.ticking2), " per iteration")
-	--if math.fmod(tick,10)==0 then
-	--do_samples=true
-	if config.ticking==0 then
-		shader_iter()
-		do_samples=nil
-	end
+
+
+
 	draw_visits()
-		--draw_visits_local()
-	--end
-	--[[if math.fmod(tick,100)==0 then
-		save_img(1)
-	end]]
-	tick=tick+1
 end
