@@ -44,6 +44,7 @@ static const gl_tex_format formats[] = {
 	{ GL_RGBA32F,GL_RGBA,GL_FLOAT },
 	{ GL_R32F,GL_RED,GL_FLOAT },
 	{ GL_RG32F,GL_RG,GL_FLOAT},
+	{ GL_R8,GL_RED,GL_UNSIGNED_BYTE},
 };
 //if second arg is not ptr to data, create empty texture!
 static int set_texture_data(lua_State* L)
@@ -51,7 +52,7 @@ static int set_texture_data(lua_State* L)
 	auto s = check(L, 1);
 	const void* data=nullptr;
 	int arg = 3;
-	if (lua_type(L, 2) == 10) //cdata
+	if ((lua_type(L, 2) == 10) /*cdata*/ || (lua_type(L, 2) == LUA_TLIGHTUSERDATA))
 	{
 		data = lua_topointer(L, 2); //TODO: check pointer?
 	}

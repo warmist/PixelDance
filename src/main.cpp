@@ -20,6 +20,14 @@
 #include "shaders.h"
 #include "textures.hpp"
 #include <unordered_map>
+
+#include "asset_cp437_12x12.hpp"
+struct emb_text
+{
+	unsigned char* data;
+	int w, h;
+};
+emb_text cp437;
 void load_projects(const char* prefix,file_watcher& fwatch)
 {
     for (auto& f : fwatch.files)
@@ -166,6 +174,17 @@ struct lua_global_state
 
 		lua_pushlightuserdata(L, tex);
 		lua_setfield(L, -2, "texture");
+
+		lua_newtable(L);
+
+		lua_pushinteger(L, cp437.w);
+		lua_setfield(L, -2, "w");
+		lua_pushinteger(L, cp437.h);
+		lua_setfield(L, -2, "h");
+		lua_pushlightuserdata(L, cp437.data);
+		lua_setfield(L, -2, "data");
+
+		lua_setfield(L, -2, "cp437");
 
 		lua_newtable(L);
 
@@ -407,6 +426,15 @@ static int lua_get_my_source(lua_State* L)
 	lua_pushlstring(L, (const char*)buffer.data(), buffer.size());
 	return 1;
 }
+void load_assets()
+{
+	int x, y,comp;
+	auto data=stbi_load_from_memory((const stbi_uc*)EMB_FILE_cp437_12x12, EMB_FILE_SIZE_cp437_12x12, &x, &y, &comp, 4);
+	cp437.data = data;
+	cp437.w = x;
+	cp437.h = y;
+	//printf("Loaded pointer:%llX (%dx%d)x%d\n", data,x,y,comp);
+}
 int main(int argc, char** argv)
 {
     if (argc == 1)
@@ -414,7 +442,7 @@ int main(int argc, char** argv)
         printf("Usage: pixeldance.exe <path-to-projects>\n");
         return -1;
     }
-	
+	load_assets();
     file_watcher fwatch;
     load_projects(argv[1], fwatch);
 	sf::ContextSettings settings;

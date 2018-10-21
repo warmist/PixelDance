@@ -27,9 +27,11 @@ include(InstallRequiredSystemLibraries)
 
 message(STATUS OPENMP: ${MSVC_OPENMP_DIR})
 
-
+include(EmbedFileFTO)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+embed_file("${PROJECT_SOURCE_DIR}/assets/cp437_12x12.png")
 
 set(SRCS
   src/main.cpp
@@ -62,14 +64,15 @@ set(HDRS
   ${LUA}/lualib.h
 )
 include_directories(${SFML_INCLUDE_DIR})
-#include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 INCLUDE_DIRECTORIES(${IMGUI})
 INCLUDE_DIRECTORIES(${LUA})
 
 add_executable(${TARGET_NAME}
   ${SRCS} ${HDRS}
+  ${EMBEDDED_HDRS} ${EMBEDDED_LIBS}
 )
 
-target_link_libraries(${TARGET_NAME}  ${SFML_LIBRARIES} ${SFML_DEPENDENCIES} ${LUA}/lua51.lib)
+target_link_libraries(${TARGET_NAME}  ${SFML_LIBRARIES} ${SFML_DEPENDENCIES} ${LUA}/lua51.lib )
 install(TARGETS ${TARGET_NAME} DESTINATION .)

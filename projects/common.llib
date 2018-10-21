@@ -50,7 +50,7 @@ make_image_buffer= make_buffer("rgba_pixel",0,{0,0,0,255})
 make_flt_buffer= make_buffer("float_pixel",1,{0,0,0,1})
 make_float_buffer=make_buffer("float",2,0)
 make_flt_half_buffer=make_buffer("float_half_pixel",3,{0,0})
-
+make_char_buffer=make_buffer("uint8_t",4,0)
 -------------GUI
 
 function make_config(tbl,defaults)

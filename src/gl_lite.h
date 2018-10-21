@@ -78,6 +78,7 @@ distribute, and modify this file as you see fit.
 #define GL_RGBA32F                        0x8814
 #define GL_RGB32F                         0x8815
 #define GL_R32F                           0x822E
+#define GL_R8							  0x8229
 #define GL_RG32F                          0x8230
 #define GL_RG                             0x8227
 #define GL_CLAMP_VERTEX_COLOR_ARB         0x891A
