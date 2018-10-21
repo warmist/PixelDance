@@ -22,16 +22,19 @@ tick=tick or 0
 config=make_config({
 	{"render",true,type="boolean"},
 	{"auto_scale_color",false,type="boolean"},
-	{"ticking",100,type="int",min=1,max=10000},
+	{"ticking",100,type="int",min=1,max=1000},
 	{"line_visits",1,type="int",min=1,max=100},
 	{"arg_disp",0,type="float",min=0,max=1},
 	{"v0",-0.211,type="float",min=-5,max=5},
 	{"v1",-0.184,type="float",min=-5,max=5},
-	{"ticking2",10,type="int",min=1,max=100},
+	{"v2",-0.211,type="float",min=-5,max=5},
+	{"v3",-0.184,type="float",min=-5,max=5},
+	{"ticking2",10,type="int",min=1,max=10000},
 	{"move_dist",0.1,type="float",min=0.001,max=2},
-	{"scale",1,type="float",min=0.00001,max=2},
+	{"scale",1,type="float",min=0.00001,max=20},
 	{"cx",0,type="float",min=-1,max=1},
 	{"cy",0,type="float",min=-1,max=1},
+	{"min_value",0,type="float",min=0,max=20},
 	{"gen_radius",1,type="float",min=0,max=10},
 --[[
 	{"gamma",1,type="float",min=0,max=10},
@@ -121,6 +124,18 @@ vec2 local_minmax(vec2 pos)
 	avg/=wsum;
 	return vec2(log(avg/10+1),log(avg*10+1));
 }
+void main_norm(){
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	float nv=texture(tex_main,normed).x;
+	vec2 lmm=min_max;
+	//vec2 lmm=local_minmax(normed);
+	if(auto_scale_color==1)
+		nv=(nv-lmm.x)/(lmm.y-lmm.x);
+	else
+		nv=(nv)/lmm.y;
+	nv=clamp(nv,0,1);
+	color = mix_palette2(nv);
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float nv=texture(tex_main,normed).x;
@@ -136,11 +151,6 @@ void main(){
 	//mix_palette(pix_out,nv)
 	//img_buf:set(x,y,pix_out)
 	color = mix_palette2(nv);
-/*
-    color.rgb = pow(color.rgb, vec3(1.0/gamma));
-	color.rgb*=contrast;
-	color.rgb+=vec3(brightness);
-*/
 }
 ]==]
 local need_save
@@ -155,15 +165,16 @@ function draw_visits(  )
 	for x=0,size[1]-1 do
 	for y=0,size[2]-1 do
 		local v=vst:get(x,y)
-		if v~=0 then --skip non-visited tiles
+		if v>math.exp(config.min_value)-1 then --skip non-visited tiles
 			if lmax<v then lmax=v end
 			if lmin>v then lmin=v end
 		end
 	end
 	end
+	-- [[
 	lmax=math.log(lmax+1)
 	lmin=math.log(lmin+1)
-
+	--]]
 	log_shader:use()
 	visit_tex:use(0)
 	visit_tex:set(visits.d,visits.w,visits.h,2)
@@ -193,17 +204,62 @@ function draw_visits(  )
 		need_save=nil
 	end
 end
-
-function step_iter( x,y,v0,v1)
+--[[
+iter_funcs={
+	{0,1,function ( x,y,v0,v1 )
+		local r = x*x+y*y
+		return r*v0,(x*v1+y*(v0-v1))/r
+	end},
+	{0.8,-0.25,function(x,y,v0,v1 )
+		local nx=x*v1-y*v0
+		local ny=x*x
+		return nx,ny
+	end},
+	{-0.86,-0.5,function(x,y,v0,v1 )
+		local r = x*x+y*y
+		return  x/r+math.sin(y-r*v0),y/r-math.cos(x-r*v1)
+	end}
+}
+]]
+function step_iter( x,y,v0,v1,v2,v3,sx,sy)
+	--[[
+	local min_dist=math.huge
+	local min_id=1
+	for i,v in ipairs(iter_funcs) do
+		local dx=x-v[1]*config.fdist
+		local dy=y-v[2]*config.fdist
+		local dist=dx*dx+dy*dy
+		if dist<min_dist then
+			min_dist=dist
+			min_id=i
+		end
+	end
+	local nx,ny=iter_funcs[min_id][3](x,y,v0,v1)
+	--]]
 	--[[
 	local nx,ny=x,y
 	--]]
 	--[[
-	local nx=x*x+v0-y*y
+	local nx=y*y/2+x*y*y+sx*v0*x
+	local ny=*x-x*x*x+sy
+	--]]
+	--[[
+	local nx=-(x+v0)/(v1*(sx*sx+sy*sy))-x/v1
+	local ny=y*sy/(v1*(sx*sx+sy*sy))+y/v1
+	--]]
+	local nx=v0*sx+v1*x*x-v1*y*y+v2*x*sx-v2*y*sy
+	local ny=v0*sy+v1*2*x*y+v2*x*sy*sx+v2*y*sy
+	--[[
+	local nx=x*x-y*y+sx
+	local ny=2*x*y+sy
+	--]]
+	--[[
+	local nx=x*x-y+v0
 	local ny=2*x*y+v1
 	--print(x,y,nx,ny)
 	--return nzx,nzy
 	--]]
+	
 	--[[
 	local nx=(((v0)-(v1)/((x)*(v0)))-(math.cos((v0)-(x))))*((math.cos((v1)*(y)))+(math.sin(x)/(math.cos(x))))
 	local ny=math.sin(((y)+(v1))*(math.sin(x))/(math.sin((x)*(x))))
@@ -211,7 +267,7 @@ function step_iter( x,y,v0,v1)
 	--local r = x*x+y*y
 	--return x/r+math.sin(y-r*v0),y/r-math.cos(x-r*v1)
 	--local nx=math.sin(math.sin(y))/((math.cos(y))-(y/(x)))/(((math.sin(v0))-(v1/(x)))*(math.sin((y)+(v0))))
-
+	--[[
 	local x_1=x
 	local x_2=x*x/2
 	local x_3=x*x*x/6
@@ -229,16 +285,44 @@ function step_iter( x,y,v0,v1)
 	local y_i3=1/(y*y*y*6)
 
 	local r=math.sqrt(x*x+y*y)
+	local a=math.atan(y,x)
+	--]]
+	--[[
+	local nx=math.sin(v3)+r*(math.sin(v2))+a*(math.sin(v3))+y_i3*a*(math.log(math.abs(v1)+1))+x_i2*(math.log(math.abs(v3)+1))+y_i2*((v2)*(v0))+y_i2*x_i2*(math.sin(v1))+x_i1*(math.cos(v2))+y_i1*(math.cos(v3))+y_i1*x_i1*((v2)-(v0))+x_1*(math.cos(v0))+y_1*((v0)*(v2))+y_1*x_1*((v0)-(v0))+x_2*((v0)-(v3))+y_2*((v1)*(v1))+y_2*x_2*((v1)*(v0))+x_3*((v2)-(v1))+y_3*((v0)/(v1))+y_3*x_3*((v0)+(v3))
+	local ny=(v0)+(v0)+x_i3*((v0)*(v0))+y_i3*(math.log(math.abs(v1)+1))+y_i3*x_i3*((v1)/(v1))+x_i2*(math.log(math.abs(v1)+1))+y_i2*((v1)-(v1))+y_i2*x_i2*((v0)*(v0))+x_i1*((v0)+(v0))+y_i1*((v1)-(v1))+y_i1*x_i1*(math.log(math.abs(v1)+1))+x_1*((v0)+(v0))+y_1*(math.cos(v0))+y_1*x_1*((v0)/(v1))+x_2*((v0)*(v1))+y_2*((v0)/(v1))+r*x_2*((v0)-(v1))+x_3*((v0)+(v1))+a*((v1)*(v0))+y_3*x_3*((a)-(v1))
+	--]]
+	--[[
+	local nx=math.log(math.abs(v1)+1)+x_i3*(math.log(math.abs(v0)+1))+y_i3*(math.log(math.abs(v0)+1))+y_i3*x_i3*(math.cos(v0))+x_i2*(math.sin(v1))+y_i2*(math.cos(v1))+y_i2*x_i2*((v0)+(v0))+x_i1*(math.sin(v0))+y_i1*((v0)+(v0))+y_i1*x_i1*(math.log(math.abs(v0)+1))+x_1*((v0)-(v1))+y_1*((v1)-(v1))+y_1*x_1*(math.cos(v0))+x_2*(math.cos(v1))+y_2*((v1)*(v0))+y_2*x_2*(math.log(math.abs(v1)+1))+x_3*((v1)+(v0))+y_3*(math.cos(v0))+y_3*x_3*(math.log(math.abs(v0)+1))
+	local ny=(v0)+(v0)+x_i3*((v0)*(v0))+y_i3*(math.log(math.abs(v1)+1))+y_i3*x_i3*((v1)/(v1))+x_i2*(math.log(math.abs(v1)+1))+y_i2*((v1)-(v1))+y_i2*x_i2*((v0)*(v0))+x_i1*((v0)+(v0))+y_i1*((v1)-(v1))+y_i1*x_i1*(math.log(math.abs(v1)+1))+x_1*((v0)+(v0))+y_1*(math.cos(v0))+y_1*x_1*((v0)/(v1))+x_2*((v0)*(v1))+y_2*((v0)/(v1))+y_2*x_2*((v0)-(v1))+x_3*((v0)+(v1))+y_3*((v1)*(v0))+y_3*x_3*((v1)-(v1))
+	--]]
+	--[[
+	local nx=math.sin(v3)+x_i3*(math.sin(v2))+y_i3*(math.sin(v3))+y_i3*x_i3*(math.log(math.abs(v1)+1))+x_i2*(math.log(math.abs(v3)+1))+y_i2*((v2)*(v0))+y_i2*x_i2*(math.sin(v1))+x_i1*(math.cos(v2))+y_i1*(math.cos(v3))+y_i1*x_i1*((v2)-(v0))+x_1*(math.cos(v0))+y_1*((v0)*(v2))+y_1*x_1*((v0)-(v0))+x_2*((v0)-(v3))+y_2*((v1)*(v1))+y_2*x_2*((v1)*(v0))+x_3*((v2)-(v1))+y_3*((v0)/(v1))+y_3*x_3*((v0)+(v3))
+	local ny=(v2)+(v3)+x_i3*((v0)+(v3))+y_i3*(math.sin(v3))+y_i3*x_i3*(math.cos(v1))+x_i2*((v0)*(v1))+y_i2*(math.sin(v3))+y_i2*x_i2*(math.log(math.abs(v2)+1))+x_i1*(math.cos(v2))+y_i1*(math.sin(v2))+y_i1*x_i1*((v0)/(v0))+x_1*(math.log(math.abs(v1)+1))+y_1*((v3)-(v1))+y_1*x_1*(math.log(math.abs(v1)+1))+x_2*(math.log(math.abs(v0)+1))+y_2*((v2)-(v2))+y_2*x_2*((v0)/(v0))+x_3*(math.log(math.abs(v0)+1))+y_3*((v1)-(v0))+y_3*x_3*(math.log(math.abs(v1)+1))
+	--]]
+	--[[
+	local nx=math.log(math.abs(v1)+1)+x_i3*((v0)*(v2))+y_i3*((v0)*(v1))+y_i3*x_i3*(math.cos(v0))+x_i2*((v3)/(v0))+y_i2*((v1)*(v2))+y_i2*x_i2*((v3)+(v1))+x_i1*(math.log(math.abs(v1)+1))+y_i1*((v0)-(v1))+y_i1*x_i1*(math.cos(v2))+x_1*(math.sin(v1))+y_1*((v2)+(v3))+y_1*x_1*(math.cos(v1))+x_2*((v1)*(v1))+y_2*(math.cos(v0))+y_2*x_2*((v2)/(v0))+x_3*((v1)/(v1))+y_3*((v3)*(v3))+y_3*x_3*((v2)-(v2))
+	local ny=math.log(math.abs(v2)+1)+x_i3*((v2)+(v0))+y_i3*(math.cos(v1))+y_i3*x_i3*((v3)/(v3))+x_i2*((v0)*(v2))+y_i2*((v1)/(v2))+y_i2*x_i2*((v1)/(v1))+x_i1*(math.cos(v0))+y_i1*(math.cos(v1))+y_i1*x_i1*(math.sin(v1))+x_1*((v2)-(v2))+y_1*((v2)/(v2))+y_1*x_1*((v3)-(v3))+x_2*((v2)+(v1))+y_2*((v2)-(v2))+y_2*x_2*((v2)-(v2))+x_3*(math.cos(v0))+y_3*(math.cos(v3))+y_3*x_3*(math.cos(v1))
+	--]]
+	--[[
+	local nx=((v0)/(v2))-((v2)*(v0))+x_1*(((v0)-(v0))-((v0)*(v3)))+y_1*(((v1)+(v3))/((v0)*(v0)))+y_1*x_1*(((v3)+(v2))*((v3)/(v0)))+x_2*(((v1)/(v2))-((v2)/(v2)))+y_2*(((v2)+(v1))*((v3)/(v0)))+y_2*x_2*(((v0)+(v2))+((v1)+(v1)))+x_3*(((v1)+(v1))+((v3)+(v2)))+y_3*(((v2)*(v2))*((v3)+(v3)))+y_3*x_3*(((v1)/(v0))+((v3)*(v3)))
+    local ny=((v1)-(v3))-((v0)+(v0))+x_1*(((v2)+(v1))+((v3)+(v3)))+y_1*(((v1)/(v3))-((v0)-(v0)))+y_1*x_1*(((v1)-(v2))+((v3)/(v1)))+x_2*(((v1)/(v2))-((v1)/(v0)))+y_2*(((v0)*(v2))-((v3)+(v2)))+y_2*x_2*(((v0)-(v3))+((v0)*(v3)))+x_3*(((v0)*(v3))/((v2)*(v0)))+y_3*(((v2)-(v2))*((v1)/(v3)))+y_3*x_3*(((v2)*(v0))+((v0)/(v3)))
+    --]]
+	--[[
+	local nx=(v2)*(v2)+x_i3*((v3)+(v2))+y_i3*((v1)-(v2))+y_i3*x_i3*((v0)+(v2))+x_i2*((v1)+(v0))+y_i2*((v0)+(v1))+y_i2*x_i2*((v0)*(v3))+x_i1*((v0)+(v3))+y_i1*((v2)+(v1))+y_i1*x_i1*((v3)/(v0))+x_1*((v3)-(v1))+y_1*((v3)+(v2))+y_1*x_1*((v0)+(v3))+x_2*((v2)-(v2))+y_2*((v3)-(v0))+y_2*x_2*((v3)+(v0))+x_3*((v0)-(v1))+y_3*((v1)/(v1))+y_3*x_3*((v0)+(v0))
+	local ny=(v1)/(v1)+x_i3*((v2)+(v2))+y_i3*((v3)*(v0))+y_i3*x_i3*((v2)*(v2))+x_i2*((v1)/(v2))+y_i2*((v3)*(v1))+y_i2*x_i2*((v0)+(v3))+x_i1*((v2)-(v0))+y_i1*((v2)*(v3))+y_i1*x_i1*((v3)/(v1))+x_1*((v3)*(v3))+y_1*((v3)/(v0))+y_1*x_1*((v0)/(v3))+x_2*((v2)*(v2))+y_2*((v0)*(v2))+y_2*x_2*((v0)-(v0))+x_3*((v1)*(v1))+y_3*((v0)*(v3))+y_3*x_3*((v2)/(v3))
+	--]]
 	--[[
 	local nx=x_2*v0-y_2;
-	local ny=y_2*v1/x_2;
+	local ny=y_2*v1/x_2+x_2*v1;
 	--]]
 	--[[
 	local nx=(v1)-(v1)+x_1*(math.sin(v0))+y_1*((v0)/(v0))+y_1*x_1*(math.log(math.abs(v0)+1))+x_2*(math.sin(v0))+y_2*(math.sin(v0))+y_2*x_2*((v0)/(v1))+x_3*(math.sin(v0))+y_3*(math.sin(v0))+y_3*x_3*(math.log(math.abs(v1)+1))
 	local ny=(v1)/(v0)+x_1*(math.log(math.abs(v1)+1))+y_1*(math.cos(v0))+y_1*x_1*(math.sin(v0))+x_2*((v1)-(v0))+y_2*(math.log(math.abs(v0)+1))+y_2*x_2*((v1)-(v1))+x_3*((v0)/(v1))+y_3*(math.cos(v0))+y_3*x_3*((v1)*(v0))
 	--]]
+	--[[
 	local nx=v0+x_i3*(v0)+y_i3*(v0)+y_i3*x_i3*(v0)+x_i2*(v1)+y_i2*(v0)+y_i2*x_i2*(v0)+x_i1*(v0)+y_i1*(v0)+y_i1*x_i1*(v0)+x_1*(v1)+y_1*(v0)+y_1*x_1*(v0)+x_2*(v0)+y_2*(v0)+y_2*x_2*(v0)+x_3*(v0)+y_3*(v1)+y_3*x_3*(v0)
 	local ny=v1+x_i3*(v0)+y_i3*(v1)+y_i3*x_i3*(v1)+x_i2*(v0)+y_i2*(v0)+y_i2*x_i2*(v1)+x_i1*(v0)+y_i1*(v1)+y_i1*x_i1*(v0)+x_1*(v1)+y_1*(v0)+y_1*x_1*(v0)+x_2*(v0)+y_2*(v0)+y_2*x_2*(v1)+x_3*(v1)+y_3*(v0)+y_3*x_3*(v0)
+	--]]
 	--[[
 	local nx=((v1)+(v1))+((v1)/(v0))+x_1*(((v0)-(v1))-((v0)/(v1)))+y_1*(((v1)*(v1))+((v1)-(v1)))+y_1*x_1*(((v1)/(v1))*((v1)-(v0)))+x_2*(((v1)+(v1))*((v0)+(v0)))+y_2*(((v1)-(v0))*((v1)*(v0)))+y_2*x_2*(((v0)-(v1))*((v1)/(v0)))+x_3*(((v0)+(v1))*((v0)-(v0)))+y_3*(((v1)/(v0))/((v0)/(v1)))+y_3*x_3*(((v0)+(v0))+((v1)-(v0)))
 	local ny=((v0)+(v1))+((v1)+(v1))+x_1*(((v0)+(v0))-((v0)*(v1)))+y_1*(((v0)/(v1))*((v0)+(v0)))+y_1*x_1*(((v0)+(v0))-((v1)+(v0)))+x_2*(((v0)+(v1))-((v0)*(v1)))+y_2*(((v0)-(v1))-((v0)-(v0)))+y_2*x_2*(((v1)-(v0))*((v0)*(v1)))+x_3*(((v1)/(v0))+((v0)-(v0)))+y_3*(((v1)-(v1))*((v1)/(v0)))+y_3*x_3*(((v0)/(v0))-((v1)+(v1)))
@@ -260,8 +344,8 @@ function step_iter( x,y,v0,v1)
 	local ny=((v1)*(v0))/((v0)/(v1))+x_1*(((v1)*(v1))-((v1)-(v0)))+y_1*(((v0)+(v0))-((v0)-(v0)))+y_1*x_1*(((v1)/(v1))-((v1)/(v0)))+x_2*(((v0)/(v1))/((v0)+(v0)))+y_2*(((v0)/(v0))*((v0)-(v1)))+y_2*x_2*(((v0)*(v0))+((v0)+(v0)))+x_3*(((v0)/(v0))+((v0)/(v0)))+y_3*(((v0)-(v0))+((v1)/(v1)))+y_3*x_3*(((v0)*(v1))+((v0)-(v0)))
 	--]]
 	--[[
-	local nx=math.log(math.abs(x_1*v1))
-	local ny=math.log(math.abs(y_1*v0))
+	local nx=math.log(math.abs(x_1/math.cos(y*y*v1))+1)*x
+	local ny=math.log(math.abs(y_1/math.sin(x*x*v0))+1)*y
 	--]]
 	--[[
 	local nx=x_1/(y_1-x_1*v0)
@@ -288,7 +372,7 @@ function step_iter( x,y,v0,v1)
 	nx=rx
 	ny=ry
 	--]]
-	-- [[
+	--[[
 	local delta=math.sqrt(nx*nx+ny*ny)
 	if delta<0.00001 then
 		delta=1
@@ -364,7 +448,7 @@ function random_math_old( num_params,len )
 end
 function random_math_series( num_params,start_pow,end_pow )
 	local cur_string="R"
-	local len=150
+	local len=250
 	local terminal=function (  )
 		local v=math.random(0,num_params-1)
 		return 'v'..v
@@ -378,7 +462,7 @@ function random_math_series( num_params,start_pow,end_pow )
 	end
 
 	local function M(  )
-		local ch={"math.sin(R)","math.cos(R)","math.log(math.abs(R)+1)","(R)/(R)",
+		local ch={--[["math.sin(R)","math.cos(R)","math.log(math.abs(R)+1)",]]"(R)/(R)",
 		"(R)*(R)","(R)-(R)","(R)+(R)"}
 		return ch[math.random(1,#ch)]
 	end
@@ -429,12 +513,12 @@ function gen_palette( )
 			table.insert(tbl,hslToRgb_normed(h_start,s_start,l_start+diff*(i/(count-1)),1))
 		end
 	end
-	--[[ complementary2
+	-- [[ complementary2
 	local s2=math.random()*0.6+0.2
 	local l2=math.random()*0.6+0.2
 	iterate_color(ret,{h1,s,l},{1-h1,s,l2},10)
 	--]]
-	-- [[ triadic2
+	--[[ triadic2
 	local s2=math.random()*0.6+0.2
 	local l2=math.random()*0.6+0.2
 	local s3=math.random()*0.6+0.2
@@ -444,6 +528,20 @@ function gen_palette( )
 	iterate_color(ret,{h1,s,l},{h2,s2,l2},5)
 	iterate_color(ret,{h2,s2,l2},{h3,s3,l3},5)
 	--iterate_color(ret,{h3,s3,l3},{h1,s,l},5)
+	--]]
+	--[[ anologous2
+	local h2=math.fmod(h1+0.05,1)
+	local h3=math.fmod(h1+0.1,1)
+	local h4=math.fmod(h1+0.2,1)
+	local s2=s+math.random()*0.2-0.1
+	if s2>1 then s2=1 end
+	if s2<0 then s2=0 end
+	local l2=l+math.random()*0.2-0.1
+	if l2>1 then l2=1 end
+	if l2<0 then l2=0 end
+	iterate_color(ret,{h1,s,l},{h2,s,l},5)
+	iterate_color(ret,{h2,s2,l},{h3,s2,l},5)
+	iterate_color(ret,{h3,s2,l},{h4,s2,l2},5)
 	--]]
 	--[[ complementary
 	gen_shades(ret,h1,s,l,0.15,5)
@@ -551,12 +649,10 @@ function gui(  )
 		clear_buffers()
 	end
 	--imgui.SameLine()
-	generate_num_params=generate_num_params or 1
-
-	local changed
-	changed,generate_num_params=imgui.SliderInt("Num params",generate_num_params,1,10)
 	if imgui.Button("Gen function") then
-		print(random_math_series(generate_num_params,-3,3))
+		local nx="local nx="..random_math_series(4,0,3).."\n    "
+		local ny="local ny="..random_math_series(4,0,3).."\n"
+		print("--[[\n"..nx..ny.."\n--]]")
 	end
 
 	--imgui.SameLine()
@@ -702,8 +798,11 @@ function update_func(  )
 	local hh=s[2]/2
 	local iscale=1/config.scale
 	local scale=config.scale
+
 	local v0=config.v0
 	local v1=config.v1
+	local v2=config.v2
+	local v3=config.v3
 
 	local cx=config.cx
 	local cy=config.cy
@@ -721,7 +820,7 @@ function update_func(  )
 		--]]
 		local tx=(x/s[1]-0.5)*scale+cx
 		local ty=(y/s[2]-0.5)*scale+cy
-		local nx,ny=step_iter(tx,ty,v0,v1)
+		local nx,ny=step_iter(tx,ty,v0,v1,v2,v3)
 		local dx=nx-tx
 		local dy=ny-ty
 		local dist=math.sqrt(dx*dx+dy*dy)
@@ -791,7 +890,7 @@ function auto_clear(  )
 		end
 	end
 	local need_clear=false
-	for i=0,6 do
+	for i=0,8 do
 		if config[cfg_pos+i].changing then
 			need_clear=true
 		end
@@ -833,6 +932,20 @@ function line_visit( x0,y0,x1,y1 )
 
     end
 end
+function simple_smooth( x,y,w )
+	local s=size
+	local tx,ty=coord_mapping(x,y)
+
+	local lx=math.floor(tx)
+	local ly=math.floor(ty)
+	local fx=tx-lx
+	local fy=ty-ly
+	tx=math.floor(tx+0.5)
+	ty=math.floor(ty+0.5)
+	if tx>=0 and tx<s[1] and ty>=0 and ty<s[2] then
+		add_visit(tx,ty,w*(1-fx)*(1-fy))
+	end
+end
 function rand_line_visit( x0,y0,x1,y1 )
 	local dx=x1-x0
 	local dy=y1-y0
@@ -842,9 +955,12 @@ function rand_line_visit( x0,y0,x1,y1 )
 	for i=1,config.line_visits do
 		local r=math.random()*d
 
-		local tx=mod(x0+dx*r,size[1])
-		local ty=mod(y0+dy*r,size[2])
-		smooth_visit(tx,ty,1)
+		--local tx=mod(x0+dx*r,size[1])
+		--local ty=mod(y0+dy*r,size[2])
+
+		--smooth_visit(tx,ty,1)
+		--simple_visit(tx,ty,1)
+		simple_smooth(x0+dx*r,y0+dy*r,1)
 	end
 end
 function rot_coord( x,y,angle )
@@ -865,32 +981,80 @@ function reflect_coord( x,y,angle )
 	--]]
 	return x*c+y*s,x*s-y*c
 end
-function barycentric( x,y,ax,ay,bx,by,cx,cy )
+function Barycentric(px,py, ax,ay,bx,by,cx,cy)
 	local v0x=bx-ax
 	local v0y=by-ay
 
 	local v1x=cx-ax
 	local v1y=cy-ay
 
-	local v2x=x-ax
-	local v2y=y-ay
-
-	local d00=v0x*v0x+v0y*v0y
-	local d01=v0x*v1x+v0y*v1y
-	local d11=v1x*v1x+v1y*v1y
-	local d20=v2x*v0x+v2y*v0y
-	local d21=v2x*v1x+v2y*v1y
-
-	local denom=d00*d11-d01*d01
-	local v=(d11*d20-d01*d21)/denom
-	local w=(d00*d21-d01*d20)/denom
-	local u=1-v-w
-	return v,w,u
+	local v2x=px-ax
+	local v2y=py-ay
+    
+    local d00 = v0x*v0x+v0y*v0y
+    local d01 = v0x*v1x+v0y*v1y
+    local d11 = v1x*v1x+v1y*v1y
+    local d20 = v2x*v0x+v2y*v0y
+    local d21 = v2x*v1x+v2y*v1y
+    
+    local denom = d00 * d11 - d01 * d01
+    local retx=(d11 * d20 - d01 * d21) / denom
+    local rety=(d00 * d21 - d01 * d20) / denom
+    local retz= 1.0 - retx - rety
+    return retx,rety,retz
 end
-function from_barycentric( v,w,u,ax,ay,bx,by,cx,cy )
-	local x=v*ax+w*bx+u*cx
-	local y=v*ay+w*by+u*cy
-	return x,y
+function to_barycentric(px,py)
+
+	local angle_offset=0;
+	local a_d=math.pi*2/3.0
+
+	local p1x=math.cos(angle_offset)
+	local p1y=math.sin(angle_offset)
+
+	local p2x=math.cos(a_d+angle_offset)
+	local p2y=math.sin(a_d+angle_offset)
+
+	local p3x=math.cos(-a_d+angle_offset)
+	local p3y=math.sin(-a_d+angle_offset)
+
+	return Barycentric(px,py,p1x,p1y,p2x,p2y,p3x,p3y)
+end
+function from_barycentric(px,py)
+
+	local angle_offset=0;
+
+	local a_d=math.pi*2/3.0
+
+	local p1x=math.cos(angle_offset)
+	local p1y=math.sin(angle_offset)
+
+	local p2x=math.cos(a_d+angle_offset)
+	local p2y=math.sin(a_d+angle_offset)
+
+	local p3x=math.cos(-a_d+angle_offset)
+	local p3y=math.sin(-a_d+angle_offset)
+
+	local rx=p1x*px+p2x*py+p3x*(1-px-py)
+	local ry=p1y*px+p2y*py+p3y*(1-px-py)
+	return rx,ry
+end
+function from_barycentric(px,py,pz)
+
+	local angle_offset=0;
+	local a_d=math.pi*2/3.0
+
+	local p1x=math.cos(angle_offset)
+	local p1y=math.sin(angle_offset)
+
+	local p2x=math.cos(a_d+angle_offset)
+	local p2y=math.sin(a_d+angle_offset)
+
+	local p3x=math.cos(-a_d+angle_offset)
+	local p3y=math.sin(-a_d+angle_offset)
+
+	local rx=p1x*px+p2x*py+p3x*pz
+	local ry=p1y*px+p2y*py+p3y*pz
+	return rx,ry
 end
 function mod_reflect( a,max )
 	local ad=math.floor(a/max)
@@ -944,23 +1108,34 @@ end
 function coord_mapping( tx,ty )
 	local s=STATE.size
 	local dist=s[1]
+	local angle=(2*math.pi)/5
+
 	local sx=s[1]/2
 	local sy=s[2]/2
-	-- [[
 	local cx,cy=tx-sx,ty-sy
 	--return tx,ty
+	--return mod(tx,s[1]),mod(ty,s[2])
+	--[[
+	local a,b,c=to_barycentric(cx,cy)
+	--a=(a-math.floor(a))*1000
+	--b=(b-math.floor(b))*1000
+	--c=(c-math.floor(c))*1000
+	cx,cy=from_barycentric( a,b,c )
+	return cx+sx,cy+sy
 	--]]
 	-- [[
 	local r=math.sqrt(cx*cx+cy*cy)
 	local a=math.atan2(cy,cx)
 
-	r=mod_reflect(r,dist)
-	a=mod(a,math.pi/6)
+	r=mod_reflect(r,dist-1)
+	r=r/(dist-1)
+	r=r*s[1]
 
-	cx=math.cos(a)*r
-	cy=math.sin(a)*r
+	a=mod(a,angle)
+	a=a/angle
+	a=a*s[2]
 
-	return cx,cy
+	return r,a
 	--]]
 	--https://www.redblobgames.com/grids/hexagons/#pixel-to-hex
 	--[=[
@@ -1197,6 +1372,8 @@ function update_real(  )
 	local scale=config.scale
 	local v0=config.v0
 	local v1=config.v1
+	local v2=config.v2
+	local v3=config.v3
 	local cx=config.cx
 	local cy=config.cy
 
@@ -1213,45 +1390,65 @@ function update_real(  )
 		--]]
 		local x=gaussian(0,gen_radius)
 		local y=gaussian(0,gen_radius)
-		--local w=math.exp(-(x*x+y*y))
-		local w=1
+		local sx,sy=x,y
+		local w=math.exp(-(x*x+y*y))
+		--local w=1
 		--local x,y=rand_circl()
-		local lx
-		local ly
+		local lx=x
+		local ly=y
+		x=0
+		y=0
+		local escape_dist_sqr=1.2
+		local escaped=false
+		-- [[
 		for i=1,config.ticking2 do
-			x,y=step_iter(x,y,v0,v1)
+			x,y=step_iter(x,y,v0,v1,v2,v3,sx,sy)
+			if x*x+y*y >escape_dist_sqr then
+				escaped=true
+				break
+			end
+		end
+		--]]
+		if escaped then
+			for i=1,config.ticking2 do
+				x,y=step_iter(x,y,v0,v1,v2,v3,sx,sy)
 
-			local tx=((x-cx)*iscale+0.5)*s[1]
-			local ty=((y-cy)*iscale+0.5)*s[2]
-			--[[ LINE-ISH VISITING
-			if x*x+y*y>1e2 then
-				break
+				local tx=((x-cx)*iscale+0.5)*s[1]
+				local ty=((y-cy)*iscale+0.5)*s[2]
+				--[==[
+				if x*x+y*y>1e10 then
+					break
+				end
+				--]==]
+				--[[ LINE-ISH VISITING
+				
+				if i~=1 then
+					--line_visit(lx,ly,tx,ty) --VERY SLOW!!
+					rand_line_visit(lx,ly,tx,ty)
+				end
+				lx=tx
+				ly=ty
+				--]]
+				--[[ TILING FRACTAL
+				--smooth_visit(tx,ty,w)
+				--]]
+				simple_visit(tx,ty,w)
+				--simple_smooth(tx,ty,w)
+				--gauss_smooth_visit(tx,ty,w,5)
+				--cross_visit(tx,ty,w)
+				--]]
+				--[[ SIMPLE SMOOTH VISITING
+				if tx>=0 and tx<s[1]-1 and ty>=0 and ty<s[2]-1 then
+					smooth_visit(tx,ty)
+				else
+					break
+				end
+				--]]
+				--[[ NON_SMOOTH VISITING
+				local v=visits:get(math.floor(tx),math.floor(ty))
+				visits:set(math.floor(tx),math.floor(ty),v+1)
+				--]]
 			end
-			if lx then
-				--line_visit(lx,ly,tx,ty) --VERY SLOW!!
-				rand_line_visit(lx,ly,tx,ty)
-			end
-			lx=tx
-			ly=ty
-			--]]
-			-- [[ TILING FRACTAL
-			--smooth_visit(tx,ty,w)
-			--]]
-			--simple_visit(tx,ty,w)
-			gauss_smooth_visit(tx,ty,w,5)
-			--cross_visit(tx,ty,w)
-			--]]
-			--[[ SIMPLE SMOOTH VISITING
-			if tx>=0 and tx<s[1]-1 and ty>=0 and ty<s[2]-1 then
-				smooth_visit(tx,ty)
-			else
-				break
-			end
-			--]]
-			--[[ NON_SMOOTH VISITING
-			local v=visits:get(math.floor(tx),math.floor(ty))
-			visits:set(math.floor(tx),math.floor(ty),v+1)
-			--]]
 		end
 	end
 
