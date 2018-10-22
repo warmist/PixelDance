@@ -77,9 +77,6 @@ function update(  )
 	draw_tex:use(0)
 	sec_shader:set_i("tex_main",0)
 	sec_shader:draw_quad()
-	if imgui.Button("Hello") then
-
-	end
 	--draw(texture1) --draw into texture1
 	--other_shader:use()
 	--other_shader:set("s1",texture1)

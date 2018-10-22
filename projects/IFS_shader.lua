@@ -4,7 +4,8 @@ require "colors"
 
 local size=STATE.size
 local max_palette_size=20
-local sample_count=5
+local sample_count=5000
+local need_clear=false
 img_buf=img_buf or make_image_buffer(size[1],size[2])
 visits=visits or make_float_buffer(size[1],size[2])
 function resize( w,h )
@@ -88,6 +89,8 @@ vec2 local_minmax(vec2 pos)
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float nv=texture(tex_main,normed).x;
+	//color = vec4(nv,0,0,1);
+	
 	vec2 lmm=min_max;
 	//vec2 lmm=local_minmax(normed);
 	if(auto_scale_color==1)
@@ -100,6 +103,7 @@ void main(){
 	//mix_palette(pix_out,nv)
 	//img_buf:set(x,y,pix_out)
 	color = mix_palette2(nv);
+	
 /*
     color.rgb = pow(color.rgb, vec3(1.0/gamma));
 	color.rgb*=contrast;
@@ -147,123 +151,8 @@ function draw_visits(  )
 	end
 end
 
-function step_iter( x,y,v0,v1)
-	--[[
-	local nx,ny=x,y
-	--]]
-	--[[
-	local nx=x*x+v0-y*y
-	local ny=2*x*y+v1
-	--print(x,y,nx,ny)
-	--return nzx,nzy
-	--]]
-	--[[
-	local nx=(((v0)-(v1)/((x)*(v0)))-(math.cos((v0)-(x))))*((math.cos((v1)*(y)))+(math.sin(x)/(math.cos(x))))
-	local ny=math.sin(((y)+(v1))*(math.sin(x))/(math.sin((x)*(x))))
-	--]]
-	--local r = x*x+y*y
-	--return x/r+math.sin(y-r*v0),y/r-math.cos(x-r*v1)
-	--local nx=math.sin(math.sin(y))/((math.cos(y))-(y/(x)))/(((math.sin(v0))-(v1/(x)))*(math.sin((y)+(v0))))
-	local x_1=x
-	local x_2=x*x/2
-	local x_3=x*x*x/6
-
-	local y_1=y
-	local y_2=y*y/2
-	local y_3=y*y*y/6
-
-	local r=math.sqrt(x*x+y*y)
-	--[[
-	local nx=x_2*v0-y_2;
-	local ny=y_2*v1/x_2;
-	--]]
-	-- [[
-	local nx=math.sqrt(math.abs(math.cos(x_1-y_2)*v0+math.sin(y_2-x_3)*v1))-math.sqrt(math.abs(math.sin(x_1-y_2)*v1+math.cos(y_2-x_3)*v0))
-	local ny=math.sin(y_1-x_2)*v1+math.cos(x_2-y_3)*v0
-	--]]
-	--[[
-	local nx=((v0)+(v1))+((v1)-(v0))+x_1*(((v1)+(v1))*((v0)+(v0)))+y_1*(((v0)/(v0))*((v1)*(v0)))+y_1*x_1*(((v1)-(v0))*((v1)-(v0)))+x_2*(((v1)/(v0))-((v0)/(v1)))+y_2*(((v0)-(v1))*((v1)+(v1)))+y_2*x_2*(((v1)*(v1))/((v1)-(v0)))+x_3*(((v0)+(v1))*((v0)*(v1)))+y_3*(((v0)*(v0))-((v0)*(v1)))+y_3*x_3*(((v0)+(v0))-((v1)-(v0)))
-	local ny=((v0)/(v0))+((v1)-(v0))+x_1*(((v1)+(v1))*((v0)+(v0)))+y_1*(((v0)+(v1))-((v1)/(v0)))+y_1*x_1*(((v1)/(v1))-((v0)+(v1)))+x_2*(((v1)+(v0))/((v0)-(v1)))+y_2*(((v0)*(v1))+((v0)-(v0)))+y_2*x_2*(((v1)+(v0))*((v1)+(v0)))+x_3*(((v1)-(v1))*((v1)*(v0)))+y_3*(((v1)-(v1))/((v0)*(v0)))+y_3*x_3*(((v0)*(v1))-((v1)/(v1)))
-	--]]
-	--[[
-	local nx=((v1)*(v1))/((v0)/(v1))+x_1*(((v0)-(v0))*((v1)-(v1)))+y_1*(((v1)-(v1))*((v0)+(v1)))+y_1*x_1*(((v0)+(v0))+((v1)/(v0)))+x_2*(((v0)*(v1))+((v1)+(v0)))+y_2*(((v0)+(v1))+((v1)+(v1)))+y_2*x_2*(((v0)+(v0))*((v1)/(v1)))+x_3*(((v0)+(v0))-((v0)/(v1)))+y_3*(((v0)+(v0))*((v1)*(v1)))+y_3*x_3*(((v0)*(v0))-((v0)+(v0)))
-	local ny=((v0)*(v0))+((v1)-(v1))+x_1*(((v0)-(v0))*((v1)*(v1)))+y_1*(((v1)*(v0))+((v0)*(v1)))+y_1*x_1*(((v1)-(v1))-((v1)+(v1)))+x_2*(((v0)/(v0))-((v0)-(v0)))+y_2*(((v1)*(v0))+((v1)*(v0)))+y_2*x_2*(((v0)*(v0))-((v0)/(v0)))+x_3*(((v1)*(v0))*((v0)+(v0)))+y_3*(((v1)*(v1))*((v1)*(v0)))+y_3*x_3*(((v1)*(v1))/((v0)+(v0)))
-	--]]
-	--[[
-	local nx=((v0)-(v0))-((v1)-(v0))+x_1*(((v0)/(v0))-((v1)-(v1)))+y_1*(((v1)+(v0))-((v0)+(v1)))+y_1*x_1*(((v1)+(v0))*((v1)-(v1)))+x_2*(((v0)+(v1))+((v1)/(v0)))+y_2*(((v0)/(v0))+((v0)+(v1)))+y_2*x_2*(((v0)*(v1))*((v1)+(v1)))+x_3*(((v0)-(v0))+((v0)+(v0)))+y_3*(((v1)+(v1))/((v0)*(v1)))+y_3*x_3*(((v1)/(v1))+((v0)/(v1)))
-	local ny=((v1)*(v0))/((v0)/(v1))+x_1*(((v1)*(v1))-((v1)-(v0)))+y_1*(((v0)+(v0))-((v0)-(v0)))+y_1*x_1*(((v1)/(v1))-((v1)/(v0)))+x_2*(((v0)/(v1))/((v0)+(v0)))+y_2*(((v0)/(v0))*((v0)-(v1)))+y_2*x_2*(((v0)*(v0))+((v0)+(v0)))+x_3*(((v0)/(v0))+((v0)/(v0)))+y_3*(((v0)-(v0))+((v1)/(v1)))+y_3*x_3*(((v0)*(v1))+((v0)-(v0)))
-	--]]
-	--[[
-	local nx=math.log(math.abs(x_1*v1))
-	local ny=math.log(math.abs(y_1*v0))
-	--]]
-	--[[
-	local nx=x_1/(y_1-x_1*v0)
-	local ny=x_2/(y_2-x_2*v1)
-	--]]
-	-- make a ring with radius v0
-	--[[
-	local nx,ny
-	if r>v0 then
-		nx=x-(x/r)*v1
-		ny=y-(y/r)*v1
-	else
-		nx=x+(x/r)*v1
-		ny=y+(y/r)*v1
-	end
-	--]]
-	--local ny=math.cos((x/(x+v0)/(y))*(((v0)+(v1))+(math.cos(y))))*y
-
-	--[[
-	local cs=math.cos(v1)
-	local ss=math.sin(v1)
-	local rx=nx*cs-ny*ss
-	local ry=ny*cs+nx*ss
-	nx=rx
-	ny=ry
-	--]]
-	-- [[
-	local delta=math.sqrt(nx*nx+ny*ny)
-	if delta<0.00001 then
-		delta=1
-	end
-	local d=config.move_dist/delta
-	nx=x+nx*d
-	ny=y+ny*d
-	--]]
-	--end
-	return nx,ny
-	--return math.cos(x-y/v1)*x+math.sin(x*x*v0)*v1,math.sin(y-x/v0)*y+math.cos(y*y*v1)*v0
-	--return x+v1,y*math.cos(x)-v0
-end
-function add_visit( x,y,v )
-	visits:set(x,y, visits:get(x,y)+v)
-end
-function safe_visit( x,y,v )
-	if x>=0 and x<STATE.size[1] and y>=0 and y<STATE.size[2] then
-		add_visit(x,y,v)
-	end
-end
-function smooth_visit( tx,ty )
-	local lx=math.floor(tx)
-	local ly=math.floor(ty)
-	local hx,hy=coord_mapping(lx+1,ly+1)
-	hx=math.ceil(hx)
-	hy=math.ceil(hy)
-	local fr_x=tx-lx
-	local fr_y=ty-ly
-
-	--TODO: writes to out of bounds (hx/hy out of bounds)
-
-	safe_visit(lx,ly,(1-fr_x)*(1-fr_y))
-	safe_visit(lx,hy,(1-fr_x)*fr_y)
-	safe_visit(hx,ly,fr_x*(1-fr_y))
-	safe_visit(hx,hy,fr_x*fr_y)
-end
 function clear_buffers(  )
-	img_buf:clear()
-	visits:clear()
-	img_buf:present();
+	need_clear=true
 end
 
 palette=palette or {show=false,colors={{0,0,0,1},{0.8,0,0,1},{0,0,0,1},{0,0.2,0.2,1},{0,0,0,1}}}
@@ -617,14 +506,12 @@ function auto_clear(  )
 			break
 		end
 	end
-	local need_clear=false
+	
 	for i=0,6 do
 		if config[cfg_pos+i].changing then
 			need_clear=true
+			break
 		end
-	end
-	if need_clear then
-		clear_buffers()
 	end
 end
 function mod(a,b)
@@ -977,127 +864,109 @@ function rand_circl(  )
 	local r=math.sqrt(math.random())*config.gen_radius
 	return math.cos(a)*r,math.sin(a)*r
 end
-local add_visit_shader=shaders.Make[==[
+local add_visit_shader=shaders.Make(
+[==[
 #version 330
-#line 982
-
-layout(location=0)out vec4 color;
-in vec3 pos;
-
-uniform vec2 res;
-uniform sampler2D visits_in;
-
-uniform sampler2D points_input;
-
-uniform vec2 params;
-uniform float move_dist;
-uniform int ticks;
+#line 870
+layout(location = 0) in vec3 position;
+out vec3 pos;
 
 uniform vec2 center;
-uniform float iscale;
-
-vec2 fun(vec2 pos)
+uniform float scale;
+uniform int iters;
+uniform int max_iters;
+uniform float seed;
+vec2 func(vec2 p,int it_count,inout float dmax)
 {
-	float v0=params.x;
-	float v1=params.y;
-
-	float x_1=pos.x;
-	float x_2=pos.x*pos.x/2;
-	float x_3=pos.x*pos.x*pos.x/6;
-
-	float y_1=pos.y;
-	float y_2=pos.y*pos.y/2;
-	float y_3=pos.y*pos.y*pos.y/6;
-
-	float nx=sqrt(abs(cos(x_1-y_2)*v0+sin(y_2-x_3)*v1))-sqrt(abs(sin(x_1-y_2)*v1+cos(y_2-x_3)*v0));
-	float ny=sin(y_1-x_2)*v1+cos(x_2-y_3)*v0;
-
-	vec2 ret=vec2(nx,ny);
-	float r=length(ret);
-	if (r<0.0001) r=1;
-	float d=move_dist/r;
-	return pos+ret*d;
+	vec2 s=vec2(0,0);
+	for(int i=0;i<it_count;i++)
+		{
+			s=vec2(s.x*s.x-s.y*s.y+p.x,
+						2*s.x*s.y+p.y);
+			float d=dot(s,s);
+			if(d>dmax)
+				dmax=d;
+		}
+	return s;
 }
-vec2 calc_fun(vec2 tx)
+float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
+vec2 gaussian(float mean,float var,vec2 rnd)
 {
-	vec4 t=texture(points_input,tx);
-	for(int i=0;i<ticks;i++)
-		t.xy=fun(t.xy);
-	return t.xy;
+    return vec2(sqrt(-2 * var * log(rnd.x)) *
+            cos(2 * 3.14159265359 * rnd.y) + mean,
+            sqrt(-2 * var * log(rnd.x)) *
+            sin(2 * 3.14159265359 * rnd.y) + mean);
 }
-vec2 to_global(vec2 input)
+void main()
 {
-	return (input-center)*iscale+0.5;
+	float d=0;
+	float h1=hash(position.xy*seed);
+	float h2=hash(position.xy*5464+vec2(1244,234)*seed);
+	vec2 p_rnd=position.xy+gaussian(0,1,vec2(h1,h2));
+	vec2 p_far=func(p_rnd,max_iters,d);
+	if(d>1)
+		pos.x=1;
+	else
+		pos.x=0;
+	gl_Position.xy = func(p_rnd,iters,d)*scale+center;
+	gl_Position.z = 0;
+    gl_Position.w = 1.0;
+    gl_PointSize=1;
 }
+]==],
+[==[
+#version 330
+#line 997
+
+out vec4 color;
+in vec3 pos;
 void main(){
-	vec2 normed=(pos.xy+vec2(1,1))/2;
-	float w=0;
-	for(int x=0;x<res.x;x++)
-		for(int y=0;y<res.y;y++)
-			{
-				vec2 t=calc_fun(vec2(x,y)/vec2(res));
-				t=to_global(t);
-				t=mod(t,1);
-				float d1=length(normed.xy-t-vec2(1,0));
-				float d2=length(normed.xy-t-vec2(0,1));
-				float d3=length(normed.xy-t-vec2(-1,0));
-				float d4=length(normed.xy-t-vec2(0,-1));
-				float d5=length(normed.xy-t);
-				float d12=min(d1,d2);
-				float d34=min(d3,d4);
-				float d=min(d12,d34);
-				d=min(d,d5)*500;
-				w+=1-smoothstep(0,1,d);//1/(d*d+0.00001);
-			}
-	color = texture(visits_in,normed);
-	color.x+=w;
+ 	//float r = 2*length(gl_PointCoord - 0.5);
+	//float a = 1 - smoothstep(0, 1, r);
+	color=vec4(1,0,0,1);
 }
-]==]
+]==])
 
 visit_tex_tmp1=textures.Make()
-visit_tex_tmp2=textures.Make()
-samples=make_flt_half_buffer(sample_count,sample_count)
-local samples_tex = textures.Make()
+samples=make_flt_buffer(sample_count,1)
 function visit_iter()
 
-	local gen_radius=config.gen_radius
-	for i=0,samples.w*samples.h-1 do
-		--local x=math.random()*gen_radius-gen_radius/2
-		--local y=math.random()*gen_radius-gen_radius/2
-		local x=gaussian(0,gen_radius)
-		local y=gaussian(0,gen_radius)
-		samples.d[i]={x,y,0,0}
-	end
-
 	add_visit_shader:use()
-	visit_tex_tmp1:use(0)
-	visits:write_texture(visit_tex_tmp1)
-
-	visit_tex_tmp2:use(1)
-	visit_tex_tmp2:set(visits.w,visits.h,visits.type)
-
-	samples_tex:use(2)
-	samples:write_texture(samples_tex)
-
-	add_visit_shader:set_i("visits_in",0)
-	add_visit_shader:set_i("points_input",2)
-
 	add_visit_shader:set("center",config.cx,config.cy)
-	add_visit_shader:set("iscale",1/config.scale)
-	add_visit_shader:set("res",samples.w,samples.h)
+	add_visit_shader:set("scale",config.scale)
 
-	add_visit_shader:set("params",config.v0,config.v1)
-	add_visit_shader:set("move_dist",config.move_dist)
-	add_visit_shader:set_i("ticks",config.IFS_steps)
-
-	local target = visit_tex_tmp2
-	if not target:render_to(visits.w,visits.h) then
+	visit_tex_tmp1:use(0)
+	visit_tex_tmp1:set(visits.w,visits.h,visits.type)
+	add_visit_shader:blend_add()
+	add_visit_shader:set_i("max_iters",config.IFS_steps)
+	if not visit_tex_tmp1:render_to(visits.w,visits.h) then
 		error("failed to set framebuffer up")
 	end
-	--__clear()
-	add_visit_shader:draw_quad()
-	target:use(0)
-	visits:read_texture(target)
+	local gen_radius=config.gen_radius
+	for i=0,samples.w*samples.h-1 do
+			--local x=math.random()*gen_radius-gen_radius/2
+			--local y=math.random()*gen_radius-gen_radius/2
+			local x=gaussian(0,gen_radius)
+			local y=gaussian(0,gen_radius)
+			samples.d[i]={x,y,0,0}
+	end
+	for i=1,config.ticking do
+		if need_clear then
+			__clear()
+			need_clear=false
+			--print("Clearing")
+		end
+	
+		for i=1,config.IFS_steps do
+			add_visit_shader:set("seed",math.random())
+			add_visit_shader:set_i("iters",i)
+			add_visit_shader:draw_points(samples.d,samples.w*samples.h)
+		end
+	end
+	add_visit_shader:blend_default()
+
+	visit_tex_tmp1:use(0)
+	visits:read_texture(visit_tex_tmp1)
 	__render_to_window()
 end
 local sample_shader=shaders.Make[[
@@ -1237,6 +1106,7 @@ function update_real(  )
 		end
 	end
 	--]]
+	--[====[
 	for i=1,config.ticking do
 
 		local x=math.random()*gen_radius-gen_radius/2
@@ -1290,11 +1160,7 @@ function update_real(  )
 		
 
 	end
-
-	if config.ticking==0 then
-		for i=0,5 do
-			visit_iter()
-		end
-	end
+	--]====]
+	visit_iter()
 	draw_visits()
 end

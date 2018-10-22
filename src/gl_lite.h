@@ -84,6 +84,9 @@ distribute, and modify this file as you see fit.
 #define GL_CLAMP_VERTEX_COLOR_ARB         0x891A
 #define GL_CLAMP_FRAGMENT_COLOR_ARB       0x891B
 #define GL_CLAMP_READ_COLOR_ARB           0x891C
+#define GL_PROGRAM_POINT_SIZE			  0x8642
+#define GL_POINT_SPRITE					  0x8861
+
 
 typedef char GLchar;
 typedef ptrdiff_t GLintptr;

@@ -222,6 +222,7 @@ iter_funcs={
 }
 ]]
 function step_iter( x,y,v0,v1,v2,v3,sx,sy)
+	local nx,ny
 	--[[
 	local min_dist=math.huge
 	local min_id=1
@@ -240,15 +241,19 @@ function step_iter( x,y,v0,v1,v2,v3,sx,sy)
 	local nx,ny=x,y
 	--]]
 	--[[
-	local nx=y*y/2+x*y*y+sx*v0*x
-	local ny=*x-x*x*x+sy
+	
 	--]]
-	--[[
-	local nx=-(x+v0)/(v1*(sx*sx+sy*sy))-x/v1
-	local ny=y*sy/(v1*(sx*sx+sy*sy))+y/v1
+	-- [[
+	if x>0 then
+		nx=y*y/2+x*y*y+sx*v0*x
+		ny=x*x-x*x*x+sy
+		--nx=-(x+v0)/(v1*(sx*sx+sy*sy))-x/v1
+		--ny=y*sy/(v1*(sx*sx+sy*sy))+y/v1
 	--]]
-	local nx=v0*sx+v1*x*x-v1*y*y+v2*x*sx-v2*y*sy
-	local ny=v0*sy+v1*2*x*y+v2*x*sy*sx+v2*y*sy
+	else
+		nx=v0*sx+v1*x*x-v1*y*y+v2*x*sx-v2*y*sy
+		ny=v0*sy+v1*2*x*y+v2*x*sy*sx+v2*y*sy
+	end
 	--[[
 	local nx=x*x-y*y+sx
 	local ny=2*x*y+sy
@@ -414,9 +419,12 @@ function smooth_visit( tx,ty,w )
 	safe_visit(gx22,gy22,fr_x*fr_y*w)
 end
 function clear_buffers(  )
-	img_buf:clear()
+	--[[img_buf:clear()
 	visits:clear()
 	img_buf:present();
+	]]
+	print("Clear setup")
+	need_clear=true
 end
 function random_math_old( num_params,len )
 	local cur_string="R"
@@ -889,15 +897,16 @@ function auto_clear(  )
 			break
 		end
 	end
-	local need_clear=false
+	--need_clear=false
 	for i=0,8 do
 		if config[cfg_pos+i].changing then
 			need_clear=true
+			break
 		end
 	end
-	if need_clear then
+	--[[if need_clear then
 		clear_buffers()
-	end
+	end]]
 end
 function mod(a,b)
 	local r=math.fmod(a,b)
@@ -1113,7 +1122,7 @@ function coord_mapping( tx,ty )
 	local sx=s[1]/2
 	local sy=s[2]/2
 	local cx,cy=tx-sx,ty-sy
-	--return tx,ty
+	return tx,ty
 	--return mod(tx,s[1]),mod(ty,s[2])
 	--[[
 	local a,b,c=to_barycentric(cx,cy)
@@ -1123,7 +1132,7 @@ function coord_mapping( tx,ty )
 	cx,cy=from_barycentric( a,b,c )
 	return cx+sx,cy+sy
 	--]]
-	-- [[
+	--[[
 	local r=math.sqrt(cx*cx+cy*cy)
 	local a=math.atan2(cy,cx)
 
@@ -1401,13 +1410,22 @@ function update_real(  )
 		local escape_dist_sqr=1.2
 		local escaped=false
 		-- [[
+		local esc_time=0
 		for i=1,config.ticking2 do
 			x,y=step_iter(x,y,v0,v1,v2,v3,sx,sy)
+			if x~=x or y~=y then
+				escaped=false
+				break
+			end
 			if x*x+y*y >escape_dist_sqr then
 				escaped=true
+				esc_time=i
+				x=0
+				y=0
 				break
 			end
 		end
+		w=esc_time/config.ticking2
 		--]]
 		if escaped then
 			for i=1,config.ticking2 do
