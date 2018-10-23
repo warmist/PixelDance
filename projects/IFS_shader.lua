@@ -4,21 +4,34 @@ require "colors"
 
 local size=STATE.size
 local max_palette_size=20
-local sample_count=5000
+local sample_count=500000
 local need_clear=false
-img_buf=img_buf or make_image_buffer(size[1],size[2])
-visits=visits or make_float_buffer(size[1],size[2])
+local str_x="s.x*s.x*s.x*params.x-p.x*p.y*params.y"
+local str_y="p.x*s.y-p.y*s.x+p.x*params.x"
+img_buf=make_image_buffer(size[1],size[2])
 function resize( w,h )
-	img_buf=make_image_buffer(size[1],size[2])
-	visits=make_float_buffer(size[1],size[2])
+	img_buf=make_image_buffer(w,h)
+	size=STATE.size
 end
-
+function make_visits_texture()
+	if visit_tex==nil or visit_tex.w~=size[1] or visit_tex.h~=size[2] then
+		print("making tex")
+		visit_tex={t=textures:Make(),w=size[1],h=size[2]}
+		visit_tex.t:use(0)
+		visit_tex.t:set(size[1],size[2],2)
+	end
+end
+function make_visits_buf(  )
+	if visit_buf==nil or visit_buf.w~=size[1] or visit_buf.h~=size[2] then
+		visit_buf=make_float_buffer(size[1],size[2])
+	end
+end
 tick=tick or 0
 config=make_config({
 	{"render",true,type="boolean"},
+	{"only_last",true,type="boolean"},
 	{"auto_scale_color",false,type="boolean"},
-	{"ticking",0,type="int",min=1,max=10000},
-	{"arg_disp",0,type="float",min=0,max=1},
+	{"ticking",1,type="int",min=1,max=2},
 	{"v0",-0.211,type="float",min=-5,max=5},
 	{"v1",-0.184,type="float",min=-5,max=5},
 	{"IFS_steps",10,type="int",min=1,max=100},
@@ -26,6 +39,7 @@ config=make_config({
 	{"scale",1,type="float",min=0.00001,max=2},
 	{"cx",0,type="float",min=-1,max=1},
 	{"cy",0,type="float",min=-1,max=1},
+	{"min_value",0,type="float",min=0,max=20},
 	{"gen_radius",1,type="float",min=0,max=10},
 },config)
 
@@ -112,17 +126,17 @@ void main(){
 }
 ]==]
 local need_save
-local visit_tex = textures.Make()
-last_pos=last_pos or {0,0}
 function draw_visits(  )
 	local lmax=0
 	local lmin=math.huge
-	local vst=visits
-
+	make_visits_texture()
+	make_visits_buf()
+	visit_tex.t:use(0)
+	visit_buf:read_texture(visit_tex.t)
 	for x=0,size[1]-1 do
 	for y=0,size[2]-1 do
-		local v=vst:get(x,y)
-		if v~=0 then --skip non-visited tiles
+		local v=visit_buf:get(x,y)
+		if v>math.exp(config.min_value)-1 then --skip non-visited tiles
 			if lmax<v then lmax=v end
 			if lmin>v then lmin=v end
 		end
@@ -130,10 +144,9 @@ function draw_visits(  )
 	end
 	lmax=math.log(lmax+1)
 	lmin=math.log(lmin+1)
-
 	log_shader:use()
-	visit_tex:use(0)
-	visits:write_texture(visit_tex)
+	visit_tex.t:use(0)
+	--visits:write_texture(visit_tex)
 
 	set_shader_palette(log_shader)
 	log_shader:set("min_max",lmin,lmax)
@@ -171,20 +184,61 @@ function set_shader_palette(s)
 		s:set(string.format("palette[%d]",i-1),c[1],c[2],c[3],c[4])
 	end
 end
+function iterate_color(tbl, hsl1,hsl2,steps )
+	local hd=hsl2[1]-hsl1[1]
+	local sd=hsl2[2]-hsl1[2]
+	local ld=hsl2[3]-hsl1[3]
+
+	for i=0,steps-1 do
+		local v=i/steps
+		table.insert(tbl,hslToRgb_normed(hsl1[1]+hd*v,hsl1[2]+sd*v,hsl1[3]+ld*v,1))
+	end
+end
 function gen_palette( )
 	local ret={}
 	palette.colors=ret
 
 	local h1=math.random()
-	local s=math.random()*0.3+0.7
+	local s=math.random()*0.6+0.2
 	local l=math.random()*0.6+0.2
+	
 	local function gen_shades(tbl, h_start,s_start,l_start,l_end,count)
 		local diff=l_end-l_start
 		for i=0,count-1 do
 			table.insert(tbl,hslToRgb_normed(h_start,s_start,l_start+diff*(i/(count-1)),1))
 		end
 	end
-	-- [[ complementary
+	--[[ complementary2
+	local s2=math.random()*0.6+0.2
+	local l2=math.random()*0.6+0.2
+	iterate_color(ret,{h1,s,l},{1-h1,s,l2},10)
+	--]]
+	-- [[ triadic2
+	local s2=math.random()*0.6+0.2
+	local l2=math.random()*0.6+0.2
+	local s3=math.random()*0.6+0.2
+	local l3=math.random()*0.6+0.2
+	local h2=math.fmod(h1+0.33,1)
+	local h3=math.fmod(h1+0.66,1)
+	iterate_color(ret,{h1,s,l},{h2,s2,l2},5)
+	iterate_color(ret,{h2,s2,l2},{h3,s3,l3},5)
+	--iterate_color(ret,{h3,s3,l3},{h1,s,l},5)
+	--]]
+	--[[ anologous2
+	local h2=math.fmod(h1+0.05,1)
+	local h3=math.fmod(h1+0.1,1)
+	local h4=math.fmod(h1+0.2,1)
+	local s2=s+math.random()*0.2-0.1
+	if s2>1 then s2=1 end
+	if s2<0 then s2=0 end
+	local l2=l+math.random()*0.2-0.1
+	if l2>1 then l2=1 end
+	if l2<0 then l2=0 end
+	iterate_color(ret,{h1,s,l},{h2,s,l},5)
+	iterate_color(ret,{h2,s2,l},{h3,s2,l},5)
+	iterate_color(ret,{h3,s2,l},{h4,s2,l2},5)
+	--]]
+	--[[ complementary
 	gen_shades(ret,h1,s,l,0.15,5)
 	gen_shades(ret,1-h1,s,0.15,l,5)
 	--]]
@@ -287,11 +341,16 @@ function gui(  )
 	end
 
 	tile_count=tile_count or 1
-	_,tile_count=imgui.SliderInt("tile count:",tile_count,1,8)
+	_,tile_count=imgui.SliderInt("Tile count",tile_count,1,8)
 	if imgui.Button("Save image") then
 		--this saves too much (i.e. all gui and stuff, we need to do it in correct place (or render to texture)
 		--save_img(tile_count)
 		need_save=tile_count
+	end
+	if imgui.Button("Rand function") then
+		str_x="p.x*p.x*cos(s.x/params.x)+s.x-params.x"
+		str_y="p.y*s.x-params.y/s.y"
+		make_visit_shader(true)
 	end
 	imgui.End()
 end
@@ -412,77 +471,7 @@ void main(){
 function gl_mod( x,y )
 	return x-y*math.floor(x/y)
 end
-function update_func(  )
-	local s=STATE.size
-	local hw=s[1]/2
-	local hh=s[2]/2
-	local iscale=1/config.scale
-	local scale=config.scale
-	local v0=config.v0
-	local v1=config.v1
-
-	local cx=config.cx
-	local cy=config.cy
-
-	-- [==[
-	local vst=visits
-	local max=0
-	local min=999999999999
-	local avg=0
-	for x=0,s[1]-1 do
-	for y=0,s[2]-1 do
-		--[[
-		local tx=((x-cx)*iscale+0.5)*s[1]
-		local ty=((y-cy)*iscale+0.5)*s[2]
-		--]]
-		local tx=(x/s[1]-0.5)*scale+cx
-		local ty=(y/s[2]-0.5)*scale+cy
-		local nx,ny=step_iter(tx,ty,v0,v1)
-		local dx=nx-tx
-		local dy=ny-ty
-		local dist=math.sqrt(dx*dx+dy*dy)
-		if dist>max then max=dist end
-		if dist<min then min=dist end
-		avg=avg+dist
-		vst:set(x,y,dist)
-	end
-	end
-	avg=avg/(s[1]*s[2])
-	local pix_out=pixel()
-	imgui.Begin("IFS play")
-	imgui.Text(string.format("Stats:%g %g %g",min,avg,max))
-	imgui.End()
-	for x=0,s[1]-1 do
-	for y=0,s[2]-1 do
-		--[[local tx=(x/s[1]-0.5)*scale
-		local ty=(y/s[2]-0.5)*scale
-		local nx,ny=step_iter(tx,ty,v0,v1)
-		local dx=nx-tx
-		local dy=ny-ty
-		local dist=dx*dx+dy*dy]]
-		--local dist=visits:get(x,y)
-		local dist=vst:get(x,y)
-		--mix(pix_out,c_u8,c_back,dist)
-		mix_palette(pix_out,gl_mod(dist,1))
-		--pix_out={0,0,0,1}
-		img_buf:set(x,y,pix_out)
-	end
-	end
-	--]==]
-	--[==[
-	local pix_out=pixel()
-	for x=0,s[1]-1 do
-	for y=0,s[2]-1 do
-		local tx=(x/s[1]-0.5)*scale+cx
-		local ty=(y/s[2]-0.5)*scale+cy
-		mix_palette(pix_out,gl_mod(tx,1))
-		img_buf:set(x,y,pix_out)
-	end
-	end
-	--]==]
-	img_buf:present()
-end
-function update_func_shader( ... )
+function update_func_shader(  )
 	__no_redraw()
 	__clear()
 	func_shader:use()
@@ -657,22 +646,23 @@ end
 
 function coord_mapping( tx,ty )
 	local s=STATE.size
-	local dist=10
+	local dist=s[1]
+	local angle=math.pi/4
 	local sx=s[1]/2
 	local sy=s[2]/2
-	--[[
+	-- [[
 	local cx,cy=tx-sx,ty-sy
-	return tx,ty
+	--return tx,ty
 	--]]
-	--[[
+	-- [[
 	local r=math.sqrt(cx*cx+cy*cy)
 	local a=math.atan2(cy,cx)
 
-	r=mod_reflect(r,dist)
-	a=mod(a,math.pi/2)
-
-	cx=math.cos(a)*r
-	cy=math.sin(a)*r
+	r=mod(r,dist)
+	a=mod(a,angle)
+	r=r/dist
+	a=a/angle
+	return r*s[1],a*s[2]
 	--]]
 	--https://www.redblobgames.com/grids/hexagons/#pixel-to-hex
 	--[=[
@@ -835,7 +825,7 @@ function coord_mapping( tx,ty )
     --]=]
 	--]]
 	--return tx,ty
-	return mod(tx,s[1]),mod(ty,s[2])
+	--return mod(tx,s[1]),mod(ty,s[2])
 	--[[
 	local div_x=math.floor(tx/s[1])
 	local div_y=math.floor(ty/s[2])
@@ -864,28 +854,33 @@ function rand_circl(  )
 	local r=math.sqrt(math.random())*config.gen_radius
 	return math.cos(a)*r,math.sin(a)*r
 end
-local add_visit_shader=shaders.Make(
-[==[
+function make_visit_shader( force )
+if add_visit_shader==nil or force then
+	add_visit_shader=shaders.Make(
+string.format([==[
 #version 330
 #line 870
 layout(location = 0) in vec3 position;
 out vec3 pos;
+
+#define M_PI 3.1415926535897932384626433832795
 
 uniform vec2 center;
 uniform float scale;
 uniform int iters;
 uniform int max_iters;
 uniform float seed;
-vec2 func(vec2 p,int it_count,inout float dmax)
+uniform float move_dist;
+uniform vec2 params;
+vec2 func(vec2 p,int it_count)
 {
-	vec2 s=vec2(0,0);
+	vec2 s=vec2(p.x,p.y);
 	for(int i=0;i<it_count;i++)
 		{
-			s=vec2(s.x*s.x-s.y*s.y+p.x,
-						2*s.x*s.y+p.y);
-			float d=dot(s,s);
-			if(d>dmax)
-				dmax=d;
+			float l=sqrt(dot(s,s));
+			s=vec2(%s,%s);
+			s/=l;
+			s*=move_dist;
 		}
 	return s;
 }
@@ -897,23 +892,34 @@ vec2 gaussian(float mean,float var,vec2 rnd)
             sqrt(-2 * var * log(rnd.x)) *
             sin(2 * 3.14159265359 * rnd.y) + mean);
 }
+vec2 mapping(vec2 p)
+{
+	return mod(p+vec2(1),2)-vec2(1);
+	/*float angle=M_PI/4;
+	float r=length(p);
+	float a=atan(p.y,p.x);
+	r=mod(r,2);
+	a=mod(a,angle);
+	a/=angle;
+	return vec2(r-1,a*2-1);*/
+}
 void main()
 {
 	float d=0;
-	float h1=hash(position.xy*seed);
-	float h2=hash(position.xy*5464+vec2(1244,234)*seed);
-	vec2 p_rnd=position.xy+gaussian(0,1,vec2(h1,h2));
-	vec2 p_far=func(p_rnd,max_iters,d);
+	//float h1=hash(position.xy*seed);
+	//float h2=hash(position.xy*5464+vec2(1244,234)*seed);
+	//vec2 p_rnd=position.xy+gaussian(0,1,vec2(h1,h2));
+	/*vec2 p_far=func(p_rnd,max_iters);
 	if(d>1)
 		pos.x=1;
 	else
-		pos.x=0;
-	gl_Position.xy = func(p_rnd,iters,d)*scale+center;
+		pos.x=0;*/
+	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     gl_PointSize=1;
 }
-]==],
+]==],str_x,str_y),
 [==[
 #version 330
 #line 997
@@ -921,246 +927,67 @@ void main()
 out vec4 color;
 in vec3 pos;
 void main(){
- 	//float r = 2*length(gl_PointCoord - 0.5);
-	//float a = 1 - smoothstep(0, 1, r);
-	color=vec4(1,0,0,1);
+ 	float r = 2*length(gl_PointCoord - 0.5);
+	float a = 1 - smoothstep(0, 1, r);
+	color=vec4(a,0,0,1);
 }
 ]==])
+end
 
-visit_tex_tmp1=textures.Make()
-samples=make_flt_buffer(sample_count,1)
+end
+make_visit_shader(true)
+if samples==nil or samples.w~=sample_count then
+	samples=make_flt_buffer(sample_count,1)
+end
 function visit_iter()
-
+	make_visits_texture()
+	make_visit_shader()
 	add_visit_shader:use()
 	add_visit_shader:set("center",config.cx,config.cy)
 	add_visit_shader:set("scale",config.scale)
+	add_visit_shader:set("params",config.v0,config.v1)
+	add_visit_shader:set("move_dist",config.move_dist)
 
-	visit_tex_tmp1:use(0)
-	visit_tex_tmp1:set(visits.w,visits.h,visits.type)
+	visit_tex.t:use(0)
 	add_visit_shader:blend_add()
 	add_visit_shader:set_i("max_iters",config.IFS_steps)
-	if not visit_tex_tmp1:render_to(visits.w,visits.h) then
+	if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
 		error("failed to set framebuffer up")
 	end
 	local gen_radius=config.gen_radius
-	for i=0,samples.w*samples.h-1 do
-			--local x=math.random()*gen_radius-gen_radius/2
-			--local y=math.random()*gen_radius-gen_radius/2
-			local x=gaussian(0,gen_radius)
-			local y=gaussian(0,gen_radius)
-			samples.d[i]={x,y,0,0}
-	end
+	
 	for i=1,config.ticking do
 		if need_clear then
 			__clear()
 			need_clear=false
 			--print("Clearing")
 		end
-	
-		for i=1,config.IFS_steps do
-			add_visit_shader:set("seed",math.random())
-			add_visit_shader:set_i("iters",i)
-			add_visit_shader:draw_points(samples.d,samples.w*samples.h)
+		for i=0,samples.w*samples.h-1 do
+			--local x=math.random()*gen_radius-gen_radius/2
+			--local y=math.random()*gen_radius-gen_radius/2
+			local x=gaussian(0,gen_radius)
+			local y=gaussian(0,gen_radius)
+			samples.d[i]={x,y,0,0}
 		end
-	end
-	add_visit_shader:blend_default()
-
-	visit_tex_tmp1:use(0)
-	visits:read_texture(visit_tex_tmp1)
-	__render_to_window()
-end
-local sample_shader=shaders.Make[[
-#version 330
-
-layout(location=0)out vec4 color;
-in vec3 pos;
-
-uniform vec2 res;
-uniform sampler2D tex_main;
-
-uniform vec2 params;
-uniform float move_dist;
-uniform vec2 center;
-uniform float scale;
-
-uniform int ticks;
-
-vec2 fun(vec2 pos)
-{
-	float v0=params.x;
-	float v1=params.y;
-
-	float x_1=pos.x;
-	float x_2=pos.x*pos.x/2;
-	float x_3=pos.x*pos.x*pos.x/6;
-
-	float y_1=pos.y;
-	float y_2=pos.y*pos.y/2;
-	float y_3=pos.y*pos.y*pos.y/6;
-
-	float nx=sqrt(abs(cos(x_1-y_2)*v0+sin(y_2-x_3)*v1))-sqrt(abs(sin(x_1-y_2)*v1+cos(y_2-x_3)*v0));
-	float ny=sin(y_1-x_2)*v1+cos(x_2-y_3)*v0;
-
-	vec2 ret=vec2(nx,ny);
-	float r=length(ret);
-	if (r<0.0001) r=1;
-	float d=move_dist/r;
-	return pos+ret*d;
-}
-
-void main(){
-	vec2 normed=(pos.xy+vec2(1,1))/2;
-	vec4 t=texture(tex_main,normed);
-	for(int i=0;i<ticks;i++)
-		t.xy=fun(t.xy);
-	color = vec4(t.x,t.y,0,1);
-}
-]]
-
-
-local to_sample = textures.Make()
-
-function shader_iter()
-	local gen_radius=config.gen_radius
-	for i=0,samples.w*samples.h-1 do
-		--local x=math.random()*gen_radius-gen_radius/2
-		--local y=math.random()*gen_radius-gen_radius/2
-		local x=gaussian(0,gen_radius)
-		local y=gaussian(0,gen_radius)
-		samples.d[i]={x,y,0,0}
-	end
-	local cx=config.cx
-	local cy=config.cy
-	local iscale=1/config.scale
-	sample_shader:use()
-
-	from_sample:use(0)
-	samples:write_texture(from_sample)
-	to_sample:use(1)
-	to_sample:set(samples.w,samples.h,samples.type)
-
-	sample_shader:set_i("tex_main",0)
-	sample_shader:set("center",cx,cy)
-	sample_shader:set("scale",config.scale)
-	sample_shader:set("params",config.v0,config.v1)
-	sample_shader:set("move_dist",config.move_dist)
-	sample_shader:set_i("ticks",config.IFS_steps)
-
-	if not to_sample:render_to(samples.w,samples.h) then
-		error("failed to set framebuffer up")
-	end
-	__clear()
-	sample_shader:draw_quad()
-	__render_to_window()
-
-	
-	--[[
-	samples:read_texture(to_sample)
-	local s=STATE.size
-	for x=0,samples.w-1 do
-		for y=0,samples.h-1 do
-			local v=samples:get(x,y)
-			--print(v.r,v.g,v.b,v.a)
-			local tx=((v.r-cx)*iscale+0.5)*s[1]
-			local ty=((v.g-cy)*iscale+0.5)*s[2]
-			--print(tx,ty)
-			local gx=gaussian(0,config.arg_disp)
-			local gy=gaussian(0,config.arg_disp)
-			tx,ty=coord_mapping(tx+gx,ty+gy)
-			if tx>=0 and math.floor(tx+0.5)<s[1] and ty>=0 and math.floor(ty+0.5)<s[2] then
-				local d=gx*gx+gy*gy
-				local v=math.exp(-d*5)
-				if v>0 then
-					if v>1 then v=1 end
-					add_visit(math.floor(tx+0.5),math.floor(ty+0.5),v)
-				end
+		if config.only_last then
+			add_visit_shader:set("seed",math.random())
+			add_visit_shader:set_i("iters",config.IFS_steps)
+			add_visit_shader:draw_points(samples.d,samples.w*samples.h)
+		else
+			for i=1,config.IFS_steps do
+				add_visit_shader:set("seed",math.random())
+				add_visit_shader:set_i("iters",i)
+				add_visit_shader:draw_points(samples.d,samples.w*samples.h)
 			end
 		end
 	end
-	--]]
+	add_visit_shader:blend_default()
+	__render_to_window()
 end
 function update_real(  )
 	__no_redraw()
 	__clear()
-
-	local s=STATE.size
 	auto_clear()
-
-	local hw=s[1]/2
-	local hh=s[2]/2
-	local iscale=1/config.scale
-	local scale=config.scale
-	local v0=config.v0
-	local v1=config.v1
-	local cx=config.cx
-	local cy=config.cy
-
-	local ad=config.arg_disp
-	local gen_radius=config.gen_radius
-	-- [[
-	if imgui.Button("Rand") then
-		for x=0,visits.w-1 do
-			for y=0,visits.h-1 do
-				visits:set(x,y,math.random()*8*x*x*y)
-			end
-		end
-	end
-	--]]
-	--[====[
-	for i=1,config.ticking do
-
-		local x=math.random()*gen_radius-gen_radius/2
-		local y=math.random()*gen_radius-gen_radius/2
-
-		local lx
-		local ly
-		for i=1,config.IFS_steps do
-			x,y=step_iter(x,y,v0,v1)
-		end
-			--[[
-			x=mod(x,1000)
-			y=mod(y,1000)
-			--]]
-			
-			local tx=((x-cx)*iscale+0.5)*s[1]
-			local ty=((y-cy)*iscale+0.5)*s[2]
-			--[[ LINE-ISH VISITING
-			if x*x+y*y>1e2 then
-				break
-			end
-			if lx then
-				--line_visit(lx,ly,tx,ty) --VERY SLOW!!
-				rand_line_visit(lx,ly,tx,ty)
-			end
-			lx=tx
-			ly=ty
-			--]]
-			--[[ TILING FRACTAL
-			tx,ty=coord_mapping(tx,ty)
-			smooth_visit(tx,ty)
-			--]]
-			-- [[
-			tx,ty=coord_mapping(tx,ty)
-			if tx>=0 and math.floor(tx+0.5)<s[1] and ty>=0 and math.floor(ty+0.5)<s[2] then
-				add_visit(math.floor(tx+0.5),math.floor(ty+0.5),1)
-			end
-			--]]
-			--]]
-			--[[ SIMPLE SMOOTH VISITING
-			if tx>=0 and tx<s[1]-1 and ty>=0 and ty<s[2]-1 then
-				smooth_visit(tx,ty)
-			else
-				break
-			end
-			--]]
-			--[[ NON_SMOOTH VISITING
-			local v=visits:get(math.floor(tx),math.floor(ty))
-			visits:set(math.floor(tx),math.floor(ty),v+1)
-			--]]
-		
-
-	end
-	--]====]
 	visit_iter()
 	draw_visits()
 end

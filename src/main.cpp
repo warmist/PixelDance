@@ -242,6 +242,7 @@ static int unset_render_target(lua_State* L)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	auto s = ImGui::GetIO().DisplaySize;
 	glViewport(0, 0, s.x, s.y);
+	glUseProgram(0);
 	return 0;
 }
 struct project {
@@ -540,7 +541,7 @@ int main(int argc, char** argv)
             //project no longer exists, deselect it
             selected_project=-1;
         }
-
+		unset_render_target(nullptr);
         ImGui::Begin("Projects");
 		ImGui::Text("FPS:%g", ImGui::GetIO().Framerate);
         const char* project_name = "<no project>";
@@ -588,6 +589,7 @@ int main(int argc, char** argv)
             ImGui::Text("%s", s.c_str());
         ImGui::EndChild();
         ImGui::End();
+		
 		if(auto_redraw)
 		{
 			window.clear();
