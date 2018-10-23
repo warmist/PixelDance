@@ -4,7 +4,7 @@ require "colors"
 
 local size=STATE.size
 local max_palette_size=20
-local sample_count=500000
+local sample_count=50000
 local need_clear=false
 local str_x="s.x*s.x*s.x*params.x-p.x*p.y*params.y"
 local str_y="p.x*s.y-p.y*s.x+p.x*params.x"
@@ -331,6 +331,46 @@ function save_img(tile_count)
 	end
 end
 
+local terminal_symbols={["s.x"]=5,["s.y"]=5,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1}
+local normal_symbols={["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=8,["(R)*(R)"]=16,["(R)-(R)"]=30,["(R)+(R)"]=30}
+
+function normlize( tbl )
+	local sum=0
+	for i,v in pairs(tbl) do
+		sum=sum+v
+	end
+	for i,v in pairs(tbl) do
+		tbl[i]=tbl[i]/sum
+	end
+end
+normlize(terminal_symbols)
+normlize(normal_symbols)
+function rand_weighted(tbl)
+	local r=math.random()
+	local sum=0
+	for i,v in pairs(tbl) do
+		sum=sum+v
+		if sum>= r then
+			return i
+		end
+	end
+end
+function random_math_old( len )
+	local cur_string="R"
+
+	function M(  )
+		return rand_weighted(normal_symbols)
+	end
+	function MT(  )
+		return rand_weighted(terminal_symbols)
+	end
+
+	while #cur_string<len do
+		cur_string=string.gsub(cur_string,"R",M)
+	end
+	cur_string=string.gsub(cur_string,"R",MT)
+	return cur_string
+end
 function gui(  )
 	imgui.Begin("IFS play")
 	palette_chooser()
@@ -348,9 +388,13 @@ function gui(  )
 		need_save=tile_count
 	end
 	if imgui.Button("Rand function") then
-		str_x="p.x*p.x*cos(s.x/params.x)+s.x-params.x"
-		str_y="p.y*s.x-params.y/s.y"
+		str_x=random_math_old(50)
+		str_y=random_math_old(50)
+		print("==============")
+		print(str_x)
+		print(str_y)
 		make_visit_shader(true)
+		need_clear=true
 	end
 	imgui.End()
 end
@@ -647,7 +691,7 @@ end
 function coord_mapping( tx,ty )
 	local s=STATE.size
 	local dist=s[1]
-	local angle=math.pi/4
+	local angle=(2*math.pi)/5
 	local sx=s[1]/2
 	local sy=s[2]/2
 	-- [[
@@ -894,14 +938,15 @@ vec2 gaussian(float mean,float var,vec2 rnd)
 }
 vec2 mapping(vec2 p)
 {
-	return mod(p+vec2(1),2)-vec2(1);
-	/*float angle=M_PI/4;
+	//return mod(p+vec2(1),2)-vec2(1);
+
+	float angle=(2*M_PI)/5;
 	float r=length(p);
 	float a=atan(p.y,p.x);
 	r=mod(r,2);
 	a=mod(a,angle);
 	a/=angle;
-	return vec2(r-1,a*2-1);*/
+	return vec2(r-1,a*2-1);
 }
 void main()
 {
