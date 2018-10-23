@@ -332,7 +332,7 @@ function save_img(tile_count)
 end
 
 local terminal_symbols={["s.x"]=5,["s.y"]=5,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1}
-local normal_symbols={["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=8,["(R)*(R)"]=16,["(R)-(R)"]=30,["(R)+(R)"]=30}
+local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=8,["(R)*(R)"]=16,["(R)-(R)"]=30,["(R)+(R)"]=30}
 
 function normlize( tbl )
 	local sum=0
@@ -698,7 +698,7 @@ function coord_mapping( tx,ty )
 	local cx,cy=tx-sx,ty-sy
 	--return tx,ty
 	--]]
-	-- [[
+	--[[
 	local r=math.sqrt(cx*cx+cy*cy)
 	local a=math.atan2(cy,cx)
 
@@ -869,7 +869,7 @@ function coord_mapping( tx,ty )
     --]=]
 	--]]
 	--return tx,ty
-	--return mod(tx,s[1]),mod(ty,s[2])
+	return mod(tx,s[1]),mod(ty,s[2])
 	--[[
 	local div_x=math.floor(tx/s[1])
 	local div_y=math.floor(ty/s[2])
@@ -923,8 +923,8 @@ vec2 func(vec2 p,int it_count)
 		{
 			float l=sqrt(dot(s,s));
 			s=vec2(%s,%s);
-			s/=l;
-			s*=move_dist;
+			//s/=l;
+			//s*=move_dist;
 		}
 	return s;
 }
@@ -938,7 +938,7 @@ vec2 gaussian(float mean,float var,vec2 rnd)
 }
 vec2 mapping(vec2 p)
 {
-	//return mod(p+vec2(1),2)-vec2(1);
+	return mod(p+vec2(1),2)-vec2(1);
 
 	float angle=(2*M_PI)/5;
 	float r=length(p);
