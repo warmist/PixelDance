@@ -160,7 +160,7 @@ static int draw_array_points(lua_State* L)
 	size_t count = luaL_checkinteger(L, 3);
 	auto pos_idx = glGetAttribLocation(s->id, "position");
 	glEnableVertexAttribArray(pos_idx);
-	glVertexAttribPointer(pos_idx, 4, GL_FLOAT, false, 0, data);
+	glVertexAttribPointer(pos_idx, 2, GL_FLOAT, false, 0, data);
 	glEnable(GL_PROGRAM_POINT_SIZE);
 	glEnable(GL_POINT_SPRITE);
 	glDrawArrays(GL_POINTS, 0, count);

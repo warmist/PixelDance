@@ -937,7 +937,7 @@ end
 end
 make_visit_shader(true)
 if samples==nil or samples.w~=sample_count then
-	samples=make_flt_buffer(sample_count,1)
+	samples=make_flt_half_buffer(sample_count,1)
 end
 function visit_iter()
 	make_visits_texture()
