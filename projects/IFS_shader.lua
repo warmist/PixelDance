@@ -6,8 +6,8 @@ local size=STATE.size
 local max_palette_size=20
 local sample_count=50000
 local need_clear=false
-local str_x="s.x*s.x*s.x*params.x-p.x*p.y*params.y"
-local str_y="p.x*s.y-p.y*s.x+p.x*params.x"
+str_x=str_x or "s.x*s.x*s.x*params.x-p.x*p.y*params.y"
+str_y=str_y or "p.x*s.y-p.y*s.x+p.x*params.x"
 img_buf=make_image_buffer(size[1],size[2])
 function resize( w,h )
 	img_buf=make_image_buffer(w,h)
@@ -938,7 +938,8 @@ vec2 gaussian(float mean,float var,vec2 rnd)
 }
 vec2 mapping(vec2 p)
 {
-	return mod(p+vec2(1),2)-vec2(1);
+	return p;
+	//return mod(p+vec2(1),2)-vec2(1);
 
 	float angle=(2*M_PI)/5;
 	float r=length(p);
@@ -951,6 +952,8 @@ vec2 mapping(vec2 p)
 void main()
 {
 	float d=0;
+	
+
 	//float h1=hash(position.xy*seed);
 	//float h2=hash(position.xy*5464+vec2(1244,234)*seed);
 	//vec2 p_rnd=position.xy+gaussian(0,1,vec2(h1,h2));
@@ -960,9 +963,10 @@ void main()
 	else
 		pos.x=0;*/
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
+	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
+	gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
-    gl_PointSize=1;
 }
 ]==],str_x,str_y),
 [==[
@@ -1000,7 +1004,7 @@ function visit_iter()
 		error("failed to set framebuffer up")
 	end
 	local gen_radius=config.gen_radius
-	
+
 	for i=1,config.ticking do
 		if need_clear then
 			__clear()
