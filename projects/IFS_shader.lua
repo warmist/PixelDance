@@ -29,7 +29,7 @@ end
 tick=tick or 0
 config=make_config({
 	{"render",true,type="boolean"},
-	{"only_last",true,type="boolean"},
+	{"only_last",false,type="boolean"},
 	{"auto_scale_color",false,type="boolean"},
 	{"ticking",1,type="int",min=1,max=2},
 	{"v0",-0.211,type="float",min=-5,max=5},
@@ -967,7 +967,7 @@ void main()
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
 	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
 	//gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
-	gl_PointSize=1;
+	gl_PointSize=5;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
@@ -980,9 +980,10 @@ void main()
 out vec4 color;
 in vec3 pos;
 void main(){
-	//float rr = abs(pos.y)/1.0;
-	//float delta_size=(1-0.2)*rr+0.2;
-	float delta_size=1;
+	float rr = -pos.x+0.5;//length(pos.xy)/1.0;
+	rr=clamp((rr/2),0,1);
+	float delta_size=(1-0.2)*rr+0.2;
+	//float delta_size=1;
  	float r = 2*length(gl_PointCoord - 0.5)/(delta_size);
 	float a = 1 - smoothstep(0, 1, r);
 	//rr=clamp((rr),0,1);

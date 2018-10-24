@@ -26,7 +26,7 @@ function make_buffer( typename,type_id,default_pixel )
 			__read_fb(t.d,t.w,t.h)
 		end
 		img.save=function ( t,path,suffix )
-			__save_png(t,path,suffix)
+			__save_png(t,path,suffix,true)
 		end
 		img.clear=function ( t,c )
 			local pix=c or t.pixel()

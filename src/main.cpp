@@ -137,8 +137,16 @@ static int save_image(lua_State* L)
     size_t suffix_len = 0;
     const char* suffix = luaL_optlstring(L, 3, "", &suffix_len);
 
+    bool flip = lua_toboolean(L,4);
 
-    auto ret = stbi_write_png(path, w, h, 4, data, w * 4);
+    int ret;
+    if(!flip)
+        ret = stbi_write_png(path, w, h, 4, data, w * 4);
+    else
+    {
+        auto last_row = data + (w * 4 * (h - 1));
+        ret = stbi_write_png(path, w, h, 4, last_row, -w * 4);
+    }
     if (suffix_len != 0)
     {
         auto f = fopen(path, "ab");
