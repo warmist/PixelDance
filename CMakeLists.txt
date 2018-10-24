@@ -76,3 +76,4 @@ add_executable(${TARGET_NAME}
 
 target_link_libraries(${TARGET_NAME}  ${SFML_LIBRARIES} ${SFML_DEPENDENCIES} ${LUA}/lua51.lib )
 install(TARGETS ${TARGET_NAME} DESTINATION .)
+install(DIRECTORY projects DESTINATION .)
