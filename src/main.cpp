@@ -476,7 +476,12 @@ int main(int argc, char** argv)
     project current_project;
 	current_project.state = { csize ,&back_buffer};
     current_project.init_lua(argv[1]);
-	
+
+    float default_alpha;
+    {
+        auto& style = ImGui::GetStyle();
+        default_alpha = style.Alpha;
+    }
     int selected_project = -1;
     int old_selected = selected_project;
     sf::Clock deltaClock;
@@ -529,6 +534,18 @@ int main(int argc, char** argv)
             }
         }
         ImGui::SFML::Update(window, deltaClock.restart());
+        auto& io = ImGui::GetIO();
+        if (!io.WantCaptureMouse)
+        {
+            auto& style = ImGui::GetStyle();
+            style.Alpha = default_alpha*0.1;
+        }
+        else
+        {
+            auto& style = ImGui::GetStyle();
+            style.Alpha = default_alpha;
+        }
+
         if(project_exists)
         {
     		if(need_reload)
