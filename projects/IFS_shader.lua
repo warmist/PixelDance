@@ -37,8 +37,8 @@ config=make_config({
 	{"IFS_steps",10,type="int",min=1,max=100},
 	{"move_dist",0.1,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
-	{"cx",0,type="float",min=-1,max=1},
-	{"cy",0,type="float",min=-1,max=1},
+	{"cx",0,type="float",min=-10,max=10},
+	{"cy",0,type="float",min=-10,max=10},
 	{"min_value",0,type="float",min=0,max=20},
 	{"gen_radius",1,type="float",min=0,max=10},
 },config)
@@ -966,9 +966,11 @@ void main()
 		pos.x=0;*/
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
 	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
-	gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
+	//gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
+	gl_PointSize=1;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
+    pos=gl_Position.xyz;
 }
 ]==],str_x,str_y),
 [==[
@@ -978,8 +980,14 @@ void main()
 out vec4 color;
 in vec3 pos;
 void main(){
- 	float r = 2*length(gl_PointCoord - 0.5);
+	//float rr = abs(pos.y)/1.0;
+	//float delta_size=(1-0.2)*rr+0.2;
+	float delta_size=1;
+ 	float r = 2*length(gl_PointCoord - 0.5)/(delta_size);
 	float a = 1 - smoothstep(0, 1, r);
+	//rr=clamp((rr),0,1);
+	//rr*=rr;
+	//a=clamp(a,0,1);
 	color=vec4(a,0,0,1);
 }
 ]==])
@@ -1020,6 +1028,7 @@ function visit_iter()
 			local y=gaussian(0,gen_radius)
 			samples.d[i]={x,y,0,0}
 		end
+
 		if config.only_last then
 			add_visit_shader:set("seed",math.random())
 			add_visit_shader:set_i("iters",config.IFS_steps)
