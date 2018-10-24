@@ -147,3 +147,10 @@ function gaussian (mean, variance)
     return  math.sqrt(-2 * variance * math.log(math.random())) *
             math.cos(2 * math.pi * math.random()) + mean
 end
+
+function gaussian2 (mean1, variance1, mean2, variance2)
+	local r1=math.random()
+	local r2=math.random()
+    return  math.sqrt(-2 * variance1 * math.log(r1)) * math.cos(2 * math.pi * r2) + mean1,
+    		math.sqrt(-2 * variance2 * math.log(r1)) * math.sin(2 * math.pi * r2) + mean2,
+end

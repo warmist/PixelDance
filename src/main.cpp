@@ -253,6 +253,14 @@ static int unset_render_target(lua_State* L)
 	glUseProgram(0);
 	return 0;
 }
+sf::Window* main_win=nullptr;
+static int set_window_size(lua_State* L)
+{
+	int w = luaL_checkint(L, 1);
+	int h = luaL_checkint(L, 2);
+	main_win->setSize(sf::Vector2u(w, h));
+	return 0;
+}
 struct project {
     lua_State *L=nullptr;
     std::string path;
@@ -303,6 +311,9 @@ struct project {
 
 		lua_pushcfunction(L, read_fb);
 		lua_setglobal(L, "__read_fb");
+
+		lua_pushcfunction(L, set_window_size);
+		lua_setglobal(L, "__set_window_size");
 
 		state.write(L);
     }
@@ -463,6 +474,7 @@ int main(int argc, char** argv)
 	settings.attributeFlags = sf::ContextSettings::Attribute::Core;*/
 	//settings.sRgbCapable = true;
     sf::RenderWindow window(sf::VideoMode(1024, 1024), "PixelDance",sf::Style::Default,settings);
+	main_win = &window;
     window.setFramerateLimit(60);
     ImGui::SFML::Init(window);
 	

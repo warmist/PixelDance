@@ -12,6 +12,7 @@ img_buf=make_image_buffer(size[1],size[2])
 function resize( w,h )
 	img_buf=make_image_buffer(w,h)
 	size=STATE.size
+	print("new size:",w,h)
 end
 function make_visits_texture()
 	if visit_tex==nil or visit_tex.w~=size[1] or visit_tex.h~=size[2] then
@@ -228,10 +229,10 @@ function gen_palette( )
 	local h2=math.fmod(h1+0.05,1)
 	local h3=math.fmod(h1+0.1,1)
 	local h4=math.fmod(h1+0.2,1)
-	local s2=s+math.random()*0.2-0.1
+	local s2=s+math.random()*0.4-0.2
 	if s2>1 then s2=1 end
 	if s2<0 then s2=0 end
-	local l2=l+math.random()*0.2-0.1
+	local l2=l+math.random()*0.4-0.2
 	if l2>1 then l2=1 end
 	if l2<0 then l2=0 end
 	iterate_color(ret,{h1,s,l},{h2,s,l},5)
