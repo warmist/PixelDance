@@ -310,6 +310,8 @@ function save_img(tile_count)
 				config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
 			end
 		end
+		config_serial=config_serial..string.format("str_x=%q\n",str_x)
+		config_serial=config_serial..string.format("str_y=%q\n",str_y)
 		img_buf:read_frame()
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 	else
