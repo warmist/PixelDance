@@ -170,7 +170,7 @@ function clear_buffers(  )
 	need_clear=true
 end
 
-palette=palette or {show=false,colors={{0,0,0,1},{0.8,0,0,1},{0,0,0,1},{0,0.2,0.2,1},{0,0,0,1}}}
+palette=palette or {show=false,colors={{0,0,0,1},{0.8,0,0,1},{0,0,0,1},{0,0.2,0.2,1},{0,0,0,1}},current_gen=1}
 function update_palette_img(  )
 	if palette_img.w~=#palette.colors then
 		palette_img=make_flt_buffer(#palette.colors,1)
@@ -202,6 +202,104 @@ end
 function rand_range( t )
 	return math.random()*(t[2]-t[1])+t[1]
 end
+palette.generators={
+	{"random",function (ret, hue_range,sat_range,lit_range )
+		local count=3
+		local steps=8
+
+		local lh,ls,ll
+		lh=rand_range(hue_range)
+		ls=rand_range(sat_range)
+		ll=rand_range(lit_range)
+		for i=1,count do
+			local nh,ns,nl
+			nh=rand_range(hue_range)
+			ns=rand_range(sat_range)
+			nl=rand_range(lit_range)
+			iterate_color(ret,{lh,ls,ll},{nh,ns,nl},steps)
+			lh=nh
+			ls=ns
+			ll=nl
+		end
+	end
+	},{"shades",function(ret, hue_range,sat_range,lit_range )
+		local h1=rand_range(hue_range)
+		local s=rand_range(sat_range)
+		local l=rand_range(lit_range)
+
+		local s2=rand_range(sat_range)
+		local l2=rand_range(lit_range)
+		iterate_color(ret,{h1,s,l},{h1,s2,l2},5)
+	end,
+	},{"complementary",function (ret, hue_range,sat_range,lit_range )
+		local h1=rand_range(hue_range)
+		local s=rand_range(sat_range)
+		local l=rand_range(lit_range)
+
+		local s2=rand_range(sat_range)
+		local l2=rand_range(lit_range)
+		iterate_color(ret,{h1,s,l},{1-h1,s,l2},10)
+	end,
+	},{"complementary_dark",function (ret, hue_range,sat_range,lit_range )
+		local h1=rand_range(hue_range)
+		local s=rand_range(sat_range)
+		local l=rand_range(lit_range)
+
+		local s2=rand_range(sat_range)
+		local l2=rand_range(lit_range)
+		iterate_color(ret,{h1,s,l},{h1,s,0},15)
+		iterate_color(ret,{h1,s,0},{1-h1,s2,l2},10)
+	end,
+	},{"triadic",function (ret, hue_range,sat_range,lit_range )
+		local h1=rand_range(hue_range)
+		local s=rand_range(sat_range)
+		local l=rand_range(lit_range)
+
+		local s2=rand_range(sat_range)
+		local l2=rand_range(lit_range)
+		local s3=rand_range(sat_range)
+		local l3=rand_range(lit_range)
+		local h2=math.fmod(h1+0.33,1)
+		local h3=math.fmod(h1+0.66,1)
+		iterate_color(ret,{h1,s,l},{h2,s2,l2},5)
+		iterate_color(ret,{h2,s2,l2},{h3,s3,l3},5)
+		--iterate_color(ret,{h3,s3,l3},{h1,s,l},5)
+	end,
+	},{"compound",function (ret, hue_range,sat_range,lit_range )
+		local h1=rand_range(hue_range)
+		local s=rand_range(sat_range)
+		local l=rand_range(lit_range)
+
+		local s2=rand_range(sat_range)
+		local l2=rand_range(lit_range)
+		local s3=rand_range(sat_range)
+		local l3=rand_range(lit_range)
+		local d=math.random()*0.3
+		local h2=math.fmod(h1+0.5-d,1)
+		local h3=math.fmod(h1+0.5+d,1)
+		iterate_color(ret,{h1,s,l},{h2,s2,l2},5)
+		iterate_color(ret,{h2,s2,l2},{h3,s3,l3},5)
+		--iterate_color(ret,{h3,s3,l3},{h1,s,l},5)
+	end,
+	},{"anologous",function (ret, hue_range,sat_range,lit_range )
+		local h1=rand_range(hue_range)
+		local s=rand_range(sat_range)
+		local l=rand_range(lit_range)
+
+		local h2=math.fmod(h1+0.05,1)
+		local h3=math.fmod(h1+0.1,1)
+		local h4=math.fmod(h1+0.2,1)
+		local s2=s+math.random()*0.4-0.2
+		if s2>1 then s2=1 end
+		if s2<0 then s2=0 end
+		local l2=l+math.random()*0.4-0.2
+		if l2>1 then l2=1 end
+		if l2<0 then l2=0 end
+		iterate_color(ret,{h1,s,l},{h2,s,l},5)
+		iterate_color(ret,{h2,s2,l},{h3,s2,l},5)
+		iterate_color(ret,{h3,s2,l},{h4,s2,l2},5)
+	end}
+}
 function gen_palette( )
 	local ret={}
 	palette.colors=ret
@@ -219,79 +317,8 @@ function gen_palette( )
 			table.insert(tbl,luv.hsluv_to_rgb({h_start,s_start,l_start+diff*(i/(count-1))}))
 		end
 	end
-	function total_random( count,steps )
-		local lh,ls,ll
-		lh=rand_range(hue_range)
-		ls=rand_range(sat_range)
-		ll=rand_range(lit_range)
-		for i=1,count do
-			local nh,ns,nl
-			nh=rand_range(hue_range)
-			ns=rand_range(sat_range)
-			nl=rand_range(lit_range)
-			iterate_color(ret,{lh,ls,ll},{nh,ns,nl},steps)
-			lh=nh
-			ls=ns
-			ll=nl
-		end
-	end
-	--[[
-	total_random(10,5)
-	--]]
-	--[[ shades
-	local s2=rand_range(sat_range)
-	local l2=rand_range(lit_range)
-	iterate_color(ret,{h1,s,l},{h1,s2,l2},5)
-	--]]
+	palette.generators[palette.current_gen][2](ret,hue_range,sat_range,lit_range)
 
-	--[[ complementary3
-	local s2=rand_range(sat_range)
-	local l2=rand_range(lit_range)
-	iterate_color(ret,{h1,s,l},{h1,s,0},15)
-	iterate_color(ret,{h1,s,0},{1-h1,s2,l2},10)
-	--]]
-	--[[ complementary2
-	local s2=rand_range(sat_range)
-	local l2=rand_range(lit_range)
-	iterate_color(ret,{h1,s,l},{1-h1,s,l2},10)
-	--]]
-	-- [[ triadic2
-	local s2=rand_range(sat_range)
-	local l2=rand_range(lit_range)
-	local s3=rand_range(sat_range)
-	local l3=rand_range(lit_range)
-	local h2=math.fmod(h1+0.33,1)
-	local h3=math.fmod(h1+0.66,1)
-	iterate_color(ret,{h1,s,l},{h2,s2,l2},5)
-	iterate_color(ret,{h2,s2,l2},{h3,s3,l3},5)
-	--iterate_color(ret,{h3,s3,l3},{h1,s,l},5)
-	--]]
-	--[[ compound2
-	local s2=rand_range(sat_range)
-	local l2=rand_range(lit_range)
-	local s3=rand_range(sat_range)
-	local l3=rand_range(lit_range)
-	local d=math.random()*0.3
-	local h2=math.fmod(h1+0.5-d,1)
-	local h3=math.fmod(h1+0.5+d,1)
-	iterate_color(ret,{h1,s,l},{h2,s2,l2},5)
-	iterate_color(ret,{h2,s2,l2},{h3,s3,l3},5)
-	--iterate_color(ret,{h3,s3,l3},{h1,s,l},5)
-	--]]
-	--[[ anologous2
-	local h2=math.fmod(h1+0.05,1)
-	local h3=math.fmod(h1+0.1,1)
-	local h4=math.fmod(h1+0.2,1)
-	local s2=s+math.random()*0.4-0.2
-	if s2>1 then s2=1 end
-	if s2<0 then s2=0 end
-	local l2=l+math.random()*0.4-0.2
-	if l2>1 then l2=1 end
-	if l2<0 then l2=0 end
-	iterate_color(ret,{h1,s,l},{h2,s,l},5)
-	iterate_color(ret,{h2,s2,l},{h3,s2,l},5)
-	iterate_color(ret,{h3,s2,l},{h4,s2,l2},5)
-	--]]
 	--[[ complementary
 	gen_shades(ret,h1,s,l,0.15,5)
 	gen_shades(ret,1-h1,s,0.15,l,5)
@@ -308,8 +335,6 @@ function gen_palette( )
 	gen_shades(ret,math.fmod(h1+0.15,1),s/2,l,0,3)
 	gen_shades(ret,math.fmod(h1+0.2,1),s,l,0,3)
 	--]]
-	--TODO: compound
-	--
 end
 function palette_chooser()
 	if imgui.RadioButton("Show palette",palette.show) then
@@ -319,6 +344,15 @@ function palette_chooser()
 	if imgui.Button("Randomize") then
 		gen_palette()
 	end
+	imgui.SameLine()
+	local generators={
+	}
+	for k,v in ipairs(palette.generators) do
+		table.insert(generators,v[1])
+	end
+	local changing = false
+	changing,palette.current_gen=imgui.Combo("Generator",palette.current_gen-1,generators)
+	palette.current_gen=palette.current_gen+1
 	if palette.colors[palette.current]==nil then
 		palette.current=1
 	end
@@ -444,8 +478,8 @@ function gui(  )
 		need_save=tile_count
 	end
 	if imgui.Button("Rand function") then
-		str_x=random_math_old(250)
-		str_y=random_math_old(250)
+		str_x=random_math_old(500)
+		str_y=random_math_old(500)
 		print("==============")
 		print(str_x)
 		print(str_y)

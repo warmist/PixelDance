@@ -223,8 +223,9 @@ IMGUI_API void          Color(const char* prefix, unsigned int v);
 */
 static int l_text(lua_State* L)
 {
-    const char *str = luaL_checkstring(L, 1);
-    ImGui::Text("%s", str);
+	size_t len;
+    const char *str = luaL_checklstring(L, 1,&len);
+	ImGui::TextUnformatted(str, str + len);
     return 0;
 }
 //IMGUI_API void          TextColored(const ImVec4& col, const char* fmt, ...);               // shortcut for PushStyleColor(ImGuiCol_Text, col); Text(fmt, ...); PopStyleColor();
@@ -267,6 +268,16 @@ static int l_collapsing_header(lua_State*L)
     lua_pushboolean(L, ret);
     return 1;
 }
+static int l_checkbox(lua_State* L)
+{
+	const char *str = luaL_checkstring(L, 1);
+	bool active = lua_toboolean(L, 2);
+
+	bool ret = ImGui::Checkbox(str, &active);
+	lua_pushboolean(L, ret);
+	lua_pushboolean(L, active);
+	return 2;
+}
 //IMGUI_API bool          Checkbox(const char* label, bool* v);
 //IMGUI_API bool          CheckboxFlags(const char* label, unsigned int* flags, unsigned int flags_value);
 static int l_radiobutton(lua_State* L)
@@ -279,6 +290,29 @@ static int l_radiobutton(lua_State* L)
     return 1;
 }
 //IMGUI_API bool          RadioButton(const char* label, int* v, int v_button); <<-- hard to expose?
+static int l_combo(lua_State* L)
+{
+	const char *label = luaL_checkstring(L, 1);
+	int current_item = luaL_checkinteger(L, 2);
+	std::vector<const char*> items;
+	luaL_checktype(L, 3, LUA_TTABLE);
+	for (int i = 1;; i++)
+	{
+		lua_rawgeti(L, 3, i);
+		if (lua_isnil(L, -1)) {
+			lua_pop(L, 1);
+			break;
+		}
+		items.push_back(lua_tostring(L, -1));
+		lua_pop(L, 1);
+	}
+	int height_in_items = luaL_optinteger(L, 4, -1);
+	bool ret = ImGui::Combo(label, &current_item, items.data(), items.size(), height_in_items);
+	lua_pushboolean(L, ret);
+	lua_pushnumber(L, current_item);
+	return 2;
+
+}
 //IMGUI_API bool          Combo(const char* label, int* current_item, const char** items, int items_count, int height_in_items = -1);
 //IMGUI_API bool          Combo(const char* label, int* current_item, const char* items_separated_by_zeros, int height_in_items = -1);      // separate items with \0, end item-list with \0\0
 //IMGUI_API bool          Combo(const char* label, int* current_item, bool(*items_getter)(void* data, int idx, const char** out_text), void* data, int items_count, int height_in_items = -1);
@@ -365,12 +399,14 @@ static const luaL_Reg lua_imgui[] = {
     { "BulletText", l_bullet_text },
     { "Button", l_button },
     { "RadioButton", l_radiobutton },
+	{ "Checkbox", l_checkbox },
     { "CollapsingHeader", l_collapsing_header },
     { "SliderFloat", l_slider_float },
     { "SliderAngle", l_slider_angle },
     { "SliderInt", l_slider_int },
     { "InputText",l_input_text },
     { "ListBox", l_listbox },
+	{ "Combo", l_combo },
     { "ColorEdit3", l_color_edit3 },
     { "ColorEdit4", l_color_edit4 },
     { "ColorButton", l_color_button },
