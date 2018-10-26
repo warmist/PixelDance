@@ -1,6 +1,7 @@
 
 require "common"
 require "colors"
+local luv=require "colors_luv"
 
 local size=STATE.size
 local max_palette_size=20
@@ -50,7 +51,7 @@ local log_shader=shaders.Make[==[
 out vec4 color;
 in vec3 pos;
 
-uniform vec4 palette[15];
+uniform vec4 palette[50];
 uniform int palette_size;
 
 uniform vec2 min_max;
@@ -192,35 +193,87 @@ function iterate_color(tbl, hsl1,hsl2,steps )
 
 	for i=0,steps-1 do
 		local v=i/steps
-		table.insert(tbl,hslToRgb_normed(hsl1[1]+hd*v,hsl1[2]+sd*v,hsl1[3]+ld*v,1))
+		local r=luv.hsluv_to_rgb{(hsl1[1]+hd*v)*360,(hsl1[2]+sd*v)*100,(hsl1[3]+ld*v)*100}
+		--local r=luv.hpluv_to_rgb{(hsl1[1]+hd*v)*360,(hsl1[2]+sd*v)*100,(hsl1[3]+ld*v)*100}
+		r[4]=1
+		table.insert(tbl,r)
 	end
+end
+function rand_range( t )
+	return math.random()*(t[2]-t[1])+t[1]
 end
 function gen_palette( )
 	local ret={}
 	palette.colors=ret
+	local hue_range={0,1}
+	local sat_range={0,1}
+	local lit_range={0,1}
 
-	local h1=math.random()
-	local s=math.random()*0.6+0.2
-	local l=math.random()*0.6+0.2
+	local h1=rand_range(hue_range)
+	local s=rand_range(sat_range)
+	local l=rand_range(lit_range)
 	
 	local function gen_shades(tbl, h_start,s_start,l_start,l_end,count)
 		local diff=l_end-l_start
 		for i=0,count-1 do
-			table.insert(tbl,hslToRgb_normed(h_start,s_start,l_start+diff*(i/(count-1)),1))
+			table.insert(tbl,luv.hsluv_to_rgb({h_start,s_start,l_start+diff*(i/(count-1))}))
 		end
 	end
+	function total_random( count,steps )
+		local lh,ls,ll
+		lh=rand_range(hue_range)
+		ls=rand_range(sat_range)
+		ll=rand_range(lit_range)
+		for i=1,count do
+			local nh,ns,nl
+			nh=rand_range(hue_range)
+			ns=rand_range(sat_range)
+			nl=rand_range(lit_range)
+			iterate_color(ret,{lh,ls,ll},{nh,ns,nl},steps)
+			lh=nh
+			ls=ns
+			ll=nl
+		end
+	end
+	--[[
+	total_random(10,5)
+	--]]
+	--[[ shades
+	local s2=rand_range(sat_range)
+	local l2=rand_range(lit_range)
+	iterate_color(ret,{h1,s,l},{h1,s2,l2},5)
+	--]]
+
+	--[[ complementary3
+	local s2=rand_range(sat_range)
+	local l2=rand_range(lit_range)
+	iterate_color(ret,{h1,s,l},{h1,s,0},15)
+	iterate_color(ret,{h1,s,0},{1-h1,s2,l2},10)
+	--]]
 	--[[ complementary2
-	local s2=math.random()*0.6+0.2
-	local l2=math.random()*0.6+0.2
+	local s2=rand_range(sat_range)
+	local l2=rand_range(lit_range)
 	iterate_color(ret,{h1,s,l},{1-h1,s,l2},10)
 	--]]
 	-- [[ triadic2
-	local s2=math.random()*0.6+0.2
-	local l2=math.random()*0.6+0.2
-	local s3=math.random()*0.6+0.2
-	local l3=math.random()*0.6+0.2
+	local s2=rand_range(sat_range)
+	local l2=rand_range(lit_range)
+	local s3=rand_range(sat_range)
+	local l3=rand_range(lit_range)
 	local h2=math.fmod(h1+0.33,1)
 	local h3=math.fmod(h1+0.66,1)
+	iterate_color(ret,{h1,s,l},{h2,s2,l2},5)
+	iterate_color(ret,{h2,s2,l2},{h3,s3,l3},5)
+	--iterate_color(ret,{h3,s3,l3},{h1,s,l},5)
+	--]]
+	--[[ compound2
+	local s2=rand_range(sat_range)
+	local l2=rand_range(lit_range)
+	local s3=rand_range(sat_range)
+	local l3=rand_range(lit_range)
+	local d=math.random()*0.3
+	local h2=math.fmod(h1+0.5-d,1)
+	local h3=math.fmod(h1+0.5+d,1)
 	iterate_color(ret,{h1,s,l},{h2,s2,l2},5)
 	iterate_color(ret,{h2,s2,l2},{h3,s3,l3},5)
 	--iterate_color(ret,{h3,s3,l3},{h1,s,l},5)
@@ -391,8 +444,8 @@ function gui(  )
 		need_save=tile_count
 	end
 	if imgui.Button("Rand function") then
-		str_x=random_math_old(50)
-		str_y=random_math_old(50)
+		str_x=random_math_old(250)
+		str_y=random_math_old(250)
 		print("==============")
 		print(str_x)
 		print(str_y)
@@ -926,8 +979,8 @@ vec2 func(vec2 p,int it_count)
 		{
 			float l=sqrt(dot(s,s));
 			s=vec2(%s,%s);
-			//s/=l;
-			//s*=move_dist;
+			s/=l;
+			s*=move_dist;
 		}
 	return s;
 }
@@ -981,7 +1034,9 @@ void main()
 out vec4 color;
 in vec3 pos;
 void main(){
-	float rr = -pos.x+0.5;//length(pos.xy)/1.0;
+	//float rr = -pos.x+0.5;
+	float rr = pos.y-0.5;
+	//float rr = length(pos.xy)/1.0;
 	rr=clamp((rr/2),0,1);
 	float delta_size=(1-0.2)*rr+0.2;
 	//float delta_size=1;
@@ -1046,10 +1101,21 @@ function visit_iter()
 	add_visit_shader:blend_default()
 	__render_to_window()
 end
+--tick=tick or 0
+--local draw_frames=2
 function update_real(  )
 	__no_redraw()
-	__clear()
+	
+	--tick=tick+1
+	--if tick%draw_frames==0 then
+		__clear()
+		draw_visits()
+	--	need_clear=true
+	--	config.v0=math.cos(math.floor(tick/draw_frames)/100)*5
+	--end
+	
 	auto_clear()
 	visit_iter()
-	draw_visits()
+	
+
 end
