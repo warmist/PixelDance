@@ -1056,7 +1056,7 @@ void main()
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
 	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
 	//gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
-	gl_PointSize=25;
+	gl_PointSize=2;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
@@ -1069,12 +1069,12 @@ void main()
 out vec4 color;
 in vec3 pos;
 void main(){
-	float rr = abs(pos.x)*2;
+	//float rr = abs(pos.x)*2;
 	//float rr = pos.y-0.5;
 	//float rr = length(pos.xy)/1.0;
-	rr=clamp((rr/2),0,1);
-	float delta_size=(1-0.2)*rr+0.2;
-	//float delta_size=1;
+	//rr=clamp((rr/2),0,1);
+	//float delta_size=(1-0.2)*rr+0.2;
+	float delta_size=1;
  	float r = 2*length(gl_PointCoord - 0.5)/(delta_size);
 	float a = 1 - smoothstep(0, 1, r);
 	//rr=clamp((rr),0,1);
