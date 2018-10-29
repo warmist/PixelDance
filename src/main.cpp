@@ -162,6 +162,14 @@ static int save_image(lua_State* L)
     lua_pushinteger(L, ret);
     return 1;
 }
+extern "C" __declspec(dllexport) void free_image(char* data)
+{
+	stbi_image_free((void*)data);
+}
+extern "C"  __declspec(dllexport) char* png_load(const char* path,int* w,int* h,int* comp,int need_comp)//for luajit ffi
+{
+	return (char*)stbi_load(path, w, h, comp, need_comp);
+}
 struct lua_global_state
 {
 	sf::Vector2u size;
@@ -369,6 +377,10 @@ struct project {
 		ADD_MOUSE(3);
 		ADD_MOUSE(4);
 #undef ADD_MOUSE
+
+		lua_pushnumber(L, io.MouseWheel);
+		lua_setfield(L, -2, "wheel");
+
 		lua_setfield(L, LUA_GLOBALSINDEX, "__mouse");
 	}
 	void update()
@@ -411,7 +423,8 @@ struct project {
         }
         fixup_imgui_state();
     }
-	void load_image(const char* path)
+	//unfinished... what to do when loaded?
+	void load_from_image(const char* path)
 	{
 		auto f=fopen(path, "rb");
 		int x, y, comp;

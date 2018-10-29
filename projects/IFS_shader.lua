@@ -204,8 +204,9 @@ function rand_range( t )
 end
 palette.generators={
 	{"random",function (ret, hue_range,sat_range,lit_range )
-		local count=3
-		local steps=8
+		local count=math.random(2,10)
+		local steps_max=math.floor(max_palette_size/count)
+		local steps=math.random(1,steps_max)
 
 		local lh,ls,ll
 		lh=rand_range(hue_range)
