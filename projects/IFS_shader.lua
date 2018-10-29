@@ -1138,6 +1138,9 @@ function visit_iter()
 end
 --tick=tick or 0
 --local draw_frames=2
+function is_mouse_down(  )
+	return __mouse.clicked1 and not __mouse.owned1, __mouse.x,__mouse.y
+end
 function update_real(  )
 	__no_redraw()
 	
@@ -1151,6 +1154,28 @@ function update_real(  )
 	
 	auto_clear()
 	visit_iter()
-	
+	local scale=config.scale
+	local cx,cy=config.cx,config.cy
+	local c,x,y= is_mouse_down()
+	if c then
+		--mouse to screen
+		x=(x/size[1]-0.5)*2
+		y=(-y/size[2]+0.5)*2
+		--screen to world
+		x=(x-cx)/scale
+		y=(y-cy)/scale
 
+		print(x,y)
+		--now set that world pos so that screen center is on it
+		config.cx=(-x)*scale
+		config.cy=(-y)*scale
+		need_clear=true
+	end
+	if __mouse.wheel~=0 then
+		local pfact=math.exp(__mouse.wheel/10)
+		config.scale=config.scale*pfact
+		config.cx=config.cx*pfact
+		config.cy=config.cy*pfact
+		need_clear=true
+	end
 end
