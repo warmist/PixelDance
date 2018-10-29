@@ -445,7 +445,7 @@ function rand_weighted(tbl)
 		end
 	end
 end
-function random_math_old( len )
+function random_math( steps )
 	local cur_string="R"
 
 	function M(  )
@@ -455,7 +455,7 @@ function random_math_old( len )
 		return rand_weighted(terminal_symbols)
 	end
 
-	while #cur_string<len do
+	for i=1,steps do
 		cur_string=string.gsub(cur_string,"R",M)
 	end
 	cur_string=string.gsub(cur_string,"R",MT)
@@ -478,8 +478,8 @@ function gui(  )
 		need_save=tile_count
 	end
 	if imgui.Button("Rand function") then
-		str_x=random_math_old(500)
-		str_y=random_math_old(500)
+		str_x=random_math(4)
+		str_y=random_math(4)
 		print("==============")
 		print(str_x)
 		print(str_y)
@@ -1013,8 +1013,8 @@ vec2 func(vec2 p,int it_count)
 		{
 			float l=sqrt(dot(s,s));
 			s=vec2(%s,%s);
-			s/=l;
-			s*=move_dist;
+			//s/=l;
+			//s*=move_dist;
 		}
 	return s;
 }
@@ -1055,7 +1055,7 @@ void main()
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
 	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
 	//gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
-	gl_PointSize=5;
+	gl_PointSize=25;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
@@ -1068,8 +1068,8 @@ void main()
 out vec4 color;
 in vec3 pos;
 void main(){
-	//float rr = -pos.x+0.5;
-	float rr = pos.y-0.5;
+	float rr = abs(pos.x)*2;
+	//float rr = pos.y-0.5;
 	//float rr = length(pos.xy)/1.0;
 	rr=clamp((rr/2),0,1);
 	float delta_size=(1-0.2)*rr+0.2;
