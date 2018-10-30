@@ -1,6 +1,6 @@
 # NEEDS: sfml (static linked), LUA (better: luajit also static) IMGUI (aka dear imgui - compiled in)
 
-cmake_minimum_required (VERSION 3.12)
+cmake_minimum_required (VERSION 3.10)
 project (pixeldance CXX C)
 
 

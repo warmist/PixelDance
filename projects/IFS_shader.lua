@@ -4,7 +4,7 @@ require "colors"
 local luv=require "colors_luv"
 
 local size=STATE.size
-local max_palette_size=20
+local max_palette_size=50
 local sample_count=50000
 local need_clear=false
 str_x=str_x or "s.x*s.x*s.x*params.x-p.x*p.y*params.y"
@@ -113,6 +113,7 @@ void main(){
 		nv=(log(nv+1)-lmm.x)/(lmm.y-lmm.x);
 	else
 		nv=log(nv+1)/lmm.y;
+	//nv=floor(nv*8)/8; //stylistic quantization
 	nv=clamp(nv,0,1);
 	//nv=math.min(math.max(nv,0),1);
 	//--mix(pix_out,c_u8,c_back,nv)
@@ -423,6 +424,7 @@ function save_img(tile_count)
 end
 
 local terminal_symbols={["s.x"]=5,["s.y"]=5,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1}
+local terminal_symbols_alt={["p.x"]=3,["p.y"]=3}
 local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=8,["(R)*(R)"]=16,["(R)-(R)"]=30,["(R)+(R)"]=30}
 
 function normlize( tbl )
@@ -462,6 +464,54 @@ function random_math( steps )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
+function random_math_fourier( steps,complications )
+	local cur_string="(R)/2"
+	for i=1,steps do
+		cur_string=cur_string..("+(R)*sin(2*%d*M_PI*(Q)+R)"):format(i)
+	end
+	function M(  )
+		return rand_weighted(normal_symbols)
+	end
+	function MT(  )
+		return rand_weighted(terminal_symbols)
+	end
+	function MQT( )
+		return rand_weighted(terminal_symbols_alt)
+	end
+
+	for i=1,complications do
+		cur_string=string.gsub(cur_string,"R",M)
+	end
+	cur_string=string.gsub(cur_string,"Q",MQT)
+	cur_string=string.gsub(cur_string,"R",MT)
+	return cur_string
+end
+function random_math_power( steps,complications )
+	local cur_string="R"
+	for i=1,steps do
+		local QS=""
+		for j=1,i do
+			QS=QS.."*(Q)"
+		end
+		cur_string=cur_string..("+(R)%s"):format(QS)
+	end
+	function M(  )
+		return rand_weighted(normal_symbols)
+	end
+	function MT(  )
+		return rand_weighted(terminal_symbols)
+	end
+	function MQT( )
+		return rand_weighted(terminal_symbols_alt)
+	end
+
+	for i=1,complications do
+		cur_string=string.gsub(cur_string,"R",M)
+	end
+	cur_string=string.gsub(cur_string,"Q",MQT)
+	cur_string=string.gsub(cur_string,"R",MT)
+	return cur_string
+end
 function gui(  )
 	imgui.Begin("IFS play")
 	palette_chooser()
@@ -479,8 +529,10 @@ function gui(  )
 		need_save=tile_count
 	end
 	if imgui.Button("Rand function") then
-		str_x=random_math(4)
-		str_y=random_math(4)
+		--str_x=random_math_fourier(4,2)
+		--str_y=random_math_fourier(4,2)
+		str_x=random_math_power(4,2)
+		str_y=random_math_power(4,2)
 		print("==============")
 		print(str_x)
 		print(str_y)
@@ -782,14 +834,14 @@ end
 function coord_mapping( tx,ty )
 	local s=STATE.size
 	local dist=s[1]
-	local angle=(2*math.pi)/5
+	local angle=(2*math.pi)/22
 	local sx=s[1]/2
 	local sy=s[2]/2
 	-- [[
 	local cx,cy=tx-sx,ty-sy
 	--return tx,ty
 	--]]
-	--[[
+	-- [[
 	local r=math.sqrt(cx*cx+cy*cy)
 	local a=math.atan2(cy,cx)
 
@@ -960,7 +1012,7 @@ function coord_mapping( tx,ty )
     --]=]
 	--]]
 	--return tx,ty
-	return mod(tx,s[1]),mod(ty,s[2])
+	--return mod(tx,s[1]),mod(ty,s[2])
 	--[[
 	local div_x=math.floor(tx/s[1])
 	local div_y=math.floor(ty/s[2])
@@ -1014,8 +1066,8 @@ vec2 func(vec2 p,int it_count)
 		{
 			float l=sqrt(dot(s,s));
 			s=vec2(%s,%s);
-			//s/=l;
-			//s*=move_dist;
+			s/=l;
+			s*=move_dist;
 		}
 	return s;
 }
@@ -1032,7 +1084,7 @@ vec2 mapping(vec2 p)
 	return p;
 	//return mod(p+vec2(1),2)-vec2(1);
 
-	float angle=(2*M_PI)/5;
+	float angle=(2*M_PI)/22;
 	float r=length(p);
 	float a=atan(p.y,p.x);
 	r=mod(r,2);
@@ -1056,7 +1108,7 @@ void main()
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
 	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
 	//gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
-	gl_PointSize=2;
+	gl_PointSize=5;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
@@ -1071,15 +1123,15 @@ in vec3 pos;
 void main(){
 	//float rr = abs(pos.x)*2;
 	//float rr = pos.y-0.5;
-	//float rr = length(pos.xy)/1.0;
-	//rr=clamp((rr/2),0,1);
-	//float delta_size=(1-0.2)*rr+0.2;
-	float delta_size=1;
+	float rr = length(pos.xy)/1.0;
+	rr=clamp(rr,0,1);
+	float delta_size=(1-0.2)*rr+0.2;
+	//float delta_size=1;
  	float r = 2*length(gl_PointCoord - 0.5)/(delta_size);
 	float a = 1 - smoothstep(0, 1, r);
-	//rr=clamp((rr),0,1);
+	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
-	//a=clamp(a,0,1);
+	//a=clamp(a*rr,0,1);
 	color=vec4(a,0,0,1);
 }
 ]==])
