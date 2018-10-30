@@ -2,8 +2,8 @@
 require "common"
 require "colors"
 local luv=require "colors_luv"
-local size_mult=1
-__set_window_size(1920*size_mult,1200*size_mult)
+--local size_mult=0.25
+--__set_window_size(2560*size_mult,1440*size_mult)
 local size=STATE.size
 local max_palette_size=50
 local sample_count=50000
@@ -114,9 +114,49 @@ vec2 local_minmax(vec2 pos)
 	avg/=wsum;
 	return vec2(log(avg/10+1),log(avg*10+1));
 }
+float mean_tex(vec2 pos)
+{
+	float ret=0;
+
+	ret+=textureOffset(tex_main,pos,ivec2(0,0)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(1,0)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(0,1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,0)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(0,-1)).x;
+
+	ret+=textureOffset(tex_main,pos,ivec2(1,1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,-1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(1,-1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,1)).x;
+
+
+	return ret/9;
+}
+#define DX(xoff,yoff) {float n=meant-textureOffset(tex_main,pos,ivec2(xoff,yoff)).x;ret+=n*n;}
+float var_tex(vec2 pos)
+{
+	float meant=mean_tex(pos);
+
+	float ret=0;
+
+	DX(0,0);
+	DX(1,0);
+	DX(-1,0);
+	DX(0,1);
+	DX(0,-1);
+
+	DX(1,1);
+	DX(-1,-1);
+	DX(-1,1);
+	DX(1,-1);
+
+	return ret/9;
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	float nv=texture(tex_main,normed).x;
+	//float nv=texture(tex_main,normed).x;
+	float nv=mean_tex(normed);
+	//float nv=var_tex(normed);
 	//color = vec4(nv,0,0,1);
 	
 	vec2 lmm=min_max;
@@ -576,8 +616,8 @@ function gui(  )
 		str_postamble=str_postamble.."s/=l;s*=move_dist;"
 		--str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
 		--str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
-		str_preamble=str_preamble.."s=to_polar(s-p);"
-		str_postamble=str_postamble.."s=from_polar(s)+p;"
+		--str_preamble=str_preamble.."s=to_polar(s-p);"
+		--str_postamble=str_postamble.."s=from_polar(s)+p;"
 		print("==============")
 		print(str_preamble)
 		print(str_x)
@@ -1162,7 +1202,7 @@ void main()
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
 	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
 	//gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
-	gl_PointSize=5;
+	gl_PointSize=3;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
@@ -1177,10 +1217,10 @@ in vec3 pos;
 void main(){
 	//float rr = abs(pos.x+1);
 	//float rr = pos.y-0.5;
-	float rr = length(pos.xy)/1.0;
-	rr=clamp(rr,0,1);
-	float delta_size=(1-0.2)*rr+0.2;
-	//float delta_size=1;
+	//float rr = length(pos.xy)/1.0;
+	//rr=clamp(rr,0,1);
+	//float delta_size=(1-0.2)*rr+0.2;
+	float delta_size=1;
  	float r = 2*length(gl_PointCoord - 0.5)/(delta_size);
 	float a = 1 - smoothstep(0, 1, r);
 	//rr=clamp((1-rr),0,1);
