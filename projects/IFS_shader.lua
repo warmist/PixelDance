@@ -11,6 +11,8 @@ local need_clear=false
 local oversample=1
 str_x=str_x or "s.x*s.x*s.x*params.x-p.x*p.y*params.y"
 str_y=str_y or "p.x*s.y-p.y*s.x+p.x*params.x"
+str_preamble=str_preamble or ""
+str_postamble=str_postamble or ""
 img_buf=make_image_buffer(size[1],size[2])
 function resize( w,h )
 	img_buf=make_image_buffer(w,h)
@@ -412,6 +414,8 @@ function save_img(tile_count)
 		end
 		config_serial=config_serial..string.format("str_x=%q\n",str_x)
 		config_serial=config_serial..string.format("str_y=%q\n",str_y)
+		config_serial=config_serial..string.format("str_preamble=%q\n",str_preamble)
+		config_serial=config_serial..string.format("str_postamble=%q\n",str_postamble)
 		img_buf:read_frame()
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 	else
@@ -435,9 +439,11 @@ end
 
 local terminal_symbols={["s.x"]=5,["s.y"]=5,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1}
 local terminal_symbols_alt={["p.x"]=3,["p.y"]=3}
+local terminal_symbols_param={["s.x"]=5,["s.y"]=5,["params.x"]=1,["params.y"]=1}
+local terminal_symbols_polar={["a1"]=5,["r1"]=5,["a2"]=3,["r2"]=3,["params.x"]=1,["params.y"]=1}
 local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=8,["(R)*(R)"]=16,["(R)-(R)"]=30,["(R)+(R)"]=30}
 
-function normlize( tbl )
+function normalize( tbl )
 	local sum=0
 	for i,v in pairs(tbl) do
 		sum=sum+v
@@ -446,8 +452,11 @@ function normlize( tbl )
 		tbl[i]=tbl[i]/sum
 	end
 end
-normlize(terminal_symbols)
-normlize(normal_symbols)
+normalize(terminal_symbols)
+normalize(terminal_symbols_alt)
+normalize(terminal_symbols_param)
+normalize(terminal_symbols_polar)
+normalize(normal_symbols)
 function rand_weighted(tbl)
 	local r=math.random()
 	local sum=0
@@ -509,7 +518,7 @@ function random_math_power( steps,complications )
 		return rand_weighted(normal_symbols)
 	end
 	function MT(  )
-		return rand_weighted(terminal_symbols)
+		return rand_weighted(terminal_symbols_param)
 	end
 	function MQT( )
 		return rand_weighted(terminal_symbols_alt)
@@ -519,6 +528,22 @@ function random_math_power( steps,complications )
 		cur_string=string.gsub(cur_string,"R",M)
 	end
 	cur_string=string.gsub(cur_string,"Q",MQT)
+	cur_string=string.gsub(cur_string,"R",MT)
+	return cur_string
+end
+function random_math_polar( steps )
+	local cur_string="R"
+
+	function M(  )
+		return rand_weighted(normal_symbols)
+	end
+	function MT(  )
+		return rand_weighted(terminal_symbols_polar)
+	end
+
+	for i=1,steps do
+		cur_string=string.gsub(cur_string,"R",M)
+	end
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
@@ -543,9 +568,21 @@ function gui(  )
 		--str_y=random_math_fourier(4,2)
 		str_x=random_math_power(4,2)
 		str_y=random_math_power(4,2)
+		--str_x=random_math_polar(4,2)
+		--str_y=random_math_polar(4,2)
+		str_preamble=""
+		str_postamble=""
+		str_preamble=str_preamble.."float l=length(s);"
+		str_postamble=str_postamble.."s/=l;s*=move_dist;"
+		--str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
+		--str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
+		str_preamble=str_preamble.."s=to_polar(s-p);"
+		str_postamble=str_postamble.."s=from_polar(s)+p;"
 		print("==============")
+		print(str_preamble)
 		print(str_x)
 		print(str_y)
+		print(str_postamble)
 		make_visit_shader(true)
 		need_clear=true
 	end
@@ -1069,15 +1106,22 @@ uniform int max_iters;
 uniform float seed;
 uniform float move_dist;
 uniform vec2 params;
+vec2 to_polar(vec2 p)
+{
+	return vec2(length(p),atan(p.y,p.x));
+}
+vec2 from_polar(vec2 p)
+{
+	return vec2(cos(p.y)*p.x,sin(p.y)*p.x);
+}
 vec2 func(vec2 p,int it_count)
 {
 	vec2 s=vec2(p.x,p.y);
 	for(int i=0;i<it_count;i++)
 		{
-			float l=sqrt(dot(s,s));
+			%s
 			s=vec2(%s,%s);
-			s/=l;
-			s*=move_dist;
+			%s
 		}
 	return s;
 }
@@ -1123,7 +1167,7 @@ void main()
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
 }
-]==],str_x,str_y),
+]==],str_preamble,str_x,str_y,str_postamble),
 [==[
 #version 330
 #line 997
@@ -1178,8 +1222,7 @@ function visit_iter()
 		for i=0,samples.w*samples.h-1 do
 			--local x=math.random()*gen_radius-gen_radius/2
 			--local y=math.random()*gen_radius-gen_radius/2
-			local x=gaussian(0,gen_radius)
-			local y=gaussian(0,gen_radius)
+			local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			samples.d[i]={x,y,0,0}
 		end
 
