@@ -2,11 +2,13 @@
 require "common"
 require "colors"
 local luv=require "colors_luv"
-
+local size_mult=1
+__set_window_size(1920*size_mult,1200*size_mult)
 local size=STATE.size
 local max_palette_size=50
 local sample_count=50000
 local need_clear=false
+local oversample=1
 str_x=str_x or "s.x*s.x*s.x*params.x-p.x*p.y*params.y"
 str_y=str_y or "p.x*s.y-p.y*s.x+p.x*params.x"
 img_buf=make_image_buffer(size[1],size[2])
@@ -24,8 +26,16 @@ function make_visits_texture()
 	end
 end
 function make_visits_buf(  )
-	if visit_buf==nil or visit_buf.w~=size[1] or visit_buf.h~=size[2] then
-		visit_buf=make_float_buffer(size[1],size[2])
+	if visit_buf==nil or visit_buf.w~=size[1]*oversample or visit_buf.h~=size[2]*oversample then
+		visit_buf=make_float_buffer(size[1]*oversample,size[2]*oversample)
+	end
+end
+function make_variation_buf(  )
+	local undersample=8
+	local w=math.floor(size[1]/undersample)
+	local h=math.floor(size[2]/undersample)
+	if variation_buf==nil or variation_buf.w~=w or variation_buf.h~=h then
+		variation_buf=make_float_buffer(w,h)
 	end
 end
 tick=tick or 0
@@ -136,8 +146,8 @@ function draw_visits(  )
 	make_visits_buf()
 	visit_tex.t:use(0)
 	visit_buf:read_texture(visit_tex.t)
-	for x=0,size[1]-1 do
-	for y=0,size[2]-1 do
+	for x=0,visit_buf.w-1 do
+	for y=0,visit_buf.h-1 do
 		local v=visit_buf:get(x,y)
 		if v>math.exp(config.min_value)-1 then --skip non-visited tiles
 			if lmax<v then lmax=v end
@@ -1121,7 +1131,7 @@ void main()
 out vec4 color;
 in vec3 pos;
 void main(){
-	//float rr = abs(pos.x)*2;
+	//float rr = abs(pos.x+1);
 	//float rr = pos.y-0.5;
 	float rr = length(pos.xy)/1.0;
 	rr=clamp(rr,0,1);
@@ -1193,6 +1203,7 @@ end
 function is_mouse_down(  )
 	return __mouse.clicked1 and not __mouse.owned1, __mouse.x,__mouse.y
 end
+
 function update_real(  )
 	__no_redraw()
 	
