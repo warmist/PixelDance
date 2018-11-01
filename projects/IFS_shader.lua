@@ -4,13 +4,15 @@ require "colors"
 local luv=require "colors_luv"
 --local size_mult=0.25
 --__set_window_size(2560*size_mult,1440*size_mult)
+--__set_window_size(1280,1280)
+
 local size=STATE.size
 local max_palette_size=50
 local sample_count=50000
 local need_clear=false
 local oversample=1
 str_x=str_x or "s.x*s.x*s.x*params.x-p.x*p.y*params.y"
-str_y=str_y or "p.x*s.y-p.y*s.x+p.x*params.x"
+str_y=str_y or "s.y"
 str_preamble=str_preamble or ""
 str_postamble=str_postamble or ""
 img_buf=make_image_buffer(size[1],size[2])
@@ -154,8 +156,8 @@ float var_tex(vec2 pos)
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	//float nv=texture(tex_main,normed).x;
-	float nv=mean_tex(normed);
+	float nv=texture(tex_main,normed).x;
+	//float nv=mean_tex(normed);
 	//float nv=var_tex(normed);
 	//color = vec4(nv,0,0,1);
 	
@@ -480,7 +482,6 @@ end
 local terminal_symbols={["s.x"]=5,["s.y"]=5,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1}
 local terminal_symbols_alt={["p.x"]=3,["p.y"]=3}
 local terminal_symbols_param={["s.x"]=5,["s.y"]=5,["params.x"]=1,["params.y"]=1}
-local terminal_symbols_polar={["a1"]=5,["r1"]=5,["a2"]=3,["r2"]=3,["params.x"]=1,["params.y"]=1}
 local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=8,["(R)*(R)"]=16,["(R)-(R)"]=30,["(R)+(R)"]=30}
 
 function normalize( tbl )
@@ -495,7 +496,6 @@ end
 normalize(terminal_symbols)
 normalize(terminal_symbols_alt)
 normalize(terminal_symbols_param)
-normalize(terminal_symbols_polar)
 normalize(normal_symbols)
 function rand_weighted(tbl)
 	local r=math.random()
@@ -571,23 +571,7 @@ function random_math_power( steps,complications )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
-function random_math_polar( steps )
-	local cur_string="R"
-
-	function M(  )
-		return rand_weighted(normal_symbols)
-	end
-	function MT(  )
-		return rand_weighted(terminal_symbols_polar)
-	end
-
-	for i=1,steps do
-		cur_string=string.gsub(cur_string,"R",M)
-	end
-	cur_string=string.gsub(cur_string,"R",MT)
-	return cur_string
-end
-function gui(  )
+function gui()
 	imgui.Begin("IFS play")
 	palette_chooser()
 	draw_config(config)
@@ -604,18 +588,24 @@ function gui(  )
 		need_save=tile_count
 	end
 	if imgui.Button("Rand function") then
-		--str_x=random_math_fourier(4,2)
-		--str_y=random_math_fourier(4,2)
-		str_x=random_math_power(4,2)
-		str_y=random_math_power(4,2)
+		str_x=random_math_fourier(4,2)
+		str_y=random_math_fourier(4,2)
+		--str_x=random_math_power(4,2)
+		--str_y=random_math_power(4,2)
 		--str_x=random_math_polar(4,2)
 		--str_y=random_math_polar(4,2)
+		--str_x="s.x"
+		--str_y="s.y"
 		str_preamble=""
 		str_postamble=""
-		str_preamble=str_preamble.."float l=length(s);"
-		str_postamble=str_postamble.."s/=l;s*=move_dist;"
+		str_postamble=""
+		--normed-like
+		--str_preamble=str_preamble.."float l=length(s);"
+		--str_postamble=str_postamble.."s/=l;s*=move_dist;"
+		--polar-like
 		--str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
 		--str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
+		--centered-polar
 		--str_preamble=str_preamble.."s=to_polar(s-p);"
 		--str_postamble=str_postamble.."s=from_polar(s)+p;"
 		print("==============")
@@ -1128,6 +1118,8 @@ function rand_circl(  )
 	local r=math.sqrt(math.random())*config.gen_radius
 	return math.cos(a)*r,math.sin(a)*r
 end
+knock_buf=knock_buf or load_png("knock.png")
+local knock_texture
 function make_visit_shader( force )
 if add_visit_shader==nil or force then
 	add_visit_shader=shaders.Make(
@@ -1146,6 +1138,7 @@ uniform int max_iters;
 uniform float seed;
 uniform float move_dist;
 uniform vec2 params;
+
 vec2 to_polar(vec2 p)
 {
 	return vec2(length(p),atan(p.y,p.x));
@@ -1157,6 +1150,7 @@ vec2 from_polar(vec2 p)
 vec2 func(vec2 p,int it_count)
 {
 	vec2 s=vec2(p.x,p.y);
+	
 	for(int i=0;i<it_count;i++)
 		{
 			%s
@@ -1178,6 +1172,7 @@ vec2 mapping(vec2 p)
 	return p;
 	//return mod(p+vec2(1),2)-vec2(1);
 
+	/* polar 
 	float angle=(2*M_PI)/22;
 	float r=length(p);
 	float a=atan(p.y,p.x);
@@ -1185,6 +1180,26 @@ vec2 mapping(vec2 p)
 	a=mod(a,angle);
 	a/=angle;
 	return vec2(r-1,a*2-1);
+	*/
+	//spherical... needs compression in poles
+	/*
+	float w=2;
+	float h=2;
+
+	p+=vec2(w/2,h/2);
+	float d=floor(p.y/h);
+	if(mod(d,2)<1)
+	{
+		p.y=mod(p.y,h);
+	}
+	else
+	{
+		p.y=h-mod(p.y,h);
+		p.x+=w/2;
+	}
+	p.x=mod(p.x,w);
+	return p-vec2(w/2,h/2);
+	*/
 }
 void main()
 {
@@ -1202,7 +1217,7 @@ void main()
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
 	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
 	//gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
-	gl_PointSize=3;
+	gl_PointSize=5;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
@@ -1210,22 +1225,25 @@ void main()
 ]==],str_preamble,str_x,str_y,str_postamble),
 [==[
 #version 330
-#line 997
+#line 1228
 
 out vec4 color;
 in vec3 pos;
+uniform sampler2D img_tex;
 void main(){
+	vec4 txt=texture(img_tex,mod(pos.xy*vec2(0.5,-0.5)+vec2(0.5,0.5),1));
+	float rr=clamp(1-txt.r,0,1);
 	//float rr = abs(pos.x+1);
 	//float rr = pos.y-0.5;
 	//float rr = length(pos.xy)/1.0;
 	//rr=clamp(rr,0,1);
-	//float delta_size=(1-0.2)*rr+0.2;
-	float delta_size=1;
+	float delta_size=(1-0.2)*rr+0.2;
+	//float delta_size=1;
+	//float delta_size=txt.r;
  	float r = 2*length(gl_PointCoord - 0.5)/(delta_size);
 	float a = 1 - smoothstep(0, 1, r);
 	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
-	//a=clamp(a*rr,0,1);
 	color=vec4(a,0,0,1);
 }
 ]==])
@@ -1237,17 +1255,26 @@ if samples==nil or samples.w~=sample_count then
 	samples=make_flt_half_buffer(sample_count,1)
 end
 function visit_iter()
+	
+
 	make_visits_texture()
 	make_visit_shader()
 	add_visit_shader:use()
+	if knock_texture==nil then
+		knock_texture=textures:Make()
+		knock_texture:use(0,1)
+		knock_buf:write_texture(knock_texture)
+	end
 	add_visit_shader:set("center",config.cx,config.cy)
 	add_visit_shader:set("scale",config.scale)
 	add_visit_shader:set("params",config.v0,config.v1)
 	add_visit_shader:set("move_dist",config.move_dist)
 
 	visit_tex.t:use(0)
+	knock_texture:use(1)
 	add_visit_shader:blend_add()
 	add_visit_shader:set_i("max_iters",config.IFS_steps)
+	add_visit_shader:set_i("img_tex",1)
 	if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
 		error("failed to set framebuffer up")
 	end
@@ -1263,6 +1290,7 @@ function visit_iter()
 			--local x=math.random()*gen_radius-gen_radius/2
 			--local y=math.random()*gen_radius-gen_radius/2
 			local x,y=gaussian2(0,gen_radius,0,gen_radius)
+
 			samples.d[i]={x,y,0,0}
 		end
 
