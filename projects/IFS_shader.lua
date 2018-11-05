@@ -479,10 +479,10 @@ function save_img(tile_count)
 	end
 end
 
-local terminal_symbols={["s.x"]=5,["s.y"]=5,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1}
+local terminal_symbols={["s.x"]=5,["s.y"]=5,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1,["normed_i"]=2}
 local terminal_symbols_alt={["p.x"]=3,["p.y"]=3}
-local terminal_symbols_param={["s.x"]=5,["s.y"]=5,["params.x"]=1,["params.y"]=1}
-local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=8,["(R)*(R)"]=16,["(R)-(R)"]=30,["(R)+(R)"]=30}
+local terminal_symbols_param={["s.x"]=5,["s.y"]=5,["params.x"]=1,["params.y"]=1,["normed_i"]=2}
+local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=8,["(R)*(R)"]=16,["(R)-(R)"]=60,["(R)+(R)"]=60}
 
 function normalize( tbl )
 	local sum=0
@@ -588,20 +588,20 @@ function gui()
 		need_save=tile_count
 	end
 	if imgui.Button("Rand function") then
-		str_x=random_math_fourier(4,2)
-		str_y=random_math_fourier(4,2)
+		str_x=random_math(6)
+		str_y=random_math(6)
+		--str_x=random_math_fourier(4,2)
+		--str_y=random_math_fourier(4,2)
 		--str_x=random_math_power(4,2)
 		--str_y=random_math_power(4,2)
-		--str_x=random_math_polar(4,2)
-		--str_y=random_math_polar(4,2)
 		--str_x="s.x"
 		--str_y="s.y"
 		str_preamble=""
 		str_postamble=""
 		str_postamble=""
 		--normed-like
-		--str_preamble=str_preamble.."float l=length(s);"
-		--str_postamble=str_postamble.."s/=l;s*=move_dist;"
+		str_preamble=str_preamble.."float l=length(s);"
+		str_postamble=str_postamble.."s/=l;s*=move_dist;"
 		--polar-like
 		--str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
 		--str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
@@ -1153,6 +1153,7 @@ vec2 func(vec2 p,int it_count)
 	
 	for(int i=0;i<it_count;i++)
 		{
+			float normed_i=float(i)/float(it_count);
 			%s
 			s=vec2(%s,%s);
 			%s
