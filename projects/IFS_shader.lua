@@ -208,9 +208,6 @@ function draw_visits(  )
 	set_shader_palette(log_shader)
 	log_shader:set("min_max",lmin,lmax)
 	log_shader:set_i("tex_main",0)
-	
-	log_shader:set_i("palette_size",#palette.colors)
-
 	local auto_scale=0
 	if config.auto_scale_color then auto_scale=1 end
 	log_shader:set_i("auto_scale_color",auto_scale)
@@ -225,20 +222,40 @@ function clear_buffers(  )
 	need_clear=true
 end
 
-palette=palette or {show=false,colors={{0,0,0,1},{0.8,0,0,1},{0,0,0,1},{0,0.2,0.2,1},{0,0,0,1}},current_gen=1}
+palette=palette or {show=false,
+current_gen=1,
+colors_input={{0,0,0,1,0},{0,0,0,1,math.floor(max_palette_size*0.5)},{0,0.2,0.2,1,max_palette_size-1}}}
 function update_palette_img(  )
-	if palette_img.w~=#palette.colors then
-		palette_img=make_flt_buffer(#palette.colors,1)
+	if palette_img.w~=#palette.colors_input then
+		palette_img=make_flt_buffer(#palette.colors_input,1)
 	end
-	for i,v in ipairs(palette.colors) do
+	for i,v in ipairs(palette.colors_input) do
 		palette_img:set(i-1,0,v)
 	end
 end
+function mix_color(c1,c2,v)
+	local c1_v=c1[5]
+	local c2_v=c2[5]
+	local c_v=c2_v-c1_v
+	local my_v=v-c1_v
+	local local_v=my_v/c_v
+
+	local ret={}
+	for i=1,4 do
+		ret[i]=(c2[i]-c1[i])*local_v+c1[i]
+	end
+	return ret
+end
 function set_shader_palette(s)
-	s:set_i("palette_size",#palette.colors)
-	for i=1,#palette.colors do
-		local c=palette.colors[i]
-		s:set(string.format("palette[%d]",i-1),c[1],c[2],c[3],c[4])
+	s:set_i("palette_size",max_palette_size)
+	local cur_color=2
+	for i=0,max_palette_size-1 do
+		if palette.colors_input[cur_color][5] < i then
+			cur_color=cur_color+1
+		end
+		local c=mix_color(palette.colors_input[cur_color-1],palette.colors_input[cur_color],i)
+
+		s:set(string.format("palette[%d]",i),c[1],c[2],c[3],c[4])
 	end
 end
 function iterate_color(tbl, hsl1,hsl2,steps )
@@ -251,32 +268,38 @@ function iterate_color(tbl, hsl1,hsl2,steps )
 		local r=luv.hsluv_to_rgb{(hsl1[1]+hd*v)*360,(hsl1[2]+sd*v)*100,(hsl1[3]+ld*v)*100}
 		--local r=luv.hpluv_to_rgb{(hsl1[1]+hd*v)*360,(hsl1[2]+sd*v)*100,(hsl1[3]+ld*v)*100}
 		r[4]=1
+		r[5]=
 		table.insert(tbl,r)
 	end
 end
 function rand_range( t )
 	return math.random()*(t[2]-t[1])+t[1]
 end
+function new_color( h,s,l,pos )
+	local r=luv.hsluv_to_rgb{(h)*360,(s)*100,(l)*100}
+	r[4]=1
+	r[5]=pos
+	return r
+end
 palette.generators={
 	{"random",function (ret, hue_range,sat_range,lit_range )
 		local count=math.random(2,10)
-		local steps_max=math.floor(max_palette_size/count)
-		local steps=math.random(1,steps_max)
-
-		local lh,ls,ll
-		lh=rand_range(hue_range)
-		ls=rand_range(sat_range)
-		ll=rand_range(lit_range)
 		for i=1,count do
 			local nh,ns,nl
 			nh=rand_range(hue_range)
 			ns=rand_range(sat_range)
 			nl=rand_range(lit_range)
-			iterate_color(ret,{lh,ls,ll},{nh,ns,nl},steps)
-			lh=nh
-			ls=ns
-			ll=nl
+			local pos=math.floor(((i-1)/(count-1))*(max_palette_size-1))
+			local r=new_color(nh,ns,nl,pos)
+
+			r[4]=1
+			if i==count then
+				r[5]=max_palette_size-1
+			end
+			print(i,r[1],r[2],r[3],r[4],r[5])
+			table.insert(ret,r)
 		end
+
 	end
 	},{"shades",function(ret, hue_range,sat_range,lit_range )
 		local h1=rand_range(hue_range)
@@ -285,7 +308,12 @@ palette.generators={
 
 		local s2=rand_range(sat_range)
 		local l2=rand_range(lit_range)
-		iterate_color(ret,{h1,s,l},{h1,s2,l2},5)
+
+		local r1=new_color(h1,s,l,0)
+		local r2=new_color(h1,s2,l2,max_palette_size-1)
+
+		table.insert(ret,r1)
+		table.insert(ret,r2)
 	end,
 	},{"complementary",function (ret, hue_range,sat_range,lit_range )
 		local h1=rand_range(hue_range)
@@ -294,7 +322,14 @@ palette.generators={
 
 		local s2=rand_range(sat_range)
 		local l2=rand_range(lit_range)
-		iterate_color(ret,{h1,s,l},{1-h1,s,l2},10)
+		local r1=luv.hsluv_to_rgb{(h1)*360,(s)*100,(l)*100}
+		r1[4]=1
+		local r2=luv.hsluv_to_rgb{(1-h1)*360,(s2)*100,(l2)*100}
+		r2[4]=1
+		r1[5]=0
+		r2[5]=max_palette_size-1
+		table.insert(ret,r1)
+		table.insert(ret,r2)
 	end,
 	},{"complementary_dark",function (ret, hue_range,sat_range,lit_range )
 		local h1=rand_range(hue_range)
@@ -303,8 +338,15 @@ palette.generators={
 
 		local s2=rand_range(sat_range)
 		local l2=rand_range(lit_range)
-		iterate_color(ret,{h1,s,l},{h1,s,0},15)
-		iterate_color(ret,{h1,s,0},{1-h1,s2,l2},10)
+		local r1=luv.hsluv_to_rgb{(h1)*360,(s)*100,(l)*100}
+		r1[4]=1
+		local r2=luv.hsluv_to_rgb{(1-h1)*360,(s2)*100,(l2)*100}
+		r2[4]=1
+		r1[5]=0
+		r2[5]=max_palette_size-1
+		table.insert(ret,r1)
+		table.insert(ret,{0,0,0,1,math.floor(max_palette_size/2)})
+		table.insert(ret,r2)
 	end,
 	},{"triadic",function (ret, hue_range,sat_range,lit_range )
 		local h1=rand_range(hue_range)
@@ -317,9 +359,10 @@ palette.generators={
 		local l3=rand_range(lit_range)
 		local h2=math.fmod(h1+0.33,1)
 		local h3=math.fmod(h1+0.66,1)
-		iterate_color(ret,{h1,s,l},{h2,s2,l2},5)
-		iterate_color(ret,{h2,s2,l2},{h3,s3,l3},5)
-		--iterate_color(ret,{h3,s3,l3},{h1,s,l},5)
+
+		table.insert(ret,new_color(h1,s,l,0))
+		table.insert(ret,new_color(h2,s2,l2,math.floor(max_palette_size/2)))
+		table.insert(ret,new_color(h3,s3,l3,max_palette_size-1))
 	end,
 	},{"compound",function (ret, hue_range,sat_range,lit_range )
 		local h1=rand_range(hue_range)
@@ -358,7 +401,7 @@ palette.generators={
 }
 function gen_palette( )
 	local ret={}
-	palette.colors=ret
+	palette.colors_input=ret
 	local hue_range={0,1}
 	local sat_range={0,1}
 	local lit_range={0,1}
@@ -409,38 +452,50 @@ function palette_chooser()
 	local changing = false
 	changing,palette.current_gen=imgui.Combo("Generator",palette.current_gen-1,generators)
 	palette.current_gen=palette.current_gen+1
-	if palette.colors[palette.current]==nil then
+	if palette.colors_input[palette.current]==nil then
 		palette.current=1
 	end
 	palette.current=palette.current or 1
-	
+
 	if palette.show then
-		if #palette.colors>0 then
-			_,palette.current=imgui.SliderInt("Color id",palette.current,1,#palette.colors)
+		if #palette.colors_input>0 then
+			_,palette.current=imgui.SliderInt("Color id",palette.current,1,#palette.colors_input)
 		end
 		imgui.SameLine()
-		if #palette.colors<max_palette_size then
+		if #palette.colors_input<max_palette_size then
 			if imgui.Button("Add") then
-				table.insert(palette.colors,{0,0,0,1})
+				table.insert(palette.colors_input,{0,0,0,1})
 				if palette.current<1 then
 					palette.current=1
 				end
 			end
 		end
-		if #palette.colors>0 then
+		if #palette.colors_input>0 then
 			imgui.SameLine()
 			if imgui.Button("Remove") then
-				table.remove(palette.colors,palette.current)
+				table.remove(palette.colors_input,palette.current)
 				palette.current=1
 			end
 			if imgui.Button("Print") then
-				for i,v in ipairs(palette.colors) do
+				for i,v in ipairs(palette.colors_input) do
 					print(string.format("#%02X%02X%02X%02X",math.floor(v[1]*255),math.floor(v[2]*255),math.floor(v[3]*255),math.floor(v[4]*255)))
 				end
 			end
 		end
-		if #palette.colors>0 then
-			_,palette.colors[palette.current]=imgui.ColorEdit4("Current color",palette.colors[palette.current],true)
+		if #palette.colors_input>0 then
+			local cur_v=palette.colors_input[palette.current]
+			local new_col,ne_pos
+			_,new_col=imgui.ColorEdit4("Current color",cur_v,true)
+			_,new_pos=imgui.SliderInt("Color place",cur_v[5],0,max_palette_size-1)
+			if palette.current==1 then
+				new_pos=0
+			elseif palette.current==#palette.colors_input then
+				new_pos=max_palette_size-1
+			end
+			for i=1,4 do
+				cur_v[i]=new_col[i]
+			end
+			cur_v[5]=new_pos
 		end
 	end
 end
