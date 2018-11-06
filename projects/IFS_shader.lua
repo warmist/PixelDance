@@ -296,7 +296,6 @@ palette.generators={
 			if i==count then
 				r[5]=max_palette_size-1
 			end
-			print(i,r[1],r[2],r[3],r[4],r[5])
 			table.insert(ret,r)
 		end
 
@@ -376,27 +375,28 @@ palette.generators={
 		local d=math.random()*0.3
 		local h2=math.fmod(h1+0.5-d,1)
 		local h3=math.fmod(h1+0.5+d,1)
-		iterate_color(ret,{h1,s,l},{h2,s2,l2},5)
-		iterate_color(ret,{h2,s2,l2},{h3,s3,l3},5)
-		--iterate_color(ret,{h3,s3,l3},{h1,s,l},5)
+
+		table.insert(ret,new_color(h1,s,l,0))
+		table.insert(ret,new_color(h2,s2,l2,math.floor(max_palette_size/2)))
+		table.insert(ret,new_color(h3,s3,l3,max_palette_size-1))
 	end,
 	},{"anologous",function (ret, hue_range,sat_range,lit_range )
 		local h1=rand_range(hue_range)
 		local s=rand_range(sat_range)
 		local l=rand_range(lit_range)
+		local hue_step=0.05
+		local max_step=3
+		for i=0,max_step do
+			local h2=math.fmod(h1+hue_step*i,1)
+			local s2=s+math.random()*0.4-0.2
+			if s2>1 then s2=1 end
+			if s2<0 then s2=0 end
+			local l2=l+math.random()*0.4-0.2
+			if l2>1 then l2=1 end
+			if l2<0 then l2=0 end
 
-		local h2=math.fmod(h1+0.05,1)
-		local h3=math.fmod(h1+0.1,1)
-		local h4=math.fmod(h1+0.2,1)
-		local s2=s+math.random()*0.4-0.2
-		if s2>1 then s2=1 end
-		if s2<0 then s2=0 end
-		local l2=l+math.random()*0.4-0.2
-		if l2>1 then l2=1 end
-		if l2<0 then l2=0 end
-		iterate_color(ret,{h1,s,l},{h2,s,l},5)
-		iterate_color(ret,{h2,s2,l},{h3,s2,l},5)
-		iterate_color(ret,{h3,s2,l},{h4,s2,l2},5)
+			table.insert(ret,new_color(h2,s2,l2,((i)/max_step)*(max_palette_size-1)))
+		end
 	end}
 }
 function gen_palette( )
