@@ -22,11 +22,11 @@ function resize( w,h )
 	print("new size:",w,h)
 end
 function make_visits_texture()
-	if visit_tex==nil or visit_tex.w~=size[1] or visit_tex.h~=size[2] then
+	if visit_tex==nil or visit_tex.w~=size[1]*oversample or visit_tex.h~=size[2]*oversample then
 		print("making tex")
-		visit_tex={t=textures:Make(),w=size[1],h=size[2]}
+		visit_tex={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
 		visit_tex.t:use(0)
-		visit_tex.t:set(size[1],size[2],2)
+		visit_tex.t:set(size[1]*oversample,size[2]*oversample,2)
 	end
 end
 function make_visits_buf(  )
