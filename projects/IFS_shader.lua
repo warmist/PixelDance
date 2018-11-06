@@ -644,25 +644,30 @@ function gui()
 	end
 	if imgui.Button("Rand function") then
 		str_x=random_math(6)
-		str_y=random_math(6)
-		--str_x=random_math_fourier(4,2)
-		--str_y=random_math_fourier(4,2)
-		--str_x=random_math_power(4,2)
-		--str_y=random_math_power(4,2)
+		--str_y=random_math(6)
+		--str_x=random_math_fourier(1,1)
+		--str_y=random_math_fourier(1,1)
+
+		--str_x=random_math_power(2,4)
+		--str_y=random_math_power(2,3)
 		--str_x="s.x"
 		--str_y="s.y"
+
+		str_y="-"..str_x
 		str_preamble=""
 		str_postamble=""
-		str_postamble=""
-		--normed-like
+		--[[ normed-like
 		str_preamble=str_preamble.."float l=length(s);"
 		str_postamble=str_postamble.."s/=l;s*=move_dist;"
+		
+		--]]
 		--polar-like
 		--str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
 		--str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
-		--centered-polar
-		--str_preamble=str_preamble.."s=to_polar(s-p);"
-		--str_postamble=str_postamble.."s=from_polar(s)+p;"
+		--[[ centered-polar
+		str_preamble=str_preamble.."s=to_polar(s-p);"
+		str_postamble=str_postamble.."s=from_polar(s)+p;"
+		--]]
 		print("==============")
 		print(str_preamble)
 		print(str_x)
@@ -1369,7 +1374,18 @@ function visit_iter()
 			local x = r * math.cos(a)
 			local y = r * math.sin(a)
 			--]]
-			-- [[ grid mod
+			--[[ polar grid mod
+			local r=math.sqrt(x*x+y*y)
+			local a=math.atan(y,x)
+			local grid_r=0.01
+			local grid_a=0.001
+			r=math.floor(r/grid_r)*grid_r
+			a=math.floor(a/grid_a)*grid_a
+
+			x=math.cos(a)*r
+			y=math.sin(a)*r
+			--]]
+			--[[ grid mod
 			local grid_size=0.005
 			--x=math.floor(x/grid_size)*grid_size
 			y=math.floor(y/grid_size)*grid_size
