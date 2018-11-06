@@ -224,7 +224,7 @@ end
 
 palette=palette or {show=false,
 current_gen=1,
-colors_input={{0,0,0,1,0},{0,0,0,1,math.floor(max_palette_size*0.5)},{0,0.2,0.2,1,max_palette_size-1}}}
+colors_input={{1,0,0,1,0},{0,0,0,1,math.floor(max_palette_size*0.5)},{0,0.7,0.7,1,max_palette_size-1}}}
 function update_palette_img(  )
 	if palette_img.w~=#palette.colors_input then
 		palette_img=make_flt_buffer(#palette.colors_input,1)
@@ -966,7 +966,7 @@ end
 function coord_mapping( tx,ty )
 	local s=STATE.size
 	local dist=s[1]
-	local angle=(2*math.pi)/22
+	local angle=(2*math.pi)/3
 	local sx=s[1]/2
 	local sy=s[2]/2
 	-- [[
@@ -1228,15 +1228,15 @@ vec2 mapping(vec2 p)
 	return p;
 	//return mod(p+vec2(1),2)-vec2(1);
 
-	/* polar 
-	float angle=(2*M_PI)/22;
+	/* polar
+	float angle=(2*M_PI)/3;
 	float r=length(p);
 	float a=atan(p.y,p.x);
 	r=mod(r,2);
 	a=mod(a,angle);
 	a/=angle;
 	return vec2(r-1,a*2-1);
-	*/
+	//*/
 	//spherical... needs compression in poles
 	/*
 	float w=2;
@@ -1273,7 +1273,7 @@ void main()
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
 	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
 	//gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
-	gl_PointSize=5;
+	gl_PointSize=2;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
@@ -1287,14 +1287,14 @@ out vec4 color;
 in vec3 pos;
 uniform sampler2D img_tex;
 void main(){
-	vec4 txt=texture(img_tex,mod(pos.xy*vec2(0.5,-0.5)+vec2(0.5,0.5),1));
-	float rr=clamp(1-txt.r,0,1);
+	//vec4 txt=texture(img_tex,mod(pos.xy*vec2(0.5,-0.5)+vec2(0.5,0.5),1));
+	//float rr=clamp(1-txt.r,0,1);
 	//float rr = abs(pos.x+1);
 	//float rr = pos.y-0.5;
 	//float rr = length(pos.xy)/1.0;
 	//rr=clamp(rr,0,1);
-	float delta_size=(1-0.2)*rr+0.2;
-	//float delta_size=1;
+	//float delta_size=(1-0.2)*rr+0.2;
+	float delta_size=1;
 	//float delta_size=txt.r;
  	float r = 2*length(gl_PointCoord - 0.5)/(delta_size);
 	float a = 1 - smoothstep(0, 1, r);
