@@ -1343,10 +1343,49 @@ function visit_iter()
 			--print("Clearing")
 		end
 		for i=0,samples.w*samples.h-1 do
-			--local x=math.random()*gen_radius-gen_radius/2
-			--local y=math.random()*gen_radius-gen_radius/2
+			--[[ square
+			local x=math.random()*gen_radius-gen_radius/2
+			local y=math.random()*gen_radius-gen_radius/2
+			--]]
+			--gaussian blob
 			local x,y=gaussian2(0,gen_radius,0,gen_radius)
-
+			--[[ n gaussian blobs
+			local count=3
+			local rad=1.5+gen_radius*gen_radius
+			local n=math.random(0,count-1)
+			local a=(n/count)*math.pi*2
+			local cx=math.cos(a)*rad
+			local cy=math.sin(a)*rad
+			local x,y=gaussian2(cx,gen_radius,cy,gen_radius)
+			--]]
+			--[[ circle perimeter
+			local a=math.random()*math.pi*2
+			local x=math.cos(a)*gen_radius+gaussian(0,0.0002)
+			local y=math.sin(a)*gen_radius+gaussian(0,0.0002)
+			--]]
+			--[[
+			local a = math.random() * 2 * math.pi
+			local r = gen_radius * math.sqrt(math.random())
+			local x = r * math.cos(a)
+			local y = r * math.sin(a)
+			--]]
+			-- [[ grid mod
+			local grid_size=0.005
+			--x=math.floor(x/grid_size)*grid_size
+			y=math.floor(y/grid_size)*grid_size
+			--]]
+			--[[ blur mod
+			local blur_str=0.000001
+			local bx,by=gaussian2(0,blur_str,0,blur_str)
+			x=x+bx
+			y=y+by
+			--]]
+			--[[ circles mod
+			local circle_size=0.001
+			local a2 = math.random() * 2 * math.pi
+			x=x+math.cos(a2)*circle_size
+			y=y+math.sin(a2)*circle_size
+			--]]
 			samples.d[i]={x,y,0,0}
 		end
 
