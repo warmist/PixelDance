@@ -562,8 +562,8 @@ function rand_weighted(tbl)
 		end
 	end
 end
-function random_math( steps )
-	local cur_string="R"
+function random_math( steps,seed )
+	local cur_string=seed or "R"
 
 	function M(  )
 		return rand_weighted(normal_symbols)
@@ -578,8 +578,8 @@ function random_math( steps )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
-function random_math_fourier( steps,complications )
-	local cur_string="(R)/2"
+function random_math_fourier( steps,complications ,seed)
+	local cur_string=seed or "(R)/2"
 	for i=1,steps do
 		cur_string=cur_string..("+(R)*sin(2*%d*M_PI*(Q)+R)"):format(i)
 	end
@@ -600,8 +600,8 @@ function random_math_fourier( steps,complications )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
-function random_math_power( steps,complications )
-	local cur_string="R"
+function random_math_power( steps,complications,seed )
+	local cur_string=seed or "R"
 	for i=1,steps do
 		local QS=""
 		for j=1,i do
@@ -644,7 +644,7 @@ function gui()
 	end
 	if imgui.Button("Rand function") then
 		str_x=random_math(6)
-		--str_y=random_math(6)
+		str_y=random_math(6)
 		--str_x=random_math_fourier(1,1)
 		--str_y=random_math_fourier(1,1)
 
@@ -653,10 +653,16 @@ function gui()
 		--str_x="s.x"
 		--str_y="s.y"
 
-		str_y="-"..str_x
+		--str_y="-"..str_x
+		--str_x=random_math(6,"cos(R)*R")
+		--str_y=random_math(6,"sin(R)*R")
+		--str_y="sin("..str_x..")"
+		--str_x="cos("..str_x..")"
+		str_x=random_math_power(2,4).."/"..random_math_power(2,4)
+		str_y=random_math_power(2,4).."/"..random_math_power(2,4)
 		str_preamble=""
 		str_postamble=""
-		--[[ normed-like
+		-- [[ normed-like
 		str_preamble=str_preamble.."float l=length(s);"
 		str_postamble=str_postamble.."s/=l;s*=move_dist;"
 		
@@ -1378,8 +1384,8 @@ function visit_iter()
 			local r=math.sqrt(x*x+y*y)
 			local a=math.atan(y,x)
 			local grid_r=0.01
-			local grid_a=0.001
-			r=math.floor(r/grid_r)*grid_r
+			local grid_a=0.01
+			--r=math.floor(r/grid_r)*grid_r
 			a=math.floor(a/grid_a)*grid_a
 
 			x=math.cos(a)*r
