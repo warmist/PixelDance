@@ -11,7 +11,7 @@ local max_palette_size=50
 local sample_count=50000
 local need_clear=false
 local oversample=1
-str_x=str_x or "s.x*s.x*s.x*params.x-p.x*p.y*params.y"
+str_x=str_x or "s.x"
 str_y=str_y or "s.y"
 str_preamble=str_preamble or ""
 str_postamble=str_postamble or ""
@@ -478,7 +478,7 @@ function palette_chooser()
 			end
 			if imgui.Button("Print") then
 				for i,v in ipairs(palette.colors_input) do
-					print(string.format("#%02X%02X%02X%02X",math.floor(v[1]*255),math.floor(v[2]*255),math.floor(v[3]*255),math.floor(v[4]*255)))
+					print(string.format("#%02X%02X%02X%02X  %d",math.floor(v[1]*255),math.floor(v[2]*255),math.floor(v[3]*255),math.floor(v[4]*255),v[5]))
 				end
 			end
 		end
@@ -642,9 +642,10 @@ function gui()
 		--save_img(tile_count)
 		need_save=tile_count
 	end
+	rand_complexity=rand_complexity or 3
 	if imgui.Button("Rand function") then
-		str_x=random_math(6)
-		str_y=random_math(6)
+		str_x=random_math(rand_complexity)
+		str_y=random_math(rand_complexity)
 		--str_x=random_math_fourier(1,1)
 		--str_y=random_math_fourier(1,1)
 
@@ -658,8 +659,8 @@ function gui()
 		--str_y=random_math(6,"sin(R)*R")
 		--str_y="sin("..str_x..")"
 		--str_x="cos("..str_x..")"
-		str_x=random_math_power(2,4).."/"..random_math_power(2,4)
-		str_y=random_math_power(2,4).."/"..random_math_power(2,4)
+		--str_x=random_math_power(2,4).."/"..random_math_power(2,4)
+		--str_y=random_math_fourier(2,4).."/"..str_x
 		str_preamble=""
 		str_postamble=""
 		-- [[ normed-like
@@ -682,6 +683,9 @@ function gui()
 		make_visit_shader(true)
 		need_clear=true
 	end
+	imgui.SameLine()
+
+	_,rand_complexity=imgui.SliderInt("Complexity",rand_complexity,1,8)
 	imgui.End()
 end
 function update( )
@@ -1268,6 +1272,16 @@ vec2 mapping(vec2 p)
 	return p-vec2(w/2,h/2);
 	*/
 }
+vec2 dfun(vec2 p,int iter,float h)
+{
+	vec2 x1=func(p+vec2(1,1)*h,iter);
+	vec2 x2=func(p+vec2(1,-1)*h,iter);
+	vec2 x3=func(p+vec2(-1,1)*h,iter);
+	vec2 x4=func(p+vec2(-1,-1)*h,iter);
+	
+	return (x1-x2-x3+x4)/(4*h*h);
+
+}
 void main()
 {
 	float d=0;
@@ -1281,10 +1295,11 @@ void main()
 		pos.x=1;
 	else
 		pos.x=0;*/
+	//gl_Position.xy = mapping(dfun(position.xy,iters,0.1)*scale+center);
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
 	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
 	//gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
-	gl_PointSize=2;
+	gl_PointSize=5;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
@@ -1320,6 +1335,15 @@ end
 make_visit_shader(true)
 if samples==nil or samples.w~=sample_count then
 	samples=make_flt_half_buffer(sample_count,1)
+end
+function math.sign(x)
+   if x<0 then
+     return -1
+   elseif x>0 then
+     return 1
+   else
+     return 0
+   end
 end
 function visit_iter()
 	
@@ -1358,10 +1382,12 @@ function visit_iter()
 			local x=math.random()*gen_radius-gen_radius/2
 			local y=math.random()*gen_radius-gen_radius/2
 			--]]
+			--gaussian blob with moving center
+			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
-			local count=3
+			local count=4
 			local rad=1.5+gen_radius*gen_radius
 			local n=math.random(0,count-1)
 			local a=(n/count)*math.pi*2
@@ -1371,36 +1397,43 @@ function visit_iter()
 			--]]
 			--[[ circle perimeter
 			local a=math.random()*math.pi*2
-			local x=math.cos(a)*gen_radius+gaussian(0,0.0002)
-			local y=math.sin(a)*gen_radius+gaussian(0,0.0002)
+			local x=math.cos(a)*gen_radius
+			local y=math.sin(a)*gen_radius
 			--]]
-			--[[
+
+			--[[ circle area
 			local a = math.random() * 2 * math.pi
 			local r = gen_radius * math.sqrt(math.random())
 			local x = r * math.cos(a)
 			local y = r * math.sin(a)
 			--]]
+			-- [[ spiral
+			local angle_speed=500;
+			local t=math.random();
+			local x=math.cos(t*angle_speed)*math.sqrt(t)*gen_radius;
+			local y=math.sin(t*angle_speed)*math.sqrt(t)*gen_radius;
+			--]]
+			-------------mods
 			--[[ polar grid mod
 			local r=math.sqrt(x*x+y*y)
 			local a=math.atan(y,x)
 			local grid_r=0.01
 			local grid_a=0.01
 			--r=math.floor(r/grid_r)*grid_r
-			a=math.floor(a/grid_a)*grid_a
+			--a=math.floor(a/grid_a)*grid_a
 
 			x=math.cos(a)*r
 			y=math.sin(a)*r
 			--]]
 			--[[ grid mod
+			--local gr=math.sqrt(x*x+y*y)
 			local grid_size=0.005
-			--x=math.floor(x/grid_size)*grid_size
+			x=math.floor(x/grid_size)*grid_size
 			y=math.floor(y/grid_size)*grid_size
 			--]]
-			--[[ blur mod
-			local blur_str=0.000001
-			local bx,by=gaussian2(0,blur_str,0,blur_str)
-			x=x+bx
-			y=y+by
+			-- [[ blur mod
+			local blur_str=0.00001
+			x,y=gaussian2(x,blur_str,y,blur_str)
 			--]]
 			--[[ circles mod
 			local circle_size=0.001
