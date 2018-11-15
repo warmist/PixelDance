@@ -25,7 +25,7 @@ function make_visits_texture()
 	if visit_tex==nil or visit_tex.w~=size[1]*oversample or visit_tex.h~=size[2]*oversample then
 		print("making tex")
 		visit_tex={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
-		visit_tex.t:use(0)
+		visit_tex.t:use(0,1)
 		visit_tex.t:set(size[1]*oversample,size[2]*oversample,2)
 	end
 end
@@ -188,7 +188,7 @@ function draw_visits(  )
 	local lmin=math.huge
 	make_visits_texture()
 	make_visits_buf()
-	visit_tex.t:use(0)
+	visit_tex.t:use(0,1)
 	visit_buf:read_texture(visit_tex.t)
 	for x=0,visit_buf.w-1 do
 	for y=0,visit_buf.h-1 do
@@ -202,7 +202,7 @@ function draw_visits(  )
 	lmax=math.log(lmax+1)
 	lmin=math.log(lmin+1)
 	log_shader:use()
-	visit_tex.t:use(0)
+	visit_tex.t:use(0,1)
 	--visits:write_texture(visit_tex)
 
 	set_shader_palette(log_shader)
