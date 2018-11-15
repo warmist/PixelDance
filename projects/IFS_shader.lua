@@ -646,11 +646,11 @@ function gui()
 	if imgui.Button("Rand function") then
 		str_x=random_math(rand_complexity)
 		str_y=random_math(rand_complexity)
-		--str_x=random_math_fourier(1,1)
-		--str_y=random_math_fourier(1,1)
+		--str_x=random_math_fourier(1,rand_complexity)
+		--str_y=random_math_fourier(1,rand_complexity)
 
-		--str_x=random_math_power(2,4)
-		--str_y=random_math_power(2,3)
+		--str_x=random_math_power(2,rand_complexity)
+		--str_y=random_math_power(2,rand_complexity)
 		--str_x="s.x"
 		--str_y="s.y"
 
@@ -659,18 +659,25 @@ function gui()
 		--str_y=random_math(6,"sin(R)*R")
 		--str_y="sin("..str_x..")"
 		--str_x="cos("..str_x..")"
-		--str_x=random_math_power(2,4).."/"..random_math_power(2,4)
-		--str_y=random_math_fourier(2,4).."/"..str_x
+		--str_x=random_math_power(2,rand_complexity).."/"..random_math_power(2,rand_complexity)
+		--str_y=random_math_fourier(2,rand_complexity).."/"..str_x
 		str_preamble=""
 		str_postamble=""
+		-- [[ offset
+		str_preamble=str_preamble.."s+=params;"
+		--]]
 		-- [[ normed-like
 		str_preamble=str_preamble.."float l=length(s);"
 		str_postamble=str_postamble.."s/=l;s*=move_dist;"
-		
 		--]]
-		--polar-like
-		--str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
-		--str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
+		--[[ normed-like2
+		str_preamble=str_preamble..""
+		str_postamble=str_postamble.."s/=length(s);s*=move_dist;s+=p;"
+		--]]
+		--[[ polar-like
+		str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
+		str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
+		--]]
 		--[[ centered-polar
 		str_preamble=str_preamble.."s=to_polar(s-p);"
 		str_postamble=str_postamble.."s=from_polar(s)+p;"
