@@ -53,6 +53,8 @@ config=make_config({
 	{"IFS_steps",10,type="int",min=1,max=100},
 	{"move_dist",0.1,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
+	{"rand_angle",0,type="float",min=0,max=math.pi*2},
+	{"rand_dist",0.01,type="float",min=0.00001,max=1},
 	{"cx",0,type="float",min=-10,max=10},
 	{"cy",0,type="float",min=-10,max=10},
 	{"min_value",0,type="float",min=0,max=20},
@@ -829,16 +831,19 @@ function update_func_shader(  )
 	end
 end
 function auto_clear(  )
-	local cfg_pos=0
+	local pos_start=0
+	local pos_end=0
 	for i,v in ipairs(config) do
 		if v[1]=="v0" then
-			cfg_pos=i
-			break
+			pos_start=i
+		end
+		if v[1]=="cy" then
+			pos_end=i
 		end
 	end
 	
-	for i=0,6 do
-		if config[cfg_pos+i].changing then
+	for i=pos_start,pos_end do
+		if config[i].changing then
 			need_clear=true
 			break
 		end
@@ -1306,7 +1311,7 @@ void main()
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
 	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
 	//gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
-	gl_PointSize=5;
+	gl_PointSize=2;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
@@ -1333,7 +1338,8 @@ void main(){
 	float a = 1 - smoothstep(0, 1, r);
 	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
-	color=vec4(a,0,0,1);
+	//color=vec4(a,0,0,1);
+	color=vec4(1,0,0,1);
 }
 ]==])
 end
@@ -1384,7 +1390,10 @@ function visit_iter()
 			need_clear=false
 			--print("Clearing")
 		end
-		for i=0,samples.w*samples.h-1 do
+		local step=2
+		local dx=math.cos(config.rand_angle)*config.rand_dist
+		local dy=math.sin(config.rand_angle)*config.rand_dist
+		for i=0,samples.w*samples.h-1,step do
 			--[[ square
 			local x=math.random()*gen_radius-gen_radius/2
 			local y=math.random()*gen_radius-gen_radius/2
@@ -1392,7 +1401,7 @@ function visit_iter()
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=4
 			local rad=1.5+gen_radius*gen_radius
@@ -1414,7 +1423,7 @@ function visit_iter()
 			local x = r * math.cos(a)
 			local y = r * math.sin(a)
 			--]]
-			-- [[ spiral
+			--[[ spiral
 			local angle_speed=500;
 			local t=math.random();
 			local x=math.cos(t*angle_speed)*math.sqrt(t)*gen_radius;
@@ -1438,7 +1447,7 @@ function visit_iter()
 			x=math.floor(x/grid_size)*grid_size
 			y=math.floor(y/grid_size)*grid_size
 			--]]
-			-- [[ blur mod
+			--[[ blur mod
 			local blur_str=0.00001
 			x,y=gaussian2(x,blur_str,y,blur_str)
 			--]]
@@ -1449,17 +1458,20 @@ function visit_iter()
 			y=y+math.sin(a2)*circle_size
 			--]]
 			samples.d[i]={x,y,0,0}
+			if step==2 then
+				samples.d[i+1]={x+dx,y+dy,0,0}
+			end
 		end
 
 		if config.only_last then
 			add_visit_shader:set("seed",math.random())
 			add_visit_shader:set_i("iters",config.IFS_steps)
-			add_visit_shader:draw_points(samples.d,samples.w*samples.h)
+			add_visit_shader:draw_lines(samples.d,samples.w*samples.h,false)
 		else
 			for i=1,config.IFS_steps do
 				add_visit_shader:set("seed",math.random())
 				add_visit_shader:set_i("iters",i)
-				add_visit_shader:draw_points(samples.d,samples.w*samples.h)
+				add_visit_shader:draw_lines(samples.d,samples.w*samples.h,false)
 			end
 		end
 	end

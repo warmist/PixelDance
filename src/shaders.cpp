@@ -167,6 +167,30 @@ static int draw_array_points(lua_State* L)
 	glDisableVertexAttribArray(pos_idx);
 	return 0;
 }
+static int draw_array_lines(lua_State* L)
+{
+    auto s = check(L, 1);
+    const void* data = nullptr;
+    if ((lua_type(L, 2) == 10) /*cdata*/ || (lua_type(L, 2) == LUA_TLIGHTUSERDATA))
+    {
+        data = lua_topointer(L, 2); //TODO: check pointer?
+    }
+    if (data == nullptr)
+        luaL_error(L, "Incorrect second argument: expected pointer to array");
+    size_t count = luaL_checkinteger(L, 3);
+    bool is_strip = lua_toboolean(L, 4);
+
+    auto pos_idx = glGetAttribLocation(s->id, "position");
+    glEnableVertexAttribArray(pos_idx);
+    glVertexAttribPointer(pos_idx, 2, GL_FLOAT, false, 0, data);
+    if(is_strip)
+        glDrawArrays(GL_LINE_STRIP, 0, count);
+    else
+        glDrawArrays(GL_LINES, 0, count);
+
+    glDisableVertexAttribArray(pos_idx);
+    return 0;
+}
 void debug_program(shader_program& s)
 {
 	GLint i;
@@ -272,6 +296,9 @@ static int make_shader(lua_State* L, const char* vertex, const char* fragment) {
 
 		lua_pushcfunction(L, draw_array_points);
 		lua_setfield(L, -2, "draw_points");
+
+        lua_pushcfunction(L, draw_array_lines);
+        lua_setfield(L, -2, "draw_lines");
 
 		lua_pushcfunction(L, blend_default);
 		lua_setfield(L, -2, "blend_default");
