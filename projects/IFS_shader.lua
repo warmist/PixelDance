@@ -53,7 +53,7 @@ config=make_config({
 	{"IFS_steps",10,type="int",min=1,max=100},
 	{"move_dist",0.1,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
-	{"rand_angle",0,type="float",min=0,max=math.pi},
+	{"rand_angle",0,type="float",min=0,max=math.pi*2},
 	{"rand_dist",0.01,type="float",min=0.00001,max=1},
 	{"cx",0,type="float",min=-10,max=10},
 	{"cy",0,type="float",min=-10,max=10},
@@ -647,13 +647,13 @@ function gui()
 	end
 	rand_complexity=rand_complexity or 3
 	if imgui.Button("Rand function") then
-		str_x=random_math(rand_complexity)
-		str_y=random_math(rand_complexity)
-		--str_x=random_math_fourier(1,rand_complexity)
-		--str_y=random_math_fourier(1,rand_complexity)
+		--str_x=random_math(rand_complexity)
+		--str_y=random_math(rand_complexity)
+		--str_x=random_math_fourier(4,rand_complexity)
+		--str_y=random_math_fourier(4,rand_complexity)
 
-		--str_x=random_math_power(2,rand_complexity)
-		--str_y=random_math_power(2,rand_complexity)
+		str_x=random_math_power(3,rand_complexity)
+		str_y=random_math_power(3,rand_complexity)
 		--str_x="s.x"
 		--str_y="s.y"
 
@@ -666,7 +666,7 @@ function gui()
 		--str_y=random_math_fourier(2,rand_complexity).."/"..str_x
 		str_preamble=""
 		str_postamble=""
-		-- [[ offset
+		--[[ offset
 		str_preamble=str_preamble.."s+=params;"
 		--]]
 		-- [[ normed-like
@@ -1397,8 +1397,7 @@ function visit_iter()
 			--print("Clearing")
 		end
 		local step=2
-		local dx=math.cos(config.rand_angle)*config.rand_dist
-		local dy=math.sin(config.rand_angle)*config.rand_dist
+		
 		for i=0,samples.w*samples.h-1,step do
 			--[[ square
 			local x=math.random()*gen_radius-gen_radius/2
@@ -1407,7 +1406,7 @@ function visit_iter()
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=4
 			local rad=1.5+gen_radius*gen_radius
@@ -1417,7 +1416,7 @@ function visit_iter()
 			local cy=math.sin(a)*rad
 			local x,y=gaussian2(cx,gen_radius,cy,gen_radius)
 			--]]
-			-- [[ circle perimeter
+			--[[ circle perimeter
 			local a=math.random()*math.pi*2
 			local x=math.cos(a)*gen_radius
 			local y=math.sin(a)*gen_radius
@@ -1463,8 +1462,12 @@ function visit_iter()
 			x=x+math.cos(a2)*circle_size
 			y=y+math.sin(a2)*circle_size
 			--]]
+			local angle_off=math.atan2(y,x)
+			local dx=math.cos(config.rand_angle+angle_off)*config.rand_dist
+			local dy=math.sin(config.rand_angle+angle_off)*config.rand_dist
 			samples.d[i]={x,y,0,0}
 			if step==2 then
+				
 				samples.d[i+1]={x+dx,y+dy,0,0}
 			end
 		end
@@ -1503,7 +1506,7 @@ function update_real(  )
 			need_save=true
 			draw_visits()
 			config.rand_angle=config.rand_angle+0.025
-			if config.rand_angle>math.pi then
+			if config.rand_angle>math.pi*2 then
 				animate=false
 			end
 		end
