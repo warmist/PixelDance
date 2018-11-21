@@ -4,8 +4,8 @@ require "colors"
 local luv=require "colors_luv"
 --local size_mult=0.25
 --__set_window_size(2560*size_mult,1440*size_mult)
---__set_window_size(1280,1280)
-
+__set_window_size(1280,720)
+local aspect_ratio=1280/720
 local size=STATE.size
 local max_palette_size=50
 local sample_count=50000
@@ -53,7 +53,7 @@ config=make_config({
 	{"IFS_steps",10,type="int",min=1,max=100},
 	{"move_dist",0.1,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
-	{"rand_angle",0,type="float",min=0,max=math.pi*2},
+	{"rand_angle",0,type="float",min=0,max=math.pi},
 	{"rand_dist",0.01,type="float",min=0.00001,max=1},
 	{"cx",0,type="float",min=-10,max=10},
 	{"cy",0,type="float",min=-10,max=10},
@@ -628,6 +628,7 @@ function random_math_power( steps,complications,seed )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
+animate=false
 function gui()
 	imgui.Begin("IFS play")
 	palette_chooser()
@@ -695,6 +696,11 @@ function gui()
 	imgui.SameLine()
 
 	_,rand_complexity=imgui.SliderInt("Complexity",rand_complexity,1,8)
+
+	if imgui.Button("Animate") then
+		animate=true
+		need_clear=true
+	end
 	imgui.End()
 end
 function update( )
@@ -760,7 +766,7 @@ uniform int palette_size;
 
 uniform vec2 params;
 uniform vec2 center;
-uniform float scale;
+uniform vec2 scale;
 uniform float move_dist;
 
 vec4 mix_palette2(float value )
@@ -822,7 +828,7 @@ function update_func_shader(  )
 	func_shader:set_i("palette_size",#palette.colors)
 	func_shader:set("params",config.v0,config.v1)
 	func_shader:set("center",config.cx,config.cy)
-	func_shader:set("scale",config.scale)
+	func_shader:set("scale",config.scale,config.scale*aspect_ratio)
 	func_shader:set("move_dist",config.move_dist)
 	func_shader:draw_quad()
 	if need_save then
@@ -1214,7 +1220,7 @@ out vec3 pos;
 #define M_PI 3.1415926535897932384626433832795
 
 uniform vec2 center;
-uniform float scale;
+uniform vec2 scale;
 uniform int iters;
 uniform int max_iters;
 uniform float seed;
@@ -1370,7 +1376,7 @@ function visit_iter()
 		knock_buf:write_texture(knock_texture)
 	end
 	add_visit_shader:set("center",config.cx,config.cy)
-	add_visit_shader:set("scale",config.scale)
+	add_visit_shader:set("scale",config.scale,config.scale*aspect_ratio)
 	add_visit_shader:set("params",config.v0,config.v1)
 	add_visit_shader:set("move_dist",config.move_dist)
 
@@ -1401,7 +1407,7 @@ function visit_iter()
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=4
 			local rad=1.5+gen_radius*gen_radius
@@ -1411,7 +1417,7 @@ function visit_iter()
 			local cy=math.sin(a)*rad
 			local x,y=gaussian2(cx,gen_radius,cy,gen_radius)
 			--]]
-			--[[ circle perimeter
+			-- [[ circle perimeter
 			local a=math.random()*math.pi*2
 			local x=math.cos(a)*gen_radius
 			local y=math.sin(a)*gen_radius
@@ -1436,14 +1442,14 @@ function visit_iter()
 			local grid_r=0.01
 			local grid_a=0.01
 			--r=math.floor(r/grid_r)*grid_r
-			--a=math.floor(a/grid_a)*grid_a
+			a=math.floor(a/grid_a)*grid_a
 
 			x=math.cos(a)*r
 			y=math.sin(a)*r
 			--]]
 			--[[ grid mod
 			--local gr=math.sqrt(x*x+y*y)
-			local grid_size=0.005
+			local grid_size=0.05
 			x=math.floor(x/grid_size)*grid_size
 			y=math.floor(y/grid_size)*grid_size
 			--]]
@@ -1478,23 +1484,33 @@ function visit_iter()
 	add_visit_shader:blend_default()
 	__render_to_window()
 end
---tick=tick or 0
---local draw_frames=2
+
+local draw_frames=100
+
 function is_mouse_down(  )
 	return __mouse.clicked1 and not __mouse.owned1, __mouse.x,__mouse.y
 end
 
 function update_real(  )
 	__no_redraw()
-	
-	--tick=tick+1
-	--if tick%draw_frames==0 then
+	if animate then
+		tick=tick or 0
+		tick=tick+1
+		if tick%draw_frames==0 then
+			__clear()
+
+			need_clear=true
+			need_save=true
+			draw_visits()
+			config.rand_angle=config.rand_angle+0.025
+			if config.rand_angle>math.pi then
+				animate=false
+			end
+		end
+	else
 		__clear()
 		draw_visits()
-	--	need_clear=true
-	--	config.v0=math.cos(math.floor(tick/draw_frames)/100)*5
-	--end
-	
+	end
 	auto_clear()
 	visit_iter()
 	local scale=config.scale
@@ -1506,12 +1522,12 @@ function update_real(  )
 		y=(-y/size[2]+0.5)*2
 		--screen to world
 		x=(x-cx)/scale
-		y=(y-cy)/scale
+		y=(y-cy)/(scale*aspect_ratio)
 
 		print(x,y)
 		--now set that world pos so that screen center is on it
 		config.cx=(-x)*scale
-		config.cy=(-y)*scale
+		config.cy=(-y)*(scale*aspect_ratio)
 		need_clear=true
 	end
 	if __mouse.wheel~=0 then

@@ -18,7 +18,7 @@ function particle_init(  )
 	local count=points.w
 	for i=0,count-1 do
 		local v=(i/count)*math.pi*2
-		local r=rnd(0.0001)+0.3
+		local r=rnd(0.01)+0.3
 		points.d[i]={math.cos(v)*r,math.sin(v)*r}
 	end
 end
@@ -36,9 +36,10 @@ function calc_force( id )
 			local dx=ps.r-p.r
 			local dy=ps.g-p.g
 			local lsq=dx*dx+dy*dy
+			--lsq=math.exp(-lsq/200)
 			fx=fx+dx/lsq
 			fy=fy+dy/lsq
-			w=w+lsq
+			w=w+1/lsq
 		end
 	end
 	--local l=math.sqrt(fx*fx+fy*fy)
@@ -67,8 +68,8 @@ function particle_update(  )
 
 		local max_size=0.05
 		local min_size=0.00005
-		local fov_mult=0.002
-		local reverse_mult=0.0002
+		local fov_mult=0.2
+		local reverse_mult=0.02
 		local lld={dx*fov_mult+ld.r,dy*fov_mult+ld.g}
 		local nnd={dx*fov_mult+nd.r,dy*fov_mult+nd.g}
 		local d1=math.sqrt(lld[1]*lld[1]+lld[2]*lld[2])
