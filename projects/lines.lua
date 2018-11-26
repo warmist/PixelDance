@@ -10,7 +10,7 @@ void main(){
 	color=vec4(1,0,0,1);
 }
 ]==]
-points=make_flt_half_buffer(2000,1)
+points=make_flt_half_buffer(5000,1)
 function rnd( v )
 	return math.random()*(v*2)-v
 end
