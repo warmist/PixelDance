@@ -50,6 +50,8 @@ config=make_config({
 	{"ticking",1,type="int",min=1,max=2},
 	{"v0",-0.211,type="float",min=-5,max=5},
 	{"v1",-0.184,type="float",min=-5,max=5},
+	{"v2",-0.184,type="float",min=-5,max=5},
+	{"v3",-0.184,type="float",min=-5,max=5},
 	{"IFS_steps",10,type="int",min=1,max=100},
 	{"move_dist",0.1,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
@@ -59,6 +61,7 @@ config=make_config({
 	{"cy",0,type="float",min=-10,max=10},
 	{"min_value",0,type="float",min=0,max=20},
 	{"gen_radius",1,type="float",min=0,max=10},
+	{"animation",0,type="float",min=0,max=1},
 },config)
 
 local log_shader=shaders.Make[==[
@@ -536,9 +539,9 @@ function save_img(tile_count)
 	end
 end
 
-local terminal_symbols={["s.x"]=5,["s.y"]=5,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1,["normed_i"]=2}
+local terminal_symbols={["s.x"]=5,["s.y"]=5,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=2}
 local terminal_symbols_alt={["p.x"]=3,["p.y"]=3}
-local terminal_symbols_param={["s.x"]=5,["s.y"]=5,["params.x"]=1,["params.y"]=1,["normed_i"]=2}
+local terminal_symbols_param={["s.x"]=5,["s.y"]=5,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=2}
 local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=8,["(R)*(R)"]=16,["(R)-(R)"]=60,["(R)+(R)"]=60}
 
 function normalize( tbl )
@@ -700,6 +703,7 @@ function gui()
 	if imgui.Button("Animate") then
 		animate=true
 		need_clear=true
+		config.animation=0
 	end
 	imgui.End()
 end
@@ -764,7 +768,7 @@ in vec3 pos;
 uniform vec4 palette[15];
 uniform int palette_size;
 
-uniform vec2 params;
+uniform vec4 params;
 uniform vec2 center;
 uniform vec2 scale;
 uniform float move_dist;
@@ -826,7 +830,7 @@ function update_func_shader(  )
 	func_shader:use()
 	set_shader_palette(func_shader)
 	func_shader:set_i("palette_size",#palette.colors)
-	func_shader:set("params",config.v0,config.v1)
+	func_shader:set("params",config.v0,config.v1,config.v2,config.v3)
 	func_shader:set("center",config.cx,config.cy)
 	func_shader:set("scale",config.scale,config.scale*aspect_ratio)
 	func_shader:set("move_dist",config.move_dist)
@@ -1225,7 +1229,7 @@ uniform int iters;
 uniform int max_iters;
 uniform float seed;
 uniform float move_dist;
-uniform vec2 params;
+uniform vec4 params;
 
 vec2 to_polar(vec2 p)
 {
@@ -1377,7 +1381,7 @@ function visit_iter()
 	end
 	add_visit_shader:set("center",config.cx,config.cy)
 	add_visit_shader:set("scale",config.scale,config.scale*aspect_ratio)
-	add_visit_shader:set("params",config.v0,config.v1)
+	add_visit_shader:set("params",config.v0,config.v1,config.v2,config.v3)
 	add_visit_shader:set("move_dist",config.move_dist)
 
 	visit_tex.t:use(0)
@@ -1489,11 +1493,16 @@ function visit_iter()
 end
 
 local draw_frames=100
+local frame_count=500
 
 function is_mouse_down(  )
 	return __mouse.clicked1 and not __mouse.owned1, __mouse.x,__mouse.y
 end
-
+function update_animation_values( )
+	local a=config.animation*math.pi*2
+	config.v0=math.cos(a)*1
+	config.v1=math.sin(a)*2
+end
 function update_real(  )
 	__no_redraw()
 	if animate then
@@ -1501,12 +1510,12 @@ function update_real(  )
 		tick=tick+1
 		if tick%draw_frames==0 then
 			__clear()
-
+			update_animation_values()
 			need_clear=true
 			need_save=true
 			draw_visits()
-			config.rand_angle=config.rand_angle+0.025
-			if config.rand_angle>math.pi*2 then
+			config.animation=config.animation+1/frame_count
+			if config.animation>1 then
 				animate=false
 			end
 		end
