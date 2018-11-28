@@ -3,9 +3,10 @@ require "common"
 require "colors"
 local luv=require "colors_luv"
 --local size_mult=0.25
---__set_window_size(2560*size_mult,1440*size_mult)
-__set_window_size(1280,720)
-local aspect_ratio=1280/720
+local win_w=1024--2560
+local win_h=1024--1440
+__set_window_size(win_w,win_h)
+local aspect_ratio=win_w/win_h
 local size=STATE.size
 local max_palette_size=50
 local sample_count=50000
@@ -422,23 +423,6 @@ function gen_palette( )
 		end
 	end
 	palette.generators[palette.current_gen][2](ret,hue_range,sat_range,lit_range)
-
-	--[[ complementary
-	gen_shades(ret,h1,s,l,0.15,5)
-	gen_shades(ret,1-h1,s,0.15,l,5)
-	--]]
-	--[[ triadic
-	gen_shades(ret,h1,s,l,0.2,5)
-	gen_shades(ret,math.fmod(h1+0.33,1),s,0.2,l/2,5)
-	gen_shades(ret,math.fmod(h1+0.66,1),s,l/2,l,3)
-	--]]
-	--[[ anologous
-	gen_shades(ret,h1,s,0.2,l,3)
-	gen_shades(ret,math.fmod(h1+0.05,1),s,0.2,l,3)
-	gen_shades(ret,math.fmod(h1+0.1,1),s/2,l,0,3)
-	gen_shades(ret,math.fmod(h1+0.15,1),s/2,l,0,3)
-	gen_shades(ret,math.fmod(h1+0.2,1),s,l,0,3)
-	--]]
 end
 function palette_chooser()
 	if imgui.RadioButton("Show palette",palette.show) then
@@ -567,6 +551,29 @@ function rand_weighted(tbl)
 		end
 	end
 end
+function replace_random( s,substr,rep )
+	local num_match=0
+	local function count(  )
+		num_match=num_match+1
+		return false
+	end
+	string.gsub(s,substr,count)
+	print("input:",s," found:",count)
+	num_rep=math.random(0,num_match-1)
+	print("replacing:",num_rep)
+	function rep_one(  )
+		if num_rep==0 then
+			num_rep=num_rep-1
+			return rep()
+		else
+			num_rep=num_rep-1
+			return false
+		end
+	end
+	local ret=string.gsub(s,substr,rep_one)
+	print("returning:",ret)
+	return ret
+end
 function random_math( steps,seed )
 	local cur_string=seed or "R"
 
@@ -578,11 +585,12 @@ function random_math( steps,seed )
 	end
 
 	for i=1,steps do
-		cur_string=string.gsub(cur_string,"R",M)
+		cur_string=replace_random(cur_string,"R",M)
 	end
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
+
 function random_math_fourier( steps,complications ,seed)
 	local cur_string=seed or "(R)/2"
 	for i=1,steps do
@@ -650,33 +658,33 @@ function gui()
 	end
 	rand_complexity=rand_complexity or 3
 	if imgui.Button("Rand function") then
-		--str_x=random_math(rand_complexity)
-		--str_y=random_math(rand_complexity)
-		--str_x=random_math_fourier(4,rand_complexity)
+		str_x=random_math(rand_complexity)
+		str_y=random_math(rand_complexity)
+		--str_x=random_math_fourier(2,rand_complexity)
 		--str_y=random_math_fourier(4,rand_complexity)
 
-		str_x=random_math_power(3,rand_complexity)
-		str_y=random_math_power(3,rand_complexity)
+		--str_x=random_math_power(3,rand_complexity)
+		--str_y=random_math_power(3,rand_complexity)
 		--str_x="s.x"
 		--str_y="s.y"
 
 		--str_y="-"..str_x
-		--str_x=random_math(6,"cos(R)*R")
-		--str_y=random_math(6,"sin(R)*R")
+		--str_x=random_math(rand_complexity,"cos(R)*R")
+		--str_y=random_math(rand_complexity,"sin(R)*R")
 		--str_y="sin("..str_x..")"
 		--str_x="cos("..str_x..")"
 		--str_x=random_math_power(2,rand_complexity).."/"..random_math_power(2,rand_complexity)
 		--str_y=random_math_fourier(2,rand_complexity).."/"..str_x
 		str_preamble=""
 		str_postamble=""
-		--[[ offset
-		str_preamble=str_preamble.."s+=params;"
+		-- [[ offset
+		str_preamble=str_preamble.."s+=params.xy;"
 		--]]
-		-- [[ normed-like
+		--[[ normed-like
 		str_preamble=str_preamble.."float l=length(s);"
 		str_postamble=str_postamble.."s/=l;s*=move_dist;"
 		--]]
-		--[[ normed-like2
+		-- [[ normed-like2
 		str_preamble=str_preamble..""
 		str_postamble=str_postamble.."s/=length(s);s*=move_dist;s+=p;"
 		--]]

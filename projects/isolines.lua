@@ -4,13 +4,16 @@ __set_window_size(1024,1024)
 local aspect_ratio=1024/1024
 local size=STATE.size
 
-local oversample=2
-str_x=str_x or "last_v.x+(diffuse.x*lap.x-last_v.x*last_v.y*last_v.y+feed*(1-last_v.x))*dt"
-str_y=str_y or "last_v.y+(diffuse.y*lap.y+last_v.x*last_v.y*last_v.y-(kill+feed)*(last_v.y))*dt"
+local oversample=1
+local org_str="last_v.x*last_v.y*last_v.y"
+local str_inner="(last_v.y*last_v.y*last_v.x/coord.x)"
+local str_inner="(last_v.x+params.x)*(last_v.y+params.y)*(last_v.y+params.z)"
+str_x=str_x or string.format("last_v.x+(diffuse.x*lap.x-%s+feed*(1-last_v.x))*dt",str_inner)
+str_y=str_y or string.format("last_v.y+(diffuse.y*lap.y+%s-(kill+feed)*(last_v.y))*dt",str_inner)
 config=make_config({
-	{"v0",0,type="float",min=0,max=1},
-	{"v1",0,type="float",min=0,max=1},
-	{"v2",0,type="float",min=0,max=1},
+	{"v0",0,type="float",min=-0.2,max=0.2},
+	{"v1",0,type="float",min=-0.2,max=0.2},
+	{"v2",0,type="float",min=-0.2,max=0.2},
 	{"v3",0,type="float",min=0,max=1},
 
 	{"diffuse_x",1,type="float",min=0,max=1},
@@ -50,16 +53,19 @@ uniform float line_w;
 uniform vec2 limits;
 
 void main(){
+	vec3 in_col=vec3(0.2,0.1,0.9);
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec2 lv=texture(values,normed).xy;
 
 	//float v=clamp((lv-limits.x)/(limits.y-limits.x),0,1);
 
 	float w=line_w;
-	//float vv=clamp(smoothstep(0.5-w,0.5,v)-smoothstep(0.5,0.5+w,v),0,1);
-	//color=vec4(vv*0.8,0,0,1);
-	vec3 in_col=vec3(0.2,0.1,0.9);
-	color=vec4(lv.y*in_col,1);
+	float v=lv.x;
+	float c=0.5;
+	float vv=clamp(smoothstep(c-w,c,v)-smoothstep(c,c+w,v),0,1);
+	color=vec4(vv*in_col,1);
+	
+	//color=vec4(lv.y*in_col,1);
 }
 ]==]
 
@@ -84,9 +90,9 @@ vec2 calc_new_value(vec2 last_v)
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 
 	vec2 coord=pos.xy;
-	/*float rad=length(coord);
+	float rad=length(coord);
 	float ang=atan(coord.y,coord.x);
-	coord=vec2(rad,ang);*/
+	coord=vec2(rad,ang);
 
 	vec2 a=DX(-1,0);
 	vec2 b=DX(0,1);
@@ -97,8 +103,8 @@ vec2 calc_new_value(vec2 last_v)
 	vec2 f=DX(1,1);
 	vec2 g=DX(1,-1);
 	vec2 h=DX(-1,1);
-
-	vec2 lap=0.2*(a+b+c+d)+0.05*(e+f+g+h)-last_v;
+	float main_dir_power=0.8;
+	vec2 lap=(main_dir_power/4)*(a+b+c+d)+(1-main_dir_power)/4*(e+f+g+h)-last_v;
 
 	vec2 ret=vec2(%s,%s);
 	return ret;
@@ -119,10 +125,12 @@ void main(){
 	if(pos.x>0.95)
 		nv=vec2(1,0);*/
 
+	//nv+=vec2(0,clamp(1-length(pos),0,1)/2000);
+
 	if(init>0.5)
 	{
-		if(length(pos)<0.01)
-			nv=vec2(0.1,0.5+abs(cos(pos.x)*sin(pos.y))*50);
+		if(length(pos)<0.05 && length(pos)>0.025)
+			nv=vec2(0.0,1);
 		else
 			nv=vec2(1,0);
 		//nv=vec2(rand(pos.xy),rand2(pos.xy));
@@ -138,7 +146,8 @@ function rnd( v )
 	return math.random()*(v*2)-v
 end
 --last_v.x+(diffuse.x*lap.x-last_v.x*last_v.y*last_v.y+feed*(1-last_v.x))*dt
-local terminal_symbols={["coord.x"]=5,["coord.y"]=5,
+local terminal_symbols={
+["coord.x"]=5,--[[["coord.y"]=5,]]
 --["a"]=1,["b"]=1,["c"]=1,["d"]=1,
 --["e"]=1,["f"]=1,["g"]=1,["h"]=1,
 --["lap.x"]=1,["lap.y"]=1,
