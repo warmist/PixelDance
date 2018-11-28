@@ -4,17 +4,21 @@ __set_window_size(1024,1024)
 local aspect_ratio=1024/1024
 local size=STATE.size
 
-local oversample=1
-str_x=str_x or "last_v"
-
+local oversample=2
+str_x=str_x or "last_v.x+(diffuse.x*lap.x-last_v.x*last_v.y*last_v.y+feed*(1-last_v.x))*dt"
+str_y=str_y or "last_v.y+(diffuse.y*lap.y+last_v.x*last_v.y*last_v.y-(kill+feed)*(last_v.y))*dt"
 config=make_config({
 	{"v0",0,type="float",min=0,max=1},
 	{"v1",0,type="float",min=0,max=1},
 	{"v2",0,type="float",min=0,max=1},
 	{"v3",0,type="float",min=0,max=1},
-	{"decay",0.5,type="float",min=0,max=1},
-	{"evolution",0.5,type="float",min=0,max=1},
-	{"complexity",1,type="int",min=1,max=10},
+
+	{"diffuse_x",1,type="float",min=0,max=1},
+	{"diffuse_y",0.5,type="float",min=0,max=1},
+	{"dt",1,type="float",min=0,max=5},
+	{"feed",0.055,type="float",min=0,max=1},
+	{"kill",0.062,type="float",min=0,max=1},
+	{"complexity",2,type="int",min=1,max=10},
 	{"line_w",0.01,type="float",min=0,max=1},
 	},config)
 
@@ -22,13 +26,13 @@ function make_visits_texture()
 	if values_tex==nil or values_tex.w~=size[1]*oversample or values_tex.h~=size[2]*oversample then
 		print("making tex")
 		values_tex={t=textures:Make(),t_alt=textures:Make(),w=size[1]*oversample,h=size[2]*oversample,
-		buf=make_float_buffer(size[1]*oversample,size[2]*oversample)}
+		buf=make_flt_half_buffer(size[1]*oversample,size[2]*oversample)}
 
 		values_tex.t:use(0,1)
-		values_tex.t:set(size[1]*oversample,size[2]*oversample,2)
+		values_tex.t:set(size[1]*oversample,size[2]*oversample,3)
 
 		values_tex.t_alt:use(0,1)
-		values_tex.t_alt:set(size[1]*oversample,size[2]*oversample,2)
+		values_tex.t_alt:set(size[1]*oversample,size[2]*oversample,3)
 	end
 end
 function make_img_buf(  )
@@ -47,13 +51,15 @@ uniform vec2 limits;
 
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	float lv=log(abs(texture(values,normed).x)+1);
+	vec2 lv=texture(values,normed).xy;
 
-	float v=clamp((lv-limits.x)/(limits.y-limits.x),0,1);
+	//float v=clamp((lv-limits.x)/(limits.y-limits.x),0,1);
+
 	float w=line_w;
-	float vv=clamp(smoothstep(0.5-w,0.5,v)-smoothstep(0.5,0.5+w,v),0,1);
+	//float vv=clamp(smoothstep(0.5-w,0.5,v)-smoothstep(0.5,0.5+w,v),0,1);
 	//color=vec4(vv*0.8,0,0,1);
-	color=vec4(v*0.8,0,0,1);
+	vec3 in_col=vec3(0.2,0.1,0.9);
+	color=vec4(lv.y*in_col,1);
 }
 ]==]
 
@@ -66,70 +72,81 @@ out vec4 color;
 in vec3 pos;
 uniform sampler2D values;
 uniform vec4 params;
-uniform float decay;
-uniform float evolution;
+uniform float dt;
+uniform vec2 diffuse;
+uniform float kill;
+uniform float feed;
 uniform float init;
 
-#define DX(dx,dy) textureOffset(values,normed,ivec2(dx,dy)).x
-float calc_new_value(float last_v)
+#define DX(dx,dy) textureOffset(values,normed,ivec2(dx,dy)).xy
+vec2 calc_new_value(vec2 last_v)
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 
 	vec2 coord=pos.xy;
-	float rad=length(coord);
+	/*float rad=length(coord);
 	float ang=atan(coord.y,coord.x);
+	coord=vec2(rad,ang);*/
 
-	coord=vec2(rad,ang);
+	vec2 a=DX(-1,0);
+	vec2 b=DX(0,1);
+	vec2 c=DX(0,-1);
+	vec2 d=DX(1,0);
 
-	float a=DX(-1,0);
-	float b=DX(0,1);
-	float c=DX(0,-1);
-	float d=DX(1,0);
+	vec2 e=DX(-1,-1);
+	vec2 f=DX(1,1);
+	vec2 g=DX(1,-1);
+	vec2 h=DX(-1,1);
 
-	float e=DX(-1,-1);
-	float f=DX(1,1);
-	float g=DX(1,-1);
-	float h=DX(-1,1);
+	vec2 lap=0.2*(a+b+c+d)+0.05*(e+f+g+h)-last_v;
 
-	float ret=%s;
-	return ret+last_v;
+	vec2 ret=vec2(%s,%s);
+	return ret;
 }
 float rand(vec2 n) { 
 	return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
 }
+float rand2(vec2 n) { 
+	return fract(sin(dot(n, vec2(974.2111, 8777.2444))) * 20123.5453);
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	float last_v=DX(0,0);
-	float in_v=calc_new_value(last_v);
-	//float nv=clamp(in_v,0,1);
-	float nv=in_v;
-	nv=mix(nv,0,decay);
-	nv=mix(last_v,nv,evolution);
+	vec2 last_v=DX(0,0);
+	vec2 in_v=calc_new_value(last_v);
+	vec2 nv=in_v;
 	/*if(pos.x<-0.95)
-		nv=0;
+		nv=vec2(0,0);
 	if(pos.x>0.95)
-		nv=1;*/
+		nv=vec2(1,0);*/
 
 	if(init>0.5)
 	{
-		nv=rand(pos.xy);
+		if(length(pos)<0.01)
+			nv=vec2(0.1,0.5+abs(cos(pos.x)*sin(pos.y))*50);
+		else
+			nv=vec2(1,0);
+		//nv=vec2(rand(pos.xy),rand2(pos.xy));
 	}
-	color=vec4(nv,0,0,1);
+	nv=clamp(nv,0,1);
+	color=vec4(nv.x,nv.y,0,1);
 }
-]==],str_x))
+]==],str_x,str_y))
 end
 update_shader()
 
 function rnd( v )
 	return math.random()*(v*2)-v
 end
-
+--last_v.x+(diffuse.x*lap.x-last_v.x*last_v.y*last_v.y+feed*(1-last_v.x))*dt
 local terminal_symbols={["coord.x"]=5,["coord.y"]=5,
-["a"]=1,["b"]=1,["c"]=1,["d"]=1,
-["e"]=1,["f"]=1,["g"]=1,["h"]=1,
-["last_v"]=3,
-["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1}
-local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=2,["(R)*(R)"]=3,["(R)-(R)"]=3,["(R)+(R)"]=3}
+--["a"]=1,["b"]=1,["c"]=1,["d"]=1,
+--["e"]=1,["f"]=1,["g"]=1,["h"]=1,
+--["lap.x"]=1,["lap.y"]=1,
+["last_v.x"]=25,["last_v.y"]=25,
+["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,
+--["dt"]=1,["feed"]=1,["kill"]=1,
+}
+local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=2,["(R)*(R)"]=15,["(R)-(R)"]=10,["(R)+(R)"]=10}
 
 function normalize( tbl )
 	local sum=0
@@ -168,6 +185,21 @@ function random_math( steps,seed )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
+function random_math_react_diffuse( steps,seed )
+	local cur_string=seed or "R"
+	function M(  )
+		return rand_weighted(normal_symbols)
+	end
+	function MT(  )
+		return rand_weighted(terminal_symbols)
+	end
+
+	for i=1,steps do
+		cur_string=string.gsub(cur_string,"R",M)
+	end
+	cur_string=string.gsub(cur_string,"R",MT)
+	return cur_string
+end
 noise=false
 local need_save
 function save_img(  )
@@ -180,8 +212,6 @@ function save_img(  )
 	end
 	config_serial=config_serial..string.format("str_x=%q\n",str_x)
 	config_serial=config_serial..string.format("str_y=%q\n",str_y)
-	config_serial=config_serial..string.format("str_preamble=%q\n",str_preamble)
-	config_serial=config_serial..string.format("str_postamble=%q\n",str_postamble)
 	img_buf:read_frame()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
@@ -213,8 +243,13 @@ function update()
 	imgui.Begin("isolines")
 	draw_config(config)
 	if imgui.Button("RandMath") then
-		str_x=random_math(config.complexity)
+		print("===============================")
+		local tstr=random_math(config.complexity)
+
+		str_x=string.format("last_v.x+(diffuse.x*lap.x-%s+feed*(1-last_v.x))*dt",tstr)
+		str_y=string.format("last_v.y+(diffuse.y*lap.y+%s-(kill+feed)*(last_v.y))*dt",tstr)
 		print(str_x)
+		print(str_y)
 		update_shader()
 		noise=true
 	end
@@ -227,6 +262,12 @@ function update()
 		need_save=true
 	end
 	imgui.End()
+	for i,v in ipairs(config) do
+		if v.changing then
+			noise=true
+			break
+		end
+	end
 	local tt=values_tex.t
 	values_tex.t=values_tex.t_alt
 	values_tex.t_alt=tt
@@ -241,21 +282,23 @@ function update()
 	end
 	evolve_shader:set_i("values",0)
 	evolve_shader:set("params",config.v0,config.v1,config.v2,config.v3)
-	evolve_shader:set("decay",config.decay)
-	evolve_shader:set("evolution",config.evolution)
+	evolve_shader:set("dt",config.dt)
+	evolve_shader:set("diffuse",config.diffuse_x,config.diffuse_y)
+	evolve_shader:set("kill",config.kill)
+	evolve_shader:set("feed",config.feed)
 	if not values_tex.t:render_to(values_tex.w,values_tex.h) then
 		error("failed to set framebuffer up")
 	end
 	evolve_shader:draw_quad()
 	__render_to_window()
 
-	local low,high=calc_norms()
+	--local low,high=calc_norms()
 
 	draw_shader:use()
 	values_tex.t:use(0)
 	draw_shader:set("line_w",config.line_w)
 	draw_shader:set_i("values",0)
-	draw_shader:set("limits",low,high)
+	--draw_shader:set("limits",low,high)
 	draw_shader:draw_quad()
 	if need_save then
 		save_img()

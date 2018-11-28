@@ -488,7 +488,7 @@ int main(int argc, char** argv)
 	//settings.sRgbCapable = true;
     sf::RenderWindow window(sf::VideoMode(1024, 1024), "PixelDance",sf::Style::Default,settings);
 	main_win = &window;
-    window.setFramerateLimit(60);
+    bool is_fps_limited = false;
     ImGui::SFML::Init(window);
 	
 	if (!gl_lite_init())
@@ -633,7 +633,14 @@ int main(int argc, char** argv)
         ImGui::SameLine();
         if (ImGui::Button("Reset"))
             current_project.reset(argv[1]);
-
+        ImGui::SameLine();
+        if (ImGui::Checkbox("Limit fps", &is_fps_limited))
+        {
+            if(is_fps_limited)
+                window.setFramerateLimit(60);
+            else
+                window.setFramerateLimit(0);
+        }
         ImGui::BeginChild("ScrollingRegion", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar);
         for (auto& s : current_project.errors)
             ImGui::Text("%s", s.c_str());
