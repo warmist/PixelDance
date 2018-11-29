@@ -7,10 +7,13 @@ local size=STATE.size
 local oversample=1
 local org_str="last_v.x*last_v.y*last_v.y"
 local str_inner="(last_v.y*last_v.y*last_v.x/coord.x)"
-local str_inner="(last_v.x+params.x)*(last_v.y+params.y)*(last_v.y+params.z)"
-str_x=str_x or string.format("last_v.x+(diffuse.x*lap.x-%s+feed*(1-last_v.x))*dt",str_inner)
-str_y=str_y or string.format("last_v.y+(diffuse.y*lap.y+%s-(kill+feed)*(last_v.y))*dt",str_inner)
+local str_inner=org_str
+str_x=str_x or string.format("last_v.x+(adif.x*lap.x-%s+feed*(1-last_v.x))*dt",str_inner)
+str_y=str_y or string.format("last_v.y+(adif.y*lap.y+%s-(kill+feed)*(last_v.y))*dt",str_inner)
 config=make_config({
+	{"line_w",0.01,type="float",min=0,max=1},
+	{"color",{0.4,0,0,1},type="color"},
+
 	{"v0",0,type="float",min=-0.2,max=0.2},
 	{"v1",0,type="float",min=-0.2,max=0.2},
 	{"v2",0,type="float",min=-0.2,max=0.2},
@@ -22,7 +25,7 @@ config=make_config({
 	{"feed",0.055,type="float",min=0,max=1},
 	{"kill",0.062,type="float",min=0,max=1},
 	{"complexity",2,type="int",min=1,max=10},
-	{"line_w",0.01,type="float",min=0,max=1},
+	
 	},config)
 
 function make_visits_texture()
@@ -51,9 +54,10 @@ in vec3 pos;
 uniform sampler2D values;
 uniform float line_w;
 uniform vec2 limits;
+uniform vec4 in_col;
 
 void main(){
-	vec3 in_col=vec3(0.2,0.1,0.9);
+	
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec2 lv=texture(values,normed).xy;
 
@@ -63,7 +67,7 @@ void main(){
 	float v=lv.x;
 	float c=0.5;
 	float vv=clamp(smoothstep(c-w,c,v)-smoothstep(c,c+w,v),0,1);
-	color=vec4(vv*in_col,1);
+	color=vec4(vv*in_col);
 	
 	//color=vec4(lv.y*in_col,1);
 }
@@ -85,14 +89,22 @@ uniform float feed;
 uniform float init;
 
 #define DX(dx,dy) textureOffset(values,normed,ivec2(dx,dy)).xy
+vec2 actual_diffuse(vec2 dif,vec2 pos)
+{
+	float r=length(pos);
+
+	return vec2(dif.x*(1-pos.x*pos.x),dif.y*(1-r));
+}
 vec2 calc_new_value(vec2 last_v)
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 
+	/*
 	vec2 coord=pos.xy;
 	float rad=length(coord);
 	float ang=atan(coord.y,coord.x);
 	coord=vec2(rad,ang);
+	*/
 
 	vec2 a=DX(-1,0);
 	vec2 b=DX(0,1);
@@ -105,6 +117,8 @@ vec2 calc_new_value(vec2 last_v)
 	vec2 h=DX(-1,1);
 	float main_dir_power=0.8;
 	vec2 lap=(main_dir_power/4)*(a+b+c+d)+(1-main_dir_power)/4*(e+f+g+h)-last_v;
+
+	vec2 adif=actual_diffuse(diffuse,pos.xy);
 
 	vec2 ret=vec2(%s,%s);
 	return ret;
@@ -147,7 +161,7 @@ function rnd( v )
 end
 --last_v.x+(diffuse.x*lap.x-last_v.x*last_v.y*last_v.y+feed*(1-last_v.x))*dt
 local terminal_symbols={
-["coord.x"]=5,--[[["coord.y"]=5,]]
+--["coord.x"]=5,--[[["coord.y"]=5,]]
 --["a"]=1,["b"]=1,["c"]=1,["d"]=1,
 --["e"]=1,["f"]=1,["g"]=1,["h"]=1,
 --["lap.x"]=1,["lap.y"]=1,
@@ -255,8 +269,8 @@ function update()
 		print("===============================")
 		local tstr=random_math(config.complexity)
 
-		str_x=string.format("last_v.x+(diffuse.x*lap.x-%s+feed*(1-last_v.x))*dt",tstr)
-		str_y=string.format("last_v.y+(diffuse.y*lap.y+%s-(kill+feed)*(last_v.y))*dt",tstr)
+		str_x=string.format("last_v.x+(adif.x*lap.x-%s+feed*(1-last_v.x))*dt",tstr)
+		str_y=string.format("last_v.y+(adif.y*lap.y+%s-(kill+feed)*(last_v.y))*dt",tstr)
 		print(str_x)
 		print(str_y)
 		update_shader()
@@ -271,8 +285,8 @@ function update()
 		need_save=true
 	end
 	imgui.End()
-	for i,v in ipairs(config) do
-		if v.changing then
+	for i=3,#config do
+		if config[i].changing then
 			noise=true
 			break
 		end
@@ -308,6 +322,7 @@ function update()
 	draw_shader:set("line_w",config.line_w)
 	draw_shader:set_i("values",0)
 	--draw_shader:set("limits",low,high)
+	draw_shader:set("in_col",config.color[1],config.color[2],config.color[3],config.color[4])
 	draw_shader:draw_quad()
 	if need_save then
 		save_img()

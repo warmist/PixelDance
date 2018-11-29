@@ -12,6 +12,7 @@ local max_palette_size=50
 local sample_count=50000
 local need_clear=false
 local oversample=1
+local render_lines=false
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
 str_preamble=str_preamble or ""
@@ -607,7 +608,7 @@ function random_math_fourier( steps,complications ,seed)
 	end
 
 	for i=1,complications do
-		cur_string=string.gsub(cur_string,"R",M)
+		cur_string=replace_random(cur_string,"R",M)
 	end
 	cur_string=string.gsub(cur_string,"Q",MQT)
 	cur_string=string.gsub(cur_string,"R",MT)
@@ -633,7 +634,7 @@ function random_math_power( steps,complications,seed )
 	end
 
 	for i=1,complications do
-		cur_string=string.gsub(cur_string,"R",M)
+		cur_string=replace_random(cur_string,"R",M)
 	end
 	cur_string=string.gsub(cur_string,"Q",MQT)
 	cur_string=string.gsub(cur_string,"R",MT)
@@ -659,12 +660,12 @@ function gui()
 	rand_complexity=rand_complexity or 3
 	if imgui.Button("Rand function") then
 		str_x=random_math(rand_complexity)
-		str_y=random_math(rand_complexity)
-		--str_x=random_math_fourier(2,rand_complexity)
-		--str_y=random_math_fourier(4,rand_complexity)
+		--str_y=random_math(rand_complexity)
+		--str_x=random_math_fourier(3,rand_complexity)
+		--str_y=random_math_fourier(3,rand_complexity)
 
 		--str_x=random_math_power(3,rand_complexity)
-		--str_y=random_math_power(3,rand_complexity)
+		str_y=random_math_power(3,rand_complexity)
 		--str_x="s.x"
 		--str_y="s.y"
 
@@ -677,14 +678,14 @@ function gui()
 		--str_y=random_math_fourier(2,rand_complexity).."/"..str_x
 		str_preamble=""
 		str_postamble=""
-		-- [[ offset
+		--[[ offset
 		str_preamble=str_preamble.."s+=params.xy;"
 		--]]
-		--[[ normed-like
+		-- [[ normed-like
 		str_preamble=str_preamble.."float l=length(s);"
 		str_postamble=str_postamble.."s/=l;s*=move_dist;"
 		--]]
-		-- [[ normed-like2
+		--[[ normed-like2
 		str_preamble=str_preamble..""
 		str_postamble=str_postamble.."s/=length(s);s*=move_dist;s+=p;"
 		--]]
@@ -1408,8 +1409,11 @@ function visit_iter()
 			need_clear=false
 			--print("Clearing")
 		end
-		local step=2
-		
+
+		local step=1
+		if draw_lines then
+			step=2
+		end
 		for i=0,samples.w*samples.h-1,step do
 			--[[ square
 			local x=math.random()*gen_radius-gen_radius/2
@@ -1479,7 +1483,6 @@ function visit_iter()
 			local dy=math.sin(config.rand_angle+angle_off)*config.rand_dist
 			samples.d[i]={x,y,0,0}
 			if step==2 then
-				
 				samples.d[i+1]={x+dx,y+dy,0,0}
 			end
 		end
@@ -1487,12 +1490,20 @@ function visit_iter()
 		if config.only_last then
 			add_visit_shader:set("seed",math.random())
 			add_visit_shader:set_i("iters",config.IFS_steps)
-			add_visit_shader:draw_lines(samples.d,samples.w*samples.h,false)
+			if render_lines then
+				add_visit_shader:draw_lines(samples.d,samples.w*samples.h,false)
+			else
+				add_visit_shader:draw_points(samples.d,samples.w*samples.h,false)
+			end
 		else
 			for i=1,config.IFS_steps do
 				add_visit_shader:set("seed",math.random())
 				add_visit_shader:set_i("iters",i)
-				add_visit_shader:draw_lines(samples.d,samples.w*samples.h,false)
+				if render_lines then
+					add_visit_shader:draw_lines(samples.d,samples.w*samples.h,false)
+				else
+					add_visit_shader:draw_points(samples.d,samples.w*samples.h,false)
+				end
 			end
 		end
 	end
@@ -1501,15 +1512,15 @@ function visit_iter()
 end
 
 local draw_frames=100
-local frame_count=500
+local frame_count=300
 
 function is_mouse_down(  )
 	return __mouse.clicked1 and not __mouse.owned1, __mouse.x,__mouse.y
 end
 function update_animation_values( )
 	local a=config.animation*math.pi*2
-	config.v0=math.cos(a)*1
-	config.v1=math.sin(a)*2
+	config.v0=math.cos(a)*2.5-2.5
+	config.v2=math.sin(a)*5
 end
 function update_real(  )
 	__no_redraw()
