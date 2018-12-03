@@ -11,7 +11,7 @@ local size=STATE.size
 local max_palette_size=50
 local sample_count=50000
 local need_clear=false
-local oversample=1
+local oversample=2
 local render_lines=false
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
@@ -174,13 +174,25 @@ void main(){
 		nv=(log(nv+1)-lmm.x)/(lmm.y-lmm.x);
 	else
 		nv=log(nv+1)/lmm.y;
-	//nv=floor(nv*8)/8; //stylistic quantization
+	//nv=floor(nv*50)/50; //stylistic quantization
+	/*
+	float l=(abs(pos.x)+abs(pos.y))/2;
+	l=smoothstep(0.49,0.5,l);
+	//*/
+	///*
+	float l=dot(pos.xy,pos.xy);
+	l=smoothstep(0.85,0.9,l);
+	//*/
+	l=clamp(1-l,0,1);
+
 	nv=clamp(nv,0,1);
 	//nv=math.min(math.max(nv,0),1);
 	//--mix(pix_out,c_u8,c_back,nv)
 	//mix_palette(pix_out,nv)
 	//img_buf:set(x,y,pix_out)
-	color = mix_palette2(nv);
+	
+	color = mix_palette2(nv*l);
+	//color=vec4(l,l,l,1);
 	
 /*
     color.rgb = pow(color.rgb, vec3(1.0/gamma));
@@ -1348,7 +1360,7 @@ void main(){
 	//float rr=clamp(1-txt.r,0,1);
 	//float rr = abs(pos.x+1);
 	//float rr = pos.y-0.5;
-	//float rr = length(pos.xy)/1.0;
+	//float rr = length(pos.xy)/5.0;
 	//rr=clamp(rr,0,1);
 	//float delta_size=(1-0.2)*rr+0.2;
 	float delta_size=1;
@@ -1481,9 +1493,9 @@ function visit_iter()
 			local angle_off=math.atan2(y,x)
 			local dx=math.cos(config.rand_angle+angle_off)*config.rand_dist
 			local dy=math.sin(config.rand_angle+angle_off)*config.rand_dist
-			samples.d[i]={x,y,0,0}
+			samples.d[i]={x,y}
 			if step==2 then
-				samples.d[i+1]={x+dx,y+dy,0,0}
+				samples.d[i+1]={x+dx,y+dy}
 			end
 		end
 
