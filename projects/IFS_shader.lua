@@ -18,6 +18,7 @@ str_y=str_y or "s.y"
 str_preamble=str_preamble or ""
 str_postamble=str_postamble or ""
 img_buf=make_image_buffer(size[1],size[2])
+
 function resize( w,h )
 	img_buf=make_image_buffer(w,h)
 	size=STATE.size
@@ -65,6 +66,7 @@ config=make_config({
 	{"gen_radius",1,type="float",min=0,max=10},
 	{"animation",0,type="float",min=0,max=1},
 },config)
+
 
 local log_shader=shaders.Make[==[
 #version 330
@@ -180,7 +182,7 @@ void main(){
 	l=smoothstep(0.49,0.5,l);
 	//*/
 	///*
-	float l=dot(pos.xy,pos.xy);
+	float l=length(pos.xy);
 	l=smoothstep(0.85,0.9,l);
 	//*/
 	l=clamp(1-l,0,1);
@@ -501,7 +503,14 @@ function palette_chooser()
 		end
 	end
 end
-
+function palette_serialize(  )
+	local ret="palette={show=false,current_gen=%d,colors_input={%s}}\n"
+	local pal=""
+	for i,v in ipairs(palette.colors_input) do
+		pal=pal..string.format("{%f,%f,%f,%f,%d},",v[1],v[2],v[3],v[4],v[5])
+	end
+	return string.format(ret,palette.current_gen,pal)
+end
 function save_img(tile_count)
 	if tile_count==1 then
 
@@ -515,6 +524,7 @@ function save_img(tile_count)
 		config_serial=config_serial..string.format("str_y=%q\n",str_y)
 		config_serial=config_serial..string.format("str_preamble=%q\n",str_preamble)
 		config_serial=config_serial..string.format("str_postamble=%q\n",str_postamble)
+		config_serial=config_serial..palette_serialize()
 		img_buf:read_frame()
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 	else
