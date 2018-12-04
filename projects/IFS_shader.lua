@@ -3,8 +3,8 @@ require "common"
 require "colors"
 local luv=require "colors_luv"
 --local size_mult=0.25
-local win_w=1024--2560
-local win_h=1024--1440
+local win_w=1024*1--2560
+local win_h=1024*1--1440
 __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/win_h
 local size=STATE.size
@@ -81,7 +81,7 @@ uniform vec2 min_max;
 uniform sampler2D tex_main;
 uniform sampler2D tex_palette;
 uniform int auto_scale_color;
-
+#define M_PI   3.14159265358979323846264338327950288
 vec4 mix_palette(float value )
 {
 	if (palette_size==0)
@@ -163,6 +163,27 @@ float var_tex(vec2 pos)
 
 	return ret/9;
 }
+vec2 tRotate(vec2 p, float a) {
+	float c=cos(a);
+	float s=sin(a);
+	mat2 m=mat2(c,-s,s,c);
+	return m*p;
+}
+float sdBox( in vec2 p, in vec2 b )
+{
+    vec2 d = abs(p)-b;
+    return length(max(d,vec2(0))) + min(max(d.x,d.y),0.0);
+}
+float sdEquilateralTriangle( in vec2 p )
+{
+    const float k = sqrt(3.0);
+    
+    p.x = abs(p.x) - 1.0;
+    p.y = p.y + 1.0/k;
+    if( p.x + k*p.y > 0.0 ) p = vec2( p.x - k*p.y, -k*p.x - p.y )/2.0;
+    p.x -= clamp( p.x, -2.0, 0.0 );
+    return -length(p)*sign(p.y);
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float nv=texture(tex_main,normed).x;
@@ -177,15 +198,27 @@ void main(){
 	else
 		nv=log(nv+1)/lmm.y;
 	//nv=floor(nv*50)/50; //stylistic quantization
-	/*
-	float l=(abs(pos.x)+abs(pos.y))/2;
-	l=smoothstep(0.49,0.5,l);
-	//*/
 	///*
+	float phi=1.61803398875;
+	float box_size=1.8;
+	//float l=sdBox(pos.xy*2,vec2(box_size,box_size));
+	float tri_size=1.05;
+	float t1=sdEquilateralTriangle(pos.xy*tri_size+vec2(0,0.3));
+	vec2 n2=pos.xy+vec2(1.005,-0.3);
+	vec2 rp2=tRotate(n2,M_PI/3);
+	float t2=sdEquilateralTriangle(rp2*tri_size);
+	vec2 n3=pos.xy+vec2(-1.005,-0.3);
+	vec2 rp3=tRotate(n3,M_PI/3);
+	float t3=sdEquilateralTriangle(rp3*tri_size);
+	float l=min(t1,min(t2,t3));
+	float blur=0.0125;
+	l=smoothstep(0.0,blur,l);
+	//*/
+	/*
 	float l=length(pos.xy);
 	l=smoothstep(0.85,0.9,l);
-	//*/
-	l=clamp(1-l,0,1);
+	*/
+	l=clamp(1-l,0.3,1);
 
 	nv=clamp(nv,0,1);
 	//nv=math.min(math.max(nv,0),1);
@@ -581,9 +614,7 @@ function replace_random( s,substr,rep )
 		return false
 	end
 	string.gsub(s,substr,count)
-	print("input:",s," found:",count)
 	num_rep=math.random(0,num_match-1)
-	print("replacing:",num_rep)
 	function rep_one(  )
 		if num_rep==0 then
 			num_rep=num_rep-1
@@ -594,7 +625,6 @@ function replace_random( s,substr,rep )
 		end
 	end
 	local ret=string.gsub(s,substr,rep_one)
-	print("returning:",ret)
 	return ret
 end
 function random_math( steps,seed )
@@ -1350,8 +1380,6 @@ void main()
 		pos.x=0;*/
 	//gl_Position.xy = mapping(dfun(position.xy,iters,0.1)*scale+center);
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
-	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
-	//gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
 	gl_PointSize=2;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
