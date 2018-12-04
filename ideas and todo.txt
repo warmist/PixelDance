@@ -22,3 +22,9 @@ IFS:
 	* density map saving (or just split generating/showing)
 	* fractals on surface (need uv-mapped surface) to raytrace
 	https://www.maptoglobe.com/#
+
+Cellular automatton and stuff:
+	* want to grow plants like https://twitter.com/lorenschmidt/status/1069559544471273472
+	* but with trees
+	* ecology systems in general
+	* (maybe)on gpu for very very fast simulation
