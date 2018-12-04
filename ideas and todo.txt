@@ -1,0 +1,24 @@
+crystals:
+	* pixels getting stuck to each other
+	* a sort of N runs avg?
+	* light up pixels from center
+
+Nerves/networks:
+	* connect/move/disconnect
+	* activate to leave pixels
+
+NN:
+	* neural network guiding small particles
+	* NN working as IFS (instead of a function)
+
+
+IFS:
+	* Add perspective to generation (somehow?)
+	http://iquilezles.org/www/articles/distancefractals/distancefractals.htm
+	* add lens with chromatic aberrations
+	* volumetric fractals with raytracing
+		* add emission to palette (e.g. >0.8)
+		* other material props?
+	* density map saving (or just split generating/showing)
+	* fractals on surface (need uv-mapped surface) to raytrace
+	https://www.maptoglobe.com/#
