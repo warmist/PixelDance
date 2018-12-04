@@ -47,7 +47,6 @@ function make_variation_buf(  )
 end
 tick=tick or 0
 config=make_config({
-	{"render",true,type="boolean"},
 	{"only_last",false,type="boolean"},
 	{"auto_scale_color",false,type="boolean"},
 	{"ticking",1,type="int",min=1,max=2},
@@ -770,12 +769,7 @@ function gui()
 end
 function update( )
 	gui()
-	if config.render then
-		update_real()
-		--update_func()
-	else
-		update_func_shader()
-	end
+	update_real()
 end
 function mix_palette(out,input_t )
 	if #palette.colors<=1 then
@@ -820,87 +814,10 @@ function mix_palette(out,input_t )
 	out.a=(c1[4]*it+c2[4]*t)*255
 end
 
-local func_shader=shaders.Make[==[
-#version 330
-
-out vec4 color;
-in vec3 pos;
-
-uniform vec4 palette[15];
-uniform int palette_size;
-
-uniform vec4 params;
-uniform vec2 center;
-uniform vec2 scale;
-uniform float move_dist;
-
-vec4 mix_palette2(float value )
-{
-	if (palette_size==0)
-		return vec4(0);
-	value=clamp(value,0,1);
-	float tg=value*(float(palette_size)-1); //[0,1]-->[0,#colors]
-	float tl=floor(tg);
-
-	float t=tg-tl;
-	vec4 c1=palette[int(tl)];
-	int hidx=min(int(ceil(tg)),palette_size-1);
-	vec4 c2=palette[hidx];
-	return mix(c1,c2,t);
-}
-
-vec2 fun(vec2 pos)
-{
-	float v0=params.x;
-	float v1=params.y;
-
-	float x_1=pos.x;
-	float x_2=pos.x*pos.x/2;
-	float x_3=pos.x*pos.x*pos.x/6;
-
-	float y_1=pos.y;
-	float y_2=pos.y*pos.y/2;
-	float y_3=pos.y*pos.y*pos.y/6;
-
-	float nx=sqrt(abs(cos(x_1-y_2)*v0+sin(y_2-x_3)*v1))-sqrt(abs(sin(x_1-y_2)*v1+cos(y_2-x_3)*v0));
-	float ny=sin(y_1-x_2)*v1+cos(x_2-y_3)*v0;
-
-	vec2 ret=vec2(nx,ny);
-	float r=length(ret);
-	if (r<0.0001) r=1;
-	float d=move_dist/r;
-	return ret*d;
-}
-
-void main(){
-
-	vec2 tpos=(pos.xy*0.5)*scale+center*vec2(1,-1);
-	vec2 np=fun(tpos);
-
-	float nv=length(np-tpos);
-	nv=mod(nv,1);
-	color=mix_palette2(nv);
-}
-]==]
 function gl_mod( x,y )
 	return x-y*math.floor(x/y)
 end
-function update_func_shader(  )
-	__no_redraw()
-	__clear()
-	func_shader:use()
-	set_shader_palette(func_shader)
-	func_shader:set_i("palette_size",#palette.colors)
-	func_shader:set("params",config.v0,config.v1,config.v2,config.v3)
-	func_shader:set("center",config.cx,config.cy)
-	func_shader:set("scale",config.scale,config.scale*aspect_ratio)
-	func_shader:set("move_dist",config.move_dist)
-	func_shader:draw_quad()
-	if need_save then
-		save_img(tile_count)
-		need_save=nil
-	end
-end
+
 function auto_clear(  )
 	local pos_start=0
 	local pos_end=0
