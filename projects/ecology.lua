@@ -46,7 +46,8 @@ void main(){
 local pixel_types={ --alpha used to id types
 	sand={124,100,80,255},
 	wall={20,80,100,100},
-
+	dead_plant={50,20,30,255},
+	plant_seed={10,150,50,1},
 }
 function pixel_init(  )
 	local w=img_buf.w
@@ -135,7 +136,7 @@ function add_plant(  )
 	local h=img_buf.h
 	local x=math.random(0,w-1)
 	local y=h-1--math.random(0,h-1)
-	table.insert(plants,{x,y,{10,150,50,1},age=0,dead=false,growing=false})
+	table.insert(plants,{x,y,pixel_types.plant_seed,food=10000,dead=false,growing=false})
 end
 for i=1,10 do
 	add_plant(  )
@@ -148,6 +149,14 @@ function is_sunlit( x,y )
 	return sh*img_buf.h<=y
 end
 function plant_step()
+	--super config
+	local sun_gain=1
+	local grow_cost_const=1
+	local grow_cost_buffer=1.2
+	local max_food=20000
+	local food_drain=3
+	--
+
 	local w=img_buf.w
 	local h=img_buf.h
 	for i,v in ipairs(plants) do
@@ -174,17 +183,25 @@ function plant_step()
 			end
 		else
 			--growing logic
+			local food_balance=0
 			local tbl=v.path or {}
 			v.path=tbl
+
+			for i,v in ipairs(v.path) do
+				if is_sunlit(v[1],v[2]) then
+					food_balance=food_balance+1
+				end
+			end
 			local tx = x
 			local ty = y
 			if #v.path >0 then
 				tx=v.path[#v.path][1]
 				ty=v.path[#v.path][2]
 			end
-			if ty<h-1 then
+			local grow_cost=grow_cost_const+(#v.path)*0.05--+math.max(ty*2-25,0)
+			if ty<h-1 and (food_balance>grow_cost*grow_cost_buffer or #v.path<3) then
 
-				if math.random()>0.3 then
+				if math.random()>0.2 then
 					local right=is_sunlit(tx+1,ty)
 					local left=is_sunlit(tx-1,ty)
 					if not(left== right) then
@@ -208,30 +225,28 @@ function plant_step()
 					if d.a==0 then
 						table.insert(v.path,{tx,ty})
 						img_buf:set(tx,ty,{50,180,20,51})
+						food_balance=food_balance-grow_cost
 					end
 				end
 			else
-				v.dead=true
+				--v.dead=true
+			end
+			v.food=v.food+food_balance
+			if v.food>max_food then
+				v.food=max_food
 			end
 		end
 
 		--ageing logic
-		if not v.growing then
-			if not moved then
-				v.age=v.age+1
-			else
-				v.age=0
-			end
-
-			if v.age>100 then
-				v.dead=true
-			end
+		v.food=v.food-food_drain
+		if v.food<=0 then
+			v.dead=true
 		end
 		--readd new pos
 		if v.dead then
-			img_buf:set(x,y,pixel_types.sand)
+			img_buf:set(x,y,pixel_types.dead_plant)
 			for i,v in ipairs(v.path or {}) do
-				img_buf:set(v[1],v[2],pixel_types.sand)
+				img_buf:set(v[1],v[2],pixel_types.dead_plant)
 			end
 		else
 			img_buf:set(x,y,v[3])
@@ -260,7 +275,7 @@ function update()
 	if is_mouse_down() then
 		add_plant()
 	end
-	if math.random()>0.8 then
+	if math.random()>0.9 then
 		add_plant()
 	end
  	pixel_step( )
