@@ -38,3 +38,6 @@ Cellular automatton and stuff:
 		* a main tree that `creates` the ecology (i.e. spawns seed species)
 		* HUGE
 		* maybe having biospheres in itself?
+	* sun being not ALL blocked but partially blocked (e.g. leaves vs water vs sand)
+	* water plants
+	* some way of complete ecology cycles (growth to death to new seeds/critters)
