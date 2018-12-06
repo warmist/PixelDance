@@ -4,7 +4,7 @@ __set_window_size(1024,1024)
 local aspect_ratio=1024/1024
 local size=STATE.size
 
-local oversample=0.25
+local oversample=0.5
 
 function update_img_buf(  )
 	local nw=math.floor(size[1]*oversample)
@@ -42,12 +42,31 @@ void main(){
 	color=vec4(texture(tex_main,normed).xyz+sun_color.xyz*light,1);
 }
 ]==]
-
+function is_valid_coord( x,y )
+	return x>=0 and y>=0 and x<img_buf.w and y<img_buf.h
+end
+local directions8={
+	{-1,-1},
+	{0,-1},
+	{1,-1},
+	{1,0},
+	{1,1},
+	{0,1},
+	{-1,1},
+	{-1,0},
+}
+local directions4={
+	{0,-1},
+	{1,0},
+	{0,1},
+	{-1,0},
+}
 local pixel_types={ --alpha used to id types
 	sand={124,100,80,255},
 	wall={20,80,100,100},
-	dead_plant={50,20,30,255},
-	plant_seed={10,150,50,1},
+	dead_plant={50,20,30,254},
+	plant_seed={10,150,50,48},
+	worm_body={255,100,80,52},
 }
 function pixel_init(  )
 	local w=img_buf.w
@@ -60,10 +79,22 @@ function pixel_init(  )
 		local y=math.random(0,h-1)
 		img_buf:set(x,y,pixel_types.sand)
 	end
-	local platform_size=8
-	for i=1,5 do
-		local x=math.random(0,w-1-platform_size)
+	
+	for i=1,9 do
+		local platform_size=math.random(10,20)
+		local x=math.random(0,w-1)
 		local y=math.random(0,h-1)
+		for i=1,platform_size do
+			local d=directions4[math.random(1,#directions4)]
+			local tx=x+d[1]
+			local ty=y+d[2]
+			if is_valid_coord(tx,ty) then
+				x=tx
+				y=ty
+				img_buf:set(tx,ty,pixel_types.wall)
+			end
+		end
+		
 		for i=0,platform_size do
 			img_buf:set(x+i,y,pixel_types.wall)
 		end
@@ -136,11 +167,10 @@ function add_plant(  )
 	local h=img_buf.h
 	local x=math.random(0,w-1)
 	local y=h-1--math.random(0,h-1)
-	table.insert(plants,{x,y,pixel_types.plant_seed,food=10000,dead=false,growing=false})
+	table.insert(plants,{x,y,pixel_types.plant_seed,food=500,dead=false,growing=false})
+	img_buf:set(x,y,pixel_types.plant_seed)
 end
-for i=1,10 do
-	add_plant(  )
-end
+
 function is_sunlit( x,y )
 	if x<0 or x>img_buf.w-1 then
 		return false
@@ -154,7 +184,8 @@ function plant_step()
 	local grow_cost_const=1
 	local grow_cost_buffer=1.2
 	local max_food=20000
-	local food_drain=3
+	local food_drain=5
+	local food_drain_hibernate=0.5
 	--
 
 	local w=img_buf.w
@@ -164,8 +195,13 @@ function plant_step()
 		local y=v[2]
 		local moved=false
 
-		--remove old pos
-		img_buf:set(x,y,{0,0,0,0})
+		local mytile=img_buf:get(x,y)
+		if mytile.a~=pixel_types.plant_seed[4] then --check if not removed
+			v.dead=true
+		else
+			--remove old pos
+			img_buf:set(x,y,{0,0,0,0})
+		end
 		--drop down
 		if not v.growing then
 			if y>0 then
@@ -238,7 +274,12 @@ function plant_step()
 		end
 
 		--ageing logic
-		v.food=v.food-food_drain
+		if not v.growing then
+			v.food=v.food-food_drain_hibernate
+		else
+			v.food=v.food-food_drain
+		end
+
 		if v.food<=0 then
 			v.dead=true
 		end
@@ -260,6 +301,119 @@ function plant_step()
 		end
 	end
 end
+worms={}
+function add_worm(  )
+	local w=img_buf.w
+	local h=img_buf.h
+	local x=math.random(0,w-1)
+	local y=0
+	table.insert(worms,{pixel_types.worm_body,food=500,dead=false,tail={{x,y}}})
+	img_buf:set(x,y,pixel_types.worm_body)
+end
+
+
+function worm_step( )
+	local grow_cost_const=500
+	local grow_cost_buffer=2
+	local max_food=20000
+	local food_drain=0.1
+	local food_drain_sun=10 --burn in sun
+	local food_gain_plant_matter=20
+	--
+
+	local w=img_buf.w
+	local h=img_buf.h
+	for i,v in ipairs(worms) do
+		local x=v.tail[1][1]
+		local y=v.tail[1][2]
+
+		local want_move=true
+		local want_growth=false
+		--growth logic
+		if v.food>grow_cost_const*grow_cost_buffer then
+			want_growth=true
+		end
+		--movement logic
+		local d=directions4[math.random(1,#directions4)]
+
+		local tx=d[1]+x
+		local ty=d[2]+y
+		if #v.tail>1 then
+			local tdx=v.tail[2][1]-tx
+			local tdy=v.tail[2][2]-ty
+			if tdx==0 and tdy==0 then
+				want_move=false
+			end
+		end
+
+		local food_balance=0
+
+		if want_move and is_valid_coord(tx,ty) then
+			local d=img_buf:get(tx,ty)
+			local eat_type=d.a
+			if eat_type==pixel_types.dead_plant[4] or eat_type==pixel_types.plant_seed then
+				food_balance=food_balance+food_gain_plant_matter
+			elseif eat_type~=pixel_types.sand[4] then
+				want_move=false
+			end
+
+			if want_move then
+				local px=tx
+				local py=ty
+				for i=1,#v.tail do
+					local ttx=v.tail[i][1]
+					local tty=v.tail[i][2]
+
+					v.tail[i][1]=px
+					v.tail[i][2]=py
+					img_buf:set(px,py,pixel_types.worm_body)
+					px=ttx
+					py=tty
+				end
+				if eat_type==pixel_types.sand[4] then
+					img_buf:set(px,py,pixel_types.sand)
+				else
+					if want_growth then
+						table.insert(v.tail,{px,py})
+						img_buf:set(px,py,pixel_types.worm_body)
+						food_balance=food_balance-grow_cost_const
+					else
+						img_buf:set(px,py,{0,0,0,0})
+					end
+				end
+			end
+		end
+		for i,v in ipairs(v.tail) do
+			if is_sunlit(v[1],v[2]) then
+				food_balance=food_balance-food_drain_sun
+			end
+		end
+		--ageing logic
+		food_balance=food_balance-food_drain
+		--growing logic
+		v.food=v.food+food_balance
+		if v.food>max_food then
+			v.food=max_food
+		end
+
+		if v.food<=0 then
+			v.dead=true
+		end
+		--readd new pos
+		if v.dead then
+			for i,v in ipairs(v.tail or {}) do
+				img_buf:set(v[1],v[2],pixel_types.sand)
+			end
+		end
+	end
+	local tworms=worms
+	worms={}
+	for i,v in ipairs(tworms) do
+		if not v.dead then
+			table.insert(worms,v)
+		end
+	end
+end
 function is_mouse_down(  )
 	return __mouse.clicked1 and not __mouse.owned1, __mouse.x,__mouse.y
 end
@@ -273,13 +427,17 @@ function update()
 	draw_config(config)
 	imgui.End()
 	if is_mouse_down() then
-		add_plant()
+		add_worm()
 	end
 	if math.random()>0.9 then
 		add_plant()
 	end
+	if math.random()>0.99 and #worms<10 then
+		add_worm()
+	end
  	pixel_step( )
  	plant_step()
+ 	worm_step()
 	draw_shader:use()
 	tex_pixel:use(0)
 
