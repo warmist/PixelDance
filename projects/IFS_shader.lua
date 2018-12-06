@@ -9,7 +9,7 @@ __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/win_h
 local size=STATE.size
 local max_palette_size=50
-local sample_count=50000
+local sample_count=100000
 local need_clear=false
 local oversample=1
 local render_lines=false
@@ -1330,7 +1330,7 @@ void main()
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
 	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
 	//gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
-	gl_PointSize=2;
+	gl_PointSize=1;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
@@ -1422,7 +1422,7 @@ function visit_iter()
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=4
 			local rad=1.5+gen_radius*gen_radius
@@ -1444,7 +1444,7 @@ function visit_iter()
 			local x = r * math.cos(a)
 			local y = r * math.sin(a)
 			--]]
-			--[[ spiral
+			-- [[ spiral
 			local angle_speed=500;
 			local t=math.random();
 			local x=math.cos(t*angle_speed)*math.sqrt(t)*gen_radius;
@@ -1453,9 +1453,9 @@ function visit_iter()
 			-------------mods
 			--[[ polar grid mod
 			local r=math.sqrt(x*x+y*y)
-			local a=math.atan(y,x)
-			local grid_r=0.01
-			local grid_a=0.01
+			local a=math.atan2(y,x)
+			local grid_r=0.05
+			local grid_a=math.pi/21
 			--r=math.floor(r/grid_r)*grid_r
 			a=math.floor(a/grid_a)*grid_a
 
@@ -1468,7 +1468,7 @@ function visit_iter()
 			x=math.floor(x/grid_size)*grid_size
 			y=math.floor(y/grid_size)*grid_size
 			--]]
-			--[[ blur mod
+			-- [[ blur mod
 			local blur_str=0.00001
 			x,y=gaussian2(x,blur_str,y,blur_str)
 			--]]
@@ -1512,15 +1512,23 @@ function visit_iter()
 end
 
 local draw_frames=100
-local frame_count=300
+local frame_count=10
+function update_scale( new_scale )
+	local old_scale=config.scale
 
+	pfact=new_scale/old_scale
+
+	config.scale=config.scale*pfact
+	config.cx=config.cx*pfact
+	config.cy=config.cy*pfact
+end
 function is_mouse_down(  )
 	return __mouse.clicked1 and not __mouse.owned1, __mouse.x,__mouse.y
 end
 function update_animation_values( )
 	local a=config.animation*math.pi*2
-	config.v0=math.cos(a)*2.5-2.5
-	config.v2=math.sin(a)*5
+	update_scale(math.cos(a)*0.25+0.75)
+	config.v3=math.sin(a)*1-1
 end
 function update_real(  )
 	__no_redraw()
