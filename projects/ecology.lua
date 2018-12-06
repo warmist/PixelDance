@@ -5,14 +5,16 @@ local aspect_ratio=1024/1024
 local size=STATE.size
 
 local oversample=0.5
-
+is_remade=false
 function update_img_buf(  )
 	local nw=math.floor(size[1]*oversample)
 	local nh=math.floor(size[2]*oversample)
-	if imgbuf==nil or img_buf.w~=nw or img_buf.h~=nh then
+
+	if img_buf==nil or img_buf.w~=nw or img_buf.h~=nh then
 		img_buf=make_image_buffer(nw,nh)
 		img_buf_back=make_image_buffer(nw,nh)
 		sun_buffer=make_float_buffer(nw,1)
+		is_remade=true
 	end
 end
 
@@ -80,7 +82,7 @@ function pixel_init(  )
 		img_buf:set(x,y,pixel_types.sand)
 	end
 	
-	for i=1,9 do
+	for i=1,2 do
 		local platform_size=math.random(10,20)
 		local x=math.random(0,w-1)
 		local y=math.random(0,h-1)
@@ -110,7 +112,9 @@ function pixel_init(  )
 		
 	end
 end
+if is_remade then
 pixel_init()
+end
 
 function pixel_step(  )
 	local w=img_buf.w
@@ -161,7 +165,8 @@ function pixel_step(  )
 	img_buf=i
 	--]]
 end
-plants={}
+plants=plants or {}
+if is_remade then plants={} end
 function add_plant(  )
 	local w=img_buf.w
 	local h=img_buf.h
@@ -301,7 +306,9 @@ function plant_step()
 		end
 	end
 end
-worms={}
+worms=worms or {}
+if is_remade then worms={} end
+
 function add_worm(  )
 	local w=img_buf.w
 	local h=img_buf.h
@@ -319,6 +326,7 @@ function worm_step( )
 	local food_drain=0.1
 	local food_drain_sun=10 --burn in sun
 	local food_gain_plant_matter=20
+	local food_gain_plant_seed=200
 	--
 
 	local w=img_buf.w
@@ -351,8 +359,10 @@ function worm_step( )
 		if want_move and is_valid_coord(tx,ty) then
 			local d=img_buf:get(tx,ty)
 			local eat_type=d.a
-			if eat_type==pixel_types.dead_plant[4] or eat_type==pixel_types.plant_seed then
+			if eat_type==pixel_types.dead_plant[4] then
 				food_balance=food_balance+food_gain_plant_matter
+			elseif eat_type==pixel_types.plant_seed[4] then
+				food_balance=food_balance+food_gain_plant_seed
 			elseif eat_type~=pixel_types.sand[4] then
 				want_move=false
 			end
