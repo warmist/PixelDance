@@ -84,7 +84,7 @@ function pixel_init(  )
 	local cx = math.floor(w/2)
 	local cy = math.floor(h/2)
 
-	for i=1,w*h*0.2 do
+	for i=1,w*h*0.1 do
 		local x=math.random(0,w-1)
 		local y=math.random(0,h-1)
 		img_buf:set(x,y,pixel_types.sand)
@@ -462,8 +462,20 @@ end
 function is_mouse_down(  )
 	return __mouse.clicked1 and not __mouse.owned1, __mouse.x,__mouse.y
 end
+function save_img(  )
+	img_buf_save=make_image_buffer(size[1],size[2])
+	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
+	for k,v in pairs(config) do
+		if type(v)~="table" then
+			config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
+		end
+	end
+	img_buf_save:read_frame()
+	img_buf_save:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
+end
 tex_pixel=tex_pixel or textures:Make()
 tex_sun=tex_sun or textures:Make()
+need_save=false
 function update()
 
 	__no_redraw()
@@ -479,6 +491,13 @@ function update()
 	if imgui.Button("Reset world") then
 		img_buf=nil
 		update_img_buf()
+		pixel_init()
+		plants={}
+		worms={}
+	end
+	imgui.SameLine()
+	if imgui.Button("Save") then
+		need_save=true
 	end
 	imgui.End()
 	local md,x,y=is_mouse_down(  )
@@ -512,4 +531,9 @@ function update()
 	draw_shader:set("translate",config.t_x,config.t_y)
 	draw_shader:set("sun_color",config.color[1],config.color[2],config.color[3],config.color[4])
 	draw_shader:draw_quad()
+	if need_save then
+		save_img()
+		need_save=false
+	end
+
 end

@@ -32,3 +32,9 @@ Cellular automatton and stuff:
 	* but with trees
 	* ecology systems in general
 	* (maybe)on gpu for very very fast simulation
+		* gpu could do the sand/water/droping
+		* cpu for critters/plants
+	* Yggdrasil
+		* a main tree that `creates` the ecology (i.e. spawns seed species)
+		* HUGE
+		* maybe having biospheres in itself?
