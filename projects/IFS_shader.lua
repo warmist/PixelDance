@@ -3,21 +3,22 @@ require "common"
 require "colors"
 local luv=require "colors_luv"
 --local size_mult=0.25
-local win_w=1024--2560
-local win_h=1024--1440
+local win_w=1024*1--2560
+local win_h=1024*1--1440
 __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/win_h
 local size=STATE.size
 local max_palette_size=50
 local sample_count=100000
 local need_clear=false
-local oversample=1
+local oversample=2
 local render_lines=false
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
 str_preamble=str_preamble or ""
 str_postamble=str_postamble or ""
 img_buf=make_image_buffer(size[1],size[2])
+
 function resize( w,h )
 	img_buf=make_image_buffer(w,h)
 	size=STATE.size
@@ -46,7 +47,6 @@ function make_variation_buf(  )
 end
 tick=tick or 0
 config=make_config({
-	{"render",true,type="boolean"},
 	{"only_last",false,type="boolean"},
 	{"auto_scale_color",false,type="boolean"},
 	{"ticking",1,type="int",min=1,max=2},
@@ -66,6 +66,7 @@ config=make_config({
 	{"animation",0,type="float",min=0,max=1},
 },config)
 
+
 local log_shader=shaders.Make[==[
 #version 330
 
@@ -79,7 +80,7 @@ uniform vec2 min_max;
 uniform sampler2D tex_main;
 uniform sampler2D tex_palette;
 uniform int auto_scale_color;
-
+#define M_PI   3.14159265358979323846264338327950288
 vec4 mix_palette(float value )
 {
 	if (palette_size==0)
@@ -161,6 +162,27 @@ float var_tex(vec2 pos)
 
 	return ret/9;
 }
+vec2 tRotate(vec2 p, float a) {
+	float c=cos(a);
+	float s=sin(a);
+	mat2 m=mat2(c,-s,s,c);
+	return m*p;
+}
+float sdBox( in vec2 p, in vec2 b )
+{
+    vec2 d = abs(p)-b;
+    return length(max(d,vec2(0))) + min(max(d.x,d.y),0.0);
+}
+float sdEquilateralTriangle( in vec2 p )
+{
+    const float k = sqrt(3.0);
+    
+    p.x = abs(p.x) - 1.0;
+    p.y = p.y + 1.0/k;
+    if( p.x + k*p.y > 0.0 ) p = vec2( p.x - k*p.y, -k*p.x - p.y )/2.0;
+    p.x -= clamp( p.x, -2.0, 0.0 );
+    return -length(p)*sign(p.y);
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float nv=texture(tex_main,normed).x;
@@ -174,13 +196,37 @@ void main(){
 		nv=(log(nv+1)-lmm.x)/(lmm.y-lmm.x);
 	else
 		nv=log(nv+1)/lmm.y;
-	//nv=floor(nv*8)/8; //stylistic quantization
+	//nv=floor(nv*50)/50; //stylistic quantization
+	///*
+	float phi=1.61803398875;
+	float box_size=1.8;
+	//float l=sdBox(pos.xy*2,vec2(box_size,box_size));
+	float tri_size=1.05;
+	float t1=sdEquilateralTriangle(pos.xy*tri_size+vec2(0,0.3));
+	vec2 n2=pos.xy+vec2(1.005,-0.3);
+	vec2 rp2=tRotate(n2,M_PI/3);
+	float t2=sdEquilateralTriangle(rp2*tri_size);
+	vec2 n3=pos.xy+vec2(-1.005,-0.3);
+	vec2 rp3=tRotate(n3,M_PI/3);
+	float t3=sdEquilateralTriangle(rp3*tri_size);
+	float l=min(t1,min(t2,t3));
+	float blur=0.0125;
+	l=smoothstep(0.0,blur,l);
+	//*/
+	/*
+	float l=length(pos.xy);
+	l=smoothstep(0.85,0.9,l);
+	*/
+	l=clamp(1-l,0.3,1);
+
 	nv=clamp(nv,0,1);
 	//nv=math.min(math.max(nv,0),1);
 	//--mix(pix_out,c_u8,c_back,nv)
 	//mix_palette(pix_out,nv)
 	//img_buf:set(x,y,pix_out)
-	color = mix_palette2(nv);
+	
+	color = mix_palette2(nv*l);
+	//color=vec4(l,l,l,1);
 	
 /*
     color.rgb = pow(color.rgb, vec3(1.0/gamma));
@@ -489,7 +535,14 @@ function palette_chooser()
 		end
 	end
 end
-
+function palette_serialize(  )
+	local ret="palette={show=false,current_gen=%d,colors_input={%s}}\n"
+	local pal=""
+	for i,v in ipairs(palette.colors_input) do
+		pal=pal..string.format("{%f,%f,%f,%f,%d},",v[1],v[2],v[3],v[4],v[5])
+	end
+	return string.format(ret,palette.current_gen,pal)
+end
 function save_img(tile_count)
 	if tile_count==1 then
 
@@ -503,6 +556,7 @@ function save_img(tile_count)
 		config_serial=config_serial..string.format("str_y=%q\n",str_y)
 		config_serial=config_serial..string.format("str_preamble=%q\n",str_preamble)
 		config_serial=config_serial..string.format("str_postamble=%q\n",str_postamble)
+		config_serial=config_serial..palette_serialize()
 		img_buf:read_frame()
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 	else
@@ -559,9 +613,7 @@ function replace_random( s,substr,rep )
 		return false
 	end
 	string.gsub(s,substr,count)
-	print("input:",s," found:",count)
 	num_rep=math.random(0,num_match-1)
-	print("replacing:",num_rep)
 	function rep_one(  )
 		if num_rep==0 then
 			num_rep=num_rep-1
@@ -572,7 +624,6 @@ function replace_random( s,substr,rep )
 		end
 	end
 	local ret=string.gsub(s,substr,rep_one)
-	print("returning:",ret)
 	return ret
 end
 function random_math( steps,seed )
@@ -718,12 +769,7 @@ function gui()
 end
 function update( )
 	gui()
-	if config.render then
-		update_real()
-		--update_func()
-	else
-		update_func_shader()
-	end
+	update_real()
 end
 function mix_palette(out,input_t )
 	if #palette.colors<=1 then
@@ -768,87 +814,10 @@ function mix_palette(out,input_t )
 	out.a=(c1[4]*it+c2[4]*t)*255
 end
 
-local func_shader=shaders.Make[==[
-#version 330
-
-out vec4 color;
-in vec3 pos;
-
-uniform vec4 palette[15];
-uniform int palette_size;
-
-uniform vec4 params;
-uniform vec2 center;
-uniform vec2 scale;
-uniform float move_dist;
-
-vec4 mix_palette2(float value )
-{
-	if (palette_size==0)
-		return vec4(0);
-	value=clamp(value,0,1);
-	float tg=value*(float(palette_size)-1); //[0,1]-->[0,#colors]
-	float tl=floor(tg);
-
-	float t=tg-tl;
-	vec4 c1=palette[int(tl)];
-	int hidx=min(int(ceil(tg)),palette_size-1);
-	vec4 c2=palette[hidx];
-	return mix(c1,c2,t);
-}
-
-vec2 fun(vec2 pos)
-{
-	float v0=params.x;
-	float v1=params.y;
-
-	float x_1=pos.x;
-	float x_2=pos.x*pos.x/2;
-	float x_3=pos.x*pos.x*pos.x/6;
-
-	float y_1=pos.y;
-	float y_2=pos.y*pos.y/2;
-	float y_3=pos.y*pos.y*pos.y/6;
-
-	float nx=sqrt(abs(cos(x_1-y_2)*v0+sin(y_2-x_3)*v1))-sqrt(abs(sin(x_1-y_2)*v1+cos(y_2-x_3)*v0));
-	float ny=sin(y_1-x_2)*v1+cos(x_2-y_3)*v0;
-
-	vec2 ret=vec2(nx,ny);
-	float r=length(ret);
-	if (r<0.0001) r=1;
-	float d=move_dist/r;
-	return ret*d;
-}
-
-void main(){
-
-	vec2 tpos=(pos.xy*0.5)*scale+center*vec2(1,-1);
-	vec2 np=fun(tpos);
-
-	float nv=length(np-tpos);
-	nv=mod(nv,1);
-	color=mix_palette2(nv);
-}
-]==]
 function gl_mod( x,y )
 	return x-y*math.floor(x/y)
 end
-function update_func_shader(  )
-	__no_redraw()
-	__clear()
-	func_shader:use()
-	set_shader_palette(func_shader)
-	func_shader:set_i("palette_size",#palette.colors)
-	func_shader:set("params",config.v0,config.v1,config.v2,config.v3)
-	func_shader:set("center",config.cx,config.cy)
-	func_shader:set("scale",config.scale,config.scale*aspect_ratio)
-	func_shader:set("move_dist",config.move_dist)
-	func_shader:draw_quad()
-	if need_save then
-		save_img(tile_count)
-		need_save=nil
-	end
-end
+
 function auto_clear(  )
 	local pos_start=0
 	local pos_end=0
@@ -1328,9 +1297,7 @@ void main()
 		pos.x=0;*/
 	//gl_Position.xy = mapping(dfun(position.xy,iters,0.1)*scale+center);
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
-	//gl_PointSize=length(gl_Position.xy)*15+1; //vary this by preliminary visits here
-	//gl_PointSize=dot(position.xy,position.xy)+1; //vary this by preliminary visits here
-	gl_PointSize=1;
+	gl_PointSize=2;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
@@ -1348,7 +1315,7 @@ void main(){
 	//float rr=clamp(1-txt.r,0,1);
 	//float rr = abs(pos.x+1);
 	//float rr = pos.y-0.5;
-	//float rr = length(pos.xy)/1.0;
+	//float rr = length(pos.xy)/5.0;
 	//rr=clamp(rr,0,1);
 	//float delta_size=(1-0.2)*rr+0.2;
 	float delta_size=1;
@@ -1481,9 +1448,9 @@ function visit_iter()
 			local angle_off=math.atan2(y,x)
 			local dx=math.cos(config.rand_angle+angle_off)*config.rand_dist
 			local dy=math.sin(config.rand_angle+angle_off)*config.rand_dist
-			samples.d[i]={x,y,0,0}
+			samples.d[i]={x,y}
 			if step==2 then
-				samples.d[i+1]={x+dx,y+dy,0,0}
+				samples.d[i+1]={x+dx,y+dy}
 			end
 		end
 

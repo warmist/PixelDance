@@ -423,23 +423,7 @@ struct project {
         }
         fixup_imgui_state();
     }
-	//unfinished... what to do when loaded?
-	void load_from_image(const char* path)
-	{
-		auto f=fopen(path, "rb");
-		int x, y, comp;
 
-		auto data = stbi_load_from_file(f, &x, &y, &comp, 4);
-		stbi_image_free(data);
-		auto pos = ftell(f);
-		fseek(f, 0, SEEK_END);
-		auto size = ftell(f);
-		std::vector<unsigned char> buffer;
-		buffer.resize(size - pos);
-		fseek(f, pos, SEEK_SET);
-		fread(buffer.data(), size - pos, 1, f);
-		fclose(f);
-	}
 };
 static int lua_get_my_source(lua_State* L)
 {
@@ -468,12 +452,46 @@ void load_assets()
 	cp437.h = y;
 	//printf("Loaded pointer:%llX (%dx%d)x%d\n", data,x,y,comp);
 }
+template <int N>
+bool ends_with(const char* input, const char(&suffix)[N] )
+{
+    int len = strlen(input);
+    if (len < N-1)
+        return false;
+    return strncmp(input + len - N+1, suffix, N-1) == 0;
+}
+int extract_script(const char* path)
+{
+    //TODO: some crud after file? not sure what is happening there...
+    auto f = fopen(path, "rb");
+    int x, y, comp;
+
+    auto data = stbi_load_from_file(f, &x, &y, &comp, 4);
+    stbi_image_free(data);
+    auto pos = ftell(f);
+    fseek(f, 0, SEEK_END);
+    auto size = ftell(f);
+    std::vector<unsigned char> buffer;
+    buffer.resize(size - pos);
+    fseek(f, pos, SEEK_SET);
+    fread(buffer.data(), size - pos, 1, f);
+    fclose(f);
+
+    auto f2=fopen("image_out.lua", "wb");
+    fwrite(buffer.data(), 1, buffer.size(), f2);
+    fclose(f2);
+    return 0;
+}
 int main(int argc, char** argv)
 {
     if (argc == 1)
     {
-        printf("Usage: pixeldance.exe <path-to-projects>\n");
+        printf("Usage: pixeldance.exe <path-to-projects or image.png>\n");
         return -1;
+    }
+    if (ends_with(argv[1], ".png"))
+    {
+        return extract_script(argv[1]);
     }
 	load_assets();
     file_watcher fwatch;

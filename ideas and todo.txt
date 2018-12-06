@@ -1,0 +1,40 @@
+crystals:
+	* pixels getting stuck to each other
+	* a sort of N runs avg?
+	* light up pixels from center
+
+Nerves/networks:
+	* connect/move/disconnect
+	* activate to leave pixels
+
+NN:
+	* neural network guiding small particles
+	* NN working as IFS (instead of a function)
+
+
+IFS:
+	* Add perspective to generation (somehow?)
+	http://iquilezles.org/www/articles/distancefractals/distancefractals.htm
+	* add lens with chromatic aberrations
+	* volumetric fractals with raytracing
+		* add emission to palette (e.g. >0.8)
+		* other material props?
+	* density map saving (or just split generating/showing)
+	* fractals on surface (need uv-mapped surface) to raytrace
+	* blur based on variation (maybe in downsampled texture)
+	* https://www.maptoglobe.com/#
+	* Some way of guiding/drawing IFS target
+		* maybe flow/vector fields with random movement(?) functions or random physics
+		* maybe some sort of texture loading with texture being sdf
+
+Cellular automatton and stuff:
+	* want to grow plants like https://twitter.com/lorenschmidt/status/1069559544471273472
+	* but with trees
+	* ecology systems in general
+	* (maybe)on gpu for very very fast simulation
+		* gpu could do the sand/water/droping
+		* cpu for critters/plants
+	* Yggdrasil
+		* a main tree that `creates` the ecology (i.e. spawns seed species)
+		* HUGE
+		* maybe having biospheres in itself?
