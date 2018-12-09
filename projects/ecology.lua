@@ -6,7 +6,7 @@ __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/1024
 local size=STATE.size
 
-local oversample=0.5
+local oversample=0.25
 is_remade=false
 
 function update_img_buf(  )
@@ -23,6 +23,7 @@ end
 
 update_img_buf()
 config=make_config({
+	{"pause",false,type="bool"},
 	{"color",{0.4,0.4,0.3,0.1},type="color"},
 	{"zoom",1,type="float",min=1,max=10},
 	{"t_x",0,type="float",min=-1,max=1},
@@ -418,7 +419,6 @@ function plant_step()
 		end
 		if v.food<=0 then
 			v.dead=true
-			drop_fruit=true
 		end
 		
 
@@ -906,18 +906,21 @@ function update()
 	end
 	]]
 	-- [[
-	if math.random()>0.8 and #plants<50 then
-		add_plant()
+	if not config.pause then
+		if math.random()>0.8 and #plants<50 then
+			add_plant()
+		end
+		if math.random()>0.99 and #worms<50 then
+			add_worm()
+		end
+		--print("Worms:",#worms)
+		--print("Plants:",#plants)
+	 	--]]
+	 	pixel_step( )
+	 	--tree_step()
+	 	plant_step()
+	 	worm_step()
 	end
-	if math.random()>0.99 and #worms<50 then
-		add_worm()
-	end
-
- 	--]]
- 	pixel_step( )
- 	--tree_step()
- 	plant_step()
- 	worm_step()
 	draw_shader:use()
 	tex_pixel:use(0,0,1)
 
