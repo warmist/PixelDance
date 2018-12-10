@@ -1,19 +1,19 @@
 require 'common'
 require 'bit'
-local win_w=1280*4
-local win_h=1280
+local win_w=768
+local win_h=768
 --640x640x1 ->40fps (90fps??)
 --640x640 b=80 ->40/45fps
 --1280x1280 b=80 ->10/40fps
 --1280x1280 b=0 ->10/8fps
 --1280x1280 b=8 ->9/70fps
---1280*4x1280 b=8 ->4/14fps
+--1280*4x1280 b=8 ->4/14fps ->28fps no draw
 
 __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/1024
 local size=STATE.size
 
-local oversample=1
+local oversample=0.5
 is_remade=false
 local block_size=8--640,320,160,80
 print("Block count:",((win_w*oversample)/block_size)*((win_h*oversample)/block_size))
@@ -33,6 +33,7 @@ end
 update_img_buf()
 config=make_config({
 	{"pause",false,type="bool"},
+	{"draw",true,type="bool"},
 	{"color",{0.4,0.4,0.3,0.1},type="color"},
 	{"zoom",1,type="float",min=1,max=10},
 	{"t_x",0,type="float",min=-1,max=1},
@@ -764,6 +765,7 @@ function worm_step( )
 	local food_drain_sun=20 --burn in sun
 	local food_gain_plant_matter=20
 	local chance_new_worm=0.2
+	local dead_tile=pixel_types.sand
 	--
 	local newworms={}
 	local w=img_buf.w
@@ -804,7 +806,7 @@ function worm_step( )
 				for i,t in ipairs(v.tail) do
 					if tx==t[1] and ty==t[2] then
 						for i,v in ipairs(v.tail) do
-							img_buf:set(v[1],v[2],pixel_types.sand)
+							img_buf:set(v[1],v[2],dead_tile)
 							wake_pixel(v[1],v[2])
 						end
 						local new_worm_count=math.random(0,#v.tail*chance_new_worm)
@@ -864,7 +866,7 @@ function worm_step( )
 			if is_sunlit(t[1],t[2]) then
 				food_balance=food_balance-food_drain_sun
 			end
-			wake_pixel(t[1],t[2])
+			
 		end
 		--ageing logic
 		food_balance=food_balance-food_drain
@@ -880,7 +882,8 @@ function worm_step( )
 		--readd new pos
 		if v.dead then
 			for i,v in ipairs(v.tail or {}) do
-				img_buf:set(v[1],v[2],pixel_types.sand)
+				img_buf:set(v[1],v[2],dead_tile)
+				wake_pixel(v[1],v[2])
 			end
 		end
 	end
@@ -1177,10 +1180,11 @@ end
 tex_pixel=tex_pixel or textures:Make()
 tex_sun=tex_sun or textures:Make()
 need_save=false
-function update()
 
-	__no_redraw()
+function update()
 	__clear()
+	__no_redraw()
+
 	imgui.Begin("ecology")
 	draw_config(config)
 	if imgui.Button("Kill plants") then
@@ -1229,7 +1233,7 @@ function update()
 		if math.random()>0.8 and #plants<50 then
 			add_plant()
 		end
-		if math.random()>0.99 and #worms<50 then
+		if math.random()>0.99 and #worms<300 then
 			add_worm()
 		end
 		--print("Worms:",#worms)
@@ -1245,6 +1249,8 @@ function update()
 		plant_step()
 	 	worm_step()
 	end
+	if config.draw then
+
 	draw_shader:use()
 	tex_pixel:use(0,0,1)
 
@@ -1259,6 +1265,8 @@ function update()
 	draw_shader:set("translate",config.t_x,config.t_y)
 	draw_shader:set("sun_color",config.color[1],config.color[2],config.color[3],config.color[4])
 	draw_shader:draw_quad()
+	end
+
 	if need_save then
 		save_img()
 		need_save=false
