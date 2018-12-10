@@ -1,14 +1,22 @@
 require 'common'
 require 'bit'
-local win_w=1920/2
-local win_h=950
+local win_w=1280*4
+local win_h=1280
+--640x640x1 ->40fps (90fps??)
+--640x640 b=80 ->40/45fps
+--1280x1280 b=80 ->10/40fps
+--1280x1280 b=0 ->10/8fps
+--1280x1280 b=8 ->9/70fps
+--1280*4x1280 b=8 ->4/14fps
+
 __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/1024
 local size=STATE.size
 
-local oversample=0.25
+local oversample=1
 is_remade=false
-
+local block_size=8--640,320,160,80
+print("Block count:",((win_w*oversample)/block_size)*((win_h*oversample)/block_size))
 function update_img_buf(  )
 	local nw=math.floor(size[1]*oversample)
 	local nh=math.floor(size[2]*oversample)
@@ -17,6 +25,7 @@ function update_img_buf(  )
 		img_buf=make_image_buffer(nw,nh)
 		img_buf_back=make_image_buffer(nw,nh)
 		sun_buffer=make_float_buffer(nw,1)
+		block_alive=make_char_buffer(nw/block_size,nh/block_size)
 		is_remade=true
 	end
 end
@@ -121,7 +130,35 @@ for k,v in pairs(pixel_types) do
 	print(k,v[4],get_physics(v[4]),is_block_light(v[4]))
 end
 --TODO: test for collisions
+function make_sparse()
+	local w=img_buf.w
+	local h=img_buf.h
 
+	sand_pixels={}
+	liquid_pixels={}
+
+	for x=0,w-1 do
+		for y=1,h-1 do
+			local c=img_buf:get(x,y)
+			local ph=get_physics(c.a)
+
+			if ph==ph_sand then
+				table.insert(sand_pixels,{x,y})
+			elseif ph==ph_liquid then
+				table.insert(liquid_pixels,{x,y})
+			end
+		end
+	end
+end
+function wake_blocks(  )
+	local bw=img_buf.w/block_size
+	local bh=img_buf.h/block_size
+	for bx=0,bw-1 do
+	for by=0,bh-1 do
+		local ba=block_alive:set(bx,by,1)
+	end
+	end
+end
 function pixel_init(  )
 	local w=img_buf.w
 	local h=img_buf.h
@@ -163,6 +200,9 @@ function pixel_init(  )
 			end
 		end
 	end
+
+
+	wake_blocks()
 	--[[ h wall
 	local wall_size = 8
 	for i=1,5 do
@@ -173,6 +213,7 @@ function pixel_init(  )
 		end
 	end
 	]]
+	make_sparse()
 end
 if is_remade then
 pixel_init()
@@ -182,6 +223,241 @@ function swap_pixels( x,y,tx,ty )
 	local dd={d.r,d.g,d.b,d.a}
 	img_buf:set(tx,ty,img_buf:get(x,y))
 	img_buf:set(x,y,dd)
+end
+function update_sun(  )
+	local w=img_buf.w
+	local h=img_buf.h
+	for x=0,w-1 do
+		sun_buffer:set(x,0,0)
+	end
+	for x=0,w-1 do
+		for y=h-1,0,-1 do
+			local c=img_buf:get(x,y)
+			if is_block_light(c.a) then
+				sun_buffer:set(x,0,y/h)
+				break
+			end
+		end
+	end
+end
+
+
+function make_dense(  )
+	sand_pixels=nil
+	liquid_pixels=nil
+end
+function pixel_step_sparse(  )
+	local w=img_buf.w
+	local h=img_buf.h
+	for i,v in ipairs(sand_pixels) do
+		local x=v[1]
+		local y=v[2]
+		if y>0 then
+			local c=img_buf:get(x,y)
+			local d=img_buf:get(x,y-1)
+			if d.a==0 then
+				img_buf:set(x,y-1,c)
+				img_buf:set(x,y,{0,0,0,0})
+				v[2]=y-1
+			--elseif get_physics(d.a)==ph_liquid then
+			--	swap_pixels(x,y,x,y-1)
+			else
+				local tx=x+1
+				if math.random()>0.5 then
+					tx=x-1
+				end
+				if tx>=0 and tx<=w-1 then
+					local d=img_buf:get(tx,y-1)
+					if d.a==0 then
+						img_buf:set(tx,y-1,c)
+						img_buf:set(x,y,{0,0,0,0})
+						v[1]=tx
+						v[2]=y-1
+					end
+				end
+			end
+		end
+	end
+	for i,v in ipairs(liquid_pixels) do
+		local x=v[1]
+		local y=v[2]
+		local c=img_buf:get(x,y)
+		local d=img_buf:get(x,y-1)
+		if d.a==0 then
+			img_buf:set(x,y-1,c)
+			img_buf:set(x,y,{0,0,0,0})
+		else
+			local tx=x+1
+			if math.random()>0.5 then
+				tx=x-1
+			end
+			if tx>=0 and tx<=w-1 then
+				local d=img_buf:get(tx,y)
+				if d.a==0 then
+					img_buf:set(tx,y,c)
+					img_buf:set(x,y,{0,0,0,0})
+				end
+			end
+		end
+	end
+	update_sun()
+end
+function wake_block( bx,by,tx,ty )
+
+	local tbx=math.floor(tx/block_size)
+	local tby=math.floor(ty/block_size)
+	
+	if tbx~=bx or tby~=by then
+		block_alive:set(tbx,tby,1)
+	end
+	--[[
+	local lx=tx-tbx*block_size
+	local ly=ty-tby*block_size
+	if lx==0 and tx>0 then
+		block_alive:set(tbx-1,tby,1)
+	elseif lx==block_size-1 and tbx<block_alive.w then
+		block_alive:set(tbx+1,tby,1)
+	end
+	if ly==0 and ty>0 then
+		block_alive:set(tbx,tby-1,1)
+	elseif ly==block_size-1 and tby<block_alive.h then
+		block_alive:set(tbx,tby+1,1)
+	end
+	--]]
+end
+function wake_near_blocks( bx,by )
+	for i,v in ipairs(directions8) do
+		local tbx=bx+v[1]
+		local tby=by+v[2]
+		if tbx>=0 and tby>=0 and tbx<block_alive.w and tby<block_alive.h then
+			block_alive:set(tbx,tby,1)
+		end
+	end
+end
+function wake_pixel(tx,ty )
+	local tbx=math.floor(tx/block_size)
+	local tby=math.floor(ty/block_size)
+	block_alive:set(tbx,tby,1)
+end
+function wake_column(tx,ty )
+	local tbx=math.floor(tx/block_size)
+	local tby=math.floor(ty/block_size)
+	for y=tby,block_alive.h-1 do
+		block_alive:set(tbx,y,1)
+	end
+end
+function calculate_block(bx,by)
+	local w=img_buf.w
+	local h=img_buf.h
+
+	local bxl=bx*block_size
+	local bxh=(bx+1)*block_size
+	local byl=by*block_size
+	local byh=(by+1)*block_size
+
+	local no_move=true
+	for x=bxl,bxh-1 do
+		for y=byl,byh-1 do
+			local c=img_buf:get(x,y)
+			local ph=get_physics(c.a)
+
+			if ph==ph_sand and y>0 then
+				local d=img_buf:get(x,y-1)
+				if d.a==0 then
+					img_buf:set(x,y-1,c)
+					img_buf:set(x,y,{0,0,0,0})
+					wake_block(bx,by,x,y-1)
+					no_move=false
+				elseif get_physics(d.a)==ph_liquid then
+					swap_pixels(x,y,x,y-1)
+					wake_block(bx,by,x,y-1)
+					no_move=false
+				else
+					local tx=x+1
+					local not_rolled=true
+					if tx>=0 and tx<=w-1 then
+						local d=img_buf:get(tx,y-1)
+						if d.a==0 then
+							img_buf:set(tx,y-1,c)
+							img_buf:set(x,y,{0,0,0,0})
+							wake_block(bx,by,tx,y-1)
+							not_rolled=false
+							no_move=false
+						end
+					end
+					if not_rolled then
+						tx=x-1
+						if tx>=0 and tx<=w-1 then
+							local d=img_buf:get(tx,y-1)
+							if d.a==0 then
+								img_buf:set(tx,y-1,c)
+								img_buf:set(x,y,{0,0,0,0})
+								wake_block(bx,by,tx,y-1)
+								not_rolled=false
+								no_move=false
+							end
+						end
+					end
+				end
+			elseif ph==ph_liquid and y>0 then
+				local d=img_buf:get(x,y-1)
+				if d.a==0 then
+					img_buf:set(x,y-1,c)
+					img_buf:set(x,y,{0,0,0,0})
+					wake_block(bx,by,x,y-1)
+					no_move=false
+				else
+					local tx=x+1
+					local not_rolled=true
+					if tx>=0 and tx<=w-1 then
+						local d=img_buf:get(tx,y)
+						if d.a==0 then
+							img_buf:set(tx,y,c)
+							img_buf:set(x,y,{0,0,0,0})
+							wake_block(bx,by,tx,y)
+							not_rolled=false
+							no_move=false
+						end
+					end
+					if not_rolled then
+						tx=x-1
+						if tx>=0 and tx<=w-1 then
+							local d=img_buf:get(tx,y)
+							if d.a==0 then
+								img_buf:set(tx,y,c)
+								img_buf:set(x,y,{0,0,0,0})
+								wake_block(bx,by,tx,y)
+								not_rolled=false
+								no_move=false
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	if no_move then
+		block_alive:set(bx,by,0)
+	else
+		wake_near_blocks(bx,by)
+	end
+end
+
+function pixel_step_blocky(  )
+	local w=img_buf.w
+	local h=img_buf.h
+
+	local bw=img_buf.w/block_size
+	local bh=img_buf.h/block_size
+	for bx=0,bw-1 do
+	for by=0,bh-1 do
+		local ba=block_alive:get(bx,by)
+		if ba~=0 then
+			calculate_block(bx,by)
+		end
+	end
+	end
+	update_sun()
 end
 function pixel_step(  )
 	local w=img_buf.w
@@ -201,14 +477,24 @@ function pixel_step(  )
 					swap_pixels(x,y,x,y-1)
 				else
 					local tx=x+1
-					if math.random()>0.5 then
-						tx=x-1
-					end
+					local not_moved=true
 					if tx>=0 and tx<=w-1 then
 						local d=img_buf:get(tx,y-1)
 						if d.a==0 then
 							img_buf:set(tx,y-1,c)
 							img_buf:set(x,y,{0,0,0,0})
+							not_moved=false
+						end
+					end
+					if not_moved then
+						tx=x-1
+						if tx>=0 and tx<=w-1 then
+							local d=img_buf:get(tx,y-1)
+							if d.a==0 then
+								img_buf:set(tx,y-1,c)
+								img_buf:set(x,y,{0,0,0,0})
+								not_moved=false
+							end
 						end
 					end
 				end
@@ -219,32 +505,31 @@ function pixel_step(  )
 					img_buf:set(x,y,{0,0,0,0})
 				else
 					local tx=x+1
-					if math.random()>0.5 then
-						tx=x-1
-					end
+					local not_rolled=true
 					if tx>=0 and tx<=w-1 then
 						local d=img_buf:get(tx,y)
 						if d.a==0 then
 							img_buf:set(tx,y,c)
 							img_buf:set(x,y,{0,0,0,0})
+							not_rolled=false
+						end
+					end
+					if not_rolled then
+						tx=x-1
+						if tx>=0 and tx<=w-1 then
+							local d=img_buf:get(tx,y)
+							if d.a==0 then
+								img_buf:set(tx,y,c)
+								img_buf:set(x,y,{0,0,0,0})
+								not_rolled=false
+							end
 						end
 					end
 				end
 			end
 		end
 	end
-	for x=0,w-1 do
-		sun_buffer:set(x,0,0)
-	end
-	for x=0,w-1 do
-		for y=h-1,0,-1 do
-			local c=img_buf:get(x,y)
-			if is_block_light(c.a) then
-				sun_buffer:set(x,0,y/h)
-				break
-			end
-		end
-	end
+	update_sun()
 
 	--[[
 	local i=img_buf_back
@@ -424,8 +709,10 @@ function plant_step()
 
 		if v.dead then
 			img_buf:set(x,y,pixel_types.dead_plant)
+			wake_pixel(x,y)
 			for i,v in ipairs(v.path or {}) do
 				img_buf:set(v[1],v[2],pixel_types.dead_plant)
+				wake_pixel(v[1],v[2])
 			end
 		else
 			--img_buf:set(x,y,v[3])
@@ -434,6 +721,7 @@ function plant_step()
 			if v.has_fruit then
 				for i,v in ipairs(v.has_fruit) do
 					img_buf:set(v[1],v[2],pixel_types.dead_plant)
+					wake_pixel(v[1],v[2])
 				end
 				local no_seeds=math.random(0,math.floor(#v.has_fruit*fruit_chance_seed))
 				for i=1,no_seeds do
@@ -441,6 +729,7 @@ function plant_step()
 					--TODO: do not overwrite seeds by seeds
 					table.insert(newplants,{s[1],s[2],pixel_types.plant_seed,food=1000,dead=false,growing=false})
 					img_buf:set(s[1],s[2],pixel_types.plant_seed)
+					wake_pixel(s[1],s[2])
 				end
 				v.has_fruit=nil
 			end
@@ -516,6 +805,7 @@ function worm_step( )
 					if tx==t[1] and ty==t[2] then
 						for i,v in ipairs(v.tail) do
 							img_buf:set(v[1],v[2],pixel_types.sand)
+							wake_pixel(v[1],v[2])
 						end
 						local new_worm_count=math.random(0,#v.tail*chance_new_worm)
 						for i=1,new_worm_count do
@@ -524,9 +814,11 @@ function worm_step( )
 							local ty=g[2]
 							table.insert(worms,{pixel_types.worm_body,food=500,dead=false,tail={{tx,ty}}})
 							img_buf:set(tx,ty,pixel_types.worm_body)
+							wake_pixel(tx,ty)
 						end
 						v.tail={{x,y}}
 						img_buf:set(x,y,pixel_types.worm_body)
+						wake_pixel(x,y)
 						want_move=false
 						break
 					end
@@ -545,18 +837,22 @@ function worm_step( )
 					v.tail[i][1]=px
 					v.tail[i][2]=py
 					img_buf:set(px,py,pixel_types.worm_body)
+					wake_pixel(px,py)
 					px=ttx
 					py=tty
 				end
 				if eat_type==pixel_types.sand[4] then
 					img_buf:set(px,py,pixel_types.sand)
+					wake_pixel(px,py)
 				else
 					if want_growth then
 						table.insert(v.tail,{px,py})
 						img_buf:set(px,py,pixel_types.worm_body)
 						food_balance=food_balance-grow_cost_const
+						wake_pixel(px,py)
 					else
 						img_buf:set(px,py,{0,0,0,0})
+						wake_pixel(px,py)
 					end
 				end
 			end
@@ -568,6 +864,7 @@ function worm_step( )
 			if is_sunlit(t[1],t[2]) then
 				food_balance=food_balance-food_drain_sun
 			end
+			wake_pixel(t[1],t[2])
 		end
 		--ageing logic
 		food_balance=food_balance-food_drain
@@ -887,6 +1184,9 @@ function update()
 	if imgui.Button("Save") then
 		need_save=true
 	end
+	if imgui.Button("Wake") then
+		wake_blocks()
+	end
 	--if imgui.Button("Add trees") then
 	--	add_tree()
 	--end
@@ -895,7 +1195,8 @@ function update()
 	if md then
 		local tx,ty=math.floor(x*oversample),math.floor(img_buf.h-y*oversample)
 		if is_valid_coord(tx,ty) then
-			img_buf:set(tx,ty,pixel_types.wall)
+			img_buf:set(tx,ty,pixel_types.water)
+			wake_pixel(tx,ty)
 		end
 	end
 	--[[
@@ -916,9 +1217,14 @@ function update()
 		--print("Worms:",#worms)
 		--print("Plants:",#plants)
 	 	--]]
-	 	pixel_step( )
+	 	if block_size==0 then
+	 		pixel_step( )
+	 	else
+	 		pixel_step_blocky( )
+	 	end
+	 	--pixel_step_sparse()
 	 	--tree_step()
-	 	plant_step()
+		plant_step()
 	 	worm_step()
 	end
 	draw_shader:use()
