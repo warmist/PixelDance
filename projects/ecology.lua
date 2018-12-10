@@ -10,14 +10,16 @@ local win_h=768
 --1280*4x1280 b=8 ->4/14fps ->28fps no draw
 
 __set_window_size(win_w,win_h)
-local map_w=win_w*8
-local map_h=win_h/4
+local oversample=0.5
+
+local map_w=(win_w*oversample)*2
+local map_h=(win_h*oversample)
 
 local aspect_ratio=win_w/win_h
 local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 
-local oversample=0.5
+
 is_remade=false
 local block_size=8--640,320,160,80
 print("Block count:",(map_w/block_size)*(map_h/block_size))
@@ -323,13 +325,6 @@ function wake_pixel(tx,ty )
 	local tbx=math.floor(tx/block_size)
 	local tby=math.floor(ty/block_size)
 	block_alive:set(tbx,tby,1)
-end
-function wake_column(tx,ty )
-	local tbx=math.floor(tx/block_size)
-	local tby=math.floor(ty/block_size)
-	for y=tby,block_alive.h-1 do
-		block_alive:set(tbx,y,1)
-	end
 end
 function calculate_block(bx,by)
 	local w=img_buf.w
