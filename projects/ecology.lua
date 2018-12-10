@@ -1145,6 +1145,24 @@ function is_mouse_down(  )
 	end
 	return current_down, __mouse.x,__mouse.y
 end
+function is_mouse_down2()
+	local ret=__mouse.clicked2 and not __mouse.owned2
+	if ret then
+		current_down2=true
+		last_mouse2={__mouse.x,__mouse.y}
+	end
+	local delta_x=0
+	local delta_y=0
+	if current_down2 then
+		delta_x=__mouse.x-last_mouse2[1]
+		delta_y=__mouse.y-last_mouse2[2]
+		last_mouse2={__mouse.x,__mouse.y}
+	end
+	if __mouse.released2 then
+		current_down2=false
+	end
+	return current_down2, __mouse.x,__mouse.y, delta_x,delta_y
+end
 function save_img(  )
 	img_buf_save=make_image_buffer(size[1],size[2])
 	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
@@ -1245,5 +1263,17 @@ function update()
 		save_img()
 		need_save=false
 	end
-
+	local tx,ty=config.t_x,config.t_y
+	local c,x,y,dx,dy= is_mouse_down2()
+	if c then
+		dx,dy=dx/size[1],dy/size[2]
+		config.t_x=config.t_x-dx/config.zoom
+		config.t_y=config.t_y+dy/config.zoom
+	end
+	if __mouse.wheel~=0 then
+		local pfact=math.exp(__mouse.wheel/10)
+		config.zoom=config.zoom*pfact
+		--config.t_x=config.t_x*pfact
+		--config.t_y=config.t_y*pfact
+	end
 end
