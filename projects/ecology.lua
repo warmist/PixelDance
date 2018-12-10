@@ -10,20 +10,23 @@ local win_h=768
 --1280*4x1280 b=8 ->4/14fps ->28fps no draw
 
 __set_window_size(win_w,win_h)
-local aspect_ratio=win_w/1024
+local map_w=win_w*8
+local map_h=win_h/4
+
+local aspect_ratio=win_w/win_h
+local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 
 local oversample=0.5
 is_remade=false
 local block_size=8--640,320,160,80
-print("Block count:",((win_w*oversample)/block_size)*((win_h*oversample)/block_size))
+print("Block count:",(map_w/block_size)*(map_h/block_size))
 function update_img_buf(  )
-	local nw=math.floor(size[1]*oversample)
-	local nh=math.floor(size[2]*oversample)
+	local nw=math.floor(map_w)
+	local nh=math.floor(map_h)
 
 	if img_buf==nil or img_buf.w~=nw or img_buf.h~=nh then
 		img_buf=make_image_buffer(nw,nh)
-		img_buf_back=make_image_buffer(nw,nh)
 		sun_buffer=make_float_buffer(nw,1)
 		block_alive=make_char_buffer(nw/block_size,nh/block_size)
 		is_remade=true
@@ -49,7 +52,7 @@ uniform vec2 rez;
 uniform vec4 sun_color;
 uniform sampler2D tex_main;
 uniform sampler2D tex_sun;
-uniform float zoom;
+uniform vec2 zoom;
 uniform vec2 translate;
 
 void main(){
@@ -130,27 +133,8 @@ local pixel_types={ --alpha used to id types
 for k,v in pairs(pixel_types) do
 	print(k,v[4],get_physics(v[4]),is_block_light(v[4]))
 end
---TODO: test for collisions
-function make_sparse()
-	local w=img_buf.w
-	local h=img_buf.h
+--TODO: test for id collisions
 
-	sand_pixels={}
-	liquid_pixels={}
-
-	for x=0,w-1 do
-		for y=1,h-1 do
-			local c=img_buf:get(x,y)
-			local ph=get_physics(c.a)
-
-			if ph==ph_sand then
-				table.insert(sand_pixels,{x,y})
-			elseif ph==ph_liquid then
-				table.insert(liquid_pixels,{x,y})
-			end
-		end
-	end
-end
 function wake_blocks(  )
 	local bw=img_buf.w/block_size
 	local bh=img_buf.h/block_size
@@ -1261,7 +1245,7 @@ function update()
 
 	draw_shader:set_i("tex_main",0)
 	draw_shader:set_i("tex_sun",1)
-	draw_shader:set("zoom",config.zoom)
+	draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
 	draw_shader:set("translate",config.t_x,config.t_y)
 	draw_shader:set("sun_color",config.color[1],config.color[2],config.color[3],config.color[4])
 	draw_shader:draw_quad()
