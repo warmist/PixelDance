@@ -557,8 +557,9 @@ function plant_step()
 	local newplants={}
 	local w=img_buf.w
 	local h=img_buf.h
-	local drop_fruit = false
+	
 	for i,v in ipairs(plants) do
+		local drop_fruit = false
 		local x=v[1]
 		local y=v[2]
 
