@@ -12,7 +12,7 @@ local win_h=768
 __set_window_size(win_w,win_h)
 local oversample=0.5
 
-local map_w=(win_w*oversample)*2
+local map_w=(win_w*oversample)
 local map_h=(win_h*oversample)
 
 local aspect_ratio=win_w/win_h
@@ -131,6 +131,9 @@ local pixel_types={ --alpha used to id types
 	tree_trunk   ={40 ,10 ,255,next_pixel_type_id(ph_wall  ,1)},
 	plant_body   ={50 ,180,20 ,next_pixel_type_id(ph_wall  ,1)},
 	plant_fruit  ={230,90 ,20 ,next_pixel_type_id(ph_wall  ,1)},
+	mycelium     ={150,130,100,next_pixel_type_id(ph_wall  ,1)},
+	mushroom     ={80 ,20 ,20 ,next_pixel_type_id(ph_wall  ,1)},
+	spore        ={160,40 ,40 ,next_pixel_type_id(ph_wall  ,1)},
 }
 for k,v in pairs(pixel_types) do
 	print(k,v[4],get_physics(v[4]),is_block_light(v[4]))
@@ -874,29 +877,14 @@ function worm_step( )
 	end
 	worms=newworms
 end
-trees=trees or {}
-function add_tree( x,y )
-	x=x or math.floor(img_buf.w/2)
-	y=y or (img_buf.h-1)
 
-	table.insert(trees,{pixel_types.plant_seed,growing=false,dead=false,
-		cells={{pos=Point(x,y),type="seed"}},
-		height=0,
-		growth_ticks=500,
-		})
-	img_buf:set(x,y,pixel_types.plant_seed)
-end
 function concat_tables(t1,t2)
     for i=1,#t2 do
         t1[#t1+1] = t2[i]
     end
     return t1
 end
-function norm_coord( t )
-	local dist=math.sqrt(t[1]*t[1]+t[2]*t[2])
-	t[1]=t[1]/dist
-	t[2]=t[2]/dist
-end
+
 function try_grow( pcenter,dir, valid_a)
 	local trg=pcenter+dir
 	if not is_valid_coord(trg[1],trg[2]) then
@@ -959,163 +947,6 @@ end
 function next_pixel( dir )
 	local m=math.max(math.abs(dir[1]),math.abs(dir[2]))
 	return Point(dir[1]/m,dir[2]/m)
-end
-function tree_step(  )
-	--super config
-	--growth stuff
-	local height_per_tick=0.05
-	local sun_bias=0.005
-
-	local width_per_tick=0.01
-	local chance_change_dir=0.1
-	local chance_split=0.005
-	local chance_bud = 0.01
-	local bend_amount=0.2
-	local split_amount=0.3
-	local max_w=6
-	local max_h=300
-	--
-
-	local w=img_buf.w
-	local h=img_buf.h
-	for i,v in ipairs(trees) do
-		local moved=false
-
-		--drop down
-		if not v.growing then
-			local pos=v.cells[1].pos
-			
-			if pos[2]>0 then
-				local d=img_buf:get(pos[1],pos[2]-1)
-				if d.a==0 then
-					img_buf:set(pos[1],pos[2],{0,0,0,0})
-					pos[2]=pos[2]-1
-					img_buf:set(pos[1],pos[2],pixel_types.tree_trunk)
-					moved=true
-				elseif d.a==pixel_types.sand[4] then
-					--if is_sunlit(pos[1],pos[2]) then
-						v.growing=true
-						v.cells[1].type="top"
-						v.cells[1].delta=Point(0,0)
-						v.cells[1].dir=Point(0,1)
-						v.cells[1].fract=Point(0,0)
-					--end
-				end
-			end
-		else
-			--growing logic
-			local tbl=v.cells
-			local to_add={}
-			if v.growth_ticks>0 then
-				for i,cell in ipairs(tbl) do
-					if cell.type=="top" then
-						local pos=cell.pos
-						local dir=cell.dir
-
-						if is_sunlit(pos[1],pos[2]) then
-							dir[2]=dir[2]+sun_bias
-						elseif math.random()<chance_change_dir then
-							dir[1]=dir[1]+math.random()*bend_amount-bend_amount/2
-						end
-						dir:normalize()
-						cell.dir=dir
-						local step=fract_move(cell,height_per_tick,cell.dir)
-						local new_pos=pos+step
-						local do_grow=true
-						--if not is_valid_coord(new_pos[1],new_pos[2]-1) or img_buf:get(new_pos[1],new_pos[2]-1).a==0 then
-						--	do_grow=false
-						--end
-						if do_grow and try_grow(pos,step) then
-							local t="skin"
-							if math.random()<chance_bud then
-								t="dorm_bud"
-							end
-							table.insert(to_add,
-							{
-								pos=Point(pos[1],pos[2]),
-								delta=Point(0,v.height),
-								type=t,
-								dir=Point(-cell.dir[2],cell.dir[1]),
-							})
-							v.height=v.height+1
-							cell.pos=new_pos
-							if v.height>=max_h then
-								cell.type="skin"
-								cell.delta=Point(0,v.height)
-							end
-						end
-					elseif cell.type=="skin" or cell.type=="dorm_bud" then
-						local pos=cell.pos
-						local d=read_directions4(pos)
-						local inside=true
-
-						for i=1,4 do
-							if d[i]==0 then
-								inside=false
-							end
-						end
-						local max_w_act=max_w_stress_based(cell.delta,max_w,max_h,v.height)
-						local do_grow=true
-						local my_dir=Point(cell.dir[1],cell.dir[2])
-						
-						if math.random()>0.5 then
-							my_dir=(-1)*my_dir
-						end
-						local step=next_pixel(my_dir)
-
-						if is_valid_coord(step[1],step[2]) and img_buf:get(step[1],step[2]).a==0 then
-							local dd=math.floor(step[1])
-							
-							local new_delta=cell.delta+Point(dd[1],dd[2])
-							if dd[1]~=0 then
-								if math.abs(new_delta[1])>max_w_act then
-									do_grow=false
-									if cell.type=="dorm_bud" then
-
-									end
-								end
-							end
-							if do_grow then
-								table.insert(to_add,
-								{
-									pos=Point(pos[1],pos[2]),
-									delta=cell.delta,
-									type="skin"
-								})
-								cell.delta=new_delta
-								cell.pos=Point(pos[1]+dd[1],pos[2]+dd[2])
-							end
-							
-						end
-						if inside then
-							cell.type="inside"
-						end
-					end
-				end
-
-				v.cells=concat_tables(tbl,to_add)
-				--v.growth_ticks=v.growth_ticks-1
-			end
-			for i,v in ipairs(v.cells) do
-				if is_valid_coord(v.pos[1],v.pos[2]) then
-					if v.type=="skin" then
-						img_buf:set(v.pos[1],v.pos[2],pixel_types.tree_trunk)
-					else
-						img_buf:set(v.pos[1],v.pos[2],pixel_types.plant_seed)
-					end
-				end
-			end
-		end
-		
-	end
-
-	local ttrees=trees
-	trees={}
-	for i,v in ipairs(ttrees) do
-		if not v.dead then
-			table.insert(trees,v)
-		end
-	end
 end
 function is_mouse_down(  )
 	local ret=__mouse.clicked1 and not __mouse.owned1
