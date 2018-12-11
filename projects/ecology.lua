@@ -200,7 +200,6 @@ function pixel_init(  )
 		end
 	end
 	]]
-	make_sparse()
 end
 if is_remade then
 pixel_init()
