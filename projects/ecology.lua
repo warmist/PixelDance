@@ -886,6 +886,7 @@ function worm_step( )
 						break
 					end
 				end
+				want_move=false
 			elseif eat_type~=pixel_types.sand[4] then
 				want_move=false
 			end
@@ -1104,7 +1105,7 @@ function update()
 		if math.random()>0.8 and #plants<50 then
 			add_plant()
 		end
-		if math.random()>0.99 and #worms<300 then
+		if math.random()>0.99 and #worms<30 then
 			add_worm()
 		end
 		--print("Worms:",#worms)
