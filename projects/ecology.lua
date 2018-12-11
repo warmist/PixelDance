@@ -39,7 +39,7 @@ update_img_buf()
 config=make_config({
 	{"pause",false,type="bool"},
 	{"draw",true,type="bool"},
-	{"color",{0.4,0.4,0.3,0.1},type="color"},
+	{"color",{0.63,0.59,0.511,0.2},type="color"},
 	{"zoom",1,type="float",min=1,max=10},
 	{"t_x",0,type="float",min=-1,max=1},
 	{"t_y",0,type="float",min=-1,max=1},
@@ -64,10 +64,12 @@ void main(){
 	float v=1;
 	//v=1-smoothstep(normed.y,hsun-0.005,1);
 	v=1-step(normed.y,hsun);
-	//if(normed.y<hsun)
-	//	v=0;
 	float light=clamp(v,sun_color.a,1);
-	color=vec4(texture(tex_main,normed).xyz+sun_color.xyz*light,1);
+	vec4 pixel=texture(tex_main,normed);
+	if(pixel.a==0)
+		color=vec4(sun_color.xyz*light,1);
+	else
+		color=vec4(pixel.xyz+sun_color.xyz*v,1);
 }
 ]==]
 function is_valid_coord( x,y )
