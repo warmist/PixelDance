@@ -192,7 +192,7 @@ local pixel_types={ --alpha used to id types
 	plant_fruit  ={230,90 ,20 ,next_pixel_type_id(ph_wall  ,1)},
 	mycelium     ={150,130,100,next_pixel_type_id(ph_wall  ,1)},
 	mushroom     ={80 ,20 ,20 ,next_pixel_type_id(ph_wall  ,1)},
-	spore        ={160,40 ,40 ,next_pixel_type_id(ph_wall  ,1)},
+	spore        ={160,40 ,40 ,next_pixel_type_id(ph_wall  ,0)},
 }
 for k,v in pairs(pixel_types) do
 	print(k,v[4],get_physics(v[4]),is_block_light(v[4]))
@@ -218,6 +218,11 @@ function pixel_init(  )
 		local x=math.random(0,w-1)
 		local y=math.random(0,h-1)
 		img_buf:set(x,y,pixel_types.sand)
+	end
+	for i=1,w*h*0.1 do
+		local x=math.random(0,w-1)
+		local y=math.random(0,h-1)
+		img_buf:set(x,y,pixel_types.dead_plant)
 	end
 	for i=1,5 do
 		local platform_size=math.random(100,200)
@@ -957,7 +962,107 @@ function worm_step( )
 	end
 	worms=newworms
 end
+mushrooms=mushrooms or {}
+if is_remade then worms={} end
 
+function add_mushroom( x,y,trg_tbl )
+	local w=img_buf.w
+	local h=img_buf.h
+	x=x or math.random(0,w-1)
+	y=y or h-1
+	local dir=Point(0,-1)
+	dir:normalize()
+	table.insert(trg_tbl or mushrooms,{
+		food=500,dead=false,spore={x,y},
+		fract=Point(0,0),
+		dir=dir,
+		})
+	img_buf:set(x,y,pixel_types.spore)
+end
+function mushroom_tick(  )
+	local spore_bias_gravity=0.02
+	local spore_bias_random=0.8
+	local spore_move_speed=0.08
+
+	local food_drain=0.01
+	local food_max=1000
+	--
+	local newshrooms={}
+	local w=img_buf.w
+	local h=img_buf.h
+
+	for i,v in ipairs(mushrooms) do
+		if v.spore then
+			local x=v.spore[1]
+			local y=v.spore[2]
+			local want_move=true
+
+			v.dir=v.dir+spore_bias_gravity*Point(0,-1)+
+				spore_bias_random*Point(math.random()-0.5,math.random()-0.5)
+			v.dir:normalize()
+
+			local d=fract_move(v,spore_move_speed,v.dir)
+			if d[1]==0 and d[2]==0 then
+				want_move=false
+			end
+
+
+			local tx=d[1]+x
+			local ty=d[2]+y
+
+			if want_move and is_valid_coord(tx,ty) then
+				local d=img_buf:get(tx,ty)
+				if d.a~=0 then
+					want_move=false
+				end
+			else
+				want_move=false
+			end
+
+			if want_move then
+				img_buf:set(x,y,{0,0,0,0})
+				img_buf:set(tx,ty,pixel_types.spore)
+				v.spore[1]=tx
+				v.spore[2]=ty
+				wake_pixel(tx,ty)
+			elseif not is_sunlit(x,y) then
+				local tx=x
+				local ty=y-1
+				if is_valid_coord(tx,ty) then
+					local d=img_buf:get(tx,ty)
+					if d.a==pixel_types.dead_plant[4] then
+						
+					end
+				end
+			end
+		end
+		local food_balance=-food_drain
+	
+		v.food=v.food+food_balance
+		if v.food>food_max then
+			v.food=food_max
+		end
+
+		if v.food<=0 then
+			v.dead=true
+		end
+
+		if v.dead then
+			if v.spore then
+				local x=v.spore[1]
+				local y=v.spore[2]
+				img_buf:set(x,y,{0,0,0,0})
+			end
+		end
+	end
+
+	for i,v in ipairs(mushrooms) do
+		if not v.dead then
+			table.insert(newshrooms,v)
+		end
+	end
+	mushrooms=newshrooms
+end
 function concat_tables(t1,t2)
     for i=1,#t2 do
         t1[#t1+1] = t2[i]
@@ -1103,10 +1208,13 @@ function update()
 	-- [[
 	if not config.pause then
 		if math.random()>0.8 and #plants<50 then
-			add_plant()
+			--add_plant()
 		end
 		if math.random()>0.99 and #worms<30 then
-			add_worm()
+			--add_worm()
+		end
+		if math.random()>0.999 and #mushrooms<5 then
+			add_mushroom()
 		end
 		--print("Worms:",#worms)
 		--print("Plants:",#plants)
@@ -1120,6 +1228,7 @@ function update()
 	 	--tree_step()
 		plant_step()
 	 	worm_step()
+	 	mushroom_tick()
 	end
 	if config.draw then
 
