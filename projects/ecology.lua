@@ -73,6 +73,63 @@ void main(){
 function is_valid_coord( x,y )
 	return x>=0 and y>=0 and x<img_buf.w and y<img_buf.h
 end
+function fract_move(cell, dist,dir )
+	cell.fract=cell.fract+dist*dir
+	local step=Point(0,0)
+	if cell.fract[1]>1 then
+		step[1]=1
+		cell.fract[1]=cell.fract[1]-1
+	elseif cell.fract[1]<-1 then
+		step[1]=-1
+		cell.fract[1]=cell.fract[1]+1
+	end
+
+	if cell.fract[2]>1 then
+		step[2]=1
+		cell.fract[2]=cell.fract[2]-1
+	elseif cell.fract[2]<-1 then
+		step[2]=-1
+		cell.fract[2]=cell.fract[2]+1
+	end
+	return step
+end
+function fract_move4(cell, dist,dir )
+	cell.fract=cell.fract+dist*dir
+	local step=Point(0,0)
+	local function move_x(  )
+		if cell.fract[1]>1 then
+			step[1]=1
+			cell.fract[1]=cell.fract[1]-1
+			return true
+		elseif cell.fract[1]<-1 then
+			step[1]=-1
+			cell.fract[1]=cell.fract[1]+1
+			return true
+		end
+	end
+
+	local function move_y(  )
+		if cell.fract[2]>1 then
+			step[2]=1
+			cell.fract[2]=cell.fract[2]-1
+			return true
+		elseif cell.fract[2]<-1 then
+			step[2]=-1
+			cell.fract[2]=cell.fract[2]+1
+			return true
+		end
+	end
+	if math.random()>0.5 then
+		if not move_x() then
+			move_y()
+		end
+	else
+		if not move_y() then
+			move_x()
+		end
+	end
+	return step
+end
 local directions8={
 	{-1,-1},
 	{0,-1},
@@ -732,21 +789,29 @@ function plant_step()
 	end
 	plants=newplants
 end
+
 worms=worms or {}
 if is_remade then worms={} end
 
-function add_worm( x,y )
+function add_worm( x,y,trg_tbl )
 	local w=img_buf.w
 	local h=img_buf.h
 	x=x or math.random(0,w-1)
 	y=y or 0
-	table.insert(worms,{pixel_types.worm_body,food=500,dead=false,tail={{x,y}}})
+	local dir=Point(math.random()-0.5,math.random()-0.5)
+	dir:normalize()
+	table.insert(trg_tbl or worms,{
+		pixel_types.worm_body,food=500,dead=false,tail={{x,y}},
+		fract=Point(0,0),
+		dir=dir,
+		})
 	img_buf:set(x,y,pixel_types.worm_body)
 end
 
 
 function worm_step( )
-	local surface_bias=0.08
+	local surface_bias=0.000
+	local random_bias=1.5
 	local grow_cost_const=500
 	local grow_cost_buffer=2
 	local max_food=20000
@@ -755,6 +820,7 @@ function worm_step( )
 	local food_gain_plant_matter=20
 	local chance_new_worm=0.2
 	local dead_tile=pixel_types.sand
+	local move_speed=0.5
 	--
 	local newworms={}
 	local w=img_buf.w
@@ -770,10 +836,15 @@ function worm_step( )
 			want_growth=true
 		end
 		--movement logic
-		local d=directions4[math.random(1,#directions4)]
-		if math.random()<surface_bias then
-			d={0,1}
+		v.dir=v.dir+surface_bias*Point(0,1)
+		v.dir=v.dir+random_bias*Point(math.random()-0.5,math.random()-0.5)
+		v.dir:normalize()
+		local d=fract_move4(v,move_speed,v.dir)
+
+		if d[1]==0 and d[2]==0 then
+			want_move=false
 		end
+
 		local tx=d[1]+x
 		local ty=d[2]+y
 		if #v.tail>1 then
@@ -803,8 +874,7 @@ function worm_step( )
 							local g=v.tail[math.random(1,#v.tail)]
 							local tx=g[1]
 							local ty=g[2]
-							table.insert(worms,{pixel_types.worm_body,food=500,dead=false,tail={{tx,ty}}})
-							img_buf:set(tx,ty,pixel_types.worm_body)
+							add_worm(tx,ty,newworms)
 							wake_pixel(tx,ty)
 						end
 						v.tail={{x,y}}
@@ -931,63 +1001,7 @@ function max_w_stress_based( mydelta ,max_w,max_h,current_h)
 	local v=mydelta[2]/max_h
 	return math.max(grow_amount*max_w*(1-v),1)
 end
-function fract_move(cell, dist,dir )
-	cell.fract=cell.fract+dist*dir
-	local step=Point(0,0)
-	if cell.fract[1]>1 then
-		step[1]=1
-		cell.fract[1]=cell.fract[1]-1
-	elseif cell.fract[1]<-1 then
-		step[1]=-1
-		cell.fract[1]=cell.fract[1]+1
-	end
 
-	if cell.fract[2]>1 then
-		step[2]=1
-		cell.fract[2]=cell.fract[2]-1
-	elseif cell.fract[2]<-1 then
-		step[2]=-1
-		cell.fract[2]=cell.fract[2]+1
-	end
-	return step
-end
-function fract_move4(cell, dist,dir )
-	cell.fract=cell.fract+dist*dir
-	local step=Point(0,0)
-	local function move_x(  )
-		if cell.fract[1]>1 then
-			step[1]=1
-			cell.fract[1]=cell.fract[1]-1
-			return true
-		elseif cell.fract[1]<-1 then
-			step[1]=-1
-			cell.fract[1]=cell.fract[1]+1
-			return true
-		end
-	end
-
-	local function move_y(  )
-		if cell.fract[2]>1 then
-			step[2]=1
-			cell.fract[2]=cell.fract[2]-1
-			return true
-		elseif cell.fract[2]<-1 then
-			step[2]=-1
-			cell.fract[2]=cell.fract[2]+1
-			return true
-		end
-	end
-	if random()>0.5 then
-		if not move_x() then
-			move_y()
-		end
-	else
-		if not move_y() then
-			move_x()
-		end
-	end
-	return step
-end
 function next_pixel( dir )
 	local m=math.max(math.abs(dir[1]),math.abs(dir[2]))
 	return Point(dir[1]/m,dir[2]/m)
