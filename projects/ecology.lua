@@ -132,6 +132,25 @@ function fract_move4(cell, dist,dir )
 	end
 	return step
 end
+function remove_dead_addnew(tbl,new_tbl)
+	local tbl_end=#tbl
+	local i=1
+	while i<tbl_end do
+		if tbl[i].dead then
+			tbl[i]=tbl[tbl_end]
+			tbl[tbl_end]=nil
+			tbl_end=tbl_end-1
+		else
+			i=i+1
+		end
+	end
+	if new_tbl then
+		for i,v in ipairs(new_tbl) do
+			tbl_end=tbl_end+1
+			tbl[tbl_end]=v
+		end
+	end
+end
 local directions8={
 	{-1,-1},
 	{0,-1},
@@ -789,12 +808,7 @@ function plant_step()
 			end
 		end
 	end
-	for i,v in ipairs(plants) do
-		if not v.dead then
-			table.insert(newplants,v)
-		end
-	end
-	plants=newplants
+	remove_dead_addnew(plants,newplants)
 end
 
 worms=worms or {}
@@ -954,13 +968,7 @@ function worm_step( )
 			end
 		end
 	end
-
-	for i,v in ipairs(worms) do
-		if not v.dead then
-			table.insert(newworms,v)
-		end
-	end
-	worms=newworms
+	remove_dead_addnew(worms,newworms)
 end
 mushrooms=mushrooms or {}
 if is_remade then worms={} end
@@ -1051,17 +1059,20 @@ function mushroom_tick(  )
 			if v.spore then
 				local x=v.spore[1]
 				local y=v.spore[2]
-				img_buf:set(x,y,{0,0,0,0})
+				if y then
+					img_buf:set(x,y,{0,0,0,0})
+				end
+			elseif v.mycelium then
+				for i,v in ipairs(v.mycelium) do
+					img_buf:set(v[1],v[2],pixel_types.dead_plant)
+				end
+				for i,v in ipairs(v.mycelium_growers) do
+					img_buf:set(v[1],v[2],pixel_types.dead_plant)
+				end
 			end
 		end
 	end
-
-	for i,v in ipairs(mushrooms) do
-		if not v.dead then
-			table.insert(newshrooms,v)
-		end
-	end
-	mushrooms=newshrooms
+	remove_dead_addnew(mushrooms,newshrooms)
 end
 function concat_tables(t1,t2)
     for i=1,#t2 do
