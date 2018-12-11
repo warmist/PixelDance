@@ -12,8 +12,8 @@ local win_h=768
 __set_window_size(win_w,win_h)
 local oversample=0.5
 
-local map_w=(win_w*oversample)
-local map_h=(win_h*oversample)
+local map_w=(win_w*oversample)*2
+local map_h=(win_h*oversample)*2
 
 local aspect_ratio=win_w/win_h
 local map_aspect_ratio=map_w/map_h
@@ -48,9 +48,10 @@ config=make_config({
 	{"pause",false,type="bool"},
 	{"draw",true,type="bool"},
 	{"color",{0.63,0.59,0.511,0.2},type="color"},
+	{"color_misc",{0.63,0.59,0.511,0.2},type="color"},
 	{"zoom",1,type="float",min=1,max=10},
-	{"t_x",0,type="float",min=-1,max=1},
-	{"t_y",0,type="float",min=-1,max=1},
+	{"t_x",0,type="float",min=0,max=1},
+	{"t_y",0,type="float",min=0,max=1},
 	},config)
 local draw_shader=shaders.Make[==[
 #version 330
@@ -218,7 +219,7 @@ local pixel_types={ --alpha used to id types
 	plant_body   ={50 ,180,20 ,next_pixel_type_id(ph_wall  ,1)},
 	plant_fruit  ={230,90 ,20 ,next_pixel_type_id(ph_wall  ,1)},
 	mycelium     ={150,150,150,next_pixel_type_id(ph_wall  ,1)},
-	mushroom     ={80 ,20 ,20 ,next_pixel_type_id(ph_wall  ,1)},
+	mushroom     ={250,175,255,next_pixel_type_id(ph_wall  ,1)},
 	spore        ={160,40 ,40 ,next_pixel_type_id(ph_wall  ,0)},
 }
 for k,v in pairs(pixel_types) do
@@ -1428,15 +1429,24 @@ function update()
 	end
 	local tx,ty=config.t_x,config.t_y
 	local c,x,y,dx,dy= is_mouse_down2()
+	local update_bounds=false
 	if c then
 		dx,dy=dx/size[1],dy/size[2]
 		config.t_x=config.t_x-dx/config.zoom
 		config.t_y=config.t_y+dy/config.zoom
+		update_bounds=true
 	end
 	if __mouse.wheel~=0 then
 		local pfact=math.exp(__mouse.wheel/10)
 		config.zoom=config.zoom*pfact
 		--config.t_x=config.t_x*pfact
 		--config.t_y=config.t_y*pfact
+		update_bounds=true
+	end
+	if update_bounds then
+		if config.t_x<0 then config.t_x=0 end
+		if config.t_x>1-1/config.zoom then config.t_x=1-1/config.zoom end
+		if config.t_y<0 then config.t_y=0 end
+		if config.t_y>1-1/config.zoom then config.t_y=1-1/config.zoom end
 	end
 end
