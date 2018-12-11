@@ -34,7 +34,15 @@ function update_img_buf(  )
 		is_remade=true
 	end
 end
-
+function set_pixel( x,y,pixel )
+	if x<0 or y<0 or x>=img_buf.w or y>=img_buf.h then
+		error("invalid pixel to set")
+	end
+	img_buf:set(x,y,pixel)
+end
+function get_pixel( x,y )
+	return img_buf:get(x,y)
+end
 update_img_buf()
 config=make_config({
 	{"pause",false,type="bool"},
@@ -135,7 +143,7 @@ end
 function remove_dead_addnew(tbl,new_tbl)
 	local tbl_end=#tbl
 	local i=1
-	while i<tbl_end do
+	while i<=tbl_end do
 		if tbl[i].dead then
 			tbl[i]=tbl[tbl_end]
 			tbl[tbl_end]=nil
@@ -209,7 +217,7 @@ local pixel_types={ --alpha used to id types
 	tree_trunk   ={40 ,10 ,255,next_pixel_type_id(ph_wall  ,1)},
 	plant_body   ={50 ,180,20 ,next_pixel_type_id(ph_wall  ,1)},
 	plant_fruit  ={230,90 ,20 ,next_pixel_type_id(ph_wall  ,1)},
-	mycelium     ={150,130,100,next_pixel_type_id(ph_wall  ,1)},
+	mycelium     ={150,150,150,next_pixel_type_id(ph_wall  ,1)},
 	mushroom     ={80 ,20 ,20 ,next_pixel_type_id(ph_wall  ,1)},
 	spore        ={160,40 ,40 ,next_pixel_type_id(ph_wall  ,0)},
 }
@@ -236,12 +244,12 @@ function pixel_init(  )
 	for i=1,w*h*0.1 do
 		local x=math.random(0,w-1)
 		local y=math.random(0,h-1)
-		img_buf:set(x,y,pixel_types.sand)
+		set_pixel(x,y,pixel_types.sand)
 	end
 	for i=1,w*h*0.1 do
 		local x=math.random(0,w-1)
 		local y=math.random(0,h-1)
-		img_buf:set(x,y,pixel_types.dead_plant)
+		set_pixel(x,y,pixel_types.dead_plant)
 	end
 	for i=1,5 do
 		local platform_size=math.random(100,200)
@@ -254,7 +262,7 @@ function pixel_init(  )
 			if is_valid_coord(tx,ty) then
 				x=tx
 				y=ty
-				img_buf:set(tx,ty,pixel_types.water)
+				set_pixel(tx,ty,pixel_types.water)
 			end
 		end
 	end
@@ -269,7 +277,7 @@ function pixel_init(  )
 			if is_valid_coord(tx,ty) then
 				x=tx
 				y=ty
-				img_buf:set(tx,ty,pixel_types.wall)
+				set_pixel(tx,ty,pixel_types.wall)
 			end
 		end
 	end
@@ -282,7 +290,7 @@ function pixel_init(  )
 		local x=math.random(0,w-1)
 		local y=math.random(0,h-1-wall_size)
 		for i=0,wall_size do
-			img_buf:set(x,y+i,pixel_types.wall)
+			set_pixel(x,y+i,pixel_types.wall)
 		end
 	end
 	]]
@@ -290,11 +298,12 @@ end
 if is_remade then
 pixel_init()
 end
+
 function swap_pixels( x,y,tx,ty )
-	local d=img_buf:get(tx,ty)
+	local d=get_pixel(tx,ty)
 	local dd={d.r,d.g,d.b,d.a}
-	img_buf:set(tx,ty,img_buf:get(x,y))
-	img_buf:set(x,y,dd)
+	set_pixel(tx,ty,get_pixel(x,y))
+	set_pixel(x,y,dd)
 end
 function update_sun(  )
 	local w=img_buf.w
@@ -304,7 +313,7 @@ function update_sun(  )
 	end
 	for x=0,w-1 do
 		for y=h-1,0,-1 do
-			local c=img_buf:get(x,y)
+			local c=get_pixel(x,y)
 			if is_block_light(c.a) then
 				sun_buffer:set(x,0,y/h)
 				break
@@ -312,68 +321,33 @@ function update_sun(  )
 		end
 	end
 end
-
-
-function make_dense(  )
-	sand_pixels=nil
-	liquid_pixels=nil
-end
-function pixel_step_sparse(  )
-	local w=img_buf.w
-	local h=img_buf.h
-	for i,v in ipairs(sand_pixels) do
-		local x=v[1]
-		local y=v[2]
-		if y>0 then
-			local c=img_buf:get(x,y)
-			local d=img_buf:get(x,y-1)
-			if d.a==0 then
-				img_buf:set(x,y-1,c)
-				img_buf:set(x,y,{0,0,0,0})
-				v[2]=y-1
-			--elseif get_physics(d.a)==ph_liquid then
-			--	swap_pixels(x,y,x,y-1)
-			else
-				local tx=x+1
-				if math.random()>0.5 then
-					tx=x-1
-				end
-				if tx>=0 and tx<=w-1 then
-					local d=img_buf:get(tx,y-1)
-					if d.a==0 then
-						img_buf:set(tx,y-1,c)
-						img_buf:set(x,y,{0,0,0,0})
-						v[1]=tx
-						v[2]=y-1
-					end
-				end
+function count_pixels_around4( x,y,ptype )
+	local count=0
+	for i,v in ipairs(directions4) do
+		local tx = x+v[1]
+		local ty = y+v[2]
+		if is_valid_coord(tx,ty) then
+			if get_pixel(tx,ty).a==ptype then
+				count=count+1
 			end
 		end
 	end
-	for i,v in ipairs(liquid_pixels) do
-		local x=v[1]
-		local y=v[2]
-		local c=img_buf:get(x,y)
-		local d=img_buf:get(x,y-1)
-		if d.a==0 then
-			img_buf:set(x,y-1,c)
-			img_buf:set(x,y,{0,0,0,0})
-		else
-			local tx=x+1
-			if math.random()>0.5 then
-				tx=x-1
-			end
-			if tx>=0 and tx<=w-1 then
-				local d=img_buf:get(tx,y)
-				if d.a==0 then
-					img_buf:set(tx,y,c)
-					img_buf:set(x,y,{0,0,0,0})
-				end
+	return count
+end
+function count_pixels_around8( x,y,ptype )
+	local count=0
+	for i,v in ipairs(directions8) do
+		local tx = x+v[1]
+		local ty = y+v[2]
+		if is_valid_coord(tx,ty) then
+			if get_pixel(tx,ty).a==ptype then
+				count=count+1
 			end
 		end
 	end
-	update_sun()
+	return count
 end
+
 function wake_block( bx,by,tx,ty )
 
 	local tbx=math.floor(tx/block_size)
@@ -423,14 +397,14 @@ function calculate_block(bx,by)
 	local no_move=true
 	for x=bxl,bxh-1 do
 		for y=byl,byh-1 do
-			local c=img_buf:get(x,y)
+			local c=get_pixel(x,y)
 			local ph=get_physics(c.a)
 
 			if ph==ph_sand and y>0 then
-				local d=img_buf:get(x,y-1)
+				local d=get_pixel(x,y-1)
 				if d.a==0 then
-					img_buf:set(x,y-1,c)
-					img_buf:set(x,y,{0,0,0,0})
+					set_pixel(x,y-1,c)
+					set_pixel(x,y,{0,0,0,0})
 					wake_block(bx,by,x,y-1)
 					no_move=false
 				elseif get_physics(d.a)==ph_liquid then
@@ -441,10 +415,10 @@ function calculate_block(bx,by)
 					local tx=x+1
 					local not_rolled=true
 					if tx>=0 and tx<=w-1 then
-						local d=img_buf:get(tx,y-1)
+						local d=get_pixel(tx,y-1)
 						if d.a==0 then
-							img_buf:set(tx,y-1,c)
-							img_buf:set(x,y,{0,0,0,0})
+							set_pixel(tx,y-1,c)
+							set_pixel(x,y,{0,0,0,0})
 							wake_block(bx,by,tx,y-1)
 							not_rolled=false
 							no_move=false
@@ -453,10 +427,10 @@ function calculate_block(bx,by)
 					if not_rolled then
 						tx=x-1
 						if tx>=0 and tx<=w-1 then
-							local d=img_buf:get(tx,y-1)
+							local d=get_pixel(tx,y-1)
 							if d.a==0 then
-								img_buf:set(tx,y-1,c)
-								img_buf:set(x,y,{0,0,0,0})
+								set_pixel(tx,y-1,c)
+								set_pixel(x,y,{0,0,0,0})
 								wake_block(bx,by,tx,y-1)
 								not_rolled=false
 								no_move=false
@@ -465,20 +439,20 @@ function calculate_block(bx,by)
 					end
 				end
 			elseif ph==ph_liquid and y>0 then
-				local d=img_buf:get(x,y-1)
+				local d=get_pixel(x,y-1)
 				if d.a==0 then
-					img_buf:set(x,y-1,c)
-					img_buf:set(x,y,{0,0,0,0})
+					set_pixel(x,y-1,c)
+					set_pixel(x,y,{0,0,0,0})
 					wake_block(bx,by,x,y-1)
 					no_move=false
 				else
 					local tx=x+1
 					local not_rolled=true
 					if tx>=0 and tx<=w-1 then
-						local d=img_buf:get(tx,y)
+						local d=get_pixel(tx,y)
 						if d.a==0 then
-							img_buf:set(tx,y,c)
-							img_buf:set(x,y,{0,0,0,0})
+							set_pixel(tx,y,c)
+							set_pixel(x,y,{0,0,0,0})
 							wake_block(bx,by,tx,y)
 							not_rolled=false
 							no_move=false
@@ -487,10 +461,10 @@ function calculate_block(bx,by)
 					if not_rolled then
 						tx=x-1
 						if tx>=0 and tx<=w-1 then
-							local d=img_buf:get(tx,y)
+							local d=get_pixel(tx,y)
 							if d.a==0 then
-								img_buf:set(tx,y,c)
-								img_buf:set(x,y,{0,0,0,0})
+								set_pixel(tx,y,c)
+								set_pixel(x,y,{0,0,0,0})
 								wake_block(bx,by,tx,y)
 								not_rolled=false
 								no_move=false
@@ -530,62 +504,62 @@ function pixel_step(  )
 
 	for x=0,w-1 do
 		for y=1,h-1 do
-			local c=img_buf:get(x,y)
+			local c=get_pixel(x,y)
 			local ph=get_physics(c.a)
 
 			if ph==ph_sand then
-				local d=img_buf:get(x,y-1)
+				local d=get_pixel(x,y-1)
 				if d.a==0 then
-					img_buf:set(x,y-1,c)
-					img_buf:set(x,y,{0,0,0,0})
+					set_pixel(x,y-1,c)
+					set_pixel(x,y,{0,0,0,0})
 				elseif get_physics(d.a)==ph_liquid then
 					swap_pixels(x,y,x,y-1)
 				else
 					local tx=x+1
 					local not_moved=true
 					if tx>=0 and tx<=w-1 then
-						local d=img_buf:get(tx,y-1)
+						local d=get_pixel(tx,y-1)
 						if d.a==0 then
-							img_buf:set(tx,y-1,c)
-							img_buf:set(x,y,{0,0,0,0})
+							set_pixel(tx,y-1,c)
+							set_pixel(x,y,{0,0,0,0})
 							not_moved=false
 						end
 					end
 					if not_moved then
 						tx=x-1
 						if tx>=0 and tx<=w-1 then
-							local d=img_buf:get(tx,y-1)
+							local d=get_pixel(tx,y-1)
 							if d.a==0 then
-								img_buf:set(tx,y-1,c)
-								img_buf:set(x,y,{0,0,0,0})
+								set_pixel(tx,y-1,c)
+								set_pixel(x,y,{0,0,0,0})
 								not_moved=false
 							end
 						end
 					end
 				end
 			elseif ph==ph_liquid then
-				local d=img_buf:get(x,y-1)
+				local d=get_pixel(x,y-1)
 				if d.a==0 then
-					img_buf:set(x,y-1,c)
-					img_buf:set(x,y,{0,0,0,0})
+					set_pixel(x,y-1,c)
+					set_pixel(x,y,{0,0,0,0})
 				else
 					local tx=x+1
 					local not_rolled=true
 					if tx>=0 and tx<=w-1 then
-						local d=img_buf:get(tx,y)
+						local d=get_pixel(tx,y)
 						if d.a==0 then
-							img_buf:set(tx,y,c)
-							img_buf:set(x,y,{0,0,0,0})
+							set_pixel(tx,y,c)
+							set_pixel(x,y,{0,0,0,0})
 							not_rolled=false
 						end
 					end
 					if not_rolled then
 						tx=x-1
 						if tx>=0 and tx<=w-1 then
-							local d=img_buf:get(tx,y)
+							local d=get_pixel(tx,y)
 							if d.a==0 then
-								img_buf:set(tx,y,c)
-								img_buf:set(x,y,{0,0,0,0})
+								set_pixel(tx,y,c)
+								set_pixel(x,y,{0,0,0,0})
 								not_rolled=false
 							end
 						end
@@ -610,7 +584,7 @@ function add_plant(  )
 	local x=math.random(0,w-1)
 	local y=h-1--math.random(0,h-1)
 	table.insert(plants,{x,y,pixel_types.plant_seed,food=1000,dead=false,growing=false})
-	img_buf:set(x,y,pixel_types.plant_seed)
+	set_pixel(x,y,pixel_types.plant_seed)
 end
 
 function is_sunlit( x,y )
@@ -637,6 +611,17 @@ function plant_step()
 	local max_fruit_size=100
 	local max_fruit_timer=1000 --prevent fruit getting stuck in ungrowable niches
 	local fruit_chance_seed=0.05
+	local fruit_shape_chances={
+			[0]=1,
+			[1]=0.2,
+			[2]=0.2,
+			[3]=0.4,
+			[4]=0.8,
+			[5]=1,
+			[6]=1,
+			[7]=1,
+			[8]=1,
+		}
 	local max_food=20000
 	local food_drain=5
 	local food_drain_hibernate=0.75
@@ -650,7 +635,7 @@ function plant_step()
 		local x=v[1]
 		local y=v[2]
 
-		local mytile=img_buf:get(x,y)
+		local mytile=get_pixel(x,y)
 		if mytile.a~=pixel_types.plant_seed[4] then --check if not removed
 			v.dead=true
 		end
@@ -667,16 +652,18 @@ function plant_step()
 						tx=x+1
 					end
 				end
-				local d=img_buf:get(tx,ty)
-				local ph=get_physics(d.a)
-				if ph==2 or d.a==0 then
-					v[1]=tx
-					v[2]=ty
-					swap_pixels(x,y,tx,ty)
-				elseif d.a==pixel_types.sand[4] then
-					if is_sunlit(x,y) then
-						v[3][1]=255
-						v.growing=true
+				if tx>=0 and tx<img_buf.w then
+					local d=get_pixel(tx,ty)
+					local ph=get_physics(d.a)
+					if ph==2 or d.a==0 then
+						v[1]=tx
+						v[2]=ty
+						swap_pixels(x,y,tx,ty)
+					elseif d.a==pixel_types.sand[4] then
+						if is_sunlit(x,y) then
+							v[3][1]=255
+							v.growing=true
+						end
 					end
 				end
 			end
@@ -720,11 +707,11 @@ function plant_step()
 					ty=ty+1
 				end
 				if tx>=0 and tx<w and ty>=0 and ty<h then
-					local d=img_buf:get(tx,ty)
+					local d=get_pixel(tx,ty)
 					local ph=get_physics(d.a)
 					if d.a==0 or ph==2 then
 						table.insert(v.path,{tx,ty})
-						img_buf:set(tx,ty,pixel_types.plant_body)
+						set_pixel(tx,ty,pixel_types.plant_body)
 						food_balance=food_balance-grow_cost
 					end
 				end
@@ -748,18 +735,21 @@ function plant_step()
 					ty=p[2]-1
 				end
 				
-				if is_valid_coord(tx,ty) and img_buf:get(tx,ty).a==0 then
-					if v.has_fruit then
-						table.insert(v.has_fruit,{tx,ty})
-						if #v.has_fruit>=max_fruit_size then
-							drop_fruit=true
+				if is_valid_coord(tx,ty) and get_pixel(tx,ty).a==0 then
+					local c=count_pixels_around8(tx,ty,pixel_types.plant_fruit[4])
+					if math.random()<fruit_shape_chances[c] then
+						if v.has_fruit then
+							table.insert(v.has_fruit,{tx,ty})
+							if #v.has_fruit>=max_fruit_size then
+								drop_fruit=true
+							end
+						else
+							v.has_fruit={{tx,ty}}
+							v.has_fruit.timer=0
 						end
-					else
-						v.has_fruit={{tx,ty}}
-						v.has_fruit.timer=0
+						food_balance=food_balance-fruit_cost_const
+						set_pixel(tx,ty,pixel_types.plant_fruit)
 					end
-					food_balance=food_balance-fruit_cost_const
-					img_buf:set(tx,ty,pixel_types.plant_fruit)
 				end
 
 			end
@@ -781,19 +771,19 @@ function plant_step()
 		
 
 		if v.dead then
-			img_buf:set(x,y,pixel_types.dead_plant)
+			set_pixel(x,y,pixel_types.dead_plant)
 			wake_pixel(x,y)
 			for i,v in ipairs(v.path or {}) do
-				img_buf:set(v[1],v[2],pixel_types.dead_plant)
+				set_pixel(v[1],v[2],pixel_types.dead_plant)
 				wake_pixel(v[1],v[2])
 			end
 		else
-			--img_buf:set(x,y,v[3])
+			--set_pixel(x,y,v[3])
 		end
 		if drop_fruit or v.dead then
 			if v.has_fruit then
 				for i,v in ipairs(v.has_fruit) do
-					img_buf:set(v[1],v[2],pixel_types.dead_plant)
+					set_pixel(v[1],v[2],pixel_types.dead_plant)
 					wake_pixel(v[1],v[2])
 				end
 				local no_seeds=math.random(0,math.floor(#v.has_fruit*fruit_chance_seed))
@@ -801,7 +791,7 @@ function plant_step()
 					local s=v.has_fruit[math.random(1,#v.has_fruit)]
 					--TODO: do not overwrite seeds by seeds
 					table.insert(newplants,{s[1],s[2],pixel_types.plant_seed,food=1000,dead=false,growing=false})
-					img_buf:set(s[1],s[2],pixel_types.plant_seed)
+					set_pixel(s[1],s[2],pixel_types.plant_seed)
 					wake_pixel(s[1],s[2])
 				end
 				v.has_fruit=nil
@@ -826,7 +816,7 @@ function add_worm( x,y,trg_tbl )
 		fract=Point(0,0),
 		dir=dir,
 		})
-	img_buf:set(x,y,pixel_types.worm_body)
+	set_pixel(x,y,pixel_types.worm_body)
 end
 
 
@@ -838,7 +828,14 @@ function worm_step( )
 	local max_food=20000
 	local food_drain=0.1
 	local food_drain_sun=20 --burn in sun
-	local food_gain_plant_matter=20
+	local food_gain={
+		[pixel_types.dead_plant[4]]=20,
+		[pixel_types.mycelium[4]]  =25,
+		[pixel_types.spore[4]]     =10,
+		[pixel_types.mushroom[4]]  =40,
+	}
+
+
 	local chance_new_worm=0.2
 	local dead_tile=pixel_types.sand
 	local move_speed=0.5
@@ -879,15 +876,15 @@ function worm_step( )
 		local food_balance=0
 
 		if want_move and is_valid_coord(tx,ty) then
-			local d=img_buf:get(tx,ty)
+			local d=get_pixel(tx,ty)
 			local eat_type=d.a
-			if eat_type==pixel_types.dead_plant[4] then
-				food_balance=food_balance+food_gain_plant_matter
+			if food_gain[eat_type]~=nil then
+				food_balance=food_balance+food_gain[eat_type]
 			elseif eat_type==pixel_types.worm_body[4] then
 				for i,t in ipairs(v.tail) do
 					if tx==t[1] and ty==t[2] then
 						for i,v in ipairs(v.tail) do
-							img_buf:set(v[1],v[2],dead_tile)
+							set_pixel(v[1],v[2],dead_tile)
 							wake_pixel(v[1],v[2])
 						end
 						local new_worm_count=math.random(0,#v.tail*chance_new_worm)
@@ -899,7 +896,7 @@ function worm_step( )
 							wake_pixel(tx,ty)
 						end
 						v.tail={{x,y}}
-						img_buf:set(x,y,pixel_types.worm_body)
+						set_pixel(x,y,pixel_types.worm_body)
 						wake_pixel(x,y)
 						want_move=false
 						break
@@ -919,29 +916,29 @@ function worm_step( )
 
 					v.tail[i][1]=px
 					v.tail[i][2]=py
-					img_buf:set(px,py,pixel_types.worm_body)
+					set_pixel(px,py,pixel_types.worm_body)
 					wake_pixel(px,py)
 					px=ttx
 					py=tty
 				end
 				if eat_type==pixel_types.sand[4] then
-					img_buf:set(px,py,pixel_types.sand)
+					set_pixel(px,py,pixel_types.sand)
 					wake_pixel(px,py)
 				else
 					if want_growth then
 						table.insert(v.tail,{px,py})
-						img_buf:set(px,py,pixel_types.worm_body)
+						set_pixel(px,py,pixel_types.worm_body)
 						food_balance=food_balance-grow_cost_const
 						wake_pixel(px,py)
 					else
-						img_buf:set(px,py,{0,0,0,0})
+						set_pixel(px,py,{0,0,0,0})
 						wake_pixel(px,py)
 					end
 				end
 			end
 		end
 		for i,t in ipairs(v.tail) do
-			if img_buf:get(t[1],t[2]).a~=pixel_types.worm_body[4] then
+			if get_pixel(t[1],t[2]).a~=pixel_types.worm_body[4] then
 				v.dead=true
 			end
 			if is_sunlit(t[1],t[2]) then
@@ -963,7 +960,7 @@ function worm_step( )
 		--readd new pos
 		if v.dead then
 			for i,v in ipairs(v.tail or {}) do
-				img_buf:set(v[1],v[2],dead_tile)
+				set_pixel(v[1],v[2],dead_tile)
 				wake_pixel(v[1],v[2])
 			end
 		end
@@ -973,7 +970,7 @@ end
 mushrooms=mushrooms or {}
 if is_remade then worms={} end
 
-function add_mushroom( x,y,trg_tbl )
+function add_mushroom( x,y,trg_tbl,kick )
 	local w=img_buf.w
 	local h=img_buf.h
 	x=x or math.random(0,w-1)
@@ -984,32 +981,75 @@ function add_mushroom( x,y,trg_tbl )
 		food=500,dead=false,spore={x,y},
 		fract=Point(0,0),
 		dir=dir,
+		kick=kick or 0
 		})
-	img_buf:set(x,y,pixel_types.spore)
+	set_pixel(x,y,pixel_types.spore)
 end
-function mushroom_tick(  )
-	local spore_bias_gravity=0.02
-	local spore_bias_random=0.8
-	local spore_move_speed=0.08
 
-	local food_drain=0.01
-	local food_max=1000
+function mushroom_tick(  )
+	local spore_bias_gravity    =0.02
+	local spore_bias_random     =0.8
+	local spore_move_speed      =0.08
+	local spore_bias_kick		=0.5
+	local spore_kick_speedup	=0.1
+
+	local mycelium_chance_spread=0.1
+	local mycelium_max_growers	=3
+	local mycelium_move_speed 	=0.005
+	local mycelium_bias_random  =3
+	local mycelium_max_life     =50
+
+	local shroom_max_size		=100
+	local shroom_spore_chance   =0.004
+	local shroom_spore_kick		=500 --note +0.25*random
+	local shroom_max_timer		=900
+	local shroom_shape_chances={
+			[1]=0.9, --only one shroom neighbor
+			[2]=0.7,
+			[3]=1,
+			[4]=0,
+			[5]=0.8,
+			[6]=1,
+			[7]=1,
+			[8]=1,
+		}
+	local food_drain_spore      =0.01
+	local food_drain_shroom     =0.1
+	local food_max				=1000
+	local food_gain_plant_matter=1
+	local food_cost_shroom		=25
 	--
 	local newshrooms={}
 	local w=img_buf.w
 	local h=img_buf.h
 
 	for i,v in ipairs(mushrooms) do
+		local myself=v
+		local food_balance=0
 		if v.spore then
+			food_balance=food_balance-food_drain_spore
 			local x=v.spore[1]
 			local y=v.spore[2]
 			local want_move=true
-
+			if get_pixel(x,y).a~=pixel_types.spore[4] then
+				want_move=false
+				v.dead=true
+				v.removed=true
+			end
+			local want_sprout
+			local kick=0
+			local move_speed=spore_move_speed
+			if v.kick>0 then
+				kick=spore_bias_kick
+				v.kick=v.kick-1
+				move_speed=move_speed+spore_kick_speedup
+			end
 			v.dir=v.dir+spore_bias_gravity*Point(0,-1)+
-				spore_bias_random*Point(math.random()-0.5,math.random()-0.5)
+				spore_bias_random*Point(math.random()-0.5,math.random()-0.5)+
+				kick*Point(0,1)
 			v.dir:normalize()
 
-			local d=fract_move(v,spore_move_speed,v.dir)
+			local d=fract_move(v,move_speed,v.dir)
 			if d[1]==0 and d[2]==0 then
 				want_move=false
 			end
@@ -1019,7 +1059,7 @@ function mushroom_tick(  )
 			local ty=d[2]+y
 
 			if want_move and is_valid_coord(tx,ty) then
-				local d=img_buf:get(tx,ty)
+				local d=get_pixel(tx,ty)
 				if d.a~=0 then
 					want_move=false
 				end
@@ -1028,8 +1068,8 @@ function mushroom_tick(  )
 			end
 
 			if want_move then
-				img_buf:set(x,y,{0,0,0,0})
-				img_buf:set(tx,ty,pixel_types.spore)
+				set_pixel(x,y,{0,0,0,0})
+				set_pixel(tx,ty,pixel_types.spore)
 				v.spore[1]=tx
 				v.spore[2]=ty
 				wake_pixel(tx,ty)
@@ -1037,14 +1077,150 @@ function mushroom_tick(  )
 				local tx=x
 				local ty=y-1
 				if is_valid_coord(tx,ty) then
-					local d=img_buf:get(tx,ty)
+					local d=get_pixel(tx,ty)
 					if d.a==pixel_types.dead_plant[4] then
-						
+						want_sprout={tx,ty}
 					end
 				end
 			end
+
+			if want_sprout then
+				set_pixel(x,y,{0,0,0,0})
+				wake_pixel(x,y)
+				v.spore=nil --i'm a spore no more!
+				v.mycelium={want_sprout}
+				v.mycelium_growers={}
+				set_pixel(want_sprout[1],want_sprout[2],pixel_types.mycelium)
+				--some cleanup
+				v.fract=nil
+				v.dir=nil
+			end
+		elseif v.mycelium then
+			food_balance=food_balance-food_drain_shroom
+			if #v.mycelium_growers==0 and #v.mycelium==0 then
+				v.dead=true
+			end
+			for i,v in ipairs(v.mycelium_growers) do
+				v.dir=v.dir+mycelium_bias_random*Point(math.random()-0.5,math.random()-0.5)
+				local d=fract_move4(v,mycelium_move_speed,v.dir)
+				local grow=not v.dead
+				local sprout=false
+				if d[1]==0 and d[2]==0 then
+					grow=false
+				else
+					v.life=v.life+1
+				end
+				local trg=v.pos+d
+				if grow and not is_valid_coord(trg[1],trg[2]) then
+					grow=false
+				end
+				if grow and is_sunlit(trg[1],trg[2]) then
+					v.dead=true
+					grow=false
+				end
+				if grow then
+					local tt=get_pixel(trg[1],trg[2]).a
+					if tt == pixel_types.sand[4] then
+						--just grow
+					elseif tt==pixel_types.dead_plant[4] then
+						food_balance=food_balance+food_gain_plant_matter
+					elseif tt==0 then
+						sprout=true
+						grow=false
+					else
+						grow=false
+					end
+				end
+				
+				if sprout and myself.shroom==nil then
+					if myself.food>food_cost_shroom then
+						food_balance=food_balance - food_cost_shroom
+						myself.shroom={{trg[1],trg[2]},timer=0}
+						set_pixel(trg[1],trg[2],pixel_types.mushroom)
+					end
+				elseif grow then --finally actually grow!
+					set_pixel(trg[1],trg[2],pixel_types.mycelium)
+					table.insert(myself.mycelium,{trg[1],trg[2]})
+					v.pos=trg
+				end
+				if v.life>mycelium_max_life then
+					v.dead=true
+				end
+			end
+			remove_dead_addnew(v.mycelium_growers)
+			if not v.dead and math.random()<mycelium_chance_spread and
+				#v.mycelium_growers<mycelium_max_growers and
+				#v.mycelium>0 then
+				local source=v.mycelium[math.random(1,#v.mycelium)]
+				if get_pixel(source[1],source[2]).a~=pixel_types.mycelium[4] then
+					source.dead=true
+				else
+					local dir=Point(math.random()-0.5,math.random()-0.5)
+					dir:normalize()
+					local new_grower={
+						pos=Point(source[1],source[2]),
+						fract=Point(0,0),
+						dir=dir,
+						life=0,
+						dead=false,
+					}
+					table.insert(v.mycelium_growers,new_grower)
+				end
+			end
+			remove_dead_addnew(v.mycelium)
 		end
-		local food_balance=-food_drain
+		if v.shroom then
+			local sh=v.shroom
+			local kill_shroom=false
+			local make_spores=true
+			for i,v in ipairs(sh) do
+				if get_pixel(v[1],v[2]).a~=pixel_types.mushroom[4] then
+					v.dead=true
+				end
+			end
+			if #sh>=shroom_max_size then
+				--blast off!
+				kill_shroom=true
+			else
+				local p=sh[math.random(1,#sh)]
+				if not p.dead then
+					local dd=directions4[math.random(1,#directions4)]
+					local tx=p[1]+dd[1]
+					local ty=p[2]+dd[2]
+					sh.timer=sh.timer+1
+					if sh.timer>shroom_max_timer then
+						kill_shroom=true
+						make_spores=false
+					elseif is_valid_coord(tx,ty) and get_pixel(tx,ty).a==0 then
+						local c=count_pixels_around8(tx,ty,pixel_types.mushroom[4])
+						if math.random()<shroom_shape_chances[c] then
+							table.insert(sh,{tx,ty})
+							set_pixel(tx,ty,pixel_types.mushroom)
+						end
+					end
+				end
+			end
+			if kill_shroom then
+				for i,v in ipairs(sh) do
+					if not v.dead then
+						if not make_spores then
+							set_pixel(v[1],v[2],{0,0,0,0})
+						else
+							if math.random()<shroom_spore_chance then
+								add_mushroom(v[1],v[2],newshrooms,shroom_spore_kick+math.random()*shroom_spore_kick/4)
+							else
+								set_pixel(v[1],v[2],{0,0,0,0})
+							end
+						end
+						v.dead=true
+					end
+				end
+			end
+			remove_dead_addnew(v.shroom)
+			if #v.shroom==0 then
+				v.shroom=nil
+			end
+		end
 	
 		v.food=v.food+food_balance
 		if v.food>food_max then
@@ -1055,19 +1231,28 @@ function mushroom_tick(  )
 			v.dead=true
 		end
 
-		if v.dead then
+		if v.dead and not v.removed then
 			if v.spore then
 				local x=v.spore[1]
 				local y=v.spore[2]
 				if y then
-					img_buf:set(x,y,{0,0,0,0})
+					set_pixel(x,y,{0,0,0,0})
+					wake_pixel(x,y)
 				end
 			elseif v.mycelium then
 				for i,v in ipairs(v.mycelium) do
-					img_buf:set(v[1],v[2],pixel_types.dead_plant)
+					set_pixel(v[1],v[2],pixel_types.dead_plant)
+					wake_pixel(v[1],v[2])
 				end
 				for i,v in ipairs(v.mycelium_growers) do
-					img_buf:set(v[1],v[2],pixel_types.dead_plant)
+					set_pixel(v.pos[1],v.pos[2],pixel_types.dead_plant)
+					wake_pixel(v.pos[1],v.pos[2])
+				end
+			end
+			if v.shroom then
+				for i,v in ipairs(v.shroom) do
+					set_pixel(v[1],v[2],pixel_types.dead_plant)
+					wake_pixel(v[1],v[2])
 				end
 			end
 		end
@@ -1086,35 +1271,14 @@ function try_grow( pcenter,dir, valid_a)
 	if not is_valid_coord(trg[1],trg[2]) then
 		return false
 	end
-	local d=img_buf:get(trg[1],trg[2])
+	local d=get_pixel(trg[1],trg[2])
 	if valid_a then
 		return valid_a[d.a]
 	else
 		return d.a==0
 	end
 end
-function read_directions8( pcenter )
-	local ret={}
-	for i,v in ipairs(directions8) do
-		local x=pcenter[1]+v[1]
-		local y=pcenter[2]+v[2]
-		if is_valid_coord(x,y) then
-			ret[i]=img_buf:get(x,y).a
-		end
-	end
-	return ret
-end
-function read_directions4( pcenter )
-	local ret={}
-	for i,v in ipairs(directions4) do
-		local x=pcenter[1]+v[1]
-		local y=pcenter[2]+v[2]
-		if is_valid_coord(x,y) then
-			ret[i]=img_buf:get(x,y).a
-		end
-	end
-	return ret
-end
+
 function max_w_stress_based( mydelta ,max_w,max_h,current_h)
 	local grow_amount=current_h/max_h --how much current growth is
 	local v=mydelta[2]/max_h
@@ -1187,6 +1351,7 @@ function update()
 		plants={}
 		worms={}
 		trees={}
+		mushrooms={}
 	end
 
 	imgui.SameLine()
@@ -1204,8 +1369,8 @@ function update()
 	if md then
 		local tx,ty=math.floor(x*oversample),math.floor(img_buf.h-y*oversample)
 		if is_valid_coord(tx,ty) then
-			add_worm(tx,ty)
-			--img_buf:set(tx,ty,pixel_types.water)
+			add_mushroom(tx,ty,nil,100+math.random(1,80))
+			--set_pixel(tx,ty,pixel_types.water)
 			--wake_pixel(tx,ty)
 		end
 	end
@@ -1219,10 +1384,10 @@ function update()
 	-- [[
 	if not config.pause then
 		if math.random()>0.8 and #plants<50 then
-			--add_plant()
+			add_plant()
 		end
 		if math.random()>0.99 and #worms<30 then
-			--add_worm()
+			add_worm()
 		end
 		if math.random()>0.999 and #mushrooms<5 then
 			add_mushroom()
@@ -1235,8 +1400,6 @@ function update()
 	 	else
 	 		pixel_step_blocky( )
 	 	end
-	 	--pixel_step_sparse()
-	 	--tree_step()
 		plant_step()
 	 	worm_step()
 	 	mushroom_tick()
