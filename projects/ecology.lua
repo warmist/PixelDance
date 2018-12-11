@@ -154,7 +154,7 @@ function pixel_init(  )
 	local h=img_buf.h
 	local cx = math.floor(w/2)
 	local cy = math.floor(h/2)
-
+	
 	for i=1,w*h*0.1 do
 		local x=math.random(0,w-1)
 		local y=math.random(0,h-1)
@@ -537,6 +537,7 @@ function is_sunlit( x,y )
 	local sh=sun_buffer:get(x,0)
 	return sh*img_buf.h<=y
 end
+
 function plant_step()
 	--super config
 	--growth stuff
@@ -551,6 +552,7 @@ function plant_step()
 	local fruit_cost_const=1
 	local fruit_cost_buffer=1.2
 	local max_fruit_size=100
+	local max_fruit_timer=1000 --prevent fruit getting stuck in ungrowable niches
 	local fruit_chance_seed=0.05
 	local max_food=20000
 	local food_drain=5
@@ -653,6 +655,10 @@ function plant_step()
 					local dd=directions4[math.random(1,#directions4)]
 					tx=p[1]+dd[1]
 					ty=p[2]+dd[2]
+					v.has_fruit.timer=v.has_fruit.timer+1
+					if v.has_fruit.timer>max_fruit_timer then
+						drop_fruit=true
+					end
 				else
 					p=v.path[math.random(1,#v.path)]
 					tx=p[1]
@@ -667,6 +673,7 @@ function plant_step()
 						end
 					else
 						v.has_fruit={{tx,ty}}
+						v.has_fruit.timer=0
 					end
 					food_balance=food_balance-fruit_cost_const
 					img_buf:set(tx,ty,pixel_types.plant_fruit)
@@ -944,6 +951,43 @@ function fract_move(cell, dist,dir )
 	end
 	return step
 end
+function fract_move4(cell, dist,dir )
+	cell.fract=cell.fract+dist*dir
+	local step=Point(0,0)
+	local function move_x(  )
+		if cell.fract[1]>1 then
+			step[1]=1
+			cell.fract[1]=cell.fract[1]-1
+			return true
+		elseif cell.fract[1]<-1 then
+			step[1]=-1
+			cell.fract[1]=cell.fract[1]+1
+			return true
+		end
+	end
+
+	local function move_y(  )
+		if cell.fract[2]>1 then
+			step[2]=1
+			cell.fract[2]=cell.fract[2]-1
+			return true
+		elseif cell.fract[2]<-1 then
+			step[2]=-1
+			cell.fract[2]=cell.fract[2]+1
+			return true
+		end
+	end
+	if random()>0.5 then
+		if not move_x() then
+			move_y()
+		end
+	else
+		if not move_y() then
+			move_x()
+		end
+	end
+	return step
+end
 function next_pixel( dir )
 	local m=math.max(math.abs(dir[1]),math.abs(dir[2]))
 	return Point(dir[1]/m,dir[2]/m)
@@ -1027,8 +1071,9 @@ function update()
 	if md then
 		local tx,ty=math.floor(x*oversample),math.floor(img_buf.h-y*oversample)
 		if is_valid_coord(tx,ty) then
-			img_buf:set(tx,ty,pixel_types.water)
-			wake_pixel(tx,ty)
+			add_worm(tx,ty)
+			--img_buf:set(tx,ty,pixel_types.water)
+			--wake_pixel(tx,ty)
 		end
 	end
 	--[[
