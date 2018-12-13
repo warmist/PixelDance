@@ -19,7 +19,6 @@ local aspect_ratio=win_w/win_h
 local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 
-
 is_remade=false
 local block_size=8--640,320,160,80
 print("Block count:",(map_w/block_size)*(map_h/block_size))
@@ -29,7 +28,7 @@ function update_img_buf(  )
 
     if img_buf==nil or img_buf.w~=nw or img_buf.h~=nh then
         img_buf=make_image_buffer(nw,nh)
-        sun_buffer=make_flt_buffer(nw,nh)
+        sun_buffer=make_float_buffer(nw,1)
         block_alive=make_char_buffer(nw/block_size,nh/block_size)
         is_remade=true
     end
@@ -48,12 +47,9 @@ config=make_config({
     {"pause",false,type="bool"},
     {"draw",true,type="bool"},
     {"color",{0.63,0.59,0.511,0.2},type="color"},
-    {"color_misc",{0.63,0.59,0.511,0.2},type="color"},
     {"zoom",1,type="float",min=1,max=10},
     {"t_x",0,type="float",min=0,max=1},
     {"t_y",0,type="float",min=0,max=1},
-    {"opacity",1,type="float",min=0,max=1},
-    {"air_opacity",0,type="float",min=0,max=1},
     {"timelapse",0,type="int",min=0,max=1000},
     },config)
 local draw_shader=shaders.Make[==[
@@ -69,84 +65,21 @@ uniform sampler2D tex_sun;
 uniform vec2 zoom;
 uniform vec2 translate;
 
-#define M_PI 3.141592
 
-float RadicalInverse_VdC(uint bits)
-{
-    bits = (bits << 16u) | (bits >> 16u);
-    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
-    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
-    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
-    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
-    return float(bits) * 2.3283064365386963e-10; // / 0x100000000
-}
-// ----------------------------------------------------------------------------
-vec2 Hammersley(uint i, uint N)
-{
-    return vec2(float(i)/float(N), RadicalInverse_VdC(i));
-}
-
-float random (vec2 st) {
-    return fract(sin(dot(st.xy,
-                         vec2(12.9898,78.233)))*
-        43758.5453123);
-}
 float is_lit(vec2 p)
 {
-    vec4 hsun=texture(tex_sun,vec2(p.x,p.y));
-    return (hsun.r+hsun.b+hsun.g)/3;
-}
-vec4 raycast(vec2 o,vec2 d)
-{
-    int ray_len=300;
-    float ray_step=0.002;
-    vec2 p=o+d*ray_step;
-    vec4 occ=vec4(1);
-    for(int i=0;i<ray_len;i++)
-    {
-        p+=d*ray_step;
-        vec4 v=texture(tex_main,p);
-
-        occ*=vec4(v.rgb,1-v.a);
-        /*if(v.a>0)
-            occ+=pow(v.rgb,vec3(0.2));
-        else
-            occ*=vec3(0.9999);*/
-    }
-    return occ;
-}
-vec3 calc_light(vec2 pos)
-{
-    int max_iter=64;
-    vec3 l=vec3(0);
-
-    for(int i=0;i<max_iter;i++)
-    {
-        float a=Hammersley(i,max_iter).x*M_PI*2;
-        l+=raycast(pos,vec2(cos(a),sin(a))).xyz;
-    }
-    return l/max_iter;
-}
-vec4 calc_light2(vec2 pos)
-{
-    vec4 l=vec4(0);
-    for(int i=0;i<rez.x;i++)
-    {
-        vec2 dir=vec2(float(i)/float(rez.x),0)-pos;
-        dir/=length(dir);
-        l+=raycast(pos,dir);
-    }
-    return l;
+    float hsun=texture(tex_sun,vec2(p.x,0)).x;
+    return 1-step(p.y,hsun);
 }
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     normed=normed/zoom+translate;
-    vec4 sun=texture(tex_sun,vec2(normed.x,normed.y));
+    float lit=is_lit(normed);
     vec4 pixel=texture(tex_main,normed);
     if(pixel.a==0)
-        color=vec4(sun.xyz,1);
+        color=vec4(sun_color.xyz*lit,1);
     else
-        color=vec4(pixel.xyz,1);
+        color=vec4(pixel.xyz+sun_color.xyz*lit,1);
 }
 ]==]
 function is_valid_coord( x,y )
@@ -354,19 +287,9 @@ function pixel_init(  )
         end
     end
     --]]
-
     wake_blocks()
-    --[[ h wall
-    local wall_size = 8
-    for i=1,5 do
-        local x=math.random(0,w-1)
-        local y=math.random(0,h-1-wall_size)
-        for i=0,wall_size do
-            set_pixel(x,y+i,pixel_types.wall)
-        end
-    end
-    ]]
 end
+
 if is_remade then
 pixel_init()
 end
@@ -380,44 +303,20 @@ end
 function update_sun(  )
     local w=img_buf.w
     local h=img_buf.h
-    local s=config.color
-    local p=config.opacity
-    local decay=math.pow(10,-config.air_opacity/100)
-    for x=0,w-1 do
-        local ray_pixel={s[1],s[2],s[3],1}
-        sun_buffer:set(x,h-1,ray_pixel)
-    end
-    -- [[
-    for y=h-2,0,-1 do
 
-        for x=0,w-1 do
-            local ray_pixel={0,0,0,1}
-            for dx=-1,1 do
-                local p
-                if x+dx>0 and x+dx<w-1 then
-                    p=sun_buffer:get(x+dx,y+1)
-                    ray_pixel[1]=ray_pixel[1]+p.r/3
-                    ray_pixel[2]=ray_pixel[2]+p.g/3
-                    ray_pixel[3]=ray_pixel[3]+p.b/3
-                else
-                    ray_pixel[1]=ray_pixel[1]+s[1]/3
-                    ray_pixel[2]=ray_pixel[2]+s[2]/3
-                    ray_pixel[3]=ray_pixel[3]+s[3]/3
-                end
-            end
+    for x=0,w-1 do
+        sun_buffer:set(x,0,0)
+    end
+
+   for x=0,w-1 do
+        for y=h-1,0,-1 do
             local c=get_pixel(x,y)
             if is_block_light(c.a) then
-                ray_pixel[1]=ray_pixel[1]*math.pow((c.r/255),p)
-                ray_pixel[2]=ray_pixel[2]*math.pow((c.g/255),p)
-                ray_pixel[3]=ray_pixel[3]*math.pow((c.b/255),p)
+                sun_buffer:set(x,0,y/h)
+                break
             end
-            for i=1,3 do
-                ray_pixel[i]=ray_pixel[i]*decay
-            end
-            sun_buffer:set(x,y,ray_pixel)
         end
     end
-    --]]
 end
 function count_pixels_around4( x,y,ptype )
     local count=0
@@ -447,27 +346,12 @@ function count_pixels_around8( x,y,ptype )
 end
 
 function wake_block( bx,by,tx,ty )
-
     local tbx=math.floor(tx/block_size)
     local tby=math.floor(ty/block_size)
-    
+
     if tbx~=bx or tby~=by then
         block_alive:set(tbx,tby,1)
     end
-    --[[
-    local lx=tx-tbx*block_size
-    local ly=ty-tby*block_size
-    if lx==0 and tx>0 then
-        block_alive:set(tbx-1,tby,1)
-    elseif lx==block_size-1 and tbx<block_alive.w then
-        block_alive:set(tbx+1,tby,1)
-    end
-    if ly==0 and ty>0 then
-        block_alive:set(tbx,tby-1,1)
-    elseif ly==block_size-1 and tby<block_alive.h then
-        block_alive:set(tbx,tby+1,1)
-    end
-    --]]
 end
 function wake_near_blocks( bx,by )
     for i,v in ipairs(directions8) do
@@ -598,6 +482,7 @@ function pixel_step_blocky(  )
     end
     update_sun()
 end
+
 function pixel_step(  )
     local w=img_buf.w
     local h=img_buf.h
@@ -669,12 +554,6 @@ function pixel_step(  )
         end
     end
     update_sun()
-
-    --[[
-    local i=img_buf_back
-    img_buf_back=img_buf
-    img_buf=i
-    --]]
 end
 plants=plants or {}
 if is_remade then plants={} end
@@ -691,8 +570,8 @@ function is_sunlit( x,y )
     if x<0 or x>img_buf.w-1 then
         return false
     end
-    local sh=sun_buffer:get(x,y)
-    return (sh.r+sh.g+sh.b)/3>0.1
+    local sh=sun_buffer:get(x,0)
+    return sh*img_buf.h<=y
 end
 
 function plant_step()
@@ -1390,16 +1269,6 @@ function try_grow( pcenter,dir, valid_a)
     end
 end
 
-function max_w_stress_based( mydelta ,max_w,max_h,current_h)
-    local grow_amount=current_h/max_h --how much current growth is
-    local v=mydelta[2]/max_h
-    return math.max(grow_amount*max_w*(1-v),1)
-end
-
-function next_pixel( dir )
-    local m=math.max(math.abs(dir[1]),math.abs(dir[2]))
-    return Point(dir[1]/m,dir[2]/m)
-end
 function is_mouse_down(  )
     local ret=__mouse.clicked1 and not __mouse.owned1
     if ret then
@@ -1443,6 +1312,15 @@ tex_pixel=tex_pixel or textures:Make()
 tex_sun=tex_sun or textures:Make()
 need_save=false
 tick=0
+function clamp( v,min,max )
+    if v<min then
+        return min
+    end
+    if v>max then
+        return max
+    end
+    return v
+end
 function update()
     __clear()
     __no_redraw()
@@ -1469,12 +1347,10 @@ function update()
     if imgui.Button("Save") then
         need_save=true
     end
+    imgui.SameLine()
     if imgui.Button("Wake") then
         wake_blocks()
     end
-    --if imgui.Button("Add trees") then
-    --  add_tree()
-    --end
     imgui.End()
     local md,x,y=is_mouse_down(  )
     if md then
@@ -1485,13 +1361,7 @@ function update()
             wake_pixel(tx,ty)
         end
     end
-    --[[
-    if md then
-        if tx<0 then tx=0 end
-        if ty<0 then ty=0 end
-        add_worm(tx,ty)
-    end
-    ]]
+
     -- [[
     if not config.pause then
         if math.random()>0.8 and #plants<5 then
@@ -1560,9 +1430,7 @@ function update()
         update_bounds=true
     end
     if update_bounds then
-        if config.t_x<0 then config.t_x=0 end
-        if config.t_x>1-1/config.zoom then config.t_x=1-1/config.zoom end
-        if config.t_y<0 then config.t_y=0 end
-        if config.t_y>1-1/config.zoom then config.t_y=1-1/config.zoom end
+        config.t_x=clamp(config.t_x,0,1-1/config.zoom)
+        config.t_y=clamp(config.t_y,0,1-1/config.zoom)
     end
 end
