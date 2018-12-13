@@ -10,7 +10,7 @@ local win_h=768
 --1280*4x1280 b=8 ->4/14fps ->28fps no draw
 
 __set_window_size(win_w,win_h)
-local oversample=0.5
+local oversample=0.25
 
 local map_w=(win_w*oversample)
 local map_h=(win_h*oversample)
@@ -29,7 +29,7 @@ function update_img_buf(  )
 
     if img_buf==nil or img_buf.w~=nw or img_buf.h~=nh then
         img_buf=make_image_buffer(nw,nh)
-        sun_buffer=make_float_buffer(nw,1)
+        sun_buffer=make_flt_buffer(nw,nh)
         block_alive=make_char_buffer(nw/block_size,nh/block_size)
         is_remade=true
     end
@@ -52,6 +52,8 @@ config=make_config({
     {"zoom",1,type="float",min=1,max=10},
     {"t_x",0,type="float",min=0,max=1},
     {"t_y",0,type="float",min=0,max=1},
+    {"opacity",1,type="float",min=0,max=1},
+    {"air_opacity",0,type="float",min=0,max=1},
     {"timelapse",0,type="int",min=0,max=1000},
     },config)
 local draw_shader=shaders.Make[==[
@@ -91,8 +93,8 @@ float random (vec2 st) {
 }
 float is_lit(vec2 p)
 {
-    float hsun=texture(tex_sun,vec2(p.x,0)).x;
-    return 1-step(p.y,hsun);
+    vec4 hsun=texture(tex_sun,vec2(p.x,p.y));
+    return (hsun.r+hsun.b+hsun.g)/3;
 }
 vec3 raycast(vec2 o,vec2 d)
 {
@@ -125,19 +127,15 @@ vec3 calc_light(vec2 pos)
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     normed=normed/zoom+translate;
-    float hsun=texture(tex_sun,vec2(normed.x,0)).x;
-    float v=1;
-    //v=1-smoothstep(normed.y,hsun-0.005,1);
-    v=1-step(normed.y,hsun);
-    float light=clamp(v,sun_color.a,1);
+    vec4 sun=texture(tex_sun,vec2(normed.x,normed.y));
     vec4 pixel=texture(tex_main,normed);
     //vec3 l=calc_light(normed)*8;
     //color=vec4(l,l,l,1);
     ///*
     if(pixel.a==0)
-        color=vec4(sun_color.xyz*light,1);
+        color=vec4(sun.xyz,1);
     else
-        color=vec4(pixel.xyz+sun_color.xyz*v,1);
+        color=vec4(pixel.xyz+sun.xyz,1);
     //*/
 }
 ]==]
@@ -372,16 +370,41 @@ end
 function update_sun(  )
     local w=img_buf.w
     local h=img_buf.h
+    local s=config.color
+    local p=config.opacity
+    local decay=math.pow(10,-config.air_opacity/100)
     for x=0,w-1 do
-        sun_buffer:set(x,0,0)
+        local ray_pixel={s[1],s[2],s[3],1}
+        sun_buffer:set(x,h-1,ray_pixel)
     end
-    for x=0,w-1 do
-        for y=h-1,0,-1 do
+
+    for y=h-2,0,-1 do
+
+        for x=0,w-1 do
+            local ray_pixel={0,0,0,1}
+            for dx=-1,1 do
+                local p
+                if x+dx>0 and x+dx<w-1 then
+                    p=sun_buffer:get(x+dx,y+1)
+                    ray_pixel[1]=ray_pixel[1]+p.r/3
+                    ray_pixel[2]=ray_pixel[2]+p.g/3
+                    ray_pixel[3]=ray_pixel[3]+p.b/3
+                else
+                    ray_pixel[1]=ray_pixel[1]+s[1]/3
+                    ray_pixel[2]=ray_pixel[2]+s[2]/3
+                    ray_pixel[3]=ray_pixel[3]+s[3]/3
+                end
+            end
             local c=get_pixel(x,y)
             if is_block_light(c.a) then
-                sun_buffer:set(x,0,y/h)
-                break
+                ray_pixel[1]=ray_pixel[1]*math.pow((c.r/255),p)
+                ray_pixel[2]=ray_pixel[2]*math.pow((c.g/255),p)
+                ray_pixel[3]=ray_pixel[3]*math.pow((c.b/255),p)
             end
+            for i=1,3 do
+                ray_pixel[i]=ray_pixel[i]*decay
+            end
+            sun_buffer:set(x,y,ray_pixel)
         end
     end
 end
@@ -657,8 +680,8 @@ function is_sunlit( x,y )
     if x<0 or x>img_buf.w-1 then
         return false
     end
-    local sh=sun_buffer:get(x,0)
-    return sh*img_buf.h<=y
+    local sh=sun_buffer:get(x,y)
+    return (sh.r+sh.g+sh.b)/3>0.1
 end
 
 function plant_step()
