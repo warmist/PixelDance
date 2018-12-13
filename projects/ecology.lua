@@ -52,10 +52,11 @@ config=make_config({
     {"zoom",1,type="float",min=1,max=10},
     {"t_x",0,type="float",min=0,max=1},
     {"t_y",0,type="float",min=0,max=1},
+    {"timelapse",0,type="int",min=0,max=1000},
     },config)
 local draw_shader=shaders.Make[==[
 #version 330
-#line 24
+#line 59
 out vec4 color;
 in vec3 pos;
 
@@ -66,21 +67,61 @@ uniform sampler2D tex_sun;
 uniform vec2 zoom;
 uniform vec2 translate;
 
-vec2 raycast(vec2 o,vec2 d)
-{
+#define M_PI 3.141592
 
-    return vec2(0,0);
+float RadicalInverse_VdC(uint bits)
+{
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10; // / 0x100000000
 }
-float calc_light(vec2 pos)
+// ----------------------------------------------------------------------------
+vec2 Hammersley(uint i, uint N)
+{
+    return vec2(float(i)/float(N), RadicalInverse_VdC(i));
+}
+
+float random (vec2 st) {
+    return fract(sin(dot(st.xy,
+                         vec2(12.9898,78.233)))*
+        43758.5453123);
+}
+float is_lit(vec2 p)
+{
+    float hsun=texture(tex_sun,vec2(p.x,0)).x;
+    return 1-step(p.y,hsun);
+}
+vec3 raycast(vec2 o,vec2 d)
+{
+    int ray_len=200;
+    float ray_step=0.002;
+    vec2 p=o+d*ray_step;
+    for(int i=0;i<ray_len;i++)
+    {
+        p+=d*ray_step;
+        vec4 v=texture(tex_main,p);
+        if(v.a>0)
+            return v.rgb*is_lit(p)*(1-float(i)/float(ray_len));
+    }
+    return vec3(0);
+}
+vec3 calc_light(vec2 pos)
 {
     float max_dist=0.1;
-    int max_iter=10;
+    int max_iter=64;
+    vec3 l=vec3(0);
+
     for(int i=0;i<max_iter;i++)
     {
-
+        float a=Hammersley(i,max_iter).x*M_PI*2;
+        l+=raycast(pos,vec2(cos(a),sin(a)));
     }
-    return 0;
+    return l/max_iter;
 }
+
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     normed=normed/zoom+translate;
@@ -90,10 +131,14 @@ void main(){
     v=1-step(normed.y,hsun);
     float light=clamp(v,sun_color.a,1);
     vec4 pixel=texture(tex_main,normed);
+    //vec3 l=calc_light(normed)*8;
+    //color=vec4(l,l,l,1);
+    ///*
     if(pixel.a==0)
         color=vec4(sun_color.xyz*light,1);
     else
         color=vec4(pixel.xyz+sun_color.xyz*v,1);
+    //*/
 }
 ]==]
 function is_valid_coord( x,y )
@@ -285,7 +330,7 @@ function pixel_init(  )
     end
     --]]
     -- [[
-    for i=1,20 do
+    for i=1,5 do
         local platform_size=math.random(100,200)
         local x=math.random(0,w-1)
         local y=math.random(0,h-1)
@@ -1363,7 +1408,7 @@ end
 tex_pixel=tex_pixel or textures:Make()
 tex_sun=tex_sun or textures:Make()
 need_save=false
-
+tick=0
 function update()
     __clear()
     __no_redraw()
@@ -1435,6 +1480,7 @@ function update()
         plant_step()
         worm_step()
         mushroom_tick()
+        tick=tick+1
     end
     if config.draw then
 
@@ -1448,12 +1494,17 @@ function update()
 
     draw_shader:set_i("tex_main",0)
     draw_shader:set_i("tex_sun",1)
+    draw_shader:set_i("rez",map_w,map_h)
     draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
     draw_shader:set("translate",config.t_x,config.t_y)
     draw_shader:set("sun_color",config.color[1],config.color[2],config.color[3],config.color[4])
     draw_shader:draw_quad()
     end
 
+    if config.timelapse>0 and tick>=config.timelapse then
+        need_save=true
+        tick=0
+    end
     if need_save then
         save_img()
         need_save=false
