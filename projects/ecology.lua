@@ -10,7 +10,7 @@ local win_h=768
 --1280*4x1280 b=8 ->4/14fps ->28fps no draw
 
 __set_window_size(win_w,win_h)
-local oversample=0.25
+local oversample=0.5
 
 local map_w=(win_w*oversample)
 local map_h=(win_h*oversample)
@@ -62,7 +62,7 @@ local draw_shader=shaders.Make[==[
 out vec4 color;
 in vec3 pos;
 
-uniform vec2 rez;
+uniform ivec2 rez;
 uniform vec4 sun_color;
 uniform sampler2D tex_main;
 uniform sampler2D tex_sun;
@@ -96,47 +96,57 @@ float is_lit(vec2 p)
     vec4 hsun=texture(tex_sun,vec2(p.x,p.y));
     return (hsun.r+hsun.b+hsun.g)/3;
 }
-vec3 raycast(vec2 o,vec2 d)
+vec4 raycast(vec2 o,vec2 d)
 {
-    int ray_len=200;
+    int ray_len=300;
     float ray_step=0.002;
     vec2 p=o+d*ray_step;
+    vec4 occ=vec4(1);
     for(int i=0;i<ray_len;i++)
     {
         p+=d*ray_step;
         vec4 v=texture(tex_main,p);
-        if(v.a>0)
-            return v.rgb*is_lit(p)*(1-float(i)/float(ray_len));
+
+        occ*=vec4(v.rgb,1-v.a);
+        /*if(v.a>0)
+            occ+=pow(v.rgb,vec3(0.2));
+        else
+            occ*=vec3(0.9999);*/
     }
-    return vec3(0);
+    return occ;
 }
 vec3 calc_light(vec2 pos)
 {
-    float max_dist=0.1;
     int max_iter=64;
     vec3 l=vec3(0);
 
     for(int i=0;i<max_iter;i++)
     {
         float a=Hammersley(i,max_iter).x*M_PI*2;
-        l+=raycast(pos,vec2(cos(a),sin(a)));
+        l+=raycast(pos,vec2(cos(a),sin(a))).xyz;
     }
     return l/max_iter;
 }
-
+vec4 calc_light2(vec2 pos)
+{
+    vec4 l=vec4(0);
+    for(int i=0;i<rez.x;i++)
+    {
+        vec2 dir=vec2(float(i)/float(rez.x),0)-pos;
+        dir/=length(dir);
+        l+=raycast(pos,dir);
+    }
+    return l;
+}
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     normed=normed/zoom+translate;
     vec4 sun=texture(tex_sun,vec2(normed.x,normed.y));
     vec4 pixel=texture(tex_main,normed);
-    //vec3 l=calc_light(normed)*8;
-    //color=vec4(l,l,l,1);
-    ///*
     if(pixel.a==0)
         color=vec4(sun.xyz,1);
     else
-        color=vec4(pixel.xyz+sun.xyz,1);
-    //*/
+        color=vec4(pixel.xyz,1);
 }
 ]==]
 function is_valid_coord( x,y )
@@ -377,7 +387,7 @@ function update_sun(  )
         local ray_pixel={s[1],s[2],s[3],1}
         sun_buffer:set(x,h-1,ray_pixel)
     end
-
+    -- [[
     for y=h-2,0,-1 do
 
         for x=0,w-1 do
@@ -407,6 +417,7 @@ function update_sun(  )
             sun_buffer:set(x,y,ray_pixel)
         end
     end
+    --]]
 end
 function count_pixels_around4( x,y,ptype )
     local count=0
