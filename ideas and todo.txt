@@ -41,3 +41,8 @@ Cellular automatton and stuff:
 	* sun being not ALL blocked but partially blocked (e.g. leaves vs water vs sand)
 	* water plants
 	* some way of complete ecology cycles (growth to death to new seeds/critters)
+	* crystals
+	* metacycles (e.g. crystal life, normal life, dust life, water life, etc...,)
+	* slimes
+	* light transfer from my dfhack work
+	* experiment with different pixels (e.g. split physics/image) for perf
