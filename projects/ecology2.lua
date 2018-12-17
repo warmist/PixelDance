@@ -631,12 +631,12 @@ cactus.repop=3
 function cactus.create(tbl,x,y,args )
     local w=img_buf.w
     local h=img_buf.h
-
+    args=args or {}
     x=x or math.random(0,w-1)
     y=y or h-1
 
     table.insert(tbl or cactus.items,{
-        food=500,dead=false,seed=Point(x,y),
+        food=args.food or 500,dead=false,seed=Point(x,y),
         fract=Point(0,0),
         dir=Point(0,-1),
         })
@@ -644,15 +644,17 @@ function cactus.create(tbl,x,y,args )
 end
 function cactus.sim_step(it,new_items)
     --settings
-    local seed_drift_bias=3
-    local seed_gravity_bias=0.1
-    local seed_drop_speed=0.2
+    local seed_drift_bias=2.5
+    local seed_gravity_bias=0.15
+    local seed_drop_speed=0.4
 
-    local body_max_size=50
+    local body_max_size=30
 
-    local food_cost_grow=20
+    local food_cost_grow=30
     local food_cost_grow_buffer=4
-    local food_cost_dist={1,2}
+    local food_cost_dist={1,3}
+    local food_cost_seed=150
+    local food_cost_seed_buffer=3
 
     local food_consume=0.003
     local food_water_gain=15
@@ -681,46 +683,46 @@ function cactus.sim_step(it,new_items)
             set_pixel(it.seed[1],it.seed[2],pixel_types.cactus_seed)
         end
 
-        if is_sunlit(it.seed[1],it.seed[2]) then
-            if is_pixel_type(it.seed[1],it.seed[2]+1) then
-                local sprout=true
-                if is_valid_coord(it.seed[1],it.seed[2]-1) then
-                    local bottom=get_pixel(it.seed[1],it.seed[2]-1)
-                    if bottom.a~=pixel_types.sand[4] and bottom.a~=pixel_types.wetsand[4] then
-                        sprout=false
-                    end
-                end
-                local d=rand_dir8()
-                local t=it.seed+Point(d[1],d[2])
-                
-                if sprout and is_valid_coord(t[1],t[2]) then
-                    local p=get_pixel(t[1],t[2])
-                    if p.a==pixel_types.water[4] then
-                        set_pixel(t[1],t[2],pixel_types.empty)
-                    elseif p.a==pixel_types.wetsand[4] then
-                        set_pixel(t[1],t[2],pixel_types.sand)
-                    else
-                        sprout=false
-                    end
-                end
-                if sprout then
-                    local x=it.seed[1]
-                    local y=it.seed[2]
-                    set_pixel(x,y,pixel_types.cactus_body)
-                    it.seed=nil
-                    food_balance=food_balance+food_water_gain
-                    it.skin={Point(x,y)}
-                    it.body={Point(x,y)}
-                    it.center=Point(x,y)
+
+        if is_pixel_type(it.seed[1],it.seed[2]+1) then
+            local sprout=true
+            if is_valid_coord(it.seed[1],it.seed[2]-1) then
+                local bottom=get_pixel(it.seed[1],it.seed[2]-1)
+                if bottom.a~=pixel_types.sand[4] and bottom.a~=pixel_types.wetsand[4] then
+                    sprout=false
                 end
             end
+            local d=rand_dir8()
+            local t=it.seed+Point(d[1],d[2])
+
+            if sprout and is_valid_coord(t[1],t[2]) then
+                local p=get_pixel(t[1],t[2])
+                if p.a==pixel_types.water[4] then
+                    set_pixel(t[1],t[2],pixel_types.empty)
+                elseif p.a==pixel_types.wetsand[4] then
+                    set_pixel(t[1],t[2],pixel_types.sand)
+                else
+                    sprout=false
+                end
+            end
+            if sprout then
+                local x=it.seed[1]
+                local y=it.seed[2]
+                set_pixel(x,y,pixel_types.cactus_body)
+                it.seed=nil
+                food_balance=food_balance+food_water_gain
+                it.skin={Point(x,y)}
+                it.body={Point(x,y)}
+                it.center=Point(x,y)
+            end
         end
-    else
+
+    elseif #it.skin>0 then
         local idx=math.random(1,#it.skin)
         local cell=it.skin[idx]
         local remove=false
-        local c=count_pixels_around4(cell[1],cell[2],pixel_types.cactus_body[4])
-        c=c+count_pixels_around4(cell[1],cell[2],pixel_types.cactus_center[4])
+        local c=4-count_pixels_around4(cell[1],cell[2],0)
+        c=c-count_pixels_around4(cell[1],cell[2],pixel_types.water[4])
         if c==4 then
             remove=true
         end
@@ -745,6 +747,14 @@ function cactus.sim_step(it,new_items)
                         table.insert(it.body,Point(t[1],t[2]))
                     end
                 end
+            elseif it.food>food_cost_seed*food_cost_seed_buffer then
+                local d=rand_dir4()
+                local t=cell+Point(d[1],d[2])
+                if is_pixel_type(t[1],t[2],pixel_types.empty[4]) then
+                    food_balance=food_balance-food_cost_seed
+                    cactus.create(new_items,t[1],t[2],{food=food_cost_seed})
+
+                end
             end
             local d=rand_dir8()
             local t=cell+Point(d[1],d[2])
@@ -763,6 +773,8 @@ function cactus.sim_step(it,new_items)
                 food_balance=food_balance+food_water_gain
             end
         end
+    else
+        it.dead=true
     end
     it.food=it.food+food_balance
     if it.food>food_cap then
