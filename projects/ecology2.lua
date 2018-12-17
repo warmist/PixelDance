@@ -177,6 +177,12 @@ local directions4={
     {0,1},
     {-1,0},
 }
+function rand_dir4()
+    return directions4[math.random(1,4)]
+end
+function rand_dir8()
+    return directions8[math.random(1,8)]
+end
 --[[
     pixel flags:
         sand/liquid/wall (2 bits?)
@@ -213,9 +219,12 @@ local pixel_types={ --alpha used to id types
     empty        ={0,0,0,0},
     sand         ={124,100,80 ,next_pixel_type_id(ph_sand  ,1)},
     wetsand      ={88 ,64 ,45 ,next_pixel_type_id(ph_wall  ,1)},
-    clay         ={74 ,15 ,15 ,next_pixel_type_id(ph_wall  ,1)},
     water        ={70 ,70 ,150,next_pixel_type_id(ph_liquid,0)},
     wall         ={20 ,80 ,100,next_pixel_type_id(ph_wall  ,1)},
+    ------------------------------------------------------------
+    cactus_seed  ={212, 44,125,next_pixel_type_id(ph_wall  ,0)},
+    cactus_body  ={120,190, 73,next_pixel_type_id(ph_wall  ,1)},
+    cactus_center={ 65,100,112,next_pixel_type_id(ph_wall  ,1)},
 }
 --TODO: test for id collisions
 
@@ -229,17 +238,26 @@ function wake_blocks(  )
     end
 end
 function pixel_init(  )
+    --settings
+    local random_pixels={
+        [pixel_types.water]=0.05,
+        [pixel_types.sand] =0.1,
+    }
+    local count_platforms=25
+    -------------------------
     local w=img_buf.w
     local h=img_buf.h
     local cx = math.floor(w/2)
     local cy = math.floor(h/2)
 
-    for i=1,w*h*0.1 do
-        local x=math.random(0,w-1)
-        local y=math.random(0,h-1)
-        set_pixel(x,y,pixel_types.sand)
+
+    for k,v in pairs(random_pixels) do
+        for i=1,w*h*v do
+            local x=math.random(0,w-1)
+            local y=math.random(0,h-1)
+            set_pixel(x,y,k)
+        end
     end
-    
     --[[
     for i=1,5 do
         local platform_size=math.random(100,200)
@@ -258,9 +276,9 @@ function pixel_init(  )
     end
     --]]
     -- [[
-    for i=1,5 do
+    for i=1,count_platforms do
         local platform_size=math.random(100,200)
-        local x=math.random(0,w-1)
+        local x=math.random(0,(w-1)/2)
         local y=math.random(0,h-1)
         for i=1,platform_size do
             local d=directions4[math.random(1,#directions4)]
@@ -417,8 +435,16 @@ function calculate_block(bx,by)
                     wake_block(bx,by,x,y-1)
                     no_move=false
                 else
-                    local tx=x+1
                     local not_rolled=true
+                    if c.a==pixel_types.water[4] then
+                        if d.a==pixel_types.sand[4] then
+                            set_pixel(x,y,pixel_types.empty)
+                            set_pixel(x,y-1,pixel_types.wetsand)
+                            not_rolled=false
+                            no_move=false
+                        end
+                    end
+                    local tx=x+1
                     if tx>=0 and tx<=w-1 then
                         local d=get_pixel(tx,y)
                         if d.a==0 then
@@ -442,12 +468,6 @@ function calculate_block(bx,by)
                             end
                         end
                     end
-                    if not_rolled and c.a==pixel_types.water then
-                        if d.a==pixel_types.sand then
-                            set_pixel(x,y,pixel_types.empty)
-                            set_pixel(x,y-1,pixel_types.wetsand)
-                        end
-                    end
                 end
             end
         end
@@ -458,7 +478,48 @@ function calculate_block(bx,by)
         wake_near_blocks(bx,by)
     end
 end
+function rand_pixel_step( count )
+    for i=1,count do
+        local x = math.random(0,map_w-1)
+        local y = math.random(0,map_h-1)
+        local d=get_pixel(x,y)
+        if d.a==pixel_types.wetsand[4] then
+            local tx=x+math.random(-1,1)
+            local ty=y-1
+            local moved=false
+            if is_valid_coord(tx,ty) then
+                if get_pixel(tx,ty).a==pixel_types.sand[4] then
+                    swap_pixels(x,y,tx,ty)
+                    wake_pixel(tx,ty)
+                    wake_pixel(x,y)
+                    moved=true
+                end
+            elseif ty==-1 then
+                set_pixel(x,y,pixel_types.sand)
+                wake_pixel(x,y)
+            end
 
+            if not moved  then
+                if is_valid_coord(x,y+1) and is_sunlit(x,y+1) then
+                    if get_pixel(x,y+1).a==pixel_types.empty[4] then
+                        set_pixel(x,y,pixel_types.sand)
+                        wake_pixel(x,y)
+                    end
+                end
+            end
+        elseif d.a==pixel_types.water[4] then
+            local tx=x
+            local ty=y+1
+            if is_valid_coord(tx,ty) and is_sunlit(x,y) then
+                if get_pixel(tx,ty).a==pixel_types.empty[4] then
+                    set_pixel(x,y,pixel_types.empty)
+                    wake_pixel(x,y)
+                    wake_pixel(tx,ty)
+                end
+            end
+        end
+    end
+end
 function pixel_step_blocky(  )
     local w=img_buf.w
     local h=img_buf.h
@@ -475,7 +536,14 @@ function pixel_step_blocky(  )
     end
     update_sun()
 end
-
+function rain( count )
+    for i=1,count do
+        local x=math.random(0,map_w-1)
+        local y=map_h-1
+        set_pixel(x,y,pixel_types.water)
+        wake_pixel(x,y)
+    end
+end
 function is_sunlit( x,y )
     if x<0 or x>img_buf.w-1 then
         return false
@@ -540,10 +608,205 @@ function save_img(  )
     img_buf_save:read_frame()
     img_buf_save:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
+function is_pixel_type( x,y,ptype )
+    if not is_valid_coord(x,y) then
+        return false
+    end
+    if ptype==nil then
+        ptype=0
+    end
+    local p= get_pixel(x,y)
+    if p.a==ptype then
+        return true,p
+    else
+        return false
+    end
+end
+sim_master_list={}
+--------------------------------------------------------------------------------
+
+cactus=cactus or {items={}}
+sim_master_list.cactus=cactus
+cactus.repop=3
+function cactus.create(tbl,x,y,args )
+    local w=img_buf.w
+    local h=img_buf.h
+
+    x=x or math.random(0,w-1)
+    y=y or h-1
+
+    table.insert(tbl or cactus.items,{
+        food=500,dead=false,seed=Point(x,y),
+        fract=Point(0,0),
+        dir=Point(0,-1),
+        })
+    set_pixel(x,y,pixel_types.cactus_seed)
+end
+function cactus.sim_step(it,new_items)
+    --settings
+    local seed_drift_bias=3
+    local seed_gravity_bias=0.1
+    local seed_drop_speed=0.2
+
+    local body_max_size=50
+
+    local food_cost_grow=20
+    local food_cost_grow_buffer=4
+    local food_cost_dist={1,2}
+
+    local food_consume=0.003
+    local food_water_gain=15
+    local food_cap=3000
+    ----------------------------------
+    local w=img_buf.w
+    local h=img_buf.h
+
+    local food_balance = -food_consume
+    if it.seed then
+        it.dir=it.dir+seed_drift_bias*Point(math.random()-0.5,math.random()-0.5)+seed_gravity_bias*Point(0,-1)
+        it.dir:normalize()
+        local step=fract_move(it,seed_drop_speed,it.dir)
+        local want_move=true
+        if step[1]==0 and step[2]==0 then
+            want_move=false
+        end
+        local t=it.seed+step
+        if want_move then
+            want_move=is_pixel_type(t[1],t[2])
+        end
+
+        if want_move then
+            set_pixel(it.seed[1],it.seed[2],pixel_types.empty)
+            it.seed=t
+            set_pixel(it.seed[1],it.seed[2],pixel_types.cactus_seed)
+        end
+
+        if is_sunlit(it.seed[1],it.seed[2]) then
+            if is_pixel_type(it.seed[1],it.seed[2]+1) then
+                local sprout=true
+                if is_valid_coord(it.seed[1],it.seed[2]-1) then
+                    local bottom=get_pixel(it.seed[1],it.seed[2]-1)
+                    if bottom.a~=pixel_types.sand[4] and bottom.a~=pixel_types.wetsand[4] then
+                        sprout=false
+                    end
+                end
+                local d=rand_dir8()
+                local t=it.seed+Point(d[1],d[2])
+                
+                if sprout and is_valid_coord(t[1],t[2]) then
+                    local p=get_pixel(t[1],t[2])
+                    if p.a==pixel_types.water[4] then
+                        set_pixel(t[1],t[2],pixel_types.empty)
+                    elseif p.a==pixel_types.wetsand[4] then
+                        set_pixel(t[1],t[2],pixel_types.sand)
+                    else
+                        sprout=false
+                    end
+                end
+                if sprout then
+                    local x=it.seed[1]
+                    local y=it.seed[2]
+                    set_pixel(x,y,pixel_types.cactus_body)
+                    it.seed=nil
+                    food_balance=food_balance+food_water_gain
+                    it.skin={Point(x,y)}
+                    it.body={Point(x,y)}
+                    it.center=Point(x,y)
+                end
+            end
+        end
+    else
+        local idx=math.random(1,#it.skin)
+        local cell=it.skin[idx]
+        local remove=false
+        local c=count_pixels_around4(cell[1],cell[2],pixel_types.cactus_body[4])
+        c=c+count_pixels_around4(cell[1],cell[2],pixel_types.cactus_center[4])
+        if c==4 then
+            remove=true
+        end
+        if remove then
+            set_pixel(cell[1],cell[2],pixel_types.cactus_center)
+            it.skin[idx]=it.skin[#it.skin]
+            it.skin[#it.skin]=nil
+        else
+
+            if it.food>food_cost_grow*food_cost_grow_buffer and
+                #it.body<body_max_size then
+                local d=rand_dir4()
+                local t=cell+Point(d[1],d[2])
+                if is_valid_coord(t[1],t[2]) and get_pixel(t[1],t[2]).a==0 then
+                    local dist=(t-it.center):len()
+                    local food_cost=food_cost_grow+dist*food_cost_dist[1]+
+                        dist*dist*food_cost_dist[2]
+                    if food_cost<it.food then
+                        food_balance=food_balance-food_cost
+                        set_pixel(t[1],t[2],pixel_types.cactus_body)
+                        table.insert(it.skin,t)
+                        table.insert(it.body,Point(t[1],t[2]))
+                    end
+                end
+            end
+            local d=rand_dir8()
+            local t=cell+Point(d[1],d[2])
+            local got_water=false
+            if is_valid_coord(t[1],t[2]) then
+                local p=get_pixel(t[1],t[2])
+                if p.a==pixel_types.water[4] then
+                    set_pixel(t[1],t[2],pixel_types.empty)
+                    got_water=true
+                elseif p.a==pixel_types.wetsand[4] then
+                    set_pixel(t[1],t[2],pixel_types.sand)
+                    got_water=true
+                end
+            end
+            if got_water then
+                food_balance=food_balance+food_water_gain
+            end
+        end
+    end
+    it.food=it.food+food_balance
+    if it.food>food_cap then
+        it.food=food_cap
+    end
+    if it.food<=0 then
+        it.dead=true
+    end
+end
+function cactus.cleaup( it )
+    if it.seed then
+        set_pixel(it.seed[1],it.seed[2],pixel_types.empty)
+    else
+        for i,v in ipairs(it.body) do
+            set_pixel(v[1],v[2],pixel_types.water)
+            wake_pixel(v[1],v[2])
+        end
+    end
+end
+--------------------------------------------------------------------------------
+function organism_step()
+    for k,v in pairs(sim_master_list) do
+        local new_items={}
+        if #v.items<v.repop then
+            v.create()
+        end
+        for _,it in ipairs(v.items) do
+            v.sim_step(it,new_items)
+        end
+        for _,it in ipairs(v.items) do
+            if it.dead then
+                v.cleaup(it)
+            end
+        end
+        remove_dead_addnew(v.items,new_items)
+    end
+end
 tex_pixel=tex_pixel or textures:Make()
 tex_sun=tex_sun or textures:Make()
 need_save=false
 tick=0
+
+rain_tick=rain_tick or 0
+is_raining=is_raining or false
 
 function update()
     __clear()
@@ -557,6 +820,9 @@ function update()
         img_buf=nil
         update_img_buf()
         pixel_init()
+        for k,v in pairs(sim_master_list) do
+            v.items={}
+        end
     end
 
     imgui.SameLine()
@@ -573,13 +839,30 @@ function update()
         local tx,ty=math.floor(x*oversample),math.floor(img_buf.h-y*oversample)
         if is_valid_coord(tx,ty) then
             set_pixel(tx,ty,pixel_types.water)
+            --cactus.create(nil,tx,ty)
+
             wake_pixel(tx,ty)
+            --print(get_pixel(tx,ty).a,is_sunlit(tx,ty))
         end
     end
 
     -- [[
     if not config.pause then
+        if rain_tick>10000 then
+            is_raining=true
+        end
+        if is_raining then
+            rain(5)
+            rain_tick=rain_tick-5
+        else
+            rain_tick=rain_tick+math.random(1,2)
+        end
+        if rain_tick<=0 then
+            is_raining=false
+        end
         pixel_step_blocky( )
+        rand_pixel_step(1000)
+        organism_step()
         tick=tick+1
     end
     if config.draw then
