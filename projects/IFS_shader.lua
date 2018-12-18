@@ -9,7 +9,7 @@ __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/win_h
 local size=STATE.size
 local max_palette_size=50
-local sample_count=100000
+local sample_count=10000
 local need_clear=false
 local oversample=2
 local render_lines=false
@@ -81,6 +81,37 @@ uniform sampler2D tex_main;
 uniform sampler2D tex_palette;
 uniform int auto_scale_color;
 #define M_PI   3.14159265358979323846264338327950288
+
+float rand(vec2 n) { 
+	return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
+}
+
+float noise(vec2 p){
+	vec2 ip = floor(p);
+	vec2 u = fract(p);
+	u = u*u*(3.0-2.0*u);
+	
+	float res = mix(
+		mix(rand(ip),rand(ip+vec2(1.0,0.0)),u.x),
+		mix(rand(ip+vec2(0.0,1.0)),rand(ip+vec2(1.0,1.0)),u.x),u.y);
+	return res*res;
+}
+#define NUM_OCTAVES 5
+
+float fbm(vec2 x) {
+	float v = 0.0;
+	float a = 0.5;
+	vec2 shift = vec2(100);
+	// Rotate to reduce axial bias
+    mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.50));
+	for (int i = 0; i < NUM_OCTAVES; ++i) {
+		v += a * noise(x);
+		x = rot * x * 2.0 + shift;
+		a *= 0.5;
+	}
+	return v;
+}
+
 vec4 mix_palette(float value )
 {
 	if (palette_size==0)
@@ -183,6 +214,27 @@ float sdEquilateralTriangle( in vec2 p )
     p.x -= clamp( p.x, -2.0, 0.0 );
     return -length(p)*sign(p.y);
 }
+float mask(vec2 pos)
+{
+	float phi=1.61803398875;
+	float box_size=0.6;
+	float blur=0.015;
+	float min_value=0.4;
+	float noise_scale=0.02;
+	float noise_freq=70;
+	pos.x*=phi;
+	pos=tRotate(pos,M_PI*3/4);
+
+	//vec2 n=vec2(fbm(pos*noise_freq),fbm(pos*noise_freq+vec2(1213,1099)));
+	//pos+=n*noise_scale;
+
+
+	float ret=sdBox(pos,vec2(box_size,box_size));
+	
+	ret=smoothstep(0.0,blur,ret);
+	ret=clamp(1-ret,min_value,1);
+	return 1;
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float nv=texture(tex_main,normed).x;
@@ -197,10 +249,11 @@ void main(){
 	else
 		nv=log(nv+1)/lmm.y;
 	//nv=floor(nv*50)/50; //stylistic quantization
-	///*
+	float l=mask(pos.xy/*,var_tex(normed)*/);
+	/*
 	float phi=1.61803398875;
 	float box_size=1.8;
-	//float l=sdBox(pos.xy*2,vec2(box_size,box_size));
+	float l=sdBox(pos.xy*2,vec2(box_size,box_size));
 	float tri_size=1.05;
 	float t1=sdEquilateralTriangle(pos.xy*tri_size+vec2(0,0.3));
 	vec2 n2=pos.xy+vec2(1.005,-0.3);
@@ -209,15 +262,15 @@ void main(){
 	vec2 n3=pos.xy+vec2(-1.005,-0.3);
 	vec2 rp3=tRotate(n3,M_PI/3);
 	float t3=sdEquilateralTriangle(rp3*tri_size);
-	float l=min(t1,min(t2,t3));
+	//float l=min(t1,min(t2,t3));
 	float blur=0.0125;
 	l=smoothstep(0.0,blur,l);
 	//*/
 	/*
 	float l=length(pos.xy);
 	l=smoothstep(0.85,0.9,l);
-	*/
-	l=clamp(1-l,0.3,1);
+	//*/
+	
 
 	nv=clamp(nv,0,1);
 	//nv=math.min(math.max(nv,0),1);
@@ -710,13 +763,15 @@ function gui()
 	end
 	rand_complexity=rand_complexity or 3
 	if imgui.Button("Rand function") then
-		str_x=random_math(rand_complexity)
+		--str_x=random_math(rand_complexity)
 		--str_y=random_math(rand_complexity)
 		--str_x=random_math_fourier(3,rand_complexity)
 		--str_y=random_math_fourier(3,rand_complexity)
 
-		--str_x=random_math_power(3,rand_complexity)
-		str_y=random_math_power(3,rand_complexity)
+		--str_x=random_math_power(15,rand_complexity)
+		--str_y=random_math_power(15,rand_complexity)
+		str_x=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
+		str_y=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
 		--str_x="s.x"
 		--str_y="s.y"
 
@@ -732,7 +787,7 @@ function gui()
 		--[[ offset
 		str_preamble=str_preamble.."s+=params.xy;"
 		--]]
-		-- [[ normed-like
+		--[[ normed-like
 		str_preamble=str_preamble.."float l=length(s);"
 		str_postamble=str_postamble.."s/=l;s*=move_dist;"
 		--]]
@@ -1389,7 +1444,7 @@ function visit_iter()
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=4
 			local rad=1.5+gen_radius*gen_radius
@@ -1411,7 +1466,7 @@ function visit_iter()
 			local x = r * math.cos(a)
 			local y = r * math.sin(a)
 			--]]
-			-- [[ spiral
+			--[[ spiral
 			local angle_speed=500;
 			local t=math.random();
 			local x=math.cos(t*angle_speed)*math.sqrt(t)*gen_radius;
@@ -1435,7 +1490,7 @@ function visit_iter()
 			x=math.floor(x/grid_size)*grid_size
 			y=math.floor(y/grid_size)*grid_size
 			--]]
-			-- [[ blur mod
+			--[[ blur mod
 			local blur_str=0.00001
 			x,y=gaussian2(x,blur_str,y,blur_str)
 			--]]
