@@ -3,13 +3,13 @@ require "common"
 require "colors"
 local luv=require "colors_luv"
 --local size_mult=0.25
-local win_w=1024*1--2560
-local win_h=1024*1--1440
+local win_w=1024--2560
+local win_h=1024--1440
 __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/win_h
 local size=STATE.size
 local max_palette_size=50
-local sample_count=10000
+local sample_count=50175
 local need_clear=false
 local oversample=2
 local render_lines=false
@@ -49,6 +49,8 @@ tick=tick or 0
 config=make_config({
 	{"only_last",false,type="boolean"},
 	{"auto_scale_color",false,type="boolean"},
+	{"draw",true,type="boolean"},
+	{"point_size",3,type="int",min=1,max=10},
 	{"ticking",1,type="int",min=1,max=2},
 	{"v0",-0.211,type="float",min=-5,max=5},
 	{"v1",-0.184,type="float",min=-5,max=5},
@@ -765,8 +767,8 @@ function gui()
 	if imgui.Button("Rand function") then
 		--str_x=random_math(rand_complexity)
 		--str_y=random_math(rand_complexity)
-		--str_x=random_math_fourier(3,rand_complexity)
-		--str_y=random_math_fourier(3,rand_complexity)
+		--str_x=random_math_fourier(5,rand_complexity)
+		--str_y=random_math_fourier(5,rand_complexity)
 
 		--str_x=random_math_power(15,rand_complexity)
 		--str_y=random_math_power(15,rand_complexity)
@@ -791,7 +793,7 @@ function gui()
 		str_preamble=str_preamble.."float l=length(s);"
 		str_postamble=str_postamble.."s/=l;s*=move_dist;"
 		--]]
-		--[[ normed-like2
+		-- [[ normed-like2
 		str_preamble=str_preamble..""
 		str_postamble=str_postamble.."s/=length(s);s*=move_dist;s+=p;"
 		--]]
@@ -1260,6 +1262,7 @@ uniform vec2 center;
 uniform vec2 scale;
 uniform int iters;
 uniform int max_iters;
+uniform int pix_size;
 uniform float seed;
 uniform float move_dist;
 uniform vec4 params;
@@ -1352,7 +1355,7 @@ void main()
 		pos.x=0;*/
 	//gl_Position.xy = mapping(dfun(position.xy,iters,0.1)*scale+center);
 	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
-	gl_PointSize=2;
+	gl_PointSize=pix_size;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
@@ -1365,22 +1368,35 @@ void main()
 out vec4 color;
 in vec3 pos;
 uniform sampler2D img_tex;
-void main(){
-	//vec4 txt=texture(img_tex,mod(pos.xy*vec2(0.5,-0.5)+vec2(0.5,0.5),1));
+uniform int pix_size;
+
+float shape_point(vec2 pos)
+{
 	//float rr=clamp(1-txt.r,0,1);
-	//float rr = abs(pos.x+1);
+	//float rr = abs(pos.y*pos.y);
+	float rr=dot(pos.xy,pos.xy);
 	//float rr = pos.y-0.5;
 	//float rr = length(pos.xy)/5.0;
-	//rr=clamp(rr,0,1);
-	//float delta_size=(1-0.2)*rr+0.2;
+	rr=clamp(rr,0,1);
+	float delta_size=(1-0.2)*rr+0.2;
+	return delta_size;
+}
+void main(){
+	//vec4 txt=texture(img_tex,mod(pos.xy*vec2(0.5,-0.5)+vec2(0.5,0.5),1));
+#if 0
+	float delta_size=shape_point(pos.xy);
+#else
 	float delta_size=1;
+#endif
+
 	//float delta_size=txt.r;
  	float r = 2*length(gl_PointCoord - 0.5)/(delta_size);
 	float a = 1 - smoothstep(0, 1, r);
+	float intensity=1/float(pix_size);
 	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
 	//color=vec4(a,0,0,1);
-	color=vec4(1,0,0,1);
+	color=vec4(a*intensity,0,0,1);
 }
 ]==])
 end
@@ -1399,9 +1415,38 @@ function math.sign(x)
      return 0
    end
 end
+visit_call_count=0
+local visit_plan={
+	{1,32},
+	{2,16},
+	{4,8},
+	{8,4},
+	{16,2}
+}
+function get_visit_size( vcount )
+	local sum=0
+	for i,v in ipairs(visit_plan) do
+		sum=sum+v[1]
+	end
+	local cmod=vcount%sum
+	sum=0
+	for i,v in ipairs(visit_plan) do
+		sum=sum+v[1]
+		if sum>cmod then
+			return v[2]
+		end
+	end
+	return visit_plan[#visit_plan][2]
+end
+function halton_sequence(idx)
+	-- body
+end
 function visit_iter()
-	
-
+	local psize=config.point_size
+	if psize<=0 then
+		psize=get_visit_size(visit_call_count)--config.point_size
+		visit_call_count=visit_call_count+1
+	end
 	make_visits_texture()
 	make_visit_shader()
 	add_visit_shader:use()
@@ -1420,6 +1465,7 @@ function visit_iter()
 	add_visit_shader:blend_add()
 	add_visit_shader:set_i("max_iters",config.IFS_steps)
 	add_visit_shader:set_i("img_tex",1)
+	add_visit_shader:set_i("pix_size",psize)
 	if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
 		error("failed to set framebuffer up")
 	end
@@ -1436,7 +1482,11 @@ function visit_iter()
 		if draw_lines then
 			step=2
 		end
-		for i=0,samples.w*samples.h-1,step do
+		local sample_count=samples.w*samples.h-1
+		local sample_count_w=math.floor(math.sqrt(sample_count))
+		for i=0,sample_count,step do
+			local x=((i%sample_count_w)/sample_count_w-0.5)*2
+			local y=(math.floor(i/sample_count_w)/sample_count_w-0.5)*2
 			--[[ square
 			local x=math.random()*gen_radius-gen_radius/2
 			local y=math.random()*gen_radius-gen_radius/2
@@ -1444,7 +1494,7 @@ function visit_iter()
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=4
 			local rad=1.5+gen_radius*gen_radius
@@ -1493,6 +1543,11 @@ function visit_iter()
 			--[[ blur mod
 			local blur_str=0.00001
 			x,y=gaussian2(x,blur_str,y,blur_str)
+			--]]
+			-- [[ blur mod linear
+			local blur_str=0.2
+			x=x+math.random()*blur_str-blur_str/2
+			y=y+math.random()*blur_str-blur_str/2
 			--]]
 			--[[ circles mod
 			local circle_size=0.001
@@ -1570,7 +1625,9 @@ function update_real(  )
 		end
 	else
 		__clear()
-		draw_visits()
+		if config.draw then
+			draw_visits()
+		end
 	end
 	auto_clear()
 	visit_iter()
