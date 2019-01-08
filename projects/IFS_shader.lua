@@ -1275,7 +1275,7 @@ vec2 from_polar(vec2 p)
 {
 	return vec2(cos(p.y)*p.x,sin(p.y)*p.x);
 }
-vec2 func(vec2 p,int it_count)
+vec2 func_actual(vec2 p,int it_count)
 {
 	vec2 s=vec2(p.x,p.y);
 	
@@ -1287,6 +1287,23 @@ vec2 func(vec2 p,int it_count)
 			%s
 		}
 	return s;
+}
+vec2 func(vec2 p,int it_count)
+{
+	vec2 v=to_polar(p);
+	const float ang=(M_PI/3)*2;
+	float av=floor(p.y/ang);
+	float pv=mod(p.y,ang);
+	const float dist_div=0.5;
+	v.x+=dist_div;
+	v.y-=av*ang;
+	p=from_polar(v);
+	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
+	r=to_polar(r);
+	r.x-=dist_div;
+	r.y+=av*ang;
+	r=from_polar(r);
+	return r;
 }
 float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
 vec2 gaussian(float mean,float var,vec2 rnd)
@@ -1485,8 +1502,10 @@ function visit_iter()
 		local sample_count=samples.w*samples.h-1
 		local sample_count_w=math.floor(math.sqrt(sample_count))
 		for i=0,sample_count,step do
+			--[[ exact grid
 			local x=((i%sample_count_w)/sample_count_w-0.5)*2
 			local y=(math.floor(i/sample_count_w)/sample_count_w-0.5)*2
+			--]]
 			--[[ square
 			local x=math.random()*gen_radius-gen_radius/2
 			local y=math.random()*gen_radius-gen_radius/2
@@ -1494,7 +1513,7 @@ function visit_iter()
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=4
 			local rad=1.5+gen_radius*gen_radius
