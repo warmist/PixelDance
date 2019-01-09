@@ -747,6 +747,55 @@ function random_math_power( steps,complications,seed )
 	return cur_string
 end
 animate=false
+function rand_function(  )
+	str_x=random_math(rand_complexity)
+	str_y=random_math(rand_complexity)
+	--str_x=random_math_fourier(5,rand_complexity)
+	--str_y=random_math_fourier(5,rand_complexity)
+
+	--str_x=random_math_power(8,rand_complexity)
+	--str_y=random_math_power(2,rand_complexity)
+	--str_x=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
+	--str_y=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
+	--str_x="s.x"
+	--str_y="s.y"
+
+	--str_y="-"..str_x
+	--str_x=random_math(rand_complexity,"cos(R)*R")
+	--str_y=random_math(rand_complexity,"sin(R)*R")
+	--str_y="sin("..str_x..")"
+	--str_x="cos("..str_x..")"
+	--str_x=random_math_power(2,rand_complexity).."/"..random_math_power(2,rand_complexity)
+	--str_y=random_math_fourier(2,rand_complexity).."/"..str_x
+	str_preamble=""
+	str_postamble=""
+	-- [[ offset
+	str_preamble=str_preamble.."s+=params.xy;"
+	--]]
+	-- [[ normed-like
+	str_preamble=str_preamble.."float l=length(s);"
+	str_postamble=str_postamble.."s/=l;s*=move_dist;"
+	--]]
+	--[[ normed-like2
+	str_preamble=str_preamble..""
+	str_postamble=str_postamble.."s/=length(s);s*=move_dist;s+=p;"
+	--]]
+	--[[ polar-like
+	str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
+	str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
+	--]]
+	-- [[ centered-polar
+	str_preamble=str_preamble.."s=to_polar(s-p);"
+	str_postamble=str_postamble.."s=from_polar(s)+p;"
+	--]]
+	print("==============")
+	print(str_preamble)
+	print(str_x)
+	print(str_y)
+	print(str_postamble)
+	make_visit_shader(true)
+	need_clear=true
+end
 function gui()
 	imgui.Begin("IFS play")
 	palette_chooser()
@@ -765,53 +814,7 @@ function gui()
 	end
 	rand_complexity=rand_complexity or 3
 	if imgui.Button("Rand function") then
-		--str_x=random_math(rand_complexity)
-		--str_y=random_math(rand_complexity)
-		--str_x=random_math_fourier(5,rand_complexity)
-		--str_y=random_math_fourier(5,rand_complexity)
-
-		str_x=random_math_power(2,rand_complexity)
-		str_y=random_math_power(2,rand_complexity)
-		--str_x=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
-		--str_y=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
-		--str_x="s.x"
-		--str_y="s.y"
-
-		--str_y="-"..str_x
-		--str_x=random_math(rand_complexity,"cos(R)*R")
-		--str_y=random_math(rand_complexity,"sin(R)*R")
-		--str_y="sin("..str_x..")"
-		--str_x="cos("..str_x..")"
-		--str_x=random_math_power(2,rand_complexity).."/"..random_math_power(2,rand_complexity)
-		--str_y=random_math_fourier(2,rand_complexity).."/"..str_x
-		str_preamble=""
-		str_postamble=""
-		--[[ offset
-		str_preamble=str_preamble.."s+=params.xy;"
-		--]]
-		--[[ normed-like
-		str_preamble=str_preamble.."float l=length(s);"
-		str_postamble=str_postamble.."s/=l;s*=move_dist;"
-		--]]
-		-- [[ normed-like2
-		str_preamble=str_preamble..""
-		str_postamble=str_postamble.."s/=length(s);s*=move_dist;s+=p;"
-		--]]
-		--[[ polar-like
-		str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
-		str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
-		--]]
-		--[[ centered-polar
-		str_preamble=str_preamble.."s=to_polar(s-p);"
-		str_postamble=str_postamble.."s=from_polar(s)+p;"
-		--]]
-		print("==============")
-		print(str_preamble)
-		print(str_x)
-		print(str_y)
-		print(str_postamble)
-		make_visit_shader(true)
-		need_clear=true
+		rand_function()
 	end
 	imgui.SameLine()
 
@@ -821,6 +824,10 @@ function gui()
 		animate=true
 		need_clear=true
 		config.animation=0
+	end
+	imgui.SameLine()
+	if imgui.Button("Update frame") then
+		update_animation_values()
 	end
 	imgui.End()
 end
@@ -1294,19 +1301,26 @@ vec2 tRotate(vec2 p, float a) {
 	mat2 m=mat2(c,-s,s,c);
 	return m*p;
 }
+vec2 tReflect(vec2 p,float a){
+	float c=cos(2*a);
+	float s=sin(2*a);
+	mat2 m=mat2(c,s,s,-c);
+	return m*p;
+}
 vec2 func(vec2 p,int it_count)
 {
-	const float ang=(M_PI/4)*2;
-#if 0
+	const float ang=(M_PI/2)*2;
+#if 1
 	vec2 v=to_polar(p);
 	
-	float av=floor(v.y/ang);
+	float av=floor((v.y+M_PI)/ang)-1;
 	float pv=mod(v.y,ang);
 	const float dist_div=0.5;
 	vec2 c=vec2(cos(av),sin(av))*dist_div;
 	v.x-=av*dist_div;
 	//v.y-=av*ang;
 	p-=c;//from_polar(v);
+	//p=tReflect(p,ang*av);
 	p=tRotate(p,ang*av);
 	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
 	r=tRotate(r,-ang*av);
@@ -1316,7 +1330,8 @@ vec2 func(vec2 p,int it_count)
 	//r.y+=av*ang;
 	//r=from_polar(r);
 	return r;
-#else
+#endif
+#if 0
 /*
 	const float count=0.5;
 
@@ -1331,25 +1346,37 @@ vec2 func(vec2 p,int it_count)
 	r+=c;
 	return r;
 	*/
-	const float dist=0.5;
+	const float dist=5;
 	vec2 r;
-	if(p.x>0)
+	if(p.y>0)
 	{
-		p.x-=dist;
+		p.y+=dist;
+		p.y*=-1;
 		r=func_actual(p,it_count);
-		r.x+=dist;
+		r.y*=-1;
+		r.y-=dist;
 	}
 	else
 	{
-		p.x+=dist;
-		p.x*=-1;
-		r=func_actual(p,it_count);
-		r.x*=-1;
-		r.x-=dist;
+		if(p.x>0)
+		{
+			p.x-=dist;
+			r=func_actual(p,it_count);
+			r.x+=dist;
+		}
+		else
+		{
+
+			p.x+=dist;
+			p.x*=-1;
+			r=func_actual(p,it_count);
+			r.x*=-1;
+			r.x-=dist;
+		}
 	}
-	
 	return r;
 #endif
+
 }
 float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
 vec2 gaussian(float mean,float var,vec2 rnd)
@@ -1653,8 +1680,8 @@ function visit_iter()
 	__render_to_window()
 end
 
-local draw_frames=300
-local frame_count=30
+local draw_frames=100
+local frame_count=10
 function update_scale( new_scale )
 	local old_scale=config.scale
 
@@ -1672,12 +1699,15 @@ function update_animation_values( )
 	--update_scale(math.cos(a)*0.25+0.75)
 	--v2:-5,2 =>7
 	--v3:-3,3
+
 	config.v1=math.random()*10-5
 	config.v2=math.random()*10-5
 	config.v3=math.random()*10-5
 	config.v4=math.random()*10-5
-
+	gen_palette()
+	rand_function()
 end
+
 function update_real(  )
 	__no_redraw()
 	if animate then
