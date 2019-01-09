@@ -765,13 +765,13 @@ function gui()
 	end
 	rand_complexity=rand_complexity or 3
 	if imgui.Button("Rand function") then
-		str_x=random_math(rand_complexity)
-		str_y=random_math(rand_complexity)
+		--str_x=random_math(rand_complexity)
+		--str_y=random_math(rand_complexity)
 		--str_x=random_math_fourier(5,rand_complexity)
 		--str_y=random_math_fourier(5,rand_complexity)
 
-		--str_x=random_math_power(15,rand_complexity)
-		--str_y=random_math_power(15,rand_complexity)
+		str_x=random_math_power(2,rand_complexity)
+		str_y=random_math_power(2,rand_complexity)
 		--str_x=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
 		--str_y=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
 		--str_x="s.x"
@@ -1296,9 +1296,10 @@ vec2 tRotate(vec2 p, float a) {
 }
 vec2 func(vec2 p,int it_count)
 {
-#if 1
+	const float ang=(M_PI/4)*2;
+#if 0
 	vec2 v=to_polar(p);
-	const float ang=(M_PI/125)*2;
+	
 	float av=floor(v.y/ang);
 	float pv=mod(v.y,ang);
 	const float dist_div=0.5;
@@ -1316,17 +1317,37 @@ vec2 func(vec2 p,int it_count)
 	//r=from_polar(r);
 	return r;
 #else
-	const float count=5;
+/*
+	const float count=0.5;
 
 	vec2 fx=floor(p/count)*count;
 	const float dist_div=0.5;
 	vec2 c=fx*dist_div;
 
 	p-=c;
-	//p=tRotate(p,ang*av);
+	p=tRotate(p,ang*(fx.x+fx.y));
 	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
-	//r=tRotate(r,-ang*av);
+	r=tRotate(r,-ang*(fx.x+fx.y));
 	r+=c;
+	return r;
+	*/
+	const float dist=0.5;
+	vec2 r;
+	if(p.x>0)
+	{
+		p.x-=dist;
+		r=func_actual(p,it_count);
+		r.x+=dist;
+	}
+	else
+	{
+		p.x+=dist;
+		p.x*=-1;
+		r=func_actual(p,it_count);
+		r.x*=-1;
+		r.x-=dist;
+	}
+	
 	return r;
 #endif
 }
@@ -1632,8 +1653,8 @@ function visit_iter()
 	__render_to_window()
 end
 
-local draw_frames=100
-local frame_count=10
+local draw_frames=300
+local frame_count=30
 function update_scale( new_scale )
 	local old_scale=config.scale
 
@@ -1648,8 +1669,14 @@ function is_mouse_down(  )
 end
 function update_animation_values( )
 	local a=config.animation*math.pi*2
-	update_scale(math.cos(a)*0.25+0.75)
-	config.v3=math.sin(a)*1-1
+	--update_scale(math.cos(a)*0.25+0.75)
+	--v2:-5,2 =>7
+	--v3:-3,3
+	config.v1=math.random()*10-5
+	config.v2=math.random()*10-5
+	config.v3=math.random()*10-5
+	config.v4=math.random()*10-5
+
 end
 function update_real(  )
 	__no_redraw()
