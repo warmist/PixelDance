@@ -9,9 +9,9 @@ __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/win_h
 local size=STATE.size
 local max_palette_size=50
-local sample_count=50175
+local sample_count=40000
 local need_clear=false
-local oversample=2
+local oversample=1
 local render_lines=false
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
@@ -765,15 +765,15 @@ function gui()
 	end
 	rand_complexity=rand_complexity or 3
 	if imgui.Button("Rand function") then
-		--str_x=random_math(rand_complexity)
-		--str_y=random_math(rand_complexity)
+		str_x=random_math(rand_complexity)
+		str_y=random_math(rand_complexity)
 		--str_x=random_math_fourier(5,rand_complexity)
 		--str_y=random_math_fourier(5,rand_complexity)
 
 		--str_x=random_math_power(15,rand_complexity)
 		--str_y=random_math_power(15,rand_complexity)
-		str_x=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
-		str_y=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
+		--str_x=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
+		--str_y=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
 		--str_x="s.x"
 		--str_y="s.y"
 
@@ -1288,22 +1288,47 @@ vec2 func_actual(vec2 p,int it_count)
 		}
 	return s;
 }
+vec2 tRotate(vec2 p, float a) {
+	float c=cos(a);
+	float s=sin(a);
+	mat2 m=mat2(c,-s,s,c);
+	return m*p;
+}
 vec2 func(vec2 p,int it_count)
 {
+#if 1
 	vec2 v=to_polar(p);
-	const float ang=(M_PI/3)*2;
-	float av=floor(p.y/ang);
-	float pv=mod(p.y,ang);
+	const float ang=(M_PI/125)*2;
+	float av=floor(v.y/ang);
+	float pv=mod(v.y,ang);
 	const float dist_div=0.5;
-	v.x+=dist_div;
-	v.y-=av*ang;
-	p=from_polar(v);
+	vec2 c=vec2(cos(av),sin(av))*dist_div;
+	v.x-=av*dist_div;
+	//v.y-=av*ang;
+	p-=c;//from_polar(v);
+	p=tRotate(p,ang*av);
 	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
-	r=to_polar(r);
-	r.x-=dist_div;
-	r.y+=av*ang;
-	r=from_polar(r);
+	r=tRotate(r,-ang*av);
+	r+=c;
+	//r=to_polar(r);
+	//r.x+=dist_div;
+	//r.y+=av*ang;
+	//r=from_polar(r);
 	return r;
+#else
+	const float count=5;
+
+	vec2 fx=floor(p/count)*count;
+	const float dist_div=0.5;
+	vec2 c=fx*dist_div;
+
+	p-=c;
+	//p=tRotate(p,ang*av);
+	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
+	//r=tRotate(r,-ang*av);
+	r+=c;
+	return r;
+#endif
 }
 float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
 vec2 gaussian(float mean,float var,vec2 rnd)
@@ -1560,11 +1585,11 @@ function visit_iter()
 			y=math.floor(y/grid_size)*grid_size
 			--]]
 			--[[ blur mod
-			local blur_str=0.00001
+			local blur_str=0.005
 			x,y=gaussian2(x,blur_str,y,blur_str)
 			--]]
-			-- [[ blur mod linear
-			local blur_str=0.2
+			--[[ blur mod linear
+			local blur_str=0.01
 			x=x+math.random()*blur_str-blur_str/2
 			y=y+math.random()*blur_str-blur_str/2
 			--]]
