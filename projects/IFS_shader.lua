@@ -9,10 +9,11 @@ __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/win_h
 local size=STATE.size
 local max_palette_size=50
-local sample_count=40000
+local sample_count=100000
+local max_sample=10000000 --for halton seq.
 local need_clear=false
 local oversample=1
-local render_lines=false
+local render_lines=false --does not work :<
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
 str_preamble=str_preamble or ""
@@ -50,7 +51,7 @@ config=make_config({
 	{"only_last",false,type="boolean"},
 	{"auto_scale_color",false,type="boolean"},
 	{"draw",true,type="boolean"},
-	{"point_size",3,type="int",min=1,max=10},
+	{"point_size",3,type="int",min=0,max=10},
 	{"ticking",1,type="int",min=1,max=2},
 	{"v0",-0.211,type="float",min=-5,max=5},
 	{"v1",-0.184,type="float",min=-5,max=5},
@@ -59,8 +60,8 @@ config=make_config({
 	{"IFS_steps",10,type="int",min=1,max=100},
 	{"move_dist",0.1,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
-	{"rand_angle",0,type="float",min=0,max=math.pi*2},
-	{"rand_dist",0.01,type="float",min=0.00001,max=1},
+	--[[{"rand_angle",0,type="float",min=0,max=math.pi*2},
+	{"rand_dist",0.01,type="float",min=0.00001,max=1},]]
 	{"cx",0,type="float",min=-10,max=10},
 	{"cy",0,type="float",min=-10,max=10},
 	{"min_value",0,type="float",min=0,max=20},
@@ -748,15 +749,15 @@ function random_math_power( steps,complications,seed )
 end
 animate=false
 function rand_function(  )
-	str_x=random_math(rand_complexity)
-	str_y=random_math(rand_complexity)
+	--str_x=random_math(rand_complexity)
+	--str_y=random_math(rand_complexity)
 	--str_x=random_math_fourier(5,rand_complexity)
 	--str_y=random_math_fourier(5,rand_complexity)
 
-	--str_x=random_math_power(8,rand_complexity)
-	--str_y=random_math_power(2,rand_complexity)
-	--str_x=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
-	--str_y=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
+	--str_x=random_math_power(5,rand_complexity)
+	--str_y=random_math_power(5,rand_complexity)
+	str_x=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
+	str_y=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
 	--str_x="s.x"
 	--str_y="s.y"
 
@@ -769,14 +770,14 @@ function rand_function(  )
 	--str_y=random_math_fourier(2,rand_complexity).."/"..str_x
 	str_preamble=""
 	str_postamble=""
-	-- [[ offset
+	--[[ offset
 	str_preamble=str_preamble.."s+=params.xy;"
 	--]]
-	-- [[ normed-like
+	--[[ normed-like
 	str_preamble=str_preamble.."float l=length(s);"
 	str_postamble=str_postamble.."s/=l;s*=move_dist;"
 	--]]
-	--[[ normed-like2
+	-- [[ normed-like2
 	str_preamble=str_preamble..""
 	str_postamble=str_postamble.."s/=length(s);s*=move_dist;s+=p;"
 	--]]
@@ -784,7 +785,7 @@ function rand_function(  )
 	str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
 	str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
 	--]]
-	-- [[ centered-polar
+	--[[ centered-polar
 	str_preamble=str_preamble.."s=to_polar(s-p);"
 	str_postamble=str_postamble.."s=from_polar(s)+p;"
 	--]]
@@ -1259,7 +1260,7 @@ if add_visit_shader==nil or force then
 	add_visit_shader=shaders.Make(
 string.format([==[
 #version 330
-#line 870
+#line 1263
 layout(location = 0) in vec3 position;
 out vec3 pos;
 
@@ -1310,20 +1311,32 @@ vec2 tReflect(vec2 p,float a){
 vec2 func(vec2 p,int it_count)
 {
 	const float ang=(M_PI/2)*2;
+#if 0
+	return func_actual(p,it_count);
+#endif
+#if 0
+	vec2 v=to_polar(p);
+	vec2 r=func_actual(v,it_count);
+	return from_polar(r);
+#endif
+#if 0
+	vec2 r=func_actual(p,it_count);
+	return p/length(r);
+#endif
 #if 1
 	vec2 v=to_polar(p);
 	
-	float av=floor((v.y+M_PI)/ang)-1;
+	float av=floor((v.y+M_PI)/ang);
 	float pv=mod(v.y,ang);
 	const float dist_div=0.5;
-	vec2 c=vec2(cos(av),sin(av))*dist_div;
-	v.x-=av*dist_div;
-	//v.y-=av*ang;
-	p-=c;//from_polar(v);
-	//p=tReflect(p,ang*av);
-	p=tRotate(p,ang*av);
+	vec2 c=vec2(cos(av*ang),sin(av*ang))*dist_div;
+	
+	p-=c;
+	//p=tRotate(p,ang*av);
+	p=tReflect(p,ang*av/2);
 	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
-	r=tRotate(r,-ang*av);
+	r=tReflect(r,ang*av/2);
+	//r=tRotate(r,-ang*av);
 	r+=c;
 	//r=to_polar(r);
 	//r.x+=dist_div;
@@ -1418,7 +1431,7 @@ vec2 mapping(vec2 p)
 	}
 	p.x=mod(p.x,w);
 	return p-vec2(w/2,h/2);
-	*/
+	//*/
 }
 vec2 dfun(vec2 p,int iter,float h)
 {
@@ -1528,9 +1541,22 @@ function get_visit_size( vcount )
 	end
 	return visit_plan[#visit_plan][2]
 end
-function halton_sequence(idx)
-	-- body
+function divmod( a,b )
+	local d=math.floor(a/b)
+	return d,a - d*b
 end
+function vdc( n,base )
+ 	local ret,denom=0,1
+ 	while n>0 do
+ 		denom=denom*base
+ 		local remainder
+ 		n,remainder=divmod(n,base)
+ 		ret=ret+remainder/denom
+ 	end
+ 	return ret
+end
+
+local cur_sample=0
 function visit_iter()
 	local psize=config.point_size
 	if psize<=0 then
@@ -1579,6 +1605,22 @@ function visit_iter()
 			local x=((i%sample_count_w)/sample_count_w-0.5)*2
 			local y=(math.floor(i/sample_count_w)/sample_count_w-0.5)*2
 			--]]
+			--[[ halton sequence
+			cur_sample=cur_sample+1
+			if cur_sample>max_sample then cur_sample=0 end
+
+			local x=vdc(cur_sample,2)*gen_radius-gen_radius/2
+			local y=vdc(cur_sample,3)*gen_radius-gen_radius/2
+			--]]
+			--[[ box muller transform on halton sequence i.e. guassian halton?
+			cur_sample=cur_sample+1
+			if cur_sample>max_sample then cur_sample=0 end
+
+			local u1=vdc(cur_sample,2)
+			local u2=vdc(cur_sample,3)*math.pi*2
+			local x=math.sqrt(-2*gen_radius*math.log(u1))*math.cos(u2)
+			local y=math.sqrt(-2*gen_radius*math.log(u1))*math.sin(u2)
+			--]]
 			--[[ square
 			local x=math.random()*gen_radius-gen_radius/2
 			local y=math.random()*gen_radius-gen_radius/2
@@ -1588,8 +1630,8 @@ function visit_iter()
 			--gaussian blob
 			local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
-			local count=4
-			local rad=1.5+gen_radius*gen_radius
+			local count=3
+			local rad=2+gen_radius*gen_radius
 			local n=math.random(0,count-1)
 			local a=(n/count)*math.pi*2
 			local cx=math.cos(a)*rad
@@ -1620,8 +1662,8 @@ function visit_iter()
 			local a=math.atan2(y,x)
 			local grid_r=0.05
 			local grid_a=math.pi/21
-			--r=math.floor(r/grid_r)*grid_r
-			a=math.floor(a/grid_a)*grid_a
+			r=math.floor(r/grid_r)*grid_r
+			--a=math.floor(a/grid_a)*grid_a
 
 			x=math.cos(a)*r
 			y=math.sin(a)*r
@@ -1648,10 +1690,10 @@ function visit_iter()
 			y=y+math.sin(a2)*circle_size
 			--]]
 			local angle_off=math.atan2(y,x)
-			local dx=math.cos(config.rand_angle+angle_off)*config.rand_dist
-			local dy=math.sin(config.rand_angle+angle_off)*config.rand_dist
 			samples.d[i]={x,y}
 			if step==2 then
+				local dx=math.cos(config.rand_angle+angle_off)*config.rand_dist
+				local dy=math.sin(config.rand_angle+angle_off)*config.rand_dist
 				samples.d[i+1]={x+dx,y+dy}
 			end
 		end
