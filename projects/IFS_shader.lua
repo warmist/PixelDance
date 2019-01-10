@@ -773,11 +773,11 @@ function rand_function(  )
 	--[[ offset
 	str_preamble=str_preamble.."s+=params.xy;"
 	--]]
-	--[[ normed-like
+	-- [[ normed-like
 	str_preamble=str_preamble.."float l=length(s);"
 	str_postamble=str_postamble.."s/=l;s*=move_dist;"
 	--]]
-	-- [[ normed-like2
+	--[[ normed-like2
 	str_preamble=str_preamble..""
 	str_postamble=str_postamble.."s/=length(s);s*=move_dist;s+=p;"
 	--]]
@@ -1310,7 +1310,7 @@ vec2 tReflect(vec2 p,float a){
 }
 vec2 func(vec2 p,int it_count)
 {
-	const float ang=(M_PI/2)*2;
+	const float ang=(M_PI/15)*2;
 #if 0
 	return func_actual(p,it_count);
 #endif
@@ -1332,11 +1332,13 @@ vec2 func(vec2 p,int it_count)
 	vec2 c=vec2(cos(av*ang),sin(av*ang))*dist_div;
 	
 	p-=c;
-	//p=tRotate(p,ang*av);
-	p=tReflect(p,ang*av/2);
+	//p-=c*0.25*av; //sort of shell-like looking
+	p=tRotate(p,ang*av);
+	//p=tReflect(p,ang*av/2);
 	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
-	r=tReflect(r,ang*av/2);
-	//r=tRotate(r,-ang*av);
+	//r=tReflect(r,ang*av/2);
+	r=tRotate(r,-ang*av);
+	//r+=c*0.25*av;
 	r+=c;
 	//r=to_polar(r);
 	//r.x+=dist_div;
