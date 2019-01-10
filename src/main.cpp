@@ -462,13 +462,16 @@ bool ends_with(const char* input, const char(&suffix)[N] )
 }
 int extract_script(const char* path)
 {
-    //TODO: some crud after file? not sure what is happening there...
+    
     auto f = fopen(path, "rb");
     int x, y, comp;
-
+    //FIXME: stupid way of getting end of png :| should probably get IEND chunk
     auto data = stbi_load_from_file(f, &x, &y, &comp, 4);
     stbi_image_free(data);
+    
     auto pos = ftell(f);
+    //FIXME: stbi does not load the crc or last chunck so we'll just skip it?
+    pos += 4;
     fseek(f, 0, SEEK_END);
     auto size = ftell(f);
     std::vector<unsigned char> buffer;
