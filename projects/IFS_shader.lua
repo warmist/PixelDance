@@ -756,8 +756,8 @@ function rand_function(  )
 
 	--str_x=random_math_power(5,rand_complexity)
 	--str_y=random_math_power(5,rand_complexity)
-	str_x=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
-	str_y=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
+	--str_x=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
+	--str_y=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
 	--str_x="s.x"
 	--str_y="s.y"
 
@@ -766,14 +766,17 @@ function rand_function(  )
 	--str_y=random_math(rand_complexity,"sin(R)*R")
 	--str_y="sin("..str_x..")"
 	--str_x="cos("..str_x..")"
-	--str_x=random_math_power(2,rand_complexity).."/"..random_math_power(2,rand_complexity)
-	--str_y=random_math_fourier(2,rand_complexity).."/"..str_x
+	str_x=random_math_power(2,rand_complexity).."/"..random_math_power(2,rand_complexity)
+	str_y=random_math_fourier(2,rand_complexity).."/"..str_x
 	str_preamble=""
 	str_postamble=""
 	--[[ offset
 	str_preamble=str_preamble.."s+=params.xy;"
 	--]]
-	-- [[ normed-like
+	-- [[ gravity
+	str_preamble=str_preamble.."s*=1/move_dist;"
+	--]]
+	--[[ normed-like
 	str_preamble=str_preamble.."float l=length(s);"
 	str_postamble=str_postamble.."s/=l;s*=move_dist;"
 	--]]
