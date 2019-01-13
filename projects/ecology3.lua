@@ -22,6 +22,7 @@ function update_particle_buffer()
 		particle_types=make_char_buffer(max_particle_count,1)
 	end
 end
+update_particle_buffer()
 function update_img_buf(  )
     local nw=math.floor(map_w)
     local nh=math.floor(map_h)
@@ -42,7 +43,17 @@ config=make_config({
     },config)
 
 
-local draw_shader=shaders.Make[==[
+local draw_shader=shaders.Make(
+[==[
+#version 330
+layout(location = 0) in vec3 position;
+out vec3 pos;
+void main()
+{
+    pos=position;
+}
+]==],
+[==[
 #version 330
 #line 47
 out vec4 color;
@@ -60,7 +71,7 @@ void main(){
     vec4 pixel=texture(tex_main,normed);
     color=vec4(pixel.xyz,1);
 }
-]==]
+]==])
 local place_pixels_shader=shaders.Make[==[
 out vec4 color;
 in vec3 pos;
@@ -68,6 +79,7 @@ void main(){
     color=vec4(1,0,0,1);
 }
 ]==]
+tex_pixel=tex_pixel or textures:Make()
 function update()
     __clear()
     __no_redraw()
@@ -84,7 +96,9 @@ function update()
             v.items={}
         end
     end
-
+    for i=0,max_particle_count-1 do
+        particles:set(i,0,{math.random()*2-1,math.random()*2-1})
+    end
     imgui.SameLine()
     if imgui.Button("Save") then
         need_save=true
@@ -94,29 +108,36 @@ function update()
         wake_blocks()
     end
     imgui.End()
+    __render_to_window()
 
     if config.draw then
-    	
+        update_img_buf()
+        tex_pixel:set(img_buf.w,img_buf.h,2)
+
+    	place_pixels_shader:use()
+        tex_pixel:use(0,0,1)
+        if not tex_pixel:render_to(img_buf.w,img_buf.h) then
+            error("failed to set framebuffer up")
+        end
+        place_pixels_shader:draw_points(particles.d,particles.w*particles.h)
+        __render_to_window()
         draw_shader:use()
         tex_pixel:use(0,0,1)
 
-        img_buf:write_texture(tex_pixel)
+        --img_buf:write_texture(tex_pixel)
 
         draw_shader:set_i("tex_main",0)
         draw_shader:set_i("rez",map_w,map_h)
         draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
         draw_shader:set("translate",config.t_x,config.t_y)
-        draw_shader:draw_quad()
+        draw_shader:draw_quad()]]
     end
 
-    if config.timelapse>0 and tick>=config.timelapse then
-        need_save=true
-        tick=0
-    end
     if need_save then
         save_img()
         need_save=false
     end
+    --[[
     local tx,ty=config.t_x,config.t_y
     local c,x,y,dx,dy= is_mouse_down2()
     local update_bounds=false
@@ -137,4 +158,5 @@ function update()
         config.t_x=clamp(config.t_x,0,1-1/config.zoom)
         config.t_y=clamp(config.t_y,0,1-1/config.zoom)
     end
+    ]]
 end
