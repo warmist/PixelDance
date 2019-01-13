@@ -541,6 +541,7 @@ int main(int argc, char** argv)
     sf::Clock deltaClock;
     while (window.isOpen()) {
         sf::Event event;
+		bool need_restart = false;
         while (window.pollEvent(event)) {
             ImGui::SFML::ProcessEvent(event);
 
@@ -560,8 +561,14 @@ int main(int argc, char** argv)
 				window.setView(sf::View(sf::Vector2f(ev.width / 2, ev.height / 2), sf::Vector2f(ev.width, ev.height)));
                 current_project.resize(ev.width, ev.height);
 			}
+			if (event.type == sf::Event::KeyPressed)
+			{
+				if (event.key.shift && event.key.control && event.key.code == sf::Keyboard::R)
+					need_restart = true;
+			}
         }
 		bool need_reload = false;
+		
         bool project_exists=false;
 
         load_projects(argv[1], fwatch);
@@ -652,7 +659,7 @@ int main(int argc, char** argv)
             current_project.clear_errors();
 
         ImGui::SameLine();
-        if (ImGui::Button("Reset"))
+        if (ImGui::Button("Reset") || need_restart)
             current_project.reset(argv[1]);
         ImGui::SameLine();
         if (ImGui::Checkbox("Limit fps", &is_fps_limited))
