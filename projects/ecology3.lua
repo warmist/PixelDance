@@ -14,12 +14,14 @@ local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 
 is_remade=false
-local max_particle_count=10000
-
+local max_particle_count=win_w*win_h
+current_particle_count=current_particle_count or 100
 function update_particle_buffer()
 	if particles==nil or particles.w~=max_particle_count then
 		particles=make_flt_half_buffer(max_particle_count,1)
+        particles_speeds=make_flt_half_buffer(max_particle_count,1)
 		particle_types=make_char_buffer(max_particle_count,1)
+        is_remade=true
 	end
 end
 update_particle_buffer()
@@ -42,9 +44,7 @@ config=make_config({
     {"t_y",0,type="float",min=0,max=1},
     },config)
 
-
-local draw_shader=shaders.Make(
-[==[
+--[==[
 #version 330
 layout(location = 0) in vec3 position;
 out vec3 pos;
@@ -52,7 +52,8 @@ void main()
 {
     pos=position;
 }
-]==],
+]==]
+local draw_shader=shaders.Make(
 [==[
 #version 330
 #line 47
@@ -76,10 +77,40 @@ local place_pixels_shader=shaders.Make[==[
 out vec4 color;
 in vec3 pos;
 void main(){
-    color=vec4(1,0,0,1);
+    color=vec4(1,0,0,0.1);
 }
 ]==]
-tex_pixel=tex_pixel or textures:Make()
+function rnd( v )
+    return math.random()*v*2-v
+end
+function particle_step(  )
+    for i=0,current_particle_count do
+        local p=particles:get(i,0)
+        local s=particles_speeds:get(i,0)
+        for j=i+1,current_particle_count do
+            local pt=particles:get(j,0)
+            local dx=pt.r-p.r
+            local dy=pt.g-p.g
+            local len=math.sqrt(dx*dx+dy*dy)
+            s.r=s.r+(dx/len)*0.000001
+            s.g=s.g+(dy/len)*0.000001
+        end
+        s.r=s.r*0.99
+        s.g=s.g*0.99
+    end
+    for i=0,current_particle_count do
+        local p=particles:get(i,0)
+        local s=particles_speeds:get(i,0)
+        p.r=p.r+s.r+rnd(0.005)
+        p.g=p.g+s.g+rnd(0.005)
+    end
+end
+if tex_pixel==nil then
+    update_img_buf()
+    tex_pixel=textures:Make()
+    tex_pixel:use(0,0,1)
+    tex_pixel:set(img_buf.w,img_buf.h,0)
+end
 function update()
     __clear()
     __no_redraw()
@@ -96,31 +127,34 @@ function update()
             v.items={}
         end
     end
-    for i=0,max_particle_count-1 do
-        particles:set(i,0,{math.random()*2-1,math.random()*2-1})
+    if is_remade then
+        is_remade=false
+        for i=0,max_particle_count-1 do
+            particles:set(i,0,{math.random()*2-1,math.random()*2-1})
+            particles_speeds:set(i,0,{math.random()*0.005-0.0025,math.random()*0.005-0.0025})
+        end
     end
+    particle_step()
     imgui.SameLine()
     if imgui.Button("Save") then
         need_save=true
-    end
-    imgui.SameLine()
-    if imgui.Button("Wake") then
-        wake_blocks()
     end
     imgui.End()
     __render_to_window()
 
     if config.draw then
         update_img_buf()
-        tex_pixel:set(img_buf.w,img_buf.h,2)
+        
 
     	place_pixels_shader:use()
-        tex_pixel:use(0,0,1)
+        
+        
         if not tex_pixel:render_to(img_buf.w,img_buf.h) then
             error("failed to set framebuffer up")
         end
-        place_pixels_shader:draw_points(particles.d,particles.w*particles.h)
+        place_pixels_shader:draw_points(particles.d,current_particle_count)
         __render_to_window()
+        
         draw_shader:use()
         tex_pixel:use(0,0,1)
 
@@ -130,7 +164,8 @@ function update()
         draw_shader:set_i("rez",map_w,map_h)
         draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
         draw_shader:set("translate",config.t_x,config.t_y)
-        draw_shader:draw_quad()]]
+        draw_shader:draw_quad()
+        
     end
 
     if need_save then
