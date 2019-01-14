@@ -39,11 +39,22 @@ function make_variation_buf(  )
 		variation_buf=make_float_buffer(w,h)
 	end
 end
---transforms=nil
+function print_arr( array ,w,h)
+	local str=""
+	for i=1,w*h do
+		str=str..string.format(" % 3d",array[i])
+		if i%w==0 then
+			print(str)
+			str=""
+		end
+	end
+end
+
+transforms=nil
 transforms=transforms or {
-	min=-1,
-	max=1,
-	max_values=5,
+	min=-8,
+	max=8,
+	max_values=400,
 	array={
 	 1,-1, 1,
 	 1, 0,-1,
@@ -56,7 +67,7 @@ transforms=transforms or {
 
 		if dr>self.max then dr=self.max end
 		if dr<self.min then dr=self.min end
-		local size=self.max-self.min
+		local size=self.max-self.min+1
 
 		dl=dl-self.min
 		dr=dr-self.min
@@ -69,11 +80,23 @@ transforms=transforms or {
 	randomize=function ( self )
 		table.insert(self.undo_steps,self.array)
 		self.array={}
-		local size=self.max-self.min
-		for i=1,size*(size+1)+1 do
+		local size=self.max-self.min+1
+		for i=1,size*size do
+			--float version
+			--self.array[i]=math.random()*(self.max-self.min)+self.min
+			--int version
 			self.array[i]=math.random(self.min,self.max)
-			print(i,self.array[i])
+
 		end
+		for x=1,size do
+			for y=x+1,size do
+				local idx=(y-1)+(x-1)*size+1
+				local idx2=(x-1)+(y-1)*size+1
+				print(idx,idx2)
+				self.array[idx]=self.array[idx2]
+			end
+		end
+		print_arr(self.array,size,size)
 	end,
 	mutate=function ( self ,count)
 		table.insert(self.undo_steps,self.array)
@@ -82,7 +105,7 @@ transforms=transforms or {
 			new_array[i]=self.array[i]
 		end
 		self.array=new_array
-		local size=self.max-self.min
+		local size=self.max-self.min+1
 		for i=1,count do
 			local idx=math.random(1,#self.array)
 			self.array[idx]=math.random(self.min,self.max)
@@ -96,8 +119,8 @@ transforms=transforms or {
 		end
 	end,
 	ensure_valid=function ( self )
-		local size=self.max-self.min
-		local arr_size=size*(size+1)+1
+		local size=self.max-self.min+1
+		local arr_size=size*size
 		if #self.array<arr_size then
 			print("Mismatch:",#self.array,arr_size)
 			self.array={}
@@ -112,7 +135,8 @@ transforms=transforms or {
 end]]
 
 transforms:ensure_valid()
-transforms.max_values=10
+print_arr(transforms.array,transforms.max-transforms.min+1,transforms.max-transforms.min+1)
+transforms.max_values=80
 config=make_config({
 	{"draw",true,type="boolean"},
 	{"tick",true,type="boolean"},
@@ -542,6 +566,19 @@ function mod(a,b)
 		return r
     end
 end
+function clip( nv )
+	if nv>transforms.max_values then
+		--nv=0
+		--nv=-transforms.max_values
+		nv=nv-transforms.max_values
+	end
+	if nv<-transforms.max_values then
+		--nv=0
+		--nv=transforms.max_values
+		nv=nv+transforms.max_values
+	end
+	return nv
+end
 function visit_iter(  )
 	local w=visit_buf.w
 	local h=visit_buf.h
@@ -557,8 +594,15 @@ function visit_iter(  )
 		else
 			for y=0,h-1 do
 			for x=0,w-1 do
-				visit_buf:set(x,y,math.random()*transforms.max_values*2- transforms.max_values)
+				visit_buf:set(x,y,0)--math.random()*transforms.max_values*2- transforms.max_values)
 			end
+			end
+			local cur_value=math.random()*transforms.max_values*2- transforms.max_values
+
+			for x=0,w-1 do
+				cur_value=cur_value+math.random()*(transforms.max-transforms.min)+transforms.min
+				cur_value=clip(cur_value)
+				visit_buf:set(x,0,cur_value)
 			end
 		end
 		need_clear=false
@@ -589,16 +633,7 @@ function visit_iter(  )
 			local dl=math.floor(l-c)
 			local dr=math.floor(r-c)
 			local nv=c+transforms:lookup(dl,dr)
-			if nv>transforms.max_values then
-				--nv=0
-				--nv=-transforms.max_values
-				nv=nv-transforms.max_values
-			end
-			if nv<-transforms.max_values then
-				--nv=0
-				--nv=transforms.max_values
-				nv=nv+transforms.max_values
-			end
+			nv=clip(nv)
 			visit_buf:set(x,y,nv)
 
 		end
