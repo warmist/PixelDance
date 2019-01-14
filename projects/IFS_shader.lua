@@ -1327,6 +1327,7 @@ vec2 func(vec2 p,int it_count)
 	return p/length(r);
 #endif
 #if 1
+	const float symetry_defect=0.08;
 	vec2 v=to_polar(p);
 	
 	float av=floor((v.y+M_PI)/ang);
@@ -1335,12 +1336,12 @@ vec2 func(vec2 p,int it_count)
 	vec2 c=vec2(cos(av*ang),sin(av*ang))*dist_div;
 	
 	p-=c;
-	//p-=c*0.25*av; //sort of shell-like looking
-	p=tRotate(p,ang*av);
-	//p=tReflect(p,ang*av/2);
+	p-=c*symetry_defect*av; //sort of shell-like looking
+	//p=tRotate(p,ang*av);
+	p=tReflect(p,ang*av/2+symetry_defect*av);
 	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
-	//r=tReflect(r,ang*av/2);
-	r=tRotate(r,-ang*av);
+	r=tReflect(r,ang*av/2);
+	//r=tRotate(r,-ang*av);
 	//r+=c*0.25*av;
 	r+=c;
 	//r=to_polar(r);
