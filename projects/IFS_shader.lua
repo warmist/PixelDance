@@ -1350,6 +1350,26 @@ vec2 func(vec2 p,int it_count)
 	//r=from_polar(r);
 	return r;
 #endif
+#if 1
+	const float symetry_defect=0.005;
+	const float rotate_amount=M_PI/3;
+	const float cell_size=0.5;
+	vec2 av_v=vec2(floor(p.x*cell_size+0.5),floor(p.y*cell_size+0.5));
+
+	float av=length(av_v);
+	const float dist_div=0.999;
+	vec2 c=av_v*dist_div*(1/cell_size);
+	
+	p-=c;
+	p-=c*symetry_defect*av; //sort of shell-like looking
+	p=tRotate(p,rotate_amount*av);
+	//p=tReflect(p,rotate_amount*av/2+symetry_defect*av);
+	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
+	//r=tReflect(r,rotate_amount*av/2);
+	r=tRotate(r,-rotate_amount*av);
+	r+=c;
+	return r;
+#endif
 #if 0
 /*
 	const float count=0.5;
