@@ -40,6 +40,7 @@ function make_variation_buf(  )
 	end
 end
 function print_arr( array ,w,h)
+	print("=============ARR===========")
 	local str=""
 	for i=1,w*h do
 		str=str..string.format(" % 3d",array[i])
@@ -52,9 +53,9 @@ end
 
 transforms=nil
 transforms=transforms or {
-	min=-8,
-	max=8,
-	max_values=400,
+	min=-3,
+	max=3,
+	max_values=120,
 	array={
 	 1,-1, 1,
 	 1, 0,-1,
@@ -83,19 +84,50 @@ transforms=transforms or {
 		local size=self.max-self.min+1
 		for i=1,size*size do
 			--float version
-			--self.array[i]=math.random()*(self.max-self.min)+self.min
+			self.array[i]=math.random()*(self.max-self.min)+self.min
 			--int version
-			self.array[i]=math.random(self.min,self.max)
-
+			--self.array[i]=math.random(self.min,self.max)
+			--weight close to 0 more
+			--[[
+			if math.random()>0.9 then
+				self.array[i]=0
+			else
+				self.array[i]=math.random(self.min,self.max)
+			end
+			--]]
 		end
+		--symmetry x/y
+		--[[
 		for x=1,size do
 			for y=x+1,size do
 				local idx=(y-1)+(x-1)*size+1
 				local idx2=(x-1)+(y-1)*size+1
+				self.array[idx]=self.array[idx2]
+			end
+		end
+		--]]
+		--symmetry x
+		--[[
+		for x=1,math.floor(size/2) do
+			for y=1,size do
+				local idx=(x-1)+(y-1)*size+1
+				local idx2=(size-x)+(y-1)*size+1
 				print(idx,idx2)
 				self.array[idx]=self.array[idx2]
 			end
 		end
+		--]]
+		--symmetry y
+		--[[
+		for x=1,size do
+			for y=1,math.floor(size/2) do
+				local idx=(x-1)+(y-1)*size+1
+				local idx2=(x-1)+(size-y)*size+1
+				print(idx,idx2)
+				self.array[idx]=self.array[idx2]
+			end
+		end
+		--]]
 		print_arr(self.array,size,size)
 	end,
 	mutate=function ( self ,count)
@@ -136,7 +168,6 @@ end]]
 
 transforms:ensure_valid()
 print_arr(transforms.array,transforms.max-transforms.min+1,transforms.max-transforms.min+1)
-transforms.max_values=80
 config=make_config({
 	{"draw",true,type="boolean"},
 	{"tick",true,type="boolean"},
