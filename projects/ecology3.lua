@@ -74,6 +74,7 @@ void main(){
 }
 ]==])
 local place_pixels_shader=shaders.Make[==[
+#version 330
 out vec4 color;
 in vec3 pos;
 void main(){
