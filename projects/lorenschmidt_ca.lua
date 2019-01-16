@@ -39,135 +39,151 @@ function make_variation_buf(  )
 		variation_buf=make_float_buffer(w,h)
 	end
 end
-function print_arr( array ,w,h)
+transforms=nil
+transforms=transforms or {
+	size_left=2, --aka w=this*2+1
+	size_right=2,--aka h=this*2+1
+	max_output=2,
+	max_values=20,
+	array={
+	 0,  0, -2, -2, -1,
+	 0, -2, -1, -2,  2,
+	-2, -1,  2, -1,  0,
+	-2, -2, -1, -1,  2,
+	-1,  2,  0,  2,  1,
+	},
+	undo_steps={},
+}
+function transforms:w(  )
+	return self.size_left*2+1
+end
+function transforms:h(  )
+	return self.size_right*2+1
+end
+--x,y is 0 to w-1,h-1
+function transforms:get_idx( x,y )
+	return x+y*self:w()+1
+end
+function transforms:print_arr()
 	print("=============ARR===========")
+	local w=self:w()
 	local str=""
-	for i=1,w*h do
-		str=str..string.format(" % 3d",array[i])
+	for i=1,w*self:h() do
+		str=str..string.format(" % 3d,",self.array[i])
 		if i%w==0 then
 			print(str)
 			str=""
 		end
 	end
 end
+function transforms:lookup( dl,dr )
+	if dl>self.size_left then dl=self.size_left end
+	if dl<-self.size_left then dl=-self.size_left end
 
-transforms=nil
-transforms=transforms or {
-	min=-3,
-	max=3,
-	max_values=120,
-	array={
-	 1,-1, 1,
-	 1, 0,-1,
-	-1,-1, 1,
-	},
-	undo_steps={},
-	lookup=function( self,dl,dr )
-		if dl>self.max then dl=self.max end
-		if dl<self.min then dl=self.min end
+	if dr>self.size_right then dr=self.size_right end
+	if dr<-self.size_right then dr=-self.size_right end
 
-		if dr>self.max then dr=self.max end
-		if dr<self.min then dr=self.min end
-		local size=self.max-self.min+1
-
-		dl=dl-self.min
-		dr=dr-self.min
-		local idx=dl+dr*size+1
-		if self.array[idx]==nil then
-			print("NIL With:",dl,dr,idx)
-		end
-		return self.array[idx]
-	end,
-	randomize=function ( self )
-		table.insert(self.undo_steps,self.array)
-		self.array={}
-		local size=self.max-self.min+1
-		for i=1,size*size do
-			--float version
-			self.array[i]=math.random()*(self.max-self.min)+self.min
-			--int version
-			--self.array[i]=math.random(self.min,self.max)
-			--weight close to 0 more
-			--[[
-			if math.random()>0.9 then
-				self.array[i]=0
-			else
-				self.array[i]=math.random(self.min,self.max)
-			end
-			--]]
-		end
-		--symmetry x/y
+	dl=dl+self.size_left
+	dr=dr+self.size_right
+	local idx=self:get_idx(dl,dr)
+	if self.array[idx]==nil then
+		print("NIL With:",dl,dr,idx)
+	end
+	return self.array[idx]
+end
+function transforms:randomize()
+	table.insert(self.undo_steps,self.array)
+	self.array={}
+	
+	for i=1,self:w()*self:h() do
+		--float version
+		--self.array[i]=math.random()*(self.max-self.min)+self.min
+		--int version
+		self.array[i]=math.random(-self.max_output,self.max_output)
+		--weight close to 0 more
 		--[[
-		for x=1,size do
-			for y=x+1,size do
-				local idx=(y-1)+(x-1)*size+1
-				local idx2=(x-1)+(y-1)*size+1
-				self.array[idx]=self.array[idx2]
-			end
+		if math.random()>0.9 then
+			self.array[i]=0
+		else
+			self.array[i]=math.random(self.min,self.max)
 		end
 		--]]
-		--symmetry x
-		--[[
-		for x=1,math.floor(size/2) do
-			for y=1,size do
-				local idx=(x-1)+(y-1)*size+1
-				local idx2=(size-x)+(y-1)*size+1
-				print(idx,idx2)
-				self.array[idx]=self.array[idx2]
-			end
-		end
-		--]]
-		--symmetry y
-		--[[
-		for x=1,size do
-			for y=1,math.floor(size/2) do
-				local idx=(x-1)+(y-1)*size+1
-				local idx2=(x-1)+(size-y)*size+1
-				print(idx,idx2)
-				self.array[idx]=self.array[idx2]
-			end
-		end
-		--]]
-		print_arr(self.array,size,size)
-	end,
-	mutate=function ( self ,count)
-		table.insert(self.undo_steps,self.array)
-		local new_array={}
-		for i=1,#self.array do
-			new_array[i]=self.array[i]
-		end
-		self.array=new_array
-		local size=self.max-self.min+1
-		for i=1,count do
-			local idx=math.random(1,#self.array)
-			self.array[idx]=math.random(self.min,self.max)
-			print(idx,self.array[idx])
-		end
-	end,
-	undo=function ( self )
-		if #self.undo_steps>0 then
-			self.array=self.undo_steps[#self.undo_steps]
-			table.remove(self.undo_steps,#self.undo_steps)
-		end
-	end,
-	ensure_valid=function ( self )
-		local size=self.max-self.min+1
-		local arr_size=size*size
-		if #self.array<arr_size then
-			print("Mismatch:",#self.array,arr_size)
-			self.array={}
-			for i=1,arr_size do
-				self.array[i]=0
-			end
+	end
+	--symmetry x/y
+	--[[
+	for x=1,size do
+		for y=x+1,size do
+			local idx=(y-1)+(x-1)*size+1
+			local idx2=(x-1)+(y-1)*size+1
+			self.array[idx]=self.array[idx2]
 		end
 	end
-}
+	--]]
+	--symmetry x
+	--[[
+	for x=1,math.floor(size/2) do
+		for y=1,size do
+			local idx=(x-1)+(y-1)*size+1
+			local idx2=(size-x)+(y-1)*size+1
+			print(idx,idx2)
+			self.array[idx]=self.array[idx2]
+		end
+	end
+	--]]
+	--symmetry y
+	--[[
+	for x=1,size do
+		for y=1,math.floor(size/2) do
+			local idx=(x-1)+(y-1)*size+1
+			local idx2=(x-1)+(size-y)*size+1
+			print(idx,idx2)
+			self.array[idx]=self.array[idx2]
+		end
+	end
+	--]]
+	self:print_arr()
+end
+function transforms:mutate(count)
+	table.insert(self.undo_steps,self.array)
+	local new_array={}
+	for i=1,#self.array do
+		new_array[i]=self.array[i]
+	end
+	self.array=new_array
+	local size=self.max-self.min+1
+	for i=1,count do
+		local idx=math.random(1,#self.array)
+		self.array[idx]=math.random(self.min,self.max)
+		print(idx,self.array[idx])
+	end
+end
+function transforms:undo()
+	if #self.undo_steps>0 then
+		self.array=self.undo_steps[#self.undo_steps]
+		table.remove(self.undo_steps,#self.undo_steps)
+	end
+end
+function transforms:ensure_valid()
+	local arr_size=self:w()*self:h()
+	if #self.array<arr_size then
+		print("Mismatch:",#self.array,arr_size)
+		self.array={}
+		for i=1,arr_size do
+			self.array[i]=0
+		end
+	end
+end
+--TODO:
+--[[draw_gui=function ( self )
+	
+end]]
+
 --[[for i,v in ipairs(transforms.array) do
 	print(i,v)
 end]]
 
 transforms:ensure_valid()
-print_arr(transforms.array,transforms.max-transforms.min+1,transforms.max-transforms.min+1)
+transforms:print_arr()
 config=make_config({
 	{"draw",true,type="boolean"},
 	{"tick",true,type="boolean"},
@@ -210,7 +226,7 @@ void main(){
 	float left=textureOffset(tex_main,normed,ivec2(-1,0)).x;
 	float right=textureOffset(tex_main,normed,ivec2(1,0)).x;
 	nv-=(right+left)/2;
-	*/
+	//*/
 	nv=(nv-lmm.x)/(lmm.y-lmm.x);
 
 	//nv=floor(nv*50)/50; //stylistic quantization
@@ -246,6 +262,7 @@ function draw_visits(  )
 
 	set_shader_palette(log_shader)
 	log_shader:set("min_max",-transforms.max_values,transforms.max_values)
+	--log_shader:set("min_max",transforms.min,transforms.max)
 	log_shader:set_i("tex_main",0)
 	log_shader:draw_quad()
 	if need_save then
@@ -522,7 +539,7 @@ function palette_serialize(  )
 	return string.format(ret,palette.current_gen,pal)
 end
 function transforms_serialize(  )
-	local ret="transforms.min=%d;transforms.max=%d;transforms.max_values=%d\n"
+	local ret="transforms.size_left=%d;transforms.size_right=%d;transforms.max_output=%d\n"
 	local array_str="transforms.array={"
 	for i=1,#transforms.array do
 		if i~=1 then
@@ -532,7 +549,7 @@ function transforms_serialize(  )
 		end
 	end
 	array_str=array_str.."}\n"
-	return string.format(ret,transforms.min,transforms.max,transforms.max_values)..array_str
+	return string.format(ret,transforms.size_left,transforms.size_right,transforms.max_output)..array_str
 end
 function save_img()
 	img_buf=make_image_buffer(size[1],size[2])
@@ -600,13 +617,13 @@ end
 function clip( nv )
 	if nv>transforms.max_values then
 		--nv=0
-		--nv=-transforms.max_values
-		nv=nv-transforms.max_values
+		nv=-transforms.max_values
+		--nv=nv-transforms.max_values
 	end
 	if nv<-transforms.max_values then
 		--nv=0
-		--nv=transforms.max_values
-		nv=nv+transforms.max_values
+		nv=transforms.max_values
+		--nv=nv+transforms.max_values
 	end
 	return nv
 end
@@ -621,7 +638,7 @@ function visit_iter(  )
 				visit_buf:set(x,y,0)--math.random()*transforms.max_values*2- transforms.max_values)
 			end
 			end
-			visit_buf:set(math.floor(w/2),0,transforms.max_values)
+			visit_buf:set(math.floor(w/2),0,-transforms.max_values)
 		else
 			for y=0,h-1 do
 			for x=0,w-1 do
@@ -631,7 +648,8 @@ function visit_iter(  )
 			local cur_value=math.random()*transforms.max_values*2- transforms.max_values
 
 			for x=0,w-1 do
-				cur_value=cur_value+math.random()*(transforms.max-transforms.min)+transforms.min
+				--cur_value=cur_value+math.random()*(transforms.max-transforms.min)+transforms.min
+				cur_value=math.random()*transforms.max_values*2- transforms.max_values
 				cur_value=clip(cur_value)
 				visit_buf:set(x,0,cur_value)
 			end
