@@ -39,13 +39,15 @@ function make_variation_buf(  )
 		variation_buf=make_float_buffer(w,h)
 	end
 end
-local free_steps=10
-transforms=nil
+tconfig=make_config({
+	{"size_left",2,type="int",min=1,max=20},
+	{"size_right",2,type="int",min=1,max=20},
+	{"max_output",20,type="int",min=1,max=20},
+	{"max_values",100,type="int",min=1,max=1000},
+	{"mutate_count",1,type="int",min=1,max=25},
+},tconfig)
+
 transforms=transforms or {
-	size_left=2, --aka w=this*2+1
-	size_right=2,--aka h=this*2+1
-	max_output=20,
-	max_values=20*free_steps,
 	array={
  	-1,  0, -2,  0,  1,
   	0,  1,  0, -1, -1,
@@ -56,10 +58,10 @@ transforms=transforms or {
 	undo_steps={},
 }
 function transforms:w(  )
-	return self.size_left*2+1
+	return tconfig.size_left*2+1
 end
 function transforms:h(  )
-	return self.size_right*2+1
+	return tconfig.size_right*2+1
 end
 --x,y is 0 to w-1,h-1
 function transforms:get_idx( x,y )
@@ -78,14 +80,14 @@ function transforms:print_arr()
 	end
 end
 function transforms:lookup( dl,dr )
-	if dl>self.size_left then dl=self.size_left end
-	if dl<-self.size_left then dl=-self.size_left end
+	if dl>tconfig.size_left then dl=tconfig.size_left end
+	if dl<-tconfig.size_left then dl=-tconfig.size_left end
 
-	if dr>self.size_right then dr=self.size_right end
-	if dr<-self.size_right then dr=-self.size_right end
+	if dr>tconfig.size_right then dr=tconfig.size_right end
+	if dr<-tconfig.size_right then dr=-tconfig.size_right end
 
-	dl=dl+self.size_left
-	dr=dr+self.size_right
+	dl=dl+tconfig.size_left
+	dr=dr+tconfig.size_right
 	local idx=self:get_idx(dl,dr)
 	if self.array[idx]==nil then
 		print("NIL With:",dl,dr,idx)
@@ -100,7 +102,7 @@ function transforms:randomize()
 		--float version
 		--self.array[i]=math.random()*(self.max-self.min)+self.min
 		--int version
-		self.array[i]=math.random(-self.max_output,self.max_output)
+		self.array[i]=math.random(-tconfig.max_output,tconfig.max_output)
 		--weight close to 0 more
 		--[[
 		if math.random()>0.9 then
@@ -110,8 +112,9 @@ function transforms:randomize()
 		end
 		--]]
 	end
+	self:print_arr()
 	--symmetry x/y
-	-- [[
+	--[[
 	for x=0,self:w()-1 do
 		for y=x,self:h()-1 do
 			local idx=self:get_idx(x,y)
@@ -122,22 +125,20 @@ function transforms:randomize()
 	--]]
 	--symmetry x
 	--[[
-	for x=1,math.floor(size/2) do
-		for y=1,size do
-			local idx=(x-1)+(y-1)*size+1
-			local idx2=(size-x)+(y-1)*size+1
-			print(idx,idx2)
+	for x=0,math.floor(self:w()/2)-1 do
+		for y=0,self:h()-1 do
+			local idx=self:get_idx(x,y)
+			local idx2=self:get_idx(self:w()-x-1,y)
 			self.array[idx]=self.array[idx2]
 		end
 	end
 	--]]
 	--symmetry y
 	--[[
-	for x=1,size do
-		for y=1,math.floor(size/2) do
-			local idx=(x-1)+(y-1)*size+1
-			local idx2=(x-1)+(size-y)*size+1
-			print(idx,idx2)
+	for x=0,self:w()-1 do
+		for y=0,math.floor(self:h()/2)-1 do
+			local idx=self:get_idx(x,y)
+			local idx2=self:get_idx(x,self:h()-y-1)
 			self.array[idx]=self.array[idx2]
 		end
 	end
@@ -153,7 +154,7 @@ function transforms:mutate(count)
 	self.array=new_array
 	for i=1,count do
 		local idx=math.random(1,#self.array)
-		self.array[idx]=math.random(-self.max_output,self.max_output)
+		self.array[idx]=math.random(-tconfig.max_output,tconfig.max_output)
 		print(idx,self.array[idx])
 	end
 end
@@ -173,10 +174,38 @@ function transforms:ensure_valid()
 		end
 	end
 end
---TODO:
---[[draw_gui=function ( self )
+local need_save
+function transforms:draw_gui()
 	
-end]]
+	imgui.Begin("transforms")
+	draw_config(tconfig)
+	if imgui.Button("Randomize Rules") then
+		transforms:randomize()
+		need_clear=true
+	end
+	imgui.SameLine()
+
+	if imgui.Button("Mutate") then
+		transforms:mutate(tconfig.mutate_count)
+	end
+	imgui.SameLine()
+	if imgui.Button("Undo") then
+		transforms:undo()
+	end
+	if imgui.Button("Yes") then
+		need_save=true
+		need_clear=true
+		transforms:mutate(tconfig.mutate_count)
+	end
+	imgui.SameLine()
+	if imgui.Button("No") then
+		transforms:undo()
+		transforms:mutate(tconfig.mutate_count)
+		need_clear=true
+	end
+	imgui.End()
+	self:ensure_valid()
+end
 
 --[[for i,v in ipairs(transforms.array) do
 	print(i,v)
@@ -190,9 +219,8 @@ config=make_config({
 	{"flip",false,type="boolean"},
 	{"clear_to_rnd",false,type="boolean"},
 	{"auto_stop",true,type="boolean"},
-	{"mutate_count",1,type="int",min=1,max=25},
 	{"seed_density",1,type="float"},
-	{"animation",0,type="float",min=0,max=1},
+	{"clamp_mode",4,type="int",min=1,max=4},
 },config)
 
 local log_shader=shaders.Make[==[
@@ -240,7 +268,7 @@ void main(){
 }
 ]==]
 
-local need_save
+
 function draw_visits(  )
 	local lmax=0
 	local lmin=math.huge
@@ -266,7 +294,7 @@ function draw_visits(  )
 	--visits:write_texture(visit_tex)
 
 	set_shader_palette(log_shader)
-	log_shader:set("min_max",-transforms.max_values,transforms.max_values)
+	log_shader:set("min_max",-tconfig.max_values,tconfig.max_values)
 	--log_shader:set("min_max",transforms.min,transforms.max)
 	if config.flip then
 		log_shader:set("flip",-1)
@@ -549,7 +577,7 @@ function palette_serialize(  )
 	return string.format(ret,palette.current_gen,pal)
 end
 function transforms_serialize(  )
-	local ret="transforms.size_left=%d;transforms.size_right=%d;transforms.max_output=%d\n"
+	local ret="tconfig.size_left=%d;tconfig.size_right=%d;tconfig.max_output=%d\n"
 	local array_str="transforms.array={"
 	for i=1,#transforms.array do
 		if i~=1 then
@@ -559,7 +587,7 @@ function transforms_serialize(  )
 		end
 	end
 	array_str=array_str.."}\n"
-	return string.format(ret,transforms.size_left,transforms.size_right,transforms.max_output)..array_str
+	return string.format(ret,tconfig.size_left,tconfig.size_right,tconfig.max_output)..array_str
 end
 function save_img()
 	img_buf=make_image_buffer(size[1],size[2])
@@ -586,31 +614,8 @@ function gui()
 	if imgui.Button("Save image") then
 		need_save=true
 	end
-	imgui.SameLine()
-	if imgui.Button("Randomize Rules") then
-		transforms:randomize()
-	end
-	imgui.SameLine()
-
-	if imgui.Button("Mutate") then
-		transforms:mutate(config.mutate_count)
-	end
-	imgui.SameLine()
-	if imgui.Button("Undo") then
-		transforms:undo()
-	end
-	if imgui.Button("Yes") then
-		need_save=true
-		need_clear=true
-		transforms:mutate(config.mutate_count)
-	end
-	imgui.SameLine()
-	if imgui.Button("No") then
-		transforms:undo()
-		transforms:mutate(config.mutate_count)
-		need_clear=true
-	end
 	imgui.End()
+	transforms:draw_gui()
 end
 function update( )
 	gui()
@@ -631,21 +636,23 @@ function mod(a,b)
     end
 end
 function clip( nv )
-	if nv>transforms.max_values then
-		--nv=0
-		--nv=-transforms.max_values
-		--nv=nv-transforms.max_values
-		nv=transforms.max_values
+
+	if nv>tconfig.max_values then
+		local clamped={
+			0,-tconfig.max_values,nv-tconfig.max_values,tconfig.max_values
+		}
+		return clamped[config.clamp_mode]
 	end
-	if nv<-transforms.max_values then
-		--nv=0
-		--nv=transforms.max_values
-		--nv=nv+transforms.max_values
-		nv=-transforms.max_values
+	if nv<-tconfig.max_values then
+		local clamped={
+			0,tconfig.max_values,nv+tconfig.max_values,-tconfig.max_values
+		}
+		return clamped[config.clamp_mode]
 	end
 	return nv
 end
 ticks_done=0
+pcg32=pcg32 or pcg_rand.Make()
 function do_clear(  )
 	local w=visit_buf.w
 	local h=visit_buf.h
@@ -656,25 +663,26 @@ function do_clear(  )
 	if not config.clear_to_rnd then
 		for y=0,h-1 do
 		for x=0,w-1 do
-			visit_buf:set(x,y,0)--math.random()*transforms.max_values*2- transforms.max_values)
+			visit_buf:set(x,y,0)--math.random()*tconfig.max_values*2- tconfig.max_values)
 		end
 		end
-		visit_buf:set(0,0,transforms.max_values)
-		visit_buf:set(math.floor(w/2),0,-transforms.max_values)
-		visit_buf:set(w-1,0,transforms.max_values)
+		visit_buf:set(0,0,tconfig.max_values)
+		visit_buf:set(math.floor(w/2),0,-tconfig.max_values)
+		visit_buf:set(w-1,0,tconfig.max_values)
 	else
 		for y=0,h-1 do
 		for x=0,w-1 do
 			visit_buf:set(x,y,0)
 		end
 		end
-		
-		local cur_value=math.random()*transforms.max_values*2- transforms.max_values
+		pcg32:seed(42)
+
+		local cur_value=pcg32()*tconfig.max_values*2- tconfig.max_values
 
 		for x=0,w-1 do
-			if config.seed_density>math.random() then
-				cur_value=cur_value+math.random()*transforms.max_output*2-transforms.max_output
-				--cur_value=math.random()*transforms.max_values*2- transforms.max_values
+			if config.seed_density>pcg32() then
+				cur_value=cur_value+pcg32()*tconfig.max_output*2-tconfig.max_output
+				--cur_value=math.random()*tconfig.max_values*2- tconfig.max_values
 				cur_value=clip(cur_value)
 				visit_buf:set(x,0,cur_value)
 			end
@@ -713,6 +721,7 @@ function visit_iter(  )
 		local dr=math.floor(r-c)
 		local nv=c+transforms:lookup(dl,dr)
 		nv=clip(nv)
+
 		visit_buf:set(x,y,nv)
 
 	end
