@@ -39,18 +39,19 @@ function make_variation_buf(  )
 		variation_buf=make_float_buffer(w,h)
 	end
 end
+local free_steps=10
 transforms=nil
 transforms=transforms or {
 	size_left=2, --aka w=this*2+1
 	size_right=2,--aka h=this*2+1
-	max_output=2,
-	max_values=20,
+	max_output=20,
+	max_values=20*free_steps,
 	array={
-	 0,  0, -2, -2, -1,
-	 0, -2, -1, -2,  2,
-	-2, -1,  2, -1,  0,
-	-2, -2, -1, -1,  2,
-	-1,  2,  0,  2,  1,
+ 	-1,  0, -2,  0,  1,
+  	0,  1,  0, -1, -1,
+ 	-2,  0, -2, -1,  2,
+  	0, -1, -1,  2,  2,
+  	1, -1,  2,  2,  0,
 	},
 	undo_steps={},
 }
@@ -110,11 +111,11 @@ function transforms:randomize()
 		--]]
 	end
 	--symmetry x/y
-	--[[
-	for x=1,size do
-		for y=x+1,size do
-			local idx=(y-1)+(x-1)*size+1
-			local idx2=(x-1)+(y-1)*size+1
+	-- [[
+	for x=0,self:w()-1 do
+		for y=x,self:h()-1 do
+			local idx=self:get_idx(x,y)
+			local idx2=self:get_idx(y,x)
 			self.array[idx]=self.array[idx2]
 		end
 	end
@@ -150,10 +151,9 @@ function transforms:mutate(count)
 		new_array[i]=self.array[i]
 	end
 	self.array=new_array
-	local size=self.max-self.min+1
 	for i=1,count do
 		local idx=math.random(1,#self.array)
-		self.array[idx]=math.random(self.min,self.max)
+		self.array[idx]=math.random(-self.max_output,self.max_output)
 		print(idx,self.array[idx])
 	end
 end
@@ -187,7 +187,11 @@ transforms:print_arr()
 config=make_config({
 	{"draw",true,type="boolean"},
 	{"tick",true,type="boolean"},
+	{"flip",false,type="boolean"},
+	{"clear_to_rnd",false,type="boolean"},
+	{"auto_stop",true,type="boolean"},
 	{"mutate_count",1,type="int",min=1,max=25},
+	{"seed_density",1,type="float"},
 	{"animation",0,type="float",min=0,max=1},
 },config)
 
@@ -202,7 +206,7 @@ uniform int palette_size;
 
 uniform vec2 min_max;
 uniform sampler2D tex_main;
-
+uniform float flip;
 vec4 mix_palette2(float value )
 {
 	if (palette_size==0)
@@ -220,6 +224,7 @@ vec4 mix_palette2(float value )
 
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
+	normed.y*=flip;
 	float nv=texture(tex_main,normed).x;
 	vec2 lmm=min_max;
 	/*
@@ -263,6 +268,11 @@ function draw_visits(  )
 	set_shader_palette(log_shader)
 	log_shader:set("min_max",-transforms.max_values,transforms.max_values)
 	--log_shader:set("min_max",transforms.min,transforms.max)
+	if config.flip then
+		log_shader:set("flip",-1)
+	else
+		log_shader:set("flip",1)
+	end
 	log_shader:set_i("tex_main",0)
 	log_shader:draw_quad()
 	if need_save then
@@ -564,7 +574,6 @@ function save_img()
 	img_buf:read_frame()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
-
 function gui()
 	imgui.Begin("IFS play")
 	palette_chooser()
@@ -572,10 +581,6 @@ function gui()
 	local s=STATE.size
 	if imgui.Button("Clear image") then
 		need_clear=true
-	end
-	imgui.SameLine()
-	if imgui.Button("Rnd image") then
-		need_clear="rnd"
 	end
 	imgui.SameLine()
 	if imgui.Button("Save image") then
@@ -593,6 +598,17 @@ function gui()
 	imgui.SameLine()
 	if imgui.Button("Undo") then
 		transforms:undo()
+	end
+	if imgui.Button("Yes") then
+		need_save=true
+		need_clear=true
+		transforms:mutate(config.mutate_count)
+	end
+	imgui.SameLine()
+	if imgui.Button("No") then
+		transforms:undo()
+		transforms:mutate(config.mutate_count)
+		need_clear=true
 	end
 	imgui.End()
 end
@@ -617,87 +633,110 @@ end
 function clip( nv )
 	if nv>transforms.max_values then
 		--nv=0
-		nv=-transforms.max_values
+		--nv=-transforms.max_values
 		--nv=nv-transforms.max_values
+		nv=transforms.max_values
 	end
 	if nv<-transforms.max_values then
 		--nv=0
-		nv=transforms.max_values
+		--nv=transforms.max_values
 		--nv=nv+transforms.max_values
+		nv=-transforms.max_values
 	end
 	return nv
 end
-function visit_iter(  )
+ticks_done=0
+function do_clear(  )
 	local w=visit_buf.w
 	local h=visit_buf.h
-	
-	if need_clear then
-		if need_clear~="rnd" then
-			for y=0,h-1 do
-			for x=0,w-1 do
-				visit_buf:set(x,y,0)--math.random()*transforms.max_values*2- transforms.max_values)
-			end
-			end
-			visit_buf:set(math.floor(w/2),0,-transforms.max_values)
-		else
-			for y=0,h-1 do
-			for x=0,w-1 do
-				visit_buf:set(x,y,0)--math.random()*transforms.max_values*2- transforms.max_values)
-			end
-			end
-			local cur_value=math.random()*transforms.max_values*2- transforms.max_values
+	if config.auto_stop then
+		ticks_done=0
+		config.tick=true
+	end
+	if not config.clear_to_rnd then
+		for y=0,h-1 do
+		for x=0,w-1 do
+			visit_buf:set(x,y,0)--math.random()*transforms.max_values*2- transforms.max_values)
+		end
+		end
+		visit_buf:set(0,0,transforms.max_values)
+		visit_buf:set(math.floor(w/2),0,-transforms.max_values)
+		visit_buf:set(w-1,0,transforms.max_values)
+	else
+		for y=0,h-1 do
+		for x=0,w-1 do
+			visit_buf:set(x,y,0)
+		end
+		end
+		
+		local cur_value=math.random()*transforms.max_values*2- transforms.max_values
 
-			for x=0,w-1 do
-				--cur_value=cur_value+math.random()*(transforms.max-transforms.min)+transforms.min
-				cur_value=math.random()*transforms.max_values*2- transforms.max_values
+		for x=0,w-1 do
+			if config.seed_density>math.random() then
+				cur_value=cur_value+math.random()*transforms.max_output*2-transforms.max_output
+				--cur_value=math.random()*transforms.max_values*2- transforms.max_values
 				cur_value=clip(cur_value)
 				visit_buf:set(x,0,cur_value)
 			end
 		end
-		need_clear=false
-	else
-		for x=0,w-1 do
-		for y=h-1,1,-1 do
-			local v=visit_buf:get(x,y-1)
-			visit_buf:set(x,y,v)
+	end
+	need_clear=false
+	visit_buf:write_texture(visit_tex.t)
+end
+function visit_iter(  )
+	local w=visit_buf.w
+	local h=visit_buf.h
+	for x=0,w-1 do
+	for y=h-1,1,-1 do
+		local v=visit_buf:get(x,y-1)
+		visit_buf:set(x,y,v)
+	end
+	end
+	local y=0
+	for x=0,w-1 do
+		local l
+		if x>0 then
+			l=visit_buf:get(x-1,y+1)
+		else
+			l=visit_buf:get(w-1,y+1)
 		end
+
+		local r
+		if x<w-1 then
+			r=visit_buf:get(x+1,y+1)
+		else
+			r=visit_buf:get(0,y+1)
 		end
-		local y=0
-		for x=0,w-1 do
-			local l
-			if x>0 then
-				l=visit_buf:get(x-1,y+1)
-			else
-				l=visit_buf:get(w-1,y+1)
-			end
 
-			local r
-			if x<w-1 then
-				r=visit_buf:get(x+1,y+1)
-			else
-				r=visit_buf:get(0,y+1)
-			end
+		local c=visit_buf:get(x,y+1)
+		local dl=math.floor(l-c)
+		local dr=math.floor(r-c)
+		local nv=c+transforms:lookup(dl,dr)
+		nv=clip(nv)
+		visit_buf:set(x,y,nv)
 
-			local c=visit_buf:get(x,y+1)
-			local dl=math.floor(l-c)
-			local dr=math.floor(r-c)
-			local nv=c+transforms:lookup(dl,dr)
-			nv=clip(nv)
-			visit_buf:set(x,y,nv)
-
-		end
 	end
 	visit_buf:write_texture(visit_tex.t)
 end
-function update_real(  )
-	__no_redraw()
 
-	__clear()
+function update_real(  )
+	
 	if config.draw then
+		__no_redraw()
+		__clear()
 		draw_visits()
 	end
-
+	if need_clear then
+		do_clear()
+	end
 	if config.tick then
+		ticks_done=ticks_done+1
 		visit_iter()
+		if config.auto_stop then
+			if ticks_done>=size[2]*oversample then
+				ticks_done=0
+				config.tick=false
+			end
+		end
 	end
 end
