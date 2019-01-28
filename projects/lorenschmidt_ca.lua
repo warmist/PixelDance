@@ -154,9 +154,17 @@ function transforms:mutate(count)
 	self.array=new_array
 	for i=1,count do
 		local idx=math.random(1,#self.array)
-		self.array[idx]=math.random(-tconfig.max_output,tconfig.max_output)
-		print(idx,self.array[idx])
+		local v=self.array[idx]
+		if math.random()>0.5 then
+			v=v+1
+		else
+			v=v-1
+		end
+		if v>tconfig.max_output then v=tconfig.max_output end
+		if v<-tconfig.max_output then v=-tconfig.max_output end
+		self.array[idx]=v
 	end
+	self:print_arr()
 end
 function transforms:undo()
 	if #self.undo_steps>0 then
@@ -719,7 +727,7 @@ function visit_iter(  )
 		local c=visit_buf:get(x,y+1)
 		local dl=math.floor(l-c)
 		local dr=math.floor(r-c)
-		local nv=c+transforms:lookup(dl,dr)
+		local nv=c+transforms:lookup(math.max(dl,dr),math.min(dl,dr))
 		nv=clip(nv)
 
 		visit_buf:set(x,y,nv)
