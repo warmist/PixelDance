@@ -725,9 +725,19 @@ function visit_iter(  )
 		end
 
 		local c=visit_buf:get(x,y+1)
+		--[[ ORIGINAL STRONG TASTE
 		local dl=math.floor(l-c)
 		local dr=math.floor(r-c)
-		local nv=c+transforms:lookup(math.max(dl,dr),math.min(dl,dr))
+		--]]
+		-- [[ normalized
+		local dl=math.floor((l-c)*2/tconfig.max_values)*tconfig.max_output
+		local dr=math.floor((r-c)*2/tconfig.max_values)*tconfig.max_output
+		--]]
+		--[[ min/max
+		local dl=math.floor(math.min(r-c,l-c))
+		local dr=math.floor(math.max(r-c,l-c))
+		--]]
+		local nv=c+transforms:lookup(dl,dr)
 		nv=clip(nv)
 
 		visit_buf:set(x,y,nv)
