@@ -2,15 +2,15 @@
 require "common"
 require "colors"
 local luv=require "colors_luv"
---local size_mult=0.25
-local win_w=1024--2560
-local win_h=1024--1440
+local size_mult=1
+local win_w=1024*size_mult
+local win_h=1024*size_mult
 __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/win_h
 local size=STATE.size
 local max_palette_size=50
 local sample_count=100000
-local max_sample=10000000 --for halton seq.
+local max_sample=100000000 --for halton seq.
 local need_clear=false
 local oversample=1
 local render_lines=false --does not work :<
@@ -51,7 +51,7 @@ config=make_config({
 	{"only_last",false,type="boolean"},
 	{"auto_scale_color",false,type="boolean"},
 	{"draw",true,type="boolean"},
-	{"point_size",3,type="int",min=0,max=10},
+	{"point_size",0,type="int",min=0,max=10},
 	{"ticking",1,type="int",min=1,max=2},
 	{"v0",-0.211,type="float",min=-5,max=5},
 	{"v1",-0.184,type="float",min=-5,max=5},
@@ -749,13 +749,19 @@ function random_math_power( steps,complications,seed )
 end
 animate=false
 function rand_function(  )
+
 	--str_x=random_math(rand_complexity)
 	--str_y=random_math(rand_complexity)
+
 	--str_x=random_math_fourier(5,rand_complexity)
 	--str_y=random_math_fourier(5,rand_complexity)
 
 	--str_x=random_math_power(5,rand_complexity)
 	--str_y=random_math_power(5,rand_complexity)
+
+	str_x=random_math(rand_complexity,"R*s.x*s.x-R*s.y*s.y")
+	str_y=random_math(rand_complexity,"R*s.x*s.x-R*s.y*s.y")
+
 	--str_x=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
 	--str_y=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
 	--str_x="s.x"
@@ -766,21 +772,21 @@ function rand_function(  )
 	--str_y=random_math(rand_complexity,"sin(R)*R")
 	--str_y="sin("..str_x..")"
 	--str_x="cos("..str_x..")"
-	str_x=random_math_power(2,rand_complexity).."/"..random_math_power(2,rand_complexity)
-	str_y=random_math_fourier(2,rand_complexity).."/"..str_x
+	--str_x=random_math_power(2,rand_complexity).."/"..random_math_power(2,rand_complexity)
+	--str_y=random_math_fourier(2,rand_complexity).."/"..str_x
 	str_preamble=""
 	str_postamble=""
 	--[[ offset
 	str_preamble=str_preamble.."s+=params.xy;"
 	--]]
-	-- [[ gravity
+	--[[ gravity
 	str_preamble=str_preamble.."s*=1/move_dist;"
 	--]]
 	--[[ normed-like
 	str_preamble=str_preamble.."float l=length(s);"
 	str_postamble=str_postamble.."s/=l;s*=move_dist;"
 	--]]
-	--[[ normed-like2
+	-- [[ normed-like2
 	str_preamble=str_preamble..""
 	str_postamble=str_postamble.."s/=length(s);s*=move_dist;s+=p;"
 	--]]
@@ -1263,7 +1269,7 @@ if add_visit_shader==nil or force then
 	add_visit_shader=shaders.Make(
 string.format([==[
 #version 330
-#line 1263
+#line 1266
 layout(location = 0) in vec3 position;
 out vec3 pos;
 
@@ -1314,7 +1320,7 @@ vec2 tReflect(vec2 p,float a){
 vec2 func(vec2 p,int it_count)
 {
 	const float ang=(M_PI/15)*2;
-#if 0
+#if 1
 	return func_actual(p,it_count);
 #endif
 #if 0
@@ -1326,7 +1332,12 @@ vec2 func(vec2 p,int it_count)
 	vec2 r=func_actual(p,it_count);
 	return p/length(r);
 #endif
-#if 1
+#if 0
+	vec2 r=func_actual(p,it_count);
+	return (p/length(p))*length(r);
+	//return p/length(p-r);
+#endif
+#if 0
 	const float symetry_defect=0.08;
 	vec2 v=to_polar(p);
 	
@@ -1350,10 +1361,10 @@ vec2 func(vec2 p,int it_count)
 	//r=from_polar(r);
 	return r;
 #endif
-#if 1
+#if 0
 	const float symetry_defect=0.005;
 	const float rotate_amount=M_PI/3;
-	const float cell_size=0.5;
+	const float cell_size=0.1;
 	vec2 av_v=vec2(floor(p.x*cell_size+0.5),floor(p.y*cell_size+0.5));
 
 	float av=length(av_v);
@@ -1638,7 +1649,7 @@ function visit_iter()
 			local x=vdc(cur_sample,2)*gen_radius-gen_radius/2
 			local y=vdc(cur_sample,3)*gen_radius-gen_radius/2
 			--]]
-			--[[ box muller transform on halton sequence i.e. guassian halton?
+			-- [[ box muller transform on halton sequence i.e. guassian halton?
 			cur_sample=cur_sample+1
 			if cur_sample>max_sample then cur_sample=0 end
 
@@ -1654,7 +1665,7 @@ function visit_iter()
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=3
 			local rad=2+gen_radius*gen_radius
