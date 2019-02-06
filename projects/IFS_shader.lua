@@ -749,18 +749,33 @@ function random_math_power( steps,complications,seed )
 end
 animate=false
 function rand_function(  )
+	local s=random_math(rand_complexity)
 
-	--str_x=random_math(rand_complexity)
-	--str_y=random_math(rand_complexity)
+	--str_x=s
+	--str_y=s
+	str_x=random_math(rand_complexity)
+	str_y=random_math(rand_complexity)
 
-	--str_x=random_math_fourier(5,rand_complexity)
-	--str_y=random_math_fourier(5,rand_complexity)
+	--str_x=random_math(rand_complexity,"log(abs(R))")
+	--str_y=random_math(rand_complexity,"log(abs(R))")
+
+	--str_x=random_math(rand_complexity,"exp(R)")
+	--str_y=random_math(rand_complexity,"exp(R)")
+
+	--str_x=random_math(rand_complexity,"exp(1/(-s.x*s.x))*R")
+	--str_y=random_math(rand_complexity,"exp(1/(-s.y*s.y))*R")
+
+	--str_x="exp(1/(-s.x*s.x))*"..s
+	--str_y="exp(1/(-s.y*s.y))*"..s
+	--str_x=random_math_fourier(3,rand_complexity)
+	--str_y=random_math_fourier(3,rand_complexity)
 
 	--str_x=random_math_power(5,rand_complexity)
 	--str_y=random_math_power(5,rand_complexity)
 
-	str_x=random_math(rand_complexity,"R*s.x*s.x-R*s.y*s.y")
-	str_y=random_math(rand_complexity,"R*s.x*s.x-R*s.y*s.y")
+	--str_x=random_math(rand_complexity,"R*s.x*s.x-R*s.y*s.y")
+	--str_y=random_math(rand_complexity,"R*s.x*s.x-R*s.y*s.y")
+
 
 	--str_x=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
 	--str_y=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
@@ -776,17 +791,35 @@ function rand_function(  )
 	--str_y=random_math_fourier(2,rand_complexity).."/"..str_x
 	str_preamble=""
 	str_postamble=""
+	-- [[ gravity
+	str_preamble=str_preamble.."s*=1/move_dist;"
+	--]]
+	--[[ center PRE
+	str_preamble=str_preamble.."s=s-p;"
+	--]]
+	--[[ cosify
+	str_preamble=str_preamble.."s=cos(s);"
+	--]]
+	-- [[ tanify
+	str_preamble=str_preamble.."s=tan(s);"
+	--]]
+	--[[ logitify PRE
+	str_preamble=str_preamble.."s=log(abs(s));"
+	--]]
+	--[[ gaussination
+	str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
+	--]]
 	--[[ offset
 	str_preamble=str_preamble.."s+=params.xy;"
 	--]]
-	--[[ gravity
-	str_preamble=str_preamble.."s*=1/move_dist;"
+	--[[ rotate
+	str_preamble=str_preamble.."s=vec2(cos(params.z)*s.x-sin(params.z)*s.y,cos(params.z)*s.y+sin(params.z)*s.x);"
 	--]]
 	--[[ normed-like
 	str_preamble=str_preamble.."float l=length(s);"
 	str_postamble=str_postamble.."s/=l;s*=move_dist;"
 	--]]
-	-- [[ normed-like2
+	--[[ normed-like2
 	str_preamble=str_preamble..""
 	str_postamble=str_postamble.."s/=length(s);s*=move_dist;s+=p;"
 	--]]
@@ -797,6 +830,27 @@ function rand_function(  )
 	--[[ centered-polar
 	str_preamble=str_preamble.."s=to_polar(s-p);"
 	str_postamble=str_postamble.."s=from_polar(s)+p;"
+	--]]
+	--[[ logitify POST
+	str_postamble=str_postamble.."s=log(abs(s));"
+	--]]
+	--[[ exp post
+	str_postamble=str_postamble.."s=exp(s);"
+	--]]
+	--[[ unrotate POST
+	str_postamble=str_postamble.."s=vec2(cos(-params.z)*s.x-sin(-params.z)*s.y,cos(-params.z)*s.y+sin(-params.z)*s.x);"
+	--]]
+	--[[ unoffset POST
+	str_postamble=str_postamble.."s-=params.xy;"
+	--]]
+	-- [[ untan POST
+	str_postamble=str_postamble.."s=atan(s);"
+	--]]
+	--[[ uncosify POST
+	str_postamble=str_postamble.."s=acos(s);"
+	--]]
+	--[[ uncenter POST
+	str_postamble=str_postamble.."s=s+p;"
 	--]]
 	print("==============")
 	print(str_preamble)
@@ -1319,7 +1373,7 @@ vec2 tReflect(vec2 p,float a){
 }
 vec2 func(vec2 p,int it_count)
 {
-	const float ang=(M_PI/15)*2;
+	const float ang=(M_PI/3)*2;
 #if 1
 	return func_actual(p,it_count);
 #endif
@@ -1338,7 +1392,7 @@ vec2 func(vec2 p,int it_count)
 	//return p/length(p-r);
 #endif
 #if 0
-	const float symetry_defect=0.08;
+	const float symetry_defect=0.8;
 	vec2 v=to_polar(p);
 	
 	float av=floor((v.y+M_PI)/ang);
@@ -1348,11 +1402,13 @@ vec2 func(vec2 p,int it_count)
 	
 	p-=c;
 	p-=c*symetry_defect*av; //sort of shell-like looking
-	//p=tRotate(p,ang*av);
-	p=tReflect(p,ang*av/2+symetry_defect*av);
+
+	p=tRotate(p,ang*av);
+	//p=tReflect(p,ang*av/2+symetry_defect*av);
 	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
-	r=tReflect(r,ang*av/2);
-	//r=tRotate(r,-ang*av);
+	//r=tReflect(r,ang*av/2);
+	r=tRotate(r,-ang*av);
+
 	//r+=c*0.25*av;
 	r+=c;
 	//r=to_polar(r);
@@ -1649,7 +1705,7 @@ function visit_iter()
 			local x=vdc(cur_sample,2)*gen_radius-gen_radius/2
 			local y=vdc(cur_sample,3)*gen_radius-gen_radius/2
 			--]]
-			-- [[ box muller transform on halton sequence i.e. guassian halton?
+			--[[ box muller transform on halton sequence i.e. guassian halton?
 			cur_sample=cur_sample+1
 			if cur_sample>max_sample then cur_sample=0 end
 
@@ -1665,7 +1721,7 @@ function visit_iter()
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=3
 			local rad=2+gen_radius*gen_radius
