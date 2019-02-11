@@ -367,20 +367,6 @@ function set_shader_palette(s)
 		s:set(string.format("palette[%d]",i),c[1],c[2],c[3],c[4])
 	end
 end
-function iterate_color(tbl, hsl1,hsl2,steps )
-	local hd=hsl2[1]-hsl1[1]
-	local sd=hsl2[2]-hsl1[2]
-	local ld=hsl2[3]-hsl1[3]
-
-	for i=0,steps-1 do
-		local v=i/steps
-		local r=luv.hsluv_to_rgb{(hsl1[1]+hd*v)*360,(hsl1[2]+sd*v)*100,(hsl1[3]+ld*v)*100}
-		--local r=luv.hpluv_to_rgb{(hsl1[1]+hd*v)*360,(hsl1[2]+sd*v)*100,(hsl1[3]+ld*v)*100}
-		r[4]=1
-		r[5]=
-		table.insert(tbl,r)
-	end
-end
 function rand_range( t )
 	return math.random()*(t[2]-t[1])+t[1]
 end
