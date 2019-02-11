@@ -737,10 +737,16 @@ animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
 
-	--str_x=s
-	--str_y=s
+	--str_x="sin("..s.."-s.x*s.y)"
+	--str_y="cos("..s.."-s.y*s.x)"
 	str_x=random_math(rand_complexity)
 	str_y=random_math(rand_complexity)
+
+	--str_x=random_math(rand_complexity,"R*length(s)")
+	--str_y=random_math(rand_complexity,"R*length(s)")
+
+	--str_x=s.."*(length(s-p))"
+	--str_y=s.."*(-length(s-p))"
 
 	--str_x=random_math(rand_complexity,"log(abs(R))")
 	--str_y=random_math(rand_complexity,"log(abs(R))")
@@ -753,8 +759,8 @@ function rand_function(  )
 
 	--str_x="exp(1/(-s.x*s.x))*"..s
 	--str_y="exp(1/(-s.y*s.y))*"..s
-	--str_x=random_math_fourier(3,rand_complexity)
-	--str_y=random_math_fourier(3,rand_complexity)
+	--str_x=random_math_fourier(7,rand_complexity)
+	--str_y=random_math_fourier(7,rand_complexity)
 
 	--str_x=random_math_power(5,rand_complexity)
 	--str_y=random_math_power(5,rand_complexity)
@@ -777,16 +783,19 @@ function rand_function(  )
 	--str_y=random_math_fourier(2,rand_complexity).."/"..str_x
 	str_preamble=""
 	str_postamble=""
-	-- [[ gravity
+	--[[ gravity
 	str_preamble=str_preamble.."s*=1/move_dist;"
+	--]]
+	-- [[ boost
+	str_preamble=str_preamble.."s*=move_dist;"
 	--]]
 	--[[ center PRE
 	str_preamble=str_preamble.."s=s-p;"
 	--]]
-	--[[ cosify
+	-- [[ cosify
 	str_preamble=str_preamble.."s=cos(s);"
 	--]]
-	-- [[ tanify
+	--[[ tanify
 	str_preamble=str_preamble.."s=tan(s);"
 	--]]
 	--[[ logitify PRE
@@ -829,7 +838,7 @@ function rand_function(  )
 	--[[ unoffset POST
 	str_postamble=str_postamble.."s-=params.xy;"
 	--]]
-	-- [[ untan POST
+	--[[ untan POST
 	str_postamble=str_postamble.."s=atan(s);"
 	--]]
 	--[[ uncosify POST
@@ -943,7 +952,7 @@ function auto_clear(  )
 			pos_end=i
 		end
 	end
-	
+
 	for i=pos_start,pos_end do
 		if config[i].changing then
 			need_clear=true
@@ -1359,8 +1368,8 @@ vec2 tReflect(vec2 p,float a){
 }
 vec2 func(vec2 p,int it_count)
 {
-	const float ang=(M_PI/3)*2;
-#if 1
+	const float ang=(M_PI/2)*2;
+#if 0
 	return func_actual(p,it_count);
 #endif
 #if 0
@@ -1377,8 +1386,12 @@ vec2 func(vec2 p,int it_count)
 	return (p/length(p))*length(r);
 	//return p/length(p-r);
 #endif
+#if 1
+	vec2 r=func_actual(p,it_count);
+	return vec2(exp(1/-(r.x*r.x))+p.x,exp(1/-(r.y*r.y))+p.y);
+#endif
 #if 0
-	const float symetry_defect=0.8;
+	const float symetry_defect=0.0;
 	vec2 v=to_polar(p);
 	
 	float av=floor((v.y+M_PI)/ang);
@@ -1669,6 +1682,7 @@ function visit_iter()
 	for i=1,config.ticking do
 		if need_clear then
 			__clear()
+			visit_call_count=0
 			need_clear=false
 			--print("Clearing")
 		end
@@ -1684,7 +1698,7 @@ function visit_iter()
 			local x=((i%sample_count_w)/sample_count_w-0.5)*2
 			local y=(math.floor(i/sample_count_w)/sample_count_w-0.5)*2
 			--]]
-			--[[ halton sequence
+			-- [[ halton sequence
 			cur_sample=cur_sample+1
 			if cur_sample>max_sample then cur_sample=0 end
 
@@ -1707,7 +1721,7 @@ function visit_iter()
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=3
 			local rad=2+gen_radius*gen_radius
