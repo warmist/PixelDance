@@ -725,13 +725,14 @@ function visit_iter(  )
 		end
 
 		local c=visit_buf:get(x,y+1)
-		--[[ ORIGINAL STRONG TASTE
+		-- [[ ORIGINAL STRONG TASTE
 		local dl=math.floor(l-c)
 		local dr=math.floor(r-c)
 		--]]
-		-- [[ normalized
-		local dl=math.floor((l-c)*2/tconfig.max_values)*tconfig.max_output
-		local dr=math.floor((r-c)*2/tconfig.max_values)*tconfig.max_output
+		--[[ normalized
+		local dl=math.floor((l-c)*(tconfig.max_output/(tconfig.max_values*2)))
+		local dr=math.floor((r-c)*(tconfig.max_output/(tconfig.max_values*2)))
+		--print(dl,dr)
 		--]]
 		--[[ min/max
 		local dl=math.floor(math.min(r-c,l-c))

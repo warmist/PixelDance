@@ -789,10 +789,10 @@ function rand_function(  )
 	-- [[ boost
 	str_preamble=str_preamble.."s*=move_dist;"
 	--]]
-	--[[ center PRE
+	-- [[ center PRE
 	str_preamble=str_preamble.."s=s-p;"
 	--]]
-	-- [[ cosify
+	--[[ cosify
 	str_preamble=str_preamble.."s=cos(s);"
 	--]]
 	--[[ tanify
@@ -844,7 +844,7 @@ function rand_function(  )
 	--[[ uncosify POST
 	str_postamble=str_postamble.."s=acos(s);"
 	--]]
-	--[[ uncenter POST
+	-- [[ uncenter POST
 	str_postamble=str_postamble.."s=s+p;"
 	--]]
 	print("==============")
@@ -1388,7 +1388,9 @@ vec2 func(vec2 p,int it_count)
 #endif
 #if 1
 	vec2 r=func_actual(p,it_count);
-	return vec2(exp(1/-(r.x*r.x))+p.x,exp(1/-(r.y*r.y))+p.y);
+	//return vec2(exp(1/-(r.x*r.x))+p.x,exp(1/-(r.y*r.y))+p.y);
+	//return vec2(exp(1/-(p.x*p.x))+r.x,exp(1/-(p.y*p.y))+r.y);
+	return (vec2(exp(1/-(p.x*p.x)),exp(1/-(p.y*p.y)))+r)/2;
 #endif
 #if 0
 	const float symetry_defect=0.0;
