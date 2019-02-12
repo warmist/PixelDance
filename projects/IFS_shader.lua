@@ -4,7 +4,7 @@ require "colors"
 local luv=require "colors_luv"
 local size_mult=1
 local win_w=1024*size_mult
-local win_h=1024*size_mult
+local win_h=win_w--math.floor(1024*size_mult*(1/math.sqrt(2)))
 __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/win_h
 local size=STATE.size
@@ -759,8 +759,8 @@ function rand_function(  )
 
 	--str_x="exp(1/(-s.x*s.x))*"..s
 	--str_y="exp(1/(-s.y*s.y))*"..s
-	--str_x=random_math_fourier(7,rand_complexity)
-	--str_y=random_math_fourier(7,rand_complexity)
+	--str_x=random_math_fourier(3,rand_complexity)
+	--str_y=random_math_fourier(3,rand_complexity)
 
 	--str_x=random_math_power(5,rand_complexity)
 	--str_y=random_math_power(5,rand_complexity)
@@ -789,7 +789,7 @@ function rand_function(  )
 	-- [[ boost
 	str_preamble=str_preamble.."s*=move_dist;"
 	--]]
-	-- [[ center PRE
+	--[[ center PRE
 	str_preamble=str_preamble.."s=s-p;"
 	--]]
 	--[[ cosify
@@ -844,7 +844,7 @@ function rand_function(  )
 	--[[ uncosify POST
 	str_postamble=str_postamble.."s=acos(s);"
 	--]]
-	-- [[ uncenter POST
+	--[[ uncenter POST
 	str_postamble=str_postamble.."s=s+p;"
 	--]]
 	print("==============")
@@ -1318,7 +1318,7 @@ if add_visit_shader==nil or force then
 	add_visit_shader=shaders.Make(
 string.format([==[
 #version 330
-#line 1266
+#line 1322
 layout(location = 0) in vec3 position;
 out vec3 pos;
 
@@ -1333,6 +1333,13 @@ uniform float seed;
 uniform float move_dist;
 uniform vec4 params;
 
+float rand1(float n){return fract(sin(n) * 43758.5453123);}
+float rand2(float n){return fract(sin(n) * 78745.6326871);}
+vec2 cell_pos(int id,int max_id,float dist)
+{
+	float v=float(id)/float(max_id);
+	return vec2(rand1(v)-0.5,rand2(v)-0.5)*dist*2;
+}
 vec2 to_polar(vec2 p)
 {
 	return vec2(length(p),atan(p.y,p.x));
@@ -1368,8 +1375,8 @@ vec2 tReflect(vec2 p,float a){
 }
 vec2 func(vec2 p,int it_count)
 {
-	const float ang=(M_PI/2)*2;
-#if 0
+	const float ang=(M_PI/20)*2;
+#if 1
 	return func_actual(p,it_count);
 #endif
 #if 0
@@ -1378,22 +1385,51 @@ vec2 func(vec2 p,int it_count)
 	return from_polar(r);
 #endif
 #if 0
+	vec2 v=to_polar(p);
+	vec2 r=func_actual(v,it_count);
+	v+=r;
+	return from_polar(v);
+#endif
+#if 0
 	vec2 r=func_actual(p,it_count);
-	return p/length(r);
+	//float d=atan(r.y,r.x);
+	return (p/*+vec2(cos(d),sin(d))*/)/length(r);
 #endif
 #if 0
 	vec2 r=func_actual(p,it_count);
 	return (p/length(p))*length(r);
 	//return p/length(p-r);
 #endif
-#if 1
+#if 0
 	vec2 r=func_actual(p,it_count);
-	//return vec2(exp(1/-(r.x*r.x))+p.x,exp(1/-(r.y*r.y))+p.y);
-	//return vec2(exp(1/-(p.x*p.x))+r.x,exp(1/-(p.y*p.y))+r.y);
-	return (vec2(exp(1/-(p.x*p.x)),exp(1/-(p.y*p.y)))+r)/2;
+	//vec2 delta=p-r;
+	//return p*exp(1/-dot(delta,delta));
+	return p*exp(1/-dot(r,r));
+	//return r*exp(1/-dot(p,p));
+	//return vec2(exp(1/-(r.x*r.x)),exp(1/-(r.y*r.y)))*p;
+	//return vec2(exp(1/-(p.x*p.x)),exp(1/-(p.y*p.y)))+r;
+	//return (vec2(exp(1/-(p.x*p.x)),exp(1/-(p.y*p.y)))+r)/2;
 #endif
 #if 0
-	const float symetry_defect=0.0;
+	//vec2 vp=p*exp(1/-dot(p,p));
+	vec2 vp=p;
+	float l=length(p);
+	if(l>1)
+		vp/=l;
+	vec2 r=func_actual(vp,it_count);
+	return p*exp(1/-dot(r,r));
+	//return vp;
+#endif
+#if 0
+	
+	vec2 r=func_actual(p,it_count);
+	float lr=length(r);
+
+	r*=exp(1/-(dot(r,r)+1));
+	return r;
+#endif
+#if 0
+	const float symetry_defect=0.002;
 	vec2 v=to_polar(p);
 	
 	float av=floor((v.y+M_PI)/ang);
@@ -1404,7 +1440,7 @@ vec2 func(vec2 p,int it_count)
 	p-=c;
 	p-=c*symetry_defect*av; //sort of shell-like looking
 
-	p=tRotate(p,ang*av);
+	p=tRotate(p,ang*av+symetry_defect*av);
 	//p=tReflect(p,ang*av/2+symetry_defect*av);
 	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
 	//r=tReflect(r,ang*av/2);
@@ -1419,17 +1455,56 @@ vec2 func(vec2 p,int it_count)
 	return r;
 #endif
 #if 0
-	const float symetry_defect=0.005;
-	const float rotate_amount=M_PI/3;
-	const float cell_size=0.1;
+	const float symetry_defect=0;
+	const float rotate_amount=0;//M_PI/3;
+	const float cell_size=5;
 	vec2 av_v=vec2(floor(p.x*cell_size+0.5),floor(p.y*cell_size+0.5));
 
-	float av=length(av_v);
-	const float dist_div=0.999;
+	float av=abs(av_v.x)+abs(av_v.y);//length(av_v);
+	const float dist_div=1;
 	vec2 c=av_v*dist_div*(1/cell_size);
 	
+	//p-=c;
+	p-=c*symetry_defect*av;
+	//p=tRotate(p,rotate_amount*av);
+	p=tReflect(p,rotate_amount*av/2+symetry_defect*av);
+	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
+	r=tReflect(r,rotate_amount*av/2);
+	//r=tRotate(r,-rotate_amount*av);
+	r+=c;
+	return r;
+#endif
+#if 0
+	const float symetry_defect=0.000;//0.01;
+	const float rotate_amount=M_PI*2;//M_PI/3;
+
+	const int cell_count=50;
+	const float cell_dist=1;
+
+	int nn=0;
+	float min_dist=9999;
+	for(int i=0;i<cell_count;i++)
+	{
+		vec2 c=cell_pos(i,cell_count,cell_dist);
+		vec2 d=c-p;
+		float dd=dot(d,d);
+		if(dd<min_dist)
+		{
+			min_dist=dd;
+			nn=i;
+		}
+	}
+
+	vec2 cell=cell_pos(nn,cell_count,cell_dist);
+
+
+	float av=nn;//abs(cell.x)+abs(cell.y);//length(av_v);
+	av/=float(cell_count);
+	const float dist_div=1;
+	vec2 c=cell;//*dist_div*(1/cell_dist);
+
 	p-=c;
-	p-=c*symetry_defect*av; //sort of shell-like looking
+	p-=c*symetry_defect*av;
 	p=tRotate(p,rotate_amount*av);
 	//p=tReflect(p,rotate_amount*av/2+symetry_defect*av);
 	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
@@ -1614,11 +1689,11 @@ function math.sign(x)
 end
 visit_call_count=0
 local visit_plan={
-	{1,32},
-	{2,16},
-	{4,8},
+	{16,2},
 	{8,4},
-	{16,2}
+	{4,8},
+	{2,16},
+	{1,32},
 }
 function get_visit_size( vcount )
 	local sum=0
@@ -1700,7 +1775,7 @@ function visit_iter()
 			local x=((i%sample_count_w)/sample_count_w-0.5)*2
 			local y=(math.floor(i/sample_count_w)/sample_count_w-0.5)*2
 			--]]
-			-- [[ halton sequence
+			--[[ halton sequence
 			cur_sample=cur_sample+1
 			if cur_sample>max_sample then cur_sample=0 end
 
@@ -1739,7 +1814,7 @@ function visit_iter()
 			local y=math.sin(a)*gen_radius
 			--]]
 
-			--[[ circle area
+			-- [[ circle area
 			local a = math.random() * 2 * math.pi
 			local r = gen_radius * math.sqrt(math.random())
 			local x = r * math.cos(a)
