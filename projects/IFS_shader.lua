@@ -38,14 +38,6 @@ function make_visits_buf(  )
 		visit_buf=make_float_buffer(size[1]*oversample,size[2]*oversample)
 	end
 end
-function make_variation_buf(  )
-	local undersample=8
-	local w=math.floor(size[1]/undersample)
-	local h=math.floor(size[2]/undersample)
-	if variation_buf==nil or variation_buf.w~=w or variation_buf.h~=h then
-		variation_buf=make_float_buffer(w,h)
-	end
-end
 tick=tick or 0
 config=make_config({
 	{"only_last",false,type="boolean"},
