@@ -150,44 +150,7 @@ vec2 local_minmax(vec2 pos)
 	avg/=wsum;
 	return vec2(log(avg/10+1),log(avg*10+1));
 }
-float mean_tex(vec2 pos)
-{
-	float ret=0;
 
-	ret+=textureOffset(tex_main,pos,ivec2(0,0)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(1,0)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(0,1)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(-1,0)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(0,-1)).x;
-
-	ret+=textureOffset(tex_main,pos,ivec2(1,1)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(-1,-1)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(1,-1)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(-1,1)).x;
-
-
-	return ret/9;
-}
-#define DX(xoff,yoff) {float n=meant-textureOffset(tex_main,pos,ivec2(xoff,yoff)).x;ret+=n*n;}
-float var_tex(vec2 pos)
-{
-	float meant=mean_tex(pos);
-
-	float ret=0;
-
-	DX(0,0);
-	DX(1,0);
-	DX(-1,0);
-	DX(0,1);
-	DX(0,-1);
-
-	DX(1,1);
-	DX(-1,-1);
-	DX(-1,1);
-	DX(1,-1);
-
-	return ret/9;
-}
 vec2 tRotate(vec2 p, float a) {
 	float c=cos(a);
 	float s=sin(a);
@@ -233,54 +196,25 @@ float mask(vec2 pos)
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float nv=texture(tex_main,normed).x;
-	//float nv=mean_tex(normed);
-	//float nv=var_tex(normed);
-	//color = vec4(nv,0,0,1);
-	
+
 	vec2 lmm=min_max;
 	//vec2 lmm=local_minmax(normed);
 	if(auto_scale_color==1)
 		nv=(log(nv+1)-lmm.x)/(lmm.y-lmm.x);
 	else
 		nv=log(nv+1)/lmm.y;
-	//nv=floor(nv*50)/50; //stylistic quantization
-	float l=mask(pos.xy/*,var_tex(normed)*/);
-	/*
-	float phi=1.61803398875;
-	float box_size=1.8;
-	float l=sdBox(pos.xy*2,vec2(box_size,box_size));
-	float tri_size=1.05;
-	float t1=sdEquilateralTriangle(pos.xy*tri_size+vec2(0,0.3));
-	vec2 n2=pos.xy+vec2(1.005,-0.3);
-	vec2 rp2=tRotate(n2,M_PI/3);
-	float t2=sdEquilateralTriangle(rp2*tri_size);
-	vec2 n3=pos.xy+vec2(-1.005,-0.3);
-	vec2 rp3=tRotate(n3,M_PI/3);
-	float t3=sdEquilateralTriangle(rp3*tri_size);
-	//float l=min(t1,min(t2,t3));
-	float blur=0.0125;
-	l=smoothstep(0.0,blur,l);
-	//*/
-	/*
-	float l=length(pos.xy);
-	l=smoothstep(0.85,0.9,l);
-	//*/
-	
+
+	/* compress everything a bit
+	float pw=0.5;
+	nv=pow(nv,pw);
+	*/
+	//nv=floor(nv*10)/10; //stylistic quantization
+	//nv=pow(nv,1/pw);
+
+	float l=mask(pos.xy);
 
 	nv=clamp(nv,0,1);
-	//nv=math.min(math.max(nv,0),1);
-	//--mix(pix_out,c_u8,c_back,nv)
-	//mix_palette(pix_out,nv)
-	//img_buf:set(x,y,pix_out)
-	
 	color = mix_palette2(nv*l);
-	//color=vec4(l,l,l,1);
-	
-/*
-    color.rgb = pow(color.rgb, vec3(1.0/gamma));
-	color.rgb*=contrast;
-	color.rgb+=vec3(brightness);
-*/
 }
 ]==]
 local need_save
@@ -577,39 +511,20 @@ function palette_serialize(  )
 	end
 	return string.format(ret,palette.current_gen,pal)
 end
-function save_img(tile_count)
-	if tile_count==1 then
-
-		local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
-		for k,v in pairs(config) do
-			if type(v)~="table" then
-				config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
-			end
+function save_img()
+	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
+	for k,v in pairs(config) do
+		if type(v)~="table" then
+			config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
 		end
-		config_serial=config_serial..string.format("str_x=%q\n",str_x)
-		config_serial=config_serial..string.format("str_y=%q\n",str_y)
-		config_serial=config_serial..string.format("str_preamble=%q\n",str_preamble)
-		config_serial=config_serial..string.format("str_postamble=%q\n",str_postamble)
-		config_serial=config_serial..palette_serialize()
-		img_buf:read_frame()
-		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
-	else
-		img_buf:read_frame()
-		local w=img_buf.w
-		local h=img_buf.h
-		local tile_image=make_image_buffer(w*tile_count,h*tile_count)
-		for x=0,(w-1)*tile_count do
-		for y=0,(h-1)*tile_count do
-			local tx,ty=coord_mapping(x-w*tile_count/2+w/2,y-h*tile_count/2+h/2)
-			tx=math.floor(tx)
-			ty=math.floor(ty)
-			if tx>=0 and math.floor(tx)<w and ty>=0 and math.floor(ty)<h then
-				tile_image:set(x,y,img_buf:get(tx,ty))
-			end
-		end
-		end
-		tile_image:save(string.format("tiled_%d.png",os.time(os.date("!*t"))),config_serial)
 	end
+	config_serial=config_serial..string.format("str_x=%q\n",str_x)
+	config_serial=config_serial..string.format("str_y=%q\n",str_y)
+	config_serial=config_serial..string.format("str_preamble=%q\n",str_preamble)
+	config_serial=config_serial..string.format("str_postamble=%q\n",str_postamble)
+	config_serial=config_serial..palette_serialize()
+	img_buf:read_frame()
+	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
 
 local terminal_symbols={["s.x"]=5,["s.y"]=5,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=2}
@@ -892,11 +807,7 @@ function mix_palette(out,input_t )
 	end
 	if input_t>1 then input_t=1 end
 	if input_t<0 then input_t=0 end
---[[
-	local tbin=input_t*20
-	bins[math.floor(tbin)]=bins[math.floor(tbin)] or 0
-	bins[math.floor(tbin)]=bins[math.floor(tbin)]+1
-]]
+
 	local tg=input_t*(#palette.colors-1) -- [0,1]--> [0,#colors]
 	local tl=math.floor(tg)
 
@@ -961,348 +872,9 @@ function mod(a,b)
     end
 end
 
-function line_visit( x0,y0,x1,y1 )
-	local dx = x1 - x0;
-    local dy = y1 - y0;
-    if math.sqrt(dx*dx+dy*dy)>5000 then
-    	return
-    end
-    add_visit(mod(x0,size[1]),mod(y0,size[1]),1)
-    if (dx ~= 0) then
-        local m = dy / dx;
-        local b = y0 - m*x0;
-        if x1 > x0 then
-            dx = 1
-        else
-            dx = -1
-        end
-        while math.floor(x0) ~= math.floor(x1) do
-            x0 = x0 + dx
-            y0 = math.floor(m*x0 + b + 0.5);
-            add_visit(mod(x0,size[1]),mod(y0,size[1]),1)
-            --print(x0,y0)
-        end
 
-    end
-end
-function rand_line_visit( x0,y0,x1,y1 )
-	local dx=x1-x0
-	local dy=y1-y0
-	local d=math.sqrt(dx*dx+dy*dy)
-	dx=dx/d
-	dy=dy/d
-	for i=1,config.line_visits do
-		local r=math.random()*d
 
-		local tx=mod(x0+dx*r,size[1])
-		local ty=mod(y0+dy*r,size[2])
-		smooth_visit(tx,ty)
-	end
-end
-function rot_coord( x,y,angle )
-	local c=math.cos(angle)
-	local s=math.sin(angle)
-	--[[
-		| c -s |
-		| s  c |
-	--]]
-	return x*c-y*s,x*s+y*c
-end
-function reflect_coord( x,y,angle )
-	local c=math.cos(2*angle)
-	local s=math.sin(2*angle)
-	--[[
-		| c  s |
-		| s -c |
-	--]]
-	return x*c+y*s,x*s-y*c
-end
-function barycentric( x,y,ax,ay,bx,by,cx,cy )
-	local v0x=bx-ax
-	local v0y=by-ay
 
-	local v1x=cx-ax
-	local v1y=cy-ay
-
-	local v2x=x-ax
-	local v2y=y-ay
-
-	local d00=v0x*v0x+v0y*v0y
-	local d01=v0x*v1x+v0y*v1y
-	local d11=v1x*v1x+v1y*v1y
-	local d20=v2x*v0x+v2y*v0y
-	local d21=v2x*v1x+v2y*v1y
-
-	local denom=d00*d11-d01*d01
-	local v=(d11*d20-d01*d21)/denom
-	local w=(d00*d21-d01*d20)/denom
-	local u=1-v-w
-	return v,w,u
-end
-function from_barycentric( v,w,u,ax,ay,bx,by,cx,cy )
-	local x=v*ax+w*bx+u*cx
-	local y=v*ay+w*by+u*cy
-	return x,y
-end
-function mod_reflect( a,max )
-	local ad=math.floor(a/max)
-	a=mod(a,max)
-	if ad%2==1 then
-		a=max-a
-	end
-	return a
-end
-function to_hex_coord( x,y )
-	local size=300
-	local q=(math.sqrt(3)/3*x-(1/3)*y)/size
-	local r=((2/3)*y)/size
-	return q,r
-end
-function from_hex_coord( q,r )
-	local size=300
-	local x=(math.sqrt(3)*q+(math.sqrt(3)/2)*r)*size
-	local r=((3/2)*r)*size
-	return x,r
-end
-function round( x )
-	return math.floor(x+0.5)
-end
-function axial_to_cube( q,r )
-	return q,-q-r,r
-end
-function cube_to_axial(x,y,z )
-	return x,z
-end
-function cube_round( x,y,z )
-	local rx = round(x)
-    local ry = round(y)
-    local rz = round(z)
-
-    local x_diff = math.abs(rx - x)
-    local y_diff = math.abs(ry - y)
-    local z_diff = math.abs(rz - z)
-
-    if x_diff > y_diff and x_diff > z_diff then
-        rx = -ry-rz
-    elseif y_diff > z_diff then
-        ry = -rx-rz
-    else
-        rz = -rx-ry
-    end
-
-    return rx, ry, rz
-end
-
-function coord_mapping( tx,ty )
-	local s=STATE.size
-	local dist=s[1]
-	local angle=(2*math.pi)/3
-	local sx=s[1]/2
-	local sy=s[2]/2
-	-- [[
-	local cx,cy=tx-sx,ty-sy
-	--return tx,ty
-	--]]
-	-- [[
-	local r=math.sqrt(cx*cx+cy*cy)
-	local a=math.atan2(cy,cx)
-
-	r=mod(r,dist)
-	a=mod(a,angle)
-	r=r/dist
-	a=a/angle
-	return r*s[1],a*s[2]
-	--]]
-	--https://www.redblobgames.com/grids/hexagons/#pixel-to-hex
-	--[=[
-	cx,cy=to_hex_coord(cx,cy)
-	local rx,ry,rz=axial_to_cube(cx,cy)
-	local rrx,rry,rrz=cube_round(rx,ry,rz)
-	rx=rx-rrx
-	ry=ry-rry
-	rz=rz-rrz
-	--]]
-	--[[if rrx%2==1 and rrz%2==1 then
-		rz=-rz
-		rx=-rx
-	end]]
-	--print(max_rz,min_rz,math.sqrt(3))
-	cx,cy=cube_to_axial(rx,ry,rz)
-	cx,cy=from_hex_coord(cx,cy)
-	return cx+sx,cy+sy
-	--[=[
-	local angle=2*math.pi/3
-	
-
-	local ax,ay=math.cos(angle)*dist,math.sin(angle)*dist
-	local bx,by=math.cos(2*angle)*dist,math.sin(2*angle)*dist
-	local cx,cy=math.cos(3*angle)*dist,math.sin(3*angle)*dist
-	local v,w,u=barycentric(tx-sx,ty-sy,ax,ay,bx,by,cx,cy)
-	--print(tx,ty,v,w,u)
-	if v<0 then
-		w=mod(w,1)
-		u=mod(u,1)
-		v=mod(1-w-u,1)
-	elseif u<0 then
-		v=mod(v,1)
-		w=mod(w,1)
-		u=mod(1-v-w,1)
-	else
-		v=mod(v,1)
-		u=mod(u,1)
-		w=mod(1-v-u,1)
-	end
-
-	local nx,ny=from_barycentric(v,w,u,ax,ay,bx,by,cx,cy)
-	return nx+sx,ny+sy
-	--]=]
-	--[=[
-	local nx = tx
-	local ny = ty
-	nx=nx-s[1]/2
-	ny=ny-s[2]/2
-	local dist=200
-	local angle=math.pi/6
-	local dx=math.cos(angle)*dist
-	local dy=math.sin(angle)*dist
-	nx=nx+dx
-	ny=ny+dy
-	--ny=ny-s[2]/2
-	nx,ny=rot_coord(nx,ny,angle)
-	nx=mod(nx,dist)
-	--nx,ny=rot_coord(nx,ny,-angle)
-	nx=nx-dx
-	ny=ny-dy
-
-	
-
-	--[[dx=math.cos(-angle)*dist
-	dy=math.sin(-angle)*dist
-	nx=nx+dx
-	ny=ny+dy
-	nx,ny=rot_coord(nx,ny,-angle)
-	nx=mod(nx,dist)
-	nx,ny=rot_coord(nx,ny,angle)
-	nx=nx-dx
-	ny=ny-dy
-
-	dx=math.cos(2*angle)*dist
-	dy=math.sin(2*angle)*dist
-	nx=nx+dx
-	ny=ny+dy
-	nx,ny=rot_coord(nx,ny,2*angle)
-	nx=mod(nx,dist)
-	nx,ny=rot_coord(nx,ny,-2*angle)
-	nx=nx-dx
-	ny=ny-dy
-	]]
-	nx=nx+s[1]/2
-	ny=ny+s[2]/2
-	
-	--ny=ny+s[2]/2
-	return nx,ny
-	--]=]
-	--[=[
-	
-	local cx=tx-s[1]/2
-	local cy=ty-s[2]/2
-	local rmax=math.min(s[1],s[2])/2
-	
-
-	
-	--r=math.fmod(r,math.min(s[1],s[2])/2)
-	
-	local num=6
-	local top=math.cos(math.pi/num)
-	local bottom=math.cos(a-(math.pi*2/num)*math.floor((num*a+math.pi)/(math.pi*2)))
-
-	local dr=top/bottom
-	dr=(dr*rmax)
-	local d=math.floor(r/dr)
-	a=a-(math.pi*2/num)*d
-	r=math.fmod(r,dr)
-	if d%2==1 then
-		r=dr-r
-	end
-	local nx=math.cos(a)*r+s[1]/2
-	local ny=math.sin(a)*r+s[2]/2
-	return nx,ny
-	--]=]
-	--[=[
-	local rx,ry
-	if tx>s[1]/2 then
-		rx,ry=rot_coord(tx-s[1]/2,ty-s[2]/2,math.pi/4)
-		rx=rx+s[1]/2
-		ry=ry+s[2]/2
-	else
-		rx,ry=tx,ty
-	end
-	return math.fmod(rx,s[1]),math.fmod(ry,s[2])
-	--]=]
-	--[[ PENTAGON
-	local k = {0.809016994,0.587785252,0.726542528};
-	ty=-ty;
-	tx=math.abs(tx)
-	local ntx=tx
-	local nty=ty
-	local v=2*math.min((-k[1]*ntx+k[2]*nty),0)
-	ntx=ntx-v*(-k[1])
-	nty=nty-v*(k[2])
-	local v2=2*math.min((k[1]*ntx+k[2]*nty),0)
-	ntx=ntx-v*(k[1])
-	nty=nty-v*(k[2])
-	return ntx,nty
-	--[=[
-
-	void t_rot(inout vec2 st,float angle)
-	{
-		float c=cos(angle);
-		float s=sin(angle);
-		mat2 m=mat2(c,-s,s,c);
-		st*=m;
-	}
-	void t_ref(inout vec2 st,float angle)
-	{
-		float c=cos(2*angle);
-		float s=sin(2*angle);
-		mat2 m=mat2(c,s,s,-c);
-		st*=m;
-	}
-
-    p -= 2.0*min(dot(vec2(-k.x,k.y),p),0.0)*vec2(-k.x,k.y);
-    p -= 2.0*min(dot(vec2( k.x,k.y),p),0.0)*vec2( k.x,k.y);
-    --]=]
-	--]]
-	--return tx,ty
-	--return mod(tx,s[1]),mod(ty,s[2])
-	--[[
-	local div_x=math.floor(tx/s[1])
-	local div_y=math.floor(ty/s[2])
-	tx=mod(tx,s[1])
-	ty=mod(ty,s[2])
-	if div_x%2==1 then
-		tx=s[1]-tx-1
-	end
-	if div_y%2==1 then
-		ty=s[2]-ty-1
-	end
-	return tx,ty
-	--]]
-	--[[
-	local div=math.floor(tx/s[1]+ty/s[2])
-	tx=mod(tx,s[1])
-	ty=mod(ty,s[2])
-	if div>0 then
-		return s[1]-ty-1,tx
-	end
-	return tx,ty
-	--]]
-end
-function rand_circl(  )
-	local a=math.random()*math.pi*2
-	local r=math.sqrt(math.random())*config.gen_radius
-	return math.cos(a)*r,math.sin(a)*r
-end
 knock_buf=knock_buf or load_png("knock.png")
 local knock_texture
 function make_visit_shader( force )
@@ -1505,52 +1077,6 @@ vec2 func(vec2 p,int it_count)
 	r+=c;
 	return r;
 #endif
-#if 0
-/*
-	const float count=0.5;
-
-	vec2 fx=floor(p/count)*count;
-	const float dist_div=0.5;
-	vec2 c=fx*dist_div;
-
-	p-=c;
-	p=tRotate(p,ang*(fx.x+fx.y));
-	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
-	r=tRotate(r,-ang*(fx.x+fx.y));
-	r+=c;
-	return r;
-	*/
-	const float dist=5;
-	vec2 r;
-	if(p.y>0)
-	{
-		p.y+=dist;
-		p.y*=-1;
-		r=func_actual(p,it_count);
-		r.y*=-1;
-		r.y-=dist;
-	}
-	else
-	{
-		if(p.x>0)
-		{
-			p.x-=dist;
-			r=func_actual(p,it_count);
-			r.x+=dist;
-		}
-		else
-		{
-
-			p.x+=dist;
-			p.x*=-1;
-			r=func_actual(p,it_count);
-			r.x*=-1;
-			r.x-=dist;
-		}
-	}
-	return r;
-#endif
-
 }
 float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
 vec2 gaussian(float mean,float var,vec2 rnd)
