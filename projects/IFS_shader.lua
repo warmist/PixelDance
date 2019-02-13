@@ -431,13 +431,8 @@ function gen_palette( )
 	local s=rand_range(sat_range)
 	local l=rand_range(lit_range)
 	
-	local function gen_shades(tbl, h_start,s_start,l_start,l_end,count)
-		local diff=l_end-l_start
-		for i=0,count-1 do
-			table.insert(tbl,luv.hsluv_to_rgb({h_start,s_start,l_start+diff*(i/(count-1))}))
-		end
-	end
 	palette.generators[palette.current_gen][2](ret,hue_range,sat_range,lit_range)
+	--ret[1]={1,1,1,1,0}
 end
 function palette_chooser()
 	if imgui.RadioButton("Show palette",palette.show) then
