@@ -783,9 +783,15 @@ function rand_function(  )
 	--[[ rotate
 	str_preamble=str_preamble.."s=vec2(cos(params.z)*s.x-sin(params.z)*s.y,cos(params.z)*s.y+sin(params.z)*s.x);"
 	--]]
-	-- [[ const-delta-like
+	-- [[ rotate (p)
+	--str_preamble=str_preamble.."s=vec2(cos(p.x)*s.x-sin(p.x)*s.y,cos(p.x)*s.y+sin(p.x)*s.x);"
+	--str_preamble=str_preamble.."s=vec2(cos(p.y)*s.x-sin(p.y)*s.y,cos(p.y)*s.y+sin(p.y)*s.x);"
+	str_preamble=str_preamble.."s=vec2(cos(normed_i*M_PI*2)*s.x-sin(normed_i*M_PI*2)*s.y,cos(normed_i*M_PI*2)*s.y+sin(normed_i*M_PI*2)*s.x);"
+	--]]
+	--[[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
-	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
+	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
 	--]]
 	--[[ normed-like
 	str_preamble=str_preamble.."float l=length(s);"
