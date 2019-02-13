@@ -260,7 +260,7 @@ end
 palette=palette or {show=false,
 rgb_lerp=false,
 current_gen=1,
-colors_input={{1,0,0,1,0},{0,0,0,1,math.floor(max_palette_size*0.5)},{0,0.7,0.7,1,max_palette_size-1}}}
+colors_input={{0.03, 1, 0.5, 1,0},{0,0,0,1,math.floor(max_palette_size*0.5)},{0.5, 1, 0.7, 1,max_palette_size-1}}}
 function update_palette_img(  )
 	if palette_img.w~=#palette.colors_input then
 		palette_img=make_flt_buffer(#palette.colors_input,1)
@@ -311,12 +311,13 @@ function mix_color_rgb( c1,c2,v )
 	local my_v=v-c1_v
 	local local_v=my_v/c_v
 
-	local c1_rgb=luv.hsluv_to_rgb{c1[1]*360,c1[2]*100,c2[3]*100}
+	local c1_rgb=luv.hsluv_to_rgb{c1[1]*360,c1[2]*100,c1[3]*100}
 	local c2_rgb=luv.hsluv_to_rgb{c2[1]*360,c2[2]*100,c2[3]*100}
 	local ret={}
-	for i=1,4 do
-		ret[i]=(c2[i]-c1[i])*local_v+c1[i]
+	for i=1,3 do
+		ret[i]=(c2_rgb[i]-c1_rgb[i])*local_v+c1_rgb[i]
 	end
+	ret[4]=(c2[4]-c1[4])*local_v+c1[4]
 	return ret
 end
 function set_shader_palette(s)
@@ -542,7 +543,8 @@ function palette_chooser()
 			end
 			if imgui.Button("Print") then
 				for i,v in ipairs(palette.colors_input) do
-					print(string.format("#%02X%02X%02X%02X  %d",math.floor(v[1]*255),math.floor(v[2]*255),math.floor(v[3]*255),math.floor(v[4]*255),v[5]))
+					print(string.format("%g %g %g %g %d",v[1],v[2],v[3],v[4],v[5]))
+
 				end
 			end
 			imgui.SameLine()
