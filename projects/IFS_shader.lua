@@ -693,7 +693,7 @@ function rand_function(  )
 	--[[ gravity
 	str_preamble=str_preamble.."s*=1/move_dist;"
 	--]]
-	-- [[ boost
+	--[[ boost
 	str_preamble=str_preamble.."s*=move_dist;"
 	--]]
 	--[[ center PRE
@@ -708,7 +708,7 @@ function rand_function(  )
 	--[[ logitify PRE
 	str_preamble=str_preamble.."s=log(abs(s));"
 	--]]
-	--[[ gaussination
+	-- [[ gaussination
 	str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
 	--]]
 	--[[ offset
@@ -716,6 +716,10 @@ function rand_function(  )
 	--]]
 	--[[ rotate
 	str_preamble=str_preamble.."s=vec2(cos(params.z)*s.x-sin(params.z)*s.y,cos(params.z)*s.y+sin(params.z)*s.x);"
+	--]]
+	-- [[ const-delta-like
+	str_preamble=str_preamble.."vec2 os=s;"
+	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
 	--]]
 	--[[ normed-like
 	str_preamble=str_preamble.."float l=length(s);"
@@ -739,7 +743,7 @@ function rand_function(  )
 	--[[ exp post
 	str_postamble=str_postamble.."s=exp(s);"
 	--]]
-	--[[ unrotate POST
+	-- [[ unrotate POST
 	str_postamble=str_postamble.."s=vec2(cos(-params.z)*s.x-sin(-params.z)*s.y,cos(-params.z)*s.y+sin(-params.z)*s.x);"
 	--]]
 	--[[ unoffset POST
