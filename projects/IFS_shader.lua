@@ -796,44 +796,6 @@ function update( )
 	gui()
 	update_real()
 end
-function mix_palette(out,input_t )
-	if #palette.colors<=1 then
-		return
-	end
-	if input_t>1 then input_t=1 end
-	if input_t<0 then input_t=0 end
-
-	local tg=input_t*(#palette.colors-1) -- [0,1]--> [0,#colors]
-	local tl=math.floor(tg)
-
-	local t=tg-tl
-	local it=1-t
-	local c1=palette.colors[tl+1]
-	local c2=palette.colors[math.ceil(tg)+1]
-	if c1==nil or c2==nil then
-		out={0,0,0,255}
-		return
-	end
-	--hsv mix
-	if false then
-		local hsv1={rgbToHsv(c1[1]*255,c1[2]*255,c1[3]*255,255)}
-		local hsv2={rgbToHsv(c2[1]*255,c2[2]*255,c2[3]*255,255)}
-		local hsv_out={}
-		for i=1,3 do
-			hsv_out[i]=hsv1[i]*it+hsv2[i]*t
-		end
-		local rgb_out={hsvToRgb(hsv_out[1],hsv_out[2],hsv_out[3],255)}
-		out.r=rgb_out[1]
-		out.g=rgb_out[2]
-		out.b=rgb_out[3]
-		--]]
-	else
-		out.r=(c1[1]*it+c2[1]*t)*255
-		out.g=(c1[2]*it+c2[2]*t)*255
-		out.b=(c1[3]*it+c2[3]*t)*255
-	end
-	out.a=(c1[4]*it+c2[4]*t)*255
-end
 
 function gl_mod( x,y )
 	return x-y*math.floor(x/y)
