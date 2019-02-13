@@ -714,7 +714,7 @@ function rand_function(  )
 	--]]
 	-- [[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
-	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
+	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
 	--]]
 	--[[ normed-like
 	str_preamble=str_preamble.."float l=length(s);"
