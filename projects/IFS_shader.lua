@@ -248,7 +248,7 @@ function draw_visits(  )
 	log_shader:set_i("auto_scale_color",auto_scale)
 	log_shader:draw_quad()
 	if need_save then
-		save_img(tile_count)
+		save_img()
 		need_save=nil
 	end
 end
@@ -770,13 +770,9 @@ function gui()
 	if imgui.Button("Clear image") then
 		clear_buffers()
 	end
-
-	tile_count=tile_count or 1
-	_,tile_count=imgui.SliderInt("Tile count",tile_count,1,8)
+	imgui.SameLine()
 	if imgui.Button("Save image") then
-		--this saves too much (i.e. all gui and stuff, we need to do it in correct place (or render to texture)
-		--save_img(tile_count)
-		need_save=tile_count
+		need_save=true
 	end
 	rand_complexity=rand_complexity or 3
 	if imgui.Button("Rand function") then
