@@ -258,6 +258,7 @@ function clear_buffers(  )
 end
 
 palette=palette or {show=false,
+rgb_lerp=false,
 current_gen=1,
 colors_input={{1,0,0,1,0},{0,0,0,1,math.floor(max_palette_size*0.5)},{0,0.7,0.7,1,max_palette_size-1}}}
 function update_palette_img(  )
@@ -268,13 +269,50 @@ function update_palette_img(  )
 		palette_img:set(i-1,0,v)
 	end
 end
-function mix_color(c1,c2,v)
+function lerp_hue( h1,h2,local_v )
+
+	if math.abs(h1-h2)>0.5 then
+		--loop around lerp (i.e. modular lerp)
+		
+
+		local v=(h1-h2)*local_v+h1
+		if v<0 then 
+			local a1=h2-h1
+			local a=((1-h2)*a1)/(h1-a1)
+			local b=h2-a
+			v=(a)*(local_v)+b
+		end
+		return v
+	else
+		--normal lerp
+		return (h2-h1)*local_v+h1
+	end
+end
+function mix_color_hsl(c1,c2,v)
 	local c1_v=c1[5]
 	local c2_v=c2[5]
 	local c_v=c2_v-c1_v
 	local my_v=v-c1_v
 	local local_v=my_v/c_v
 
+	local ret={}
+	ret[1]=lerp_hue(c1[1],c2[1],local_v)
+	for i=2,4 do --normal lerp for s/l args
+		ret[i]=(c2[i]-c1[i])*local_v+c1[i]
+	end
+	local r2=luv.hsluv_to_rgb{ret[1]*360,ret[2]*100,ret[3]*100}
+	r2[4]=ret[4]
+	return r2
+end
+function mix_color_rgb( c1,c2,v )
+	local c1_v=c1[5]
+	local c2_v=c2[5]
+	local c_v=c2_v-c1_v
+	local my_v=v-c1_v
+	local local_v=my_v/c_v
+
+	local c1_rgb=luv.hsluv_to_rgb{c1[1]*360,c1[2]*100,c2[3]*100}
+	local c2_rgb=luv.hsluv_to_rgb{c2[1]*360,c2[2]*100,c2[3]*100}
 	local ret={}
 	for i=1,4 do
 		ret[i]=(c2[i]-c1[i])*local_v+c1[i]
@@ -288,8 +326,12 @@ function set_shader_palette(s)
 		if palette.colors_input[cur_color][5] < i then
 			cur_color=cur_color+1
 		end
-		local c=mix_color(palette.colors_input[cur_color-1],palette.colors_input[cur_color],i)
-
+		local c
+		if palette.rgb_lerp then
+			c=mix_color_rgb(palette.colors_input[cur_color-1],palette.colors_input[cur_color],i)
+		else
+			c=mix_color_hsl(palette.colors_input[cur_color-1],palette.colors_input[cur_color],i)
+		end
 		s:set(string.format("palette[%d]",i),c[1],c[2],c[3],c[4])
 	end
 end
@@ -297,7 +339,7 @@ function rand_range( t )
 	return math.random()*(t[2]-t[1])+t[1]
 end
 function new_color( h,s,l,pos )
-	local r=luv.hsluv_to_rgb{(h)*360,(s)*100,(l)*100}
+	local r={h,s,l}--luv.hsluv_to_rgb{(h)*360,(s)*100,(l)*100}
 	r[4]=1
 	r[5]=pos
 	return r
@@ -305,6 +347,7 @@ end
 palette.generators={
 	{"random",function (ret, hue_range,sat_range,lit_range )
 		local count=math.random(2,10)
+		--local count=2
 		for i=1,count do
 			local nh,ns,nl
 			nh=rand_range(hue_range)
@@ -342,9 +385,9 @@ palette.generators={
 
 		local s2=rand_range(sat_range)
 		local l2=rand_range(lit_range)
-		local r1=luv.hsluv_to_rgb{(h1)*360,(s)*100,(l)*100}
+		local r1={(h1),(s),(l)}
 		r1[4]=1
-		local r2=luv.hsluv_to_rgb{(1-h1)*360,(s2)*100,(l2)*100}
+		local r2={(1-h1),(s2),(l2)}
 		r2[4]=1
 		r1[5]=0
 		r2[5]=max_palette_size-1
@@ -358,9 +401,9 @@ palette.generators={
 
 		local s2=rand_range(sat_range)
 		local l2=rand_range(lit_range)
-		local r1=luv.hsluv_to_rgb{(h1)*360,(s)*100,(l)*100}
+		local r1={(h1),(s),(l)}
 		r1[4]=1
-		local r2=luv.hsluv_to_rgb{(1-h1)*360,(s2)*100,(l2)*100}
+		local r2={(1-h1),(s2),(l2)}
 		r2[4]=1
 		r1[5]=0
 		r2[5]=max_palette_size-1
@@ -434,6 +477,28 @@ function gen_palette( )
 	palette.generators[palette.current_gen][2](ret,hue_range,sat_range,lit_range)
 	--ret[1]={1,1,1,1,0}
 end
+function print_col( c )
+	for i,v in ipairs(c) do
+		print(i,v)
+	end
+end
+function color_edit_luv(key, col ,alpha)
+
+	local changing,new_col
+	local ncol=luv.hsluv_to_rgb{col[1]*360,col[2]*100,col[3]*100}
+	ncol[4]=col[4]
+
+	
+	changing,new_col=imgui.ColorEdit4(key,ncol,alpha)
+
+	local ret=luv.rgb_to_hsluv(new_col)
+	ret[1]=ret[1]/360
+	ret[2]=ret[2]/100
+	ret[3]=ret[3]/100
+	ret[4]=new_col[4]
+
+	return changing,ret
+end
 function palette_chooser()
 	if imgui.RadioButton("Show palette",palette.show) then
 		palette.show=not palette.show
@@ -480,11 +545,15 @@ function palette_chooser()
 					print(string.format("#%02X%02X%02X%02X  %d",math.floor(v[1]*255),math.floor(v[2]*255),math.floor(v[3]*255),math.floor(v[4]*255),v[5]))
 				end
 			end
+			imgui.SameLine()
+			if imgui.RadioButton("rgb lerp",palette.rgb_lerp) then
+				palette.rgb_lerp=not palette.rgb_lerp
+			end
 		end
 		if #palette.colors_input>0 then
 			local cur_v=palette.colors_input[palette.current]
 			local new_col,ne_pos
-			_,new_col=imgui.ColorEdit4("Current color",cur_v,true)
+			_,new_col=color_edit_luv("Current color",cur_v,false)
 			_,new_pos=imgui.SliderInt("Color place",cur_v[5],0,max_palette_size-1)
 			if palette.current==1 then
 				new_pos=0
@@ -499,12 +568,12 @@ function palette_chooser()
 	end
 end
 function palette_serialize(  )
-	local ret="palette={show=false,current_gen=%d,colors_input={%s}}\n"
+	local ret="palette={show=false,rgb_lerp=%s,current_gen=%d,colors_input={%s}}\n"
 	local pal=""
 	for i,v in ipairs(palette.colors_input) do
 		pal=pal..string.format("{%f,%f,%f,%f,%d},",v[1],v[2],v[3],v[4],v[5])
 	end
-	return string.format(ret,palette.current_gen,pal)
+	return string.format(ret,palette.rgb_lerp,palette.current_gen,pal)
 end
 function save_img()
 	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
@@ -703,7 +772,7 @@ function rand_function(  )
 	--[[ logitify PRE
 	str_preamble=str_preamble.."s=log(abs(s));"
 	--]]
-	-- [[ gaussination
+	--[[ gaussination
 	str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
 	--]]
 	--[[ offset
@@ -1273,7 +1342,7 @@ function visit_iter()
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=3
 			local rad=2+gen_radius*gen_radius
@@ -1289,7 +1358,7 @@ function visit_iter()
 			local y=math.sin(a)*gen_radius
 			--]]
 
-			-- [[ circle area
+			--[[ circle area
 			local a = math.random() * 2 * math.pi
 			local r = gen_radius * math.sqrt(math.random())
 			local x = r * math.cos(a)
