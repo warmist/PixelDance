@@ -124,7 +124,7 @@ static int l_color_edit4(lua_State* L)
     const char *label = luaL_checkstring(L, 1);
     float col[4];
     get_color(L, 2, col, 4);
-    bool show_alpha = luaL_opt(L, lua_toboolean, 3, true);
+    bool show_alpha = lua_toboolean(L, 3);
     bool ret = ImGui::ColorEdit4(label, col,show_alpha);
     lua_pushboolean(L, ret);
     set_color(L, col, 4);
