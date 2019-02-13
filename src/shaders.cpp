@@ -147,6 +147,15 @@ static int blend_additive(lua_State* L)
 	glBlendFunc(GL_ONE, GL_ONE);
 	return 0;
 }
+static int depth_test(lua_State* L)
+{
+    bool t = lua_toboolean(L, 1);
+    if (t)
+        glEnable(GL_DEPTH_TEST);
+    else
+        glDisable(GL_DEPTH_TEST);
+    return 0;
+}
 static int draw_array_points(lua_State* L)
 {
 	auto s = check(L, 1);
@@ -305,6 +314,9 @@ static int make_shader(lua_State* L, const char* vertex, const char* fragment) {
 
 		lua_pushcfunction(L, blend_additive);
 		lua_setfield(L, -2, "blend_add");
+
+        lua_pushcfunction(L, depth_test);
+        lua_setfield(L, -2, "depth_test");
 		/*
 		lua_pushcfunction(L, set_variable); //either uniform or attribute
 		lua_setfield(L, -2, "set");
