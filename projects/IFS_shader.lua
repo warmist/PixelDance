@@ -657,6 +657,25 @@ function random_math( steps,seed )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
+function random_math_centered(steps,complications,seed )
+	local cur_string=("R+%.3f"):format(math.random()*2-1) or seed
+	for i=1,steps do
+		cur_string=cur_string..("+R*%.3f"):format(math.random()*2-1)
+	end
+
+	function M(  )
+		return rand_weighted(normal_symbols)
+	end
+	function MT(  )
+		return rand_weighted(terminal_symbols)
+	end
+
+	for i=1,complications do
+		cur_string=replace_random(cur_string,"R",M)
+	end
+	cur_string=string.gsub(cur_string,"R",MT)
+	return cur_string
+end
 
 function random_math_fourier( steps,complications ,seed)
 	local cur_string=seed or "(R)/2"
@@ -712,8 +731,10 @@ function rand_function(  )
 
 	--str_x="sin("..s.."-s.x*s.y)"
 	--str_y="cos("..s.."-s.y*s.x)"
-	str_x=random_math(rand_complexity)
-	str_y=random_math(rand_complexity)
+	str_x=random_math_centered(10,rand_complexity)
+	str_y=random_math_centered(10,rand_complexity)
+	--str_x=random_math(rand_complexity)
+	--str_y=random_math(rand_complexity)
 
 	--str_x=random_math(rand_complexity,"R*length(s)")
 	--str_y=random_math(rand_complexity,"R*length(s)")
@@ -759,6 +780,20 @@ function rand_function(  )
 	--[[ gravity
 	str_preamble=str_preamble.."s*=1/move_dist;"
 	--]]
+	-- [[ rand scale/offset
+	
+	local r1=math.random()*2-1
+	local r2=math.random()*2-1
+	local l=math.sqrt(r1*r1+r2*r2)
+	local r3=math.random()*2-1
+	local r4=math.random()*2-1
+	local l2=math.sqrt(r3*r3+r4*r4)
+	local r5=math.random()*2-1
+	local r6=math.random()*2-1
+	local l3=math.sqrt(r5*r5+r6*r6)
+	str_preamble=str_preamble..("s=vec2(dot(s,vec2(%.3f,%.3f)),dot(s,vec2(%.3f,%.3f)))+vec2(%3.f,%.3f);"):format(r1/l,r2/l,r3/l2,r4/l2,r5/l3,r6/l3)
+	
+	--]]
 	--[[ boost
 	str_preamble=str_preamble.."s*=move_dist;"
 	--]]
@@ -783,12 +818,12 @@ function rand_function(  )
 	--[[ rotate
 	str_preamble=str_preamble.."s=vec2(cos(params.z)*s.x-sin(params.z)*s.y,cos(params.z)*s.y+sin(params.z)*s.x);"
 	--]]
-	-- [[ rotate (p)
+	--[[ rotate (p)
 	--str_preamble=str_preamble.."s=vec2(cos(p.x)*s.x-sin(p.x)*s.y,cos(p.x)*s.y+sin(p.x)*s.x);"
 	--str_preamble=str_preamble.."s=vec2(cos(p.y)*s.x-sin(p.y)*s.y,cos(p.y)*s.y+sin(p.y)*s.x);"
 	str_preamble=str_preamble.."s=vec2(cos(normed_i*M_PI*2)*s.x-sin(normed_i*M_PI*2)*s.y,cos(normed_i*M_PI*2)*s.y+sin(normed_i*M_PI*2)*s.x);"
 	--]]
-	--[[ const-delta-like
+	-- [[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
 	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
