@@ -204,7 +204,7 @@ void main(){
 	else
 		nv=log(nv+1)/lmm.y;
 
-	/* compress everything a bit
+	/* compress everything a bit i.e. like gamma but for palette
 	float pw=0.5;
 	nv=pow(nv,pw);
 	*/
@@ -797,6 +797,9 @@ function rand_function(  )
 	--[[ boost
 	str_preamble=str_preamble.."s*=move_dist;"
 	--]]
+	-- [[ boost less with distance
+	str_preamble=str_preamble.."s*=move_dist*exp(-1/dot(s,s));"
+	--]]
 	--[[ center PRE
 	str_preamble=str_preamble.."s=s-p;"
 	--]]
@@ -810,7 +813,8 @@ function rand_function(  )
 	str_preamble=str_preamble.."s=log(abs(s));"
 	--]]
 	--[[ gaussination
-	str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
+	--str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
+	str_postamble=str_postamble.."s=s*vec2(exp(1/(-p.x*p.x)),exp(1/(-p.y*p.y)));"
 	--]]
 	--[[ offset
 	str_preamble=str_preamble.."s+=params.xy;"
