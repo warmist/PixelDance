@@ -1299,11 +1299,11 @@ function math.sign(x)
 end
 visit_call_count=0
 local visit_plan={
-	{16,2},
-	{8,4},
+	{128,2},
+	{16,4},
 	{4,8},
 	{2,16},
-	{1,32},
+	--{1,32},
 }
 function get_visit_size( vcount )
 	local sum=0
