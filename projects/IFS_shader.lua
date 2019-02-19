@@ -920,12 +920,16 @@ end
 function auto_clear(  )
 	local pos_start=0
 	local pos_end=0
+	local pos_anim=0;
 	for i,v in ipairs(config) do
 		if v[1]=="v0" then
 			pos_start=i
 		end
 		if v[1]=="cy" then
 			pos_end=i
+		end
+		if v[1]=="animation" then
+			pos_anim=i
 		end
 	end
 
@@ -934,6 +938,10 @@ function auto_clear(  )
 			need_clear=true
 			break
 		end
+	end
+	if config[pos_anim].changing then
+		need_clear=true
+		update_animation_values()
 	end
 end
 function mod(a,b)
