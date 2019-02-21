@@ -1299,11 +1299,21 @@ function math.sign(x)
 end
 visit_call_count=0
 local visit_plan={
+	--[[
+	{120,1},
+	{24,2},
+	{6,6},
+	{2,24},
+	--{1,120},
+	--]]
+	-- [[
+	{64,1},
 	{128,2},
 	{16,4},
 	{4,8},
 	{2,16},
 	--{1,32},
+	--]]
 }
 function get_visit_size( vcount )
 	local sum=0
