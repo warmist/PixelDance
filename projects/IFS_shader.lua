@@ -28,14 +28,21 @@ end
 function make_visits_texture()
 	if visit_tex==nil or visit_tex.w~=size[1]*oversample or visit_tex.h~=size[2]*oversample then
 		print("making tex")
-		visit_tex={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
-		visit_tex.t:use(0,1)
-		visit_tex.t:set(size[1]*oversample,size[2]*oversample,2)
+		visit_tex={t1=textures:Make(),t2=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
+		visit_tex.t1:use(0,1)
+		visit_tex.t1:set(size[1]*oversample,size[2]*oversample,3)
+		visit_tex.t2:use(0,1)
+		visit_tex.t2:set(size[1]*oversample,size[2]*oversample,3)
+		visit_tex.swap=function ( self )
+			local t=self.t1
+			self.t1=self.t2
+			self.t2=t
+		end
 	end
 end
 function make_visits_buf(  )
 	if visit_buf==nil or visit_buf.w~=size[1]*oversample or visit_buf.h~=size[2]*oversample then
-		visit_buf=make_float_buffer(size[1]*oversample,size[2]*oversample)
+		visit_buf=make_flt_half_buffer(size[1]*oversample,size[2]*oversample)
 	end
 end
 tick=tick or 0
@@ -223,11 +230,11 @@ function draw_visits(  )
 	local lmin=math.huge
 	make_visits_texture()
 	make_visits_buf()
-	visit_tex.t:use(0,1)
-	visit_buf:read_texture(visit_tex.t)
+	visit_tex.t2:use(0,1)
+	visit_buf:read_texture(visit_tex.t2)
 	for x=0,visit_buf.w-1 do
 	for y=0,visit_buf.h-1 do
-		local v=visit_buf:get(x,y)
+		local v=visit_buf:get(x,y).r
 		if v>math.exp(config.min_value)-1 then --skip non-visited tiles
 			if lmax<v then lmax=v end
 			if lmin>v then lmin=v end
@@ -236,8 +243,9 @@ function draw_visits(  )
 	end
 	lmax=math.log(lmax+1)
 	lmin=math.log(lmin+1)
+
 	log_shader:use()
-	visit_tex.t:use(0,1)
+	visit_tex.t2:use(0,1)
 	--visits:write_texture(visit_tex)
 
 	set_shader_palette(log_shader)
@@ -969,9 +977,6 @@ end
 
 
 
-
-knock_buf=knock_buf or load_png("knock.png")
-local knock_texture
 function make_visit_shader( force )
 if add_visit_shader==nil or force then
 	add_visit_shader=shaders.Make(
@@ -1032,11 +1037,11 @@ vec2 tReflect(vec2 p,float a){
 	mat2 m=mat2(c,s,s,-c);
 	return m*p;
 }
-vec2 func(vec2 p,int it_count)
+vec3 func(vec2 p,int it_count)
 {
 	const float ang=(M_PI/20)*2;
-#if 1
-	return func_actual(p,it_count);
+#if 0
+	return vec3(func_actual(p,it_count),0.5);
 #endif
 #if 0
 	vec2 v=to_polar(p);
@@ -1133,9 +1138,9 @@ vec2 func(vec2 p,int it_count)
 	r+=c;
 	return r;
 #endif
-#if 0
+#if 1
 	const float symetry_defect=0.000;//0.01;
-	const float rotate_amount=M_PI*2;//M_PI/3;
+	const float rotate_amount=0;//M_PI*2;//M_PI/3;
 
 	const int cell_count=50;
 	const float cell_dist=1;
@@ -1157,20 +1162,20 @@ vec2 func(vec2 p,int it_count)
 	vec2 cell=cell_pos(nn,cell_count,cell_dist);
 
 
-	float av=nn;//abs(cell.x)+abs(cell.y);//length(av_v);
+	float av=nn/float(cell_count);//abs(cell.x)+abs(cell.y);//length(av_v);
 	av/=float(cell_count);
 	const float dist_div=1;
 	vec2 c=cell;//*dist_div*(1/cell_dist);
 
-	p-=c;
-	p-=c*symetry_defect*av;
-	p=tRotate(p,rotate_amount*av);
+	//p-=c;
+	//p-=c*symetry_defect*av;
+	//p=tRotate(p,rotate_amount*av);
 	//p=tReflect(p,rotate_amount*av/2+symetry_defect*av);
 	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
 	//r=tReflect(r,rotate_amount*av/2);
-	r=tRotate(r,-rotate_amount*av);
-	r+=c;
-	return r;
+	//r=tRotate(r,-rotate_amount*av);
+	//r+=c;
+	return vec3(r,av);
 #endif
 }
 float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
@@ -1215,16 +1220,6 @@ vec2 mapping(vec2 p)
 	return p-vec2(w/2,h/2);
 	//*/
 }
-vec2 dfun(vec2 p,int iter,float h)
-{
-	vec2 x1=func(p+vec2(1,1)*h,iter);
-	vec2 x2=func(p+vec2(1,-1)*h,iter);
-	vec2 x3=func(p+vec2(-1,1)*h,iter);
-	vec2 x4=func(p+vec2(-1,-1)*h,iter);
-	
-	return (x1-x2-x3+x4)/(4*h*h);
-
-}
 void main()
 {
 	float d=0;
@@ -1238,12 +1233,13 @@ void main()
 		pos.x=1;
 	else
 		pos.x=0;*/
-	//gl_Position.xy = mapping(dfun(position.xy,iters,0.1)*scale+center);
-	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
+	vec3 f=func(position.xy,iters);
+	gl_Position.xy = mapping(f.xy*scale+center);
 	gl_PointSize=pix_size;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos=gl_Position.xyz;
+    pos.z=f.z;
 }
 ]==],str_preamble,str_x,str_y,str_postamble),
 [==[
@@ -1252,7 +1248,7 @@ void main()
 
 out vec4 color;
 in vec3 pos;
-uniform sampler2D img_tex;
+uniform sampler2D last_frame;
 uniform int pix_size;
 
 float shape_point(vec2 pos)
@@ -1267,7 +1263,8 @@ float shape_point(vec2 pos)
 	return delta_size;
 }
 void main(){
-	//vec4 txt=texture(img_tex,mod(pos.xy*vec2(0.5,-0.5)+vec2(0.5,0.5),1));
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	vec4 p=texture(last_frame,normed);
 #if 0
 	float delta_size=shape_point(pos.xy);
 #else
@@ -1281,7 +1278,7 @@ void main(){
 	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
 	//color=vec4(a,0,0,1);
-	color=vec4(a*intensity,0,0,1);
+	color=vec4(p.x+a*intensity,(p.y+pos.z)/2,0,1);
 }
 ]==])
 end
@@ -1358,23 +1355,19 @@ function visit_iter()
 	make_visits_texture()
 	make_visit_shader()
 	add_visit_shader:use()
-	if knock_texture==nil then
-		knock_texture=textures:Make()
-		knock_texture:use(0,1)
-		knock_buf:write_texture(knock_texture)
-	end
+
 	add_visit_shader:set("center",config.cx,config.cy)
 	add_visit_shader:set("scale",config.scale,config.scale*aspect_ratio)
 	add_visit_shader:set("params",config.v0,config.v1,config.v2,config.v3)
 	add_visit_shader:set("move_dist",config.move_dist)
 
-	visit_tex.t:use(0)
-	knock_texture:use(1)
+	visit_tex.t1:use(0)
+	visit_tex.t2:use(1)
 	add_visit_shader:blend_add()
 	add_visit_shader:set_i("max_iters",config.IFS_steps)
-	add_visit_shader:set_i("img_tex",1)
+	add_visit_shader:set_i("last_frame",1)
 	add_visit_shader:set_i("pix_size",psize)
-	if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
+	if not visit_tex.t1:render_to(visit_tex.w,visit_tex.h) then
 		error("failed to set framebuffer up")
 	end
 	local gen_radius=config.gen_radius
@@ -1511,6 +1504,7 @@ function visit_iter()
 			end
 		end
 	end
+	visit_tex:swap()
 	add_visit_shader:blend_default()
 	__render_to_window()
 end
