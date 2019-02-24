@@ -731,12 +731,12 @@ function rand_function(  )
 
 	--str_x="sin("..s.."-s.x*s.y)"
 	--str_y="cos("..s.."-s.y*s.x)"
-	str_x=random_math_centered(10,rand_complexity)
-	str_y=random_math_centered(10,rand_complexity)
+	str_x=random_math_centered(5,rand_complexity)
+	str_y=random_math_centered(5,rand_complexity)
 	--str_x=random_math(rand_complexity)
 	--str_y=random_math(rand_complexity)
 
-	-- [[
+	--[[
 	local str1="R"
 	local str2="R"
 	local max_i=7
@@ -831,14 +831,16 @@ function rand_function(  )
 	str_preamble=str_preamble.."s+=params.xy;"
 	--]]
 	--[[ rotate
-	str_preamble=str_preamble.."s=vec2(cos(params.z)*s.x-sin(params.z)*s.y,cos(params.z)*s.y+sin(params.z)*s.x);"
+	--str_preamble=str_preamble.."s=vec2(cos(params.z)*s.x-sin(params.z)*s.y,cos(params.z)*s.y+sin(params.z)*s.x);"
+	str_preamble=str_preamble.."p=vec2(cos(params.z*M_PI*2)*p.x-sin(params.z*M_PI*2)*p.y,cos(params.z*M_PI*2)*p.y+sin(params.z*M_PI*2)*p.x);"
+
 	--]]
 	--[[ rotate (p)
 	--str_preamble=str_preamble.."s=vec2(cos(p.x)*s.x-sin(p.x)*s.y,cos(p.x)*s.y+sin(p.x)*s.x);"
 	--str_preamble=str_preamble.."s=vec2(cos(p.y)*s.x-sin(p.y)*s.y,cos(p.y)*s.y+sin(p.y)*s.x);"
 	str_preamble=str_preamble.."s=vec2(cos(normed_i*M_PI*2)*s.x-sin(normed_i*M_PI*2)*s.y,cos(normed_i*M_PI*2)*s.y+sin(normed_i*M_PI*2)*s.x);"
 	--]]
-	-- [[ const-delta-like
+	--[[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
 	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
@@ -865,8 +867,9 @@ function rand_function(  )
 	--[[ exp post
 	str_postamble=str_postamble.."s=exp(s);"
 	--]]
-	-- [[ unrotate POST
-	str_postamble=str_postamble.."s=vec2(cos(-params.z)*s.x-sin(-params.z)*s.y,cos(-params.z)*s.y+sin(-params.z)*s.x);"
+	--[[ unrotate POST
+	--str_postamble=str_postamble.."s=vec2(cos(-params.z)*s.x-sin(-params.z)*s.y,cos(-params.z)*s.y+sin(-params.z)*s.x);"
+	str_postamble=str_postamble.."p=vec2(cos(-params.z*M_PI*2)*p.x-sin(-params.z*M_PI*2)*p.y,cos(-params.z*M_PI*2)*p.y+sin(-params.z*M_PI*2)*p.x);"
 	--]]
 	--[[ unoffset POST
 	str_postamble=str_postamble.."s-=params.xy;"
