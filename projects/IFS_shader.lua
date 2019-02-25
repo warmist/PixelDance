@@ -736,16 +736,16 @@ function rand_function(  )
 	--str_x=random_math(rand_complexity)
 	--str_y=random_math(rand_complexity)
 
-	--[[
-	local str1="R"
-	local str2="R"
+	-- [[
+	local str1="p.x"
+	local str2="p.y"
 	local max_i=7
 	for i=0,max_i-1 do
-		str1=str1..("+R*%.3f"):format(math.cos((i/max_i)*math.pi*2))
-		str2=str2..("+R*%.3f"):format(math.sin((i/max_i)*math.pi*2))
+		str1=str1..("+(%s)*%.3f"):format(s,math.cos((i/max_i)*math.pi*2))
+		str2=str2..("+(%s)*%.3f"):format(s,math.sin((i/max_i)*math.pi*2))
 	end
-	str_x=random_math(rand_complexity,str1)
-	str_y=random_math(rand_complexity,str2)
+	--str_x=random_math(rand_complexity,str1)
+	--str_y=random_math(rand_complexity,str2)
 	--]]
 	--str_x=random_math(rand_complexity,"R*length(s)")
 	--str_y=random_math(rand_complexity,"R*length(s)")
