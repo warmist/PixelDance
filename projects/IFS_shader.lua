@@ -28,11 +28,14 @@ end
 function make_visits_texture()
 	if visit_tex==nil or visit_tex.w~=size[1]*oversample or visit_tex.h~=size[2]*oversample then
 		print("making tex")
-		visit_tex={t1=textures:Make(),t2=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
+		visit_tex={t1=textures:Make(),
+		--[[t2=textures:Make(),]]
+		w=size[1]*oversample,h=size[2]*oversample}
 		visit_tex.t1:use(0,1)
 		visit_tex.t1:set(size[1]*oversample,size[2]*oversample,3)
-		visit_tex.t2:use(0,1)
-		visit_tex.t2:set(size[1]*oversample,size[2]*oversample,3)
+		--[[visit_tex.t2:use(0,1)
+		visit_tex.t2:set(size[1]*oversample,size[2]*oversample,3)]]
+		visit_tex.t2=visit_tex.t1
 		visit_tex.swap=function ( self )
 			local t=self.t1
 			self.t1=self.t2
@@ -202,7 +205,8 @@ float mask(vec2 pos)
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	float nv=texture(tex_main,normed).x;
+	vec2 tex=texture(tex_main,normed).xy;
+	float nv=tex.x;
 
 	vec2 lmm=min_max;
 	//vec2 lmm=local_minmax(normed);
@@ -221,7 +225,9 @@ void main(){
 	float l=mask(pos.xy);
 
 	nv=clamp(nv,0,1);
-	color = mix_palette2(nv*l);
+	vec4 c=mix_palette2(tex.y*1000);
+	color = vec4(c.xyz*nv*l,1);
+	//color.a=nv*l;
 }
 ]==]
 local need_save
@@ -235,7 +241,7 @@ function draw_visits(  )
 	for x=0,visit_buf.w-1 do
 	for y=0,visit_buf.h-1 do
 		local v=visit_buf:get(x,y).r
-		if v>math.exp(config.min_value)-1 then --skip non-visited tiles
+		if v>math.exp(config.min_value)-1 and v<math.huge then --skip non-visited tiles
 			if lmax<v then lmax=v end
 			if lmin>v then lmin=v end
 		end
@@ -1142,7 +1148,7 @@ vec3 func(vec2 p,int it_count)
 	const float symetry_defect=0.000;//0.01;
 	const float rotate_amount=0;//M_PI*2;//M_PI/3;
 
-	const int cell_count=50;
+	const int cell_count=10;
 	const float cell_dist=1;
 
 	int nn=0;
@@ -1263,7 +1269,7 @@ float shape_point(vec2 pos)
 	return delta_size;
 }
 void main(){
-	vec2 normed=(pos.xy+vec2(1,1))/2;
+	vec2 normed=(pos.xy +vec2(1,1))/2;
 	vec4 p=texture(last_frame,normed);
 #if 0
 	float delta_size=shape_point(pos.xy);
@@ -1278,7 +1284,11 @@ void main(){
 	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
 	//color=vec4(a,0,0,1);
-	color=vec4(p.x+a*intensity,(p.y+pos.z)/2,0,1);
+	float col_amount=-0.01;
+	//for r this is needed: + blend_add
+	color=vec4(a*intensity,pos.z,0,1);
+	//for g this is needed  + blend_alpha
+	//color=vec4(a*intensity,pos.z,0,0.5);
 }
 ]==])
 end
@@ -1361,8 +1371,8 @@ function visit_iter()
 	add_visit_shader:set("params",config.v0,config.v1,config.v2,config.v3)
 	add_visit_shader:set("move_dist",config.move_dist)
 
-	visit_tex.t1:use(0)
-	visit_tex.t2:use(1)
+	visit_tex.t1:use(0,1)
+	visit_tex.t2:use(1,1)
 	add_visit_shader:blend_add()
 	add_visit_shader:set_i("max_iters",config.IFS_steps)
 	add_visit_shader:set_i("last_frame",1)
@@ -1377,6 +1387,10 @@ function visit_iter()
 			__clear()
 			visit_call_count=0
 			need_clear=false
+			if not visit_tex.t2:render_to(visit_tex.w,visit_tex.h) then
+				error("failed to set framebuffer up")
+			end
+			__clear()
 			--print("Clearing")
 		end
 
