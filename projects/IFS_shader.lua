@@ -136,10 +136,11 @@ vec2 local_minmax(vec2 pos)
 	float max=nv;
 	float avg=0;
 	float wsum=0;
-	for(int i=0;i<50;i++)
-		for(int j=0;j<50;j++)
+	int look_size=15;
+	for(int i=-look_size;i<=look_size;i++)
+		for(int j=-look_size;j<=look_size;j++)
 		{
-			vec2 delta=vec2(float(i-25)/1024,float(j-25)/1024);
+			vec2 delta=vec2(float(i)/1024,float(j)/1024);
 			float dist=length(delta);
 			float v=texture(tex_main,pos+delta).x;
 			if(max<v)max=v;
@@ -148,9 +149,29 @@ vec2 local_minmax(vec2 pos)
 			wsum+=(1/(dist*dist+1));
 		}
 	avg/=wsum;
-	return vec2(log(avg/10+1),log(avg*10+1));
+	float avg_size=50;
+	//return vec2(min+avg,max-avg);
+	return vec2(log(avg/avg_size+1),log(avg*avg_size+1));
 }
+float dtex(vec2 p)
+{
+	float v1=0;
+	v1+=textureOffset(tex_main,p,ivec2(-1,0)).x;
+	v1+=textureOffset(tex_main,p,ivec2(1,0)).x;
+	v1+=textureOffset(tex_main,p,ivec2(0,1)).x;
+	v1+=textureOffset(tex_main,p,ivec2(0,-1)).x;
 
+	v1+=textureOffset(tex_main,p,ivec2(-1,-1)).x;
+	v1+=textureOffset(tex_main,p,ivec2(1,1)).x;
+	v1+=textureOffset(tex_main,p,ivec2(-1,1)).x;
+	v1+=textureOffset(tex_main,p,ivec2(1,-1)).x;
+
+	v1+=textureOffset(tex_main,p,ivec2(-2,0)).x*0.5;
+	v1+=textureOffset(tex_main,p,ivec2(2,0)).x*0.5;
+	v1+=textureOffset(tex_main,p,ivec2(0,2)).x*0.5;
+	v1+=textureOffset(tex_main,p,ivec2(0,-2)).x*0.5;
+	return v1/10;
+}
 vec2 tRotate(vec2 p, float a) {
 	float c=cos(a);
 	float s=sin(a);
@@ -196,13 +217,21 @@ float mask(vec2 pos)
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float nv=texture(tex_main,normed).x;
-
+	//vec2 local_mm=local_minmax(normed);
+	float lnv=abs(nv-dtex(normed));
 	vec2 lmm=min_max;
-	//vec2 lmm=local_minmax(normed);
 	if(auto_scale_color==1)
+	{
+		lnv=(log(lnv+1)-lmm.x)/(lmm.y-lmm.x);
 		nv=(log(nv+1)-lmm.x)/(lmm.y-lmm.x);
+	}
 	else
+	{
+		lnv=log(lnv+1)/lmm.y;
 		nv=log(nv+1)/lmm.y;
+	}
+	lnv=clamp(lnv,0,1);
+	nv=clamp(nv,0,1);
 
 	/* compress everything a bit i.e. like gamma but for palette
 	float pw=0.5;
@@ -213,8 +242,10 @@ void main(){
 
 	float l=mask(pos.xy);
 
-	nv=clamp(nv,0,1);
-	color = mix_palette2(nv*l);
+
+	color = mix_palette2(lnv*l)*nv;
+	//color = mix_palette2(nv*l)*lnv;
+	color.a=1;
 }
 ]==]
 local need_save
@@ -731,12 +762,12 @@ function rand_function(  )
 
 	--str_x="sin("..s.."-s.x*s.y)"
 	--str_y="cos("..s.."-s.y*s.x)"
-	str_x=random_math_centered(5,rand_complexity)
-	str_y=random_math_centered(5,rand_complexity)
-	--str_x=random_math(rand_complexity)
-	--str_y=random_math(rand_complexity)
+	--str_x=random_math_centered(5,rand_complexity)
+	--str_y=random_math_centered(5,rand_complexity)
+	str_x=random_math(rand_complexity)
+	str_y=random_math(rand_complexity)
 
-	-- [[
+	--[[
 	local str1="p.x"
 	local str2="p.y"
 	local max_i=7
@@ -791,7 +822,7 @@ function rand_function(  )
 	--[[ gravity
 	str_preamble=str_preamble.."s*=1/move_dist;"
 	--]]
-	-- [[ rand scale/offset
+	--[[ rand scale/offset
 	
 	local r1=math.random()*2-1
 	local r2=math.random()*2-1
