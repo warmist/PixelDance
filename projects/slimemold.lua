@@ -34,13 +34,13 @@ config=make_config({
     {"pause",false,type="bool"},
     {"color",{0.63,0.59,0.511,0.2},type="color"},
     --system
-    {"decay",0,type="float"},
-    {"diffuse",0.9999,type="float"},
+    {"decay",0.9,type="float"},
+    {"diffuse",1,type="float"},
     --agent
-    {"ag_sensor_distance",1,type="float",min=0.1,max=10},
+    {"ag_sensor_distance",9,type="float",min=0.1,max=10},
     {"ag_sensor_size",1,type="int",min=1,max=3},
-    {"ag_sensor_angle",math.pi/8,type="angle"},
-    {"ag_turn_angle",math.pi/16,type="angle"},
+    {"ag_sensor_angle",math.pi/4,type="float",min=0,max=math.pi/2},
+    {"ag_turn_angle",math.pi/4,type="float",min=0,max=math.pi/2},
 	{"ag_step_size",1,type="float",min=0.1,max=10},
     },config)
 
@@ -65,7 +65,7 @@ void main(){
 function fill_buffer(  )
 	for i=map_w*0.2,map_w*0.8 do
     	for j=map_h*0.2,map_h*0.8 do
-    		signal_buf:set(math.floor(i),math.floor(j),math.random())
+    		signal_buf:set(math.floor(i),math.floor(j),math.random()*100)
     	end
     end
 end
@@ -133,8 +133,10 @@ function agent:step(  )
 		self.heading=self.heading+(math.random()-0.5)*turn_size
 	elseif right> fow then
 		self.heading=self.heading+turn_size
+		--self.heading=self.heading+turn_size*math.random()
 	elseif left>fow then
 		self.heading=self.heading-turn_size
+		--self.heading=self.heading-turn_size*math.random()
 	end
 	--step
 	heading=self.heading
@@ -147,7 +149,9 @@ function agent:leave_track(  )
 	local agent_track_amount=0.01
 	local tx=math.floor(self.pos[1])
 	local ty=math.floor(self.pos[2])
-	signal_buf:set(tx,ty,signal_buf:get(tx,ty)+agent_track_amount)
+	local new_val=signal_buf:get(tx,ty)+agent_track_amount
+	if new_val>1 then new_val=1 end
+	signal_buf:set(tx,ty,new_val)
 end
 function agents_step(  )
 	for _,v in ipairs(agents) do
@@ -183,7 +187,7 @@ function diffuse_and_decay(  )
 					wsum=wsum+w
 				end
 			end
-			local decay_value=math.exp(-config.decay)
+			local decay_value=config.decay--math.exp(-config.decay)
 			signal_buf_alt:set(i,j,sum*decay_value/wsum)
 		end
 	end
@@ -214,7 +218,7 @@ function update()
     if imgui.Button("Agentswarm") then
     	for i=1,1000 do
     		table.insert(agents,
-    			agent(map_w/2,map_h/2,math.random()*math.pi*2))
+    			agent(map_w/2+math.random()*10-5,map_h/2+math.random()*10-5,math.random()*math.pi*2))
     	end
     end
     imgui.End()
