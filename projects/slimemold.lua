@@ -37,6 +37,11 @@ config=make_config({
     {"decay",0,type="float"},
     {"diffuse",0.9999,type="float"},
     --agent
+    {"ag_sensor_distance",1,type="float",min=0.1,max=10},
+    {"ag_sensor_size",1,type="int",min=1,max=3},
+    {"ag_sensor_angle",math.pi/8,type="angle"},
+    {"ag_turn_angle",math.pi/16,type="angle"},
+	{"ag_step_size",1,type="float",min=0.1,max=10},
     },config)
 
 local draw_shader=shaders.Make[==[
@@ -105,11 +110,11 @@ function agent:set( x,y,heading )
 	self.heading=math.random()*math.pi*2
 end
 function agent:step(  )
-	local sensor_distance=3
-	local sensor_size=1
-	local sensor_angle=math.pi/8
-	local turn_size=sensor_angle
-	local step_size=1
+	local sensor_distance=config.ag_sensor_distance
+	local sensor_size=config.ag_sensor_size
+	local sensor_angle=config.ag_sensor_angle
+	local turn_size=config.ag_turn_angle
+	local step_size=config.ag_step_size
 	--sense
 	local heading=self.heading
 	local fw_pos=self.pos+sensor_distance*Point(math.cos(heading),math.sin(heading))
@@ -139,7 +144,7 @@ function agent:step(  )
 	wrap_pos(self.pos)
 end
 function agent:leave_track(  )
-	local agent_track_amount=0.1
+	local agent_track_amount=0.01
 	local tx=math.floor(self.pos[1])
 	local ty=math.floor(self.pos[2])
 	signal_buf:set(tx,ty,signal_buf:get(tx,ty)+agent_track_amount)
@@ -202,10 +207,14 @@ function update()
     	fill_buffer()
     end
      imgui.SameLine()
+    if imgui.Button("Clear") then
+    	agents={}
+    end
+     imgui.SameLine()
     if imgui.Button("Agentswarm") then
-    	for i=1,100 do
+    	for i=1,1000 do
     		table.insert(agents,
-    			agent(math.random()*map_w,math.random()*map_h,math.random()*math.pi*2))
+    			agent(map_w/2,map_h/2,math.random()*math.pi*2))
     	end
     end
     imgui.End()
