@@ -14,8 +14,14 @@ local win_w=768
 local win_h=768
 
 __set_window_size(win_w,win_h)
-local oversample=2
-
+local oversample=1
+local agent_count=30000
+--[[ perf:
+	oversample 2 768x768
+		ac: 3000 -> 43fps
+			no_steps ->113fps
+			no_tracks ->43fps
+]]
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
 
@@ -28,6 +34,16 @@ function update_buffers(  )
         is_remade=true
     end
 end
+
+if agent_coords==nil or agent_coords.w~=agent_count then
+	agent_coords=make_flt_half_buffer(agent_count,1)
+	agent_headings=make_float_buffer(agent_count,1)
+	for i=0,agent_count-1 do
+		agent_coords:set(i,0,{math.random()*map_w,math.random()*map_h})
+		agent_headings:set(i,0,math.random()*math.pi*2)
+	end
+end
+
 tex_pixel=tex_pixel or textures:Make()
 
 update_buffers()
@@ -35,7 +51,7 @@ config=make_config({
     {"pause",false,type="bool"},
     {"color",{0.63,0.59,0.511,0.2},type="color"},
     --system
-    {"decay",0.9,type="float"},
+    {"decay",0.999,type="float"},
     {"diffuse",0.5,type="float"},
     --agent
     {"ag_sensor_distance",9,type="float",min=0.1,max=10},
@@ -43,7 +59,7 @@ config=make_config({
     {"ag_sensor_angle",math.pi/4,type="float",min=0,max=math.pi/2},
     {"ag_turn_angle",math.pi/4,type="float",min=0,max=math.pi/2},
 	{"ag_step_size",1,type="float",min=0.1,max=10},
-	{"ag_trail_amount",0.01,type="float",min=0,max=10},
+	{"ag_trail_amount",0.1,type="float",min=0,max=10},
     },config)
 
 local decay_diffuse_shader=shaders.Make[==[
@@ -106,7 +122,7 @@ function fill_buffer(  )
     end
     signal_buf:write_texture(tex_pixel)
 end
-agents=agents or {}
+
 function wrap_pos( pos )
 	local w=signal_buf.w
 	local h=signal_buf.h
@@ -139,105 +155,69 @@ function sense( pos,size )
 	end
 	return sum/wsum
 end
-local agent=class(function ( ag,x,y,heading )
-	ag:set(x,y,heading)
-end)
-function agent:set( x,y,heading )
-	self.pos=Point(x or math.random(),y or math.random())
-	self.heading=math.random()*math.pi*2
+function agent_set( id,x,y,heading )
+	agent_coords:set(id,0,{x,y})
+	agent_headings:set(id,0,heading)
 end
-function agent:step(  )
+
+function agent_steps(  )
 	local sensor_distance=config.ag_sensor_distance
 	local sensor_size=config.ag_sensor_size
 	local sensor_angle=config.ag_sensor_angle
 	local turn_size=config.ag_turn_angle
 	local step_size=config.ag_step_size
-	--sense
-	local heading=self.heading
-	local fw_pos=self.pos+sensor_distance*Point(math.cos(heading),math.sin(heading))
-	wrap_pos(fw_pos)
-	local fow=sense(fw_pos,sensor_size)
+	for id=0,agent_count-1 do
+		--sense
+		local heading=agent_headings:get(id,0)
+		local pos=agent_coords:get(id,0)
+		local ppos=Point(pos.r,pos.g)
+		local fw_pos=ppos+sensor_distance*Point(math.cos(heading),math.sin(heading))
+		wrap_pos(fw_pos)
+		local fow=sense(fw_pos,sensor_size)
 
-	local left_pos=self.pos+sensor_distance*Point(math.cos(heading-sensor_angle),math.sin(heading-sensor_angle))
-	wrap_pos(left_pos)
-	local left=sense(left_pos,sensor_size)
+		local left_pos=ppos+sensor_distance*Point(math.cos(heading-sensor_angle),math.sin(heading-sensor_angle))
+		wrap_pos(left_pos)
+		local left=sense(left_pos,sensor_size)
 
-	local right_pos=self.pos+sensor_distance*Point(math.cos(heading+sensor_angle),math.sin(heading+sensor_angle))
-	wrap_pos(right_pos)
-	local right=sense(right_pos,sensor_size)
-	--rotate
-	if fow< left and fow < right then
-		self.heading=self.heading+(math.random()-0.5)*turn_size
-	elseif right> fow then
-		self.heading=self.heading+turn_size
-		--self.heading=self.heading+turn_size*math.random()
-	elseif left>fow then
-		self.heading=self.heading-turn_size
-		--self.heading=self.heading-turn_size*math.random()
+		local right_pos=ppos+sensor_distance*Point(math.cos(heading+sensor_angle),math.sin(heading+sensor_angle))
+		wrap_pos(right_pos)
+		local right=sense(right_pos,sensor_size)
+		--rotate
+		if fow< left and fow < right then
+			heading=heading+(math.random()-0.5)*turn_size*2
+		elseif right> fow then
+			heading=heading+turn_size
+			--self.heading=self.heading+turn_size*math.random()
+		elseif left>fow then
+			heading=heading-turn_size
+			--self.heading=self.heading-turn_size*math.random()
+		end
+		--step
+		agent_headings:set(id,0,heading)
+		ppos=ppos+step_size*Point(math.cos(heading),math.sin(heading))
+		wrap_pos(ppos)
+		pos.r=ppos[1]
+		pos.g=ppos[2]
 	end
-	--step
-	heading=self.heading
-	self.pos=self.pos+step_size*Point(math.cos(heading),math.sin(heading))
-	local w=signal_buf.w
-	local h=signal_buf.h
-	wrap_pos(self.pos)
 end
-function agent:leave_track(  )
+function agent_tracks(  )
 	local agent_track_amount=config.ag_trail_amount
-	local tx=math.floor(self.pos[1])
-	local ty=math.floor(self.pos[2])
-	local new_val=signal_buf:get(tx,ty)+agent_track_amount
-	if new_val>1 then new_val=1 end
-	signal_buf:set(tx,ty,new_val)
+	for id=0,agent_count-1 do
+		local p=agent_coords:get(id,0)
+		local tx=math.floor(p.r)
+		local ty=math.floor(p.g)
+		local new_val=signal_buf:get(tx,ty)+agent_track_amount
+		--if new_val>1 then new_val=1 end
+		signal_buf:set(tx,ty,new_val)
+	end
 end
 function agents_step(  )
 	tex_pixel:use(0)
 	signal_buf:read_texture(tex_pixel)
-	for _,v in ipairs(agents) do
-		v:step()
-	end
-	for _,v in ipairs(agents) do
-		v:leave_track()
-	end
+	agent_steps()
+	agent_tracks()
 	signal_buf:write_texture(tex_pixel)
 end
-function diffuse_and_decay(  )
-	if signal_buf_alt == nil or signal_buf_alt.w~=signal_buf.w or
-			signal_buf_alt.h~=signal_buf.h then
-		signal_buf_alt=make_float_buffer(signal_buf.w,signal_buf.h)
-	end
-
-	for i=0,signal_buf.w-1 do
-		for j=0,signal_buf.h-1 do
-			local sum=0
-			local wsum=0
-			for di=-1,1 do
-				for dj=-1,1 do
-					local ti=i+di
-					local tj=j+dj
-					if ti <0 then ti = signal_buf.w-1 end
-					if ti >=signal_buf.w then ti = 0 end
-					if tj <0 then tj = signal_buf.h-1 end
-					if tj >=signal_buf.h then tj = 0 end
-					local w=config.diffuse
-					if di==0 and dj==0 then
-						w=1
-					end
-					sum=sum+signal_buf:get(ti,tj)*w
-					wsum=wsum+w
-				end
-			end
-			local decay_value=config.decay--math.exp(-config.decay)
-			signal_buf_alt:set(i,j,sum*decay_value/wsum)
-		end
-	end
-
-	local ss=signal_buf
-	signal_buf=signal_buf_alt
-	signal_buf_alt=ss
-end
-
-
 function diffuse_and_decay(  )
 	if tex_pixel_alt==nil then
 		tex_pixel_alt=textures:Make()
@@ -259,6 +239,20 @@ function diffuse_and_decay(  )
     tex_pixel_alt=tex_pixel
     tex_pixel=t
 end
+function save_img(  )
+	img_buf=img_buf or make_image_buffer(win_w,win_h)
+	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
+	for k,v in pairs(config) do
+		if type(v)~="table" then
+			config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
+		end
+	end
+	img_buf:read_frame()
+	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
+end
+function rnd( v )
+	return math.random()*v*2-v
+end
 function update()
     __clear()
     __no_redraw()
@@ -274,16 +268,22 @@ function update()
     end
      imgui.SameLine()
     if imgui.Button("Clear") then
-    	agents={}
+    	tex_pixel:use(0)
+		--signal_buf:read_texture(tex_pixel)
+		for x=0,signal_buf.w-1 do
+		for y=0,signal_buf.h-1 do
+			signal_buf:set(x,y,0)
+		end
+		end
+		signal_buf:write_texture(tex_pixel)
     end
      imgui.SameLine()
     if imgui.Button("Agentswarm") then
-    	for i=1,1000 do
-    		table.insert(agents,
-    			agent(
-    				map_w/2+math.random()*map_w/2-map_w/4,
-    				map_h/2+math.random()*map_h/2-map_h/4,
-    				math.random()*math.pi*2))
+    	for i=0,agent_count-1 do
+    		agent_coords:set(i,0,
+    			{rnd(map_w/8)+map_w/2,
+    			 rnd(map_h/8)+map_h/2})
+			agent_headings:set(i,0,math.random()*math.pi*2)
     	end
     end
     imgui.End()
