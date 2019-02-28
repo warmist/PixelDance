@@ -55,11 +55,12 @@ config=make_config({
     {"diffuse",0.5,type="float"},
     --agent
     {"ag_sensor_distance",9,type="float",min=0.1,max=10},
-    {"ag_sensor_size",1,type="int",min=1,max=3},
+    --{"ag_sensor_size",1,type="int",min=1,max=3},
     {"ag_sensor_angle",math.pi/4,type="float",min=0,max=math.pi/2},
     {"ag_turn_angle",math.pi/4,type="float",min=0,max=math.pi/2},
 	{"ag_step_size",1,type="float",min=0.1,max=10},
 	{"ag_trail_amount",0.1,type="float",min=0,max=10},
+	{"turn_around",1,type="float",min=0,max=5},
     },config)
 
 local decay_diffuse_shader=shaders.Make[==[
@@ -109,7 +110,10 @@ void main(){
     //normed=normed/zoom+translate;
 
     vec4 pixel=texture(tex_main,normed);
-    color=vec4(pixel.xxx,1);
+    //float v=log(pixel.x+1);
+    //float v=pow(pixel.x/3,2.4);
+    float v=pixel.x/3;
+    color=vec4(v,v,v,1);
 }
 ]==]
 function fill_buffer(  )
@@ -162,10 +166,11 @@ end
 
 function agent_steps(  )
 	local sensor_distance=config.ag_sensor_distance
-	local sensor_size=config.ag_sensor_size
+	local sensor_size=1--config.ag_sensor_size
 	local sensor_angle=config.ag_sensor_angle
 	local turn_size=config.ag_turn_angle
 	local step_size=config.ag_step_size
+	local turn_around = config.turn_around
 	for id=0,agent_count-1 do
 		--sense
 		local heading=agent_headings:get(id,0)
@@ -186,11 +191,21 @@ function agent_steps(  )
 		if fow< left and fow < right then
 			heading=heading+(math.random()-0.5)*turn_size*2
 		elseif right> fow then
-			heading=heading+turn_size
+			if right< turn_around then
+				heading=heading+turn_size
+			else
+				heading=heading-turn_size
+			end
 			--self.heading=self.heading+turn_size*math.random()
 		elseif left>fow then
-			heading=heading-turn_size
+			if left< turn_around then
+				heading=heading-turn_size
+			else
+				heading=heading+turn_size
+			end
 			--self.heading=self.heading-turn_size*math.random()
+		elseif fow>turn_around then
+			heading=heading+(math.random()-0.5)*turn_size*2
 		end
 		--step
 		agent_headings:set(id,0,heading)
