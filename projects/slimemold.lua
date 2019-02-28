@@ -14,7 +14,7 @@ local win_w=768
 local win_h=768
 
 __set_window_size(win_w,win_h)
-local oversample=0.5
+local oversample=2
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -28,6 +28,7 @@ function update_buffers(  )
         is_remade=true
     end
 end
+tex_pixel=tex_pixel or textures:Make()
 
 update_buffers()
 config=make_config({
@@ -35,14 +36,47 @@ config=make_config({
     {"color",{0.63,0.59,0.511,0.2},type="color"},
     --system
     {"decay",0.9,type="float"},
-    {"diffuse",1,type="float"},
+    {"diffuse",0.5,type="float"},
     --agent
     {"ag_sensor_distance",9,type="float",min=0.1,max=10},
     {"ag_sensor_size",1,type="int",min=1,max=3},
     {"ag_sensor_angle",math.pi/4,type="float",min=0,max=math.pi/2},
     {"ag_turn_angle",math.pi/4,type="float",min=0,max=math.pi/2},
 	{"ag_step_size",1,type="float",min=0.1,max=10},
+	{"ag_trail_amount",0.01,type="float",min=0,max=10},
     },config)
+
+local decay_diffuse_shader=shaders.Make[==[
+#version 330
+
+out vec4 color;
+in vec3 pos;
+
+uniform float diffuse;
+uniform float decay;
+
+uniform sampler2D tex_main;
+float sample_around(vec2 pos)
+{
+	float ret=0;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,-1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(1,-1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(1,1)).x;
+
+	ret+=textureOffset(tex_main,pos,ivec2(0,-1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,0)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(1,0)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(0,1)).x;
+	return ret/8;
+}
+void main(){
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	float r=sample_around(normed)*diffuse;
+	r+=texture(tex_main,normed).x*(1-diffuse);
+	color=vec4(r*decay,0,0,1);
+}
+]==]
 
 local draw_shader=shaders.Make[==[
 #version 330
@@ -63,11 +97,14 @@ void main(){
 }
 ]==]
 function fill_buffer(  )
+	tex_pixel:use(0)
+	signal_buf:read_texture(tex_pixel)
 	for i=map_w*0.2,map_w*0.8 do
     	for j=map_h*0.2,map_h*0.8 do
-    		signal_buf:set(math.floor(i),math.floor(j),math.random()*100)
+    		signal_buf:set(math.floor(i),math.floor(j),math.random())
     	end
     end
+    signal_buf:write_texture(tex_pixel)
 end
 agents=agents or {}
 function wrap_pos( pos )
@@ -146,7 +183,7 @@ function agent:step(  )
 	wrap_pos(self.pos)
 end
 function agent:leave_track(  )
-	local agent_track_amount=0.01
+	local agent_track_amount=config.ag_trail_amount
 	local tx=math.floor(self.pos[1])
 	local ty=math.floor(self.pos[2])
 	local new_val=signal_buf:get(tx,ty)+agent_track_amount
@@ -154,12 +191,15 @@ function agent:leave_track(  )
 	signal_buf:set(tx,ty,new_val)
 end
 function agents_step(  )
+	tex_pixel:use(0)
+	signal_buf:read_texture(tex_pixel)
 	for _,v in ipairs(agents) do
 		v:step()
 	end
 	for _,v in ipairs(agents) do
 		v:leave_track()
 	end
+	signal_buf:write_texture(tex_pixel)
 end
 function diffuse_and_decay(  )
 	if signal_buf_alt == nil or signal_buf_alt.w~=signal_buf.w or
@@ -196,7 +236,29 @@ function diffuse_and_decay(  )
 	signal_buf=signal_buf_alt
 	signal_buf_alt=ss
 end
-tex_pixel=tex_pixel or textures:Make()
+
+
+function diffuse_and_decay(  )
+	if tex_pixel_alt==nil then
+		tex_pixel_alt=textures:Make()
+		tex_pixel_alt:use(1)
+		tex_pixel_alt:set(signal_buf.w,signal_buf.h,2)
+	end
+	decay_diffuse_shader:use()
+    tex_pixel:use(0)
+    --tex_pixel.t:set(size[1]*oversample,size[2]*oversample,3)
+    decay_diffuse_shader:set_i("tex_main",0)
+    decay_diffuse_shader:set("decay",config.decay)
+    decay_diffuse_shader:set("diffuse",config.diffuse)
+    if not tex_pixel_alt:render_to(signal_buf.w,signal_buf.h) then
+		error("failed to set framebuffer up")
+	end
+    decay_diffuse_shader:draw_quad()
+    __render_to_window()
+    local t=tex_pixel_alt
+    tex_pixel_alt=tex_pixel
+    tex_pixel=t
+end
 function update()
     __clear()
     __no_redraw()
@@ -218,7 +280,10 @@ function update()
     if imgui.Button("Agentswarm") then
     	for i=1,1000 do
     		table.insert(agents,
-    			agent(map_w/2+math.random()*10-5,map_h/2+math.random()*10-5,math.random()*math.pi*2))
+    			agent(
+    				map_w/2+math.random()*map_w/2-map_w/4,
+    				map_h/2+math.random()*map_h/2-map_h/4,
+    				math.random()*math.pi*2))
     	end
     end
     imgui.End()
@@ -230,10 +295,10 @@ function update()
     --if config.draw then
 
     draw_shader:use()
-    tex_pixel:use(0,0,1)
+    tex_pixel:use(0)
 
     --tex_pixel.t:set(size[1]*oversample,size[2]*oversample,3)
-    signal_buf:write_texture(tex_pixel)
+    --signal_buf:write_texture(tex_pixel)
 
     draw_shader:set_i("tex_main",0)
     draw_shader:set_i("rez",map_w,map_h)
