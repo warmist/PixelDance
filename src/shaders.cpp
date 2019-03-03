@@ -168,8 +168,9 @@ static int draw_array_points(lua_State* L)
 		luaL_error(L,"Incorrect second argument: expected pointer to array");
 	size_t count = luaL_checkinteger(L, 3);
 	auto pos_idx = glGetAttribLocation(s->id, "position");
+	auto float_count=luaL_optint(L,4,2);
 	glEnableVertexAttribArray(pos_idx);
-	glVertexAttribPointer(pos_idx, 2, GL_FLOAT, false, 0, data);
+	glVertexAttribPointer(pos_idx, float_count, GL_FLOAT, false, 0, data);
 	glEnable(GL_PROGRAM_POINT_SIZE);
 	glEnable(GL_POINT_SPRITE);
 	glDrawArrays(GL_POINTS, 0, count);
