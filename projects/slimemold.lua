@@ -216,6 +216,8 @@ in vec3 pos;
 
 uniform vec2 rez;
 
+#define M_PI 3.14159265358979323846
+
 uniform sampler2D old_state; //old agent state
 uniform sampler2D tex_main;  //signal buffer state
 //agent settings uniforms
@@ -259,7 +261,7 @@ void main(){
 	{
 	#ifdef TURNAROUND
 		if(rgt>=turn_around)
-			head+=M_PI+turn_size;
+			head+=turn_size+M_PI;
 		else
 	#endif
 			head+=turn_size;
@@ -268,7 +270,7 @@ void main(){
 	{
 	#ifdef TURNAROUND
 		if(lft>=turn_around)
-			head-=M_PI+turn_size;
+			head-=turn_size+M_PI;
 		else
 	#endif
 			head-=turn_size;
@@ -276,7 +278,7 @@ void main(){
 	#ifdef TURNAROUND
 	else if(fow>turn_around)
 	{
-		head+=M_PI;//turn_size*2;//(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
+		head+=M_PI;//(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
 	}
 	#endif
 	//step in heading direction
