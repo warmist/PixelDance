@@ -218,19 +218,19 @@ void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float nv=texture(tex_main,normed).x;
 	//vec2 local_mm=local_minmax(normed);
-	float lnv=abs(nv-dtex(normed));
+	//float lnv=abs(nv-dtex(normed));
 	vec2 lmm=min_max;
 	if(auto_scale_color==1)
 	{
-		lnv=(log(lnv+1)-lmm.x)/(lmm.y-lmm.x);
+		//lnv=(log(lnv+1)-lmm.x)/(lmm.y-lmm.x);
 		nv=(log(nv+1)-lmm.x)/(lmm.y-lmm.x);
 	}
 	else
 	{
-		lnv=log(lnv+1)/lmm.y;
+		//lnv=log(lnv+1)/lmm.y;
 		nv=log(nv+1)/lmm.y;
 	}
-	lnv=clamp(lnv,0,1);
+	//lnv=clamp(lnv,0,1);
 	nv=clamp(nv,0,1);
 
 	/* compress everything a bit i.e. like gamma but for palette
@@ -243,8 +243,8 @@ void main(){
 	float l=mask(pos.xy);
 
 
-	color = mix_palette2(lnv*l)*nv;
-	//color = mix_palette2(nv*l)*lnv;
+	//color = mix_palette2(lnv*l)*nv;
+	color = mix_palette2(nv*l);//*lnv;
 	color.a=1;
 }
 ]==]
