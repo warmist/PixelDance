@@ -1528,7 +1528,7 @@ function visit_iter()
 			if render_lines then
 				add_visit_shader:draw_lines(samples.d,samples.w*samples.h,false)
 			else
-				add_visit_shader:draw_points(samples.d,samples.w*samples.h,false)
+				add_visit_shader:draw_points(samples.d,samples.w*samples.h)
 			end
 		else
 			for i=1,config.IFS_steps do
@@ -1537,7 +1537,7 @@ function visit_iter()
 				if render_lines then
 					add_visit_shader:draw_lines(samples.d,samples.w*samples.h,false)
 				else
-					add_visit_shader:draw_points(samples.d,samples.w*samples.h,false)
+					add_visit_shader:draw_points(samples.d,samples.w*samples.h)
 				end
 			end
 		end
