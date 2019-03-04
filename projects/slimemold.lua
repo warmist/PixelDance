@@ -216,8 +216,6 @@ in vec3 pos;
 
 uniform vec2 rez;
 
-#define M_PI 3.14159265358979323846
-
 uniform sampler2D old_state; //old agent state
 uniform sampler2D tex_main;  //signal buffer state
 //agent settings uniforms
