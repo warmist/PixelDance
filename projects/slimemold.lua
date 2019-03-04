@@ -14,7 +14,7 @@ local win_w=1024
 local win_h=1024
 
 __set_window_size(win_w,win_h)
-local oversample=2
+local oversample=1
 local agent_count=1024
 --[[ perf:
 	oversample 2 768x768
@@ -28,7 +28,7 @@ local agent_count=1024
 ]]
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
-
+is_remade=false
 function update_buffers(  )
     local nw=map_w
     local nh=map_h
@@ -56,18 +56,21 @@ end
 update_buffers()
 config=make_config({
     {"pause",false,type="bool"},
+    {"color_back",{0,0,0,1},type="color"},
+    {"color_fore",{0.18,0,0.58,1},type="color"},
+    {"color_turn_around",{0.54,0.80,0.71,1},type="color"},
     --system
     {"decay",0.99,type="float"},
     {"diffuse",0.5,type="float"},
     --agent
     {"ag_sensor_distance",9,type="float",min=0.1,max=10},
     --{"ag_sensor_size",1,type="int",min=1,max=3},
-    {"ag_sensor_angle",math.pi/4,type="float",min=0,max=math.pi/2},
-    {"ag_turn_angle",math.pi/4,type="float",min=0,max=math.pi/2},
+    {"ag_sensor_angle",math.pi/2,type="float",min=0,max=math.pi/2},
+    {"ag_turn_angle",math.pi/2,type="float",min=0,max=math.pi/2},
 	{"ag_step_size",1,type="float",min=0.1,max=10},
-	{"ag_trail_amount",0.1,type="float",min=0,max=0.5},
-	{"trail_size",1,type="int",min=1,max=5},
-	{"turn_around",1,type="float",min=0,max=5},
+	{"ag_trail_amount",0.019,type="float",min=0,max=0.5},
+	{"trail_size",2,type="int",min=1,max=5},
+	{"turn_around",0.969,type="float",min=0,max=5},
     },config)
 
 local decay_diffuse_shader=shaders.Make[==[
@@ -188,7 +191,9 @@ uniform ivec2 rez;
 uniform sampler2D tex_main;
 
 uniform float turn_around;
-
+uniform vec4 color_back;
+uniform vec4 color_fore;
+uniform vec4 color_turn_around;
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     //normed=normed/zoom+translate;
@@ -198,9 +203,9 @@ void main(){
     //float v=pow(pixel.x/3,2.4);
     float v=pixel.x/turn_around;
     if(v<1)
-    	color=vec4(v,v,v,1);
+    	color=mix(color_back,color_fore,v);
     else
-    	color=mix(vec4(v,v,v,1),vec4(0.8,0.2,0.2,1),clamp((v-1)*0.5,0,1));
+    	color=mix(color_fore,color_turn_around,clamp((v-1)*1,0,1));
 }
 ]==]
 local agent_logic_shader=shaders.Make[==[
@@ -220,7 +225,9 @@ uniform float ag_turn_angle;
 uniform float ag_step_size;
 uniform float ag_turn_around;
 //
-float rand(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
+float rand(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x))));}
+
+#define M_PI 3.1415926535897932384626433832795
 
 float sample_heading(vec2 p,float h,float dist)
 {
@@ -252,7 +259,7 @@ void main(){
 	{
 	#ifdef TURNAROUND
 		if(rgt>=turn_around)
-			head-=turn_size;
+			head+=M_PI+turn_size;
 		else
 	#endif
 			head+=turn_size;
@@ -261,7 +268,7 @@ void main(){
 	{
 	#ifdef TURNAROUND
 		if(lft>=turn_around)
-			head+=turn_size;
+			head-=M_PI+turn_size;
 		else
 	#endif
 			head-=turn_size;
@@ -269,7 +276,7 @@ void main(){
 	#ifdef TURNAROUND
 	else if(fow>turn_around)
 	{
-		head+=turn_size*2;//(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
+		head+=M_PI;//turn_size*2;//(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
 	}
 	#endif
 	//step in heading direction
@@ -400,10 +407,11 @@ function agents_step(  )
 	--]]
 end
 function diffuse_and_decay(  )
-	if tex_pixel_alt==nil then
+	if tex_pixel_alt==nil or is_remade then
 		tex_pixel_alt=textures:Make()
 		tex_pixel_alt:use(1)
 		tex_pixel_alt:set(signal_buf.w,signal_buf.h,2)
+		is_remade=false
 	end
 	decay_diffuse_shader:use()
     tex_pixel:use(0)
@@ -473,7 +481,7 @@ function update()
     			 0})
     		--]]
     		local a = math.random() * 2 * math.pi
-			local r = map_w/4 * math.sqrt(math.random())
+			local r = map_w/8 * math.sqrt(math.random())
 			local x = r * math.cos(a)
 			local y = r * math.sin(a)
 			agent_data:set(i,j,
@@ -502,6 +510,9 @@ function update()
     draw_shader:set_i("tex_main",0)
     draw_shader:set_i("rez",map_w,map_h)
     draw_shader:set("turn_around",config.turn_around)
+    draw_shader:set("color_back",config.color_back[1],config.color_back[2],config.color_back[3],config.color_back[4])
+    draw_shader:set("color_fore",config.color_fore[1],config.color_fore[2],config.color_fore[3],config.color_fore[4])
+    draw_shader:set("color_turn_around",config.color_turn_around[1],config.color_turn_around[2],config.color_turn_around[3],config.color_turn_around[4])
     --draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
     --draw_shader:set("translate",config.t_x,config.t_y)
     --draw_shader:set("sun_color",config.color[1],config.color[2],config.color[3],config.color[4])
