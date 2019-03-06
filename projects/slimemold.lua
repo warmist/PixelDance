@@ -67,7 +67,7 @@ config=make_config({
     --{"ag_sensor_size",1,type="int",min=1,max=3},
     {"ag_sensor_angle",math.pi/2,type="float",min=0,max=math.pi/2},
     {"ag_turn_angle",math.pi/2,type="float",min=0,max=math.pi/2},
-	{"ag_step_size",1,type="float",min=0.1,max=10},
+	{"ag_step_size",1,type="float",min=0.01,max=10},
 	{"ag_trail_amount",0.019,type="float",min=0,max=0.5},
 	{"trail_size",2,type="int",min=1,max=5},
 	{"turn_around",0.969,type="float",min=0,max=5},
@@ -375,36 +375,12 @@ function sense( pos,size )
 	return sum/wsum
 end
 
-function agent_tracks(  )
-	local agent_track_amount=config.ag_trail_amount
-	for i=0,agent_count-1 do
-		for j=0,agent_count-1 do
-			local p=agent_data:get(i,j)
-			local tx=math.floor(p.r) % signal_buf.w
-			local ty=math.floor(p.g) % signal_buf.h
-
-			local new_val=signal_buf:get(tx,ty)+agent_track_amount
-			--if new_val>1 then new_val=1 end
-			signal_buf:set(tx,ty,new_val)
-		end
-	end
-end
 function agents_step(  )
 
-
 	do_agent_logic()
-
 	agents_tocpu()
-	-- [[
 	add_trails()
-	--]]
-	--[[
-	tex_pixel:use(0)
-	signal_buf:read_texture(tex_pixel)
-	agent_tracks()
-	tex_pixel:use(0)
-	signal_buf:write_texture(tex_pixel)
-	--]]
+
 end
 function diffuse_and_decay(  )
 	if tex_pixel_alt==nil or is_remade then
