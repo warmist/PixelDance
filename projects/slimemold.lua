@@ -101,7 +101,9 @@ void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float r=sample_around(normed)*diffuse;
 	r+=texture(tex_main,normed).x*(1-diffuse);
-	color=vec4(r*decay,0,0,1);
+	r*=decay;
+	//r=clamp(r,0,1);
+	color=vec4(r,0,0,1);
 }
 ]==]
 
@@ -183,7 +185,7 @@ function add_trails(  )
 end
 local draw_shader=shaders.Make[==[
 #version 330
-#line 40
+#line 188
 out vec4 color;
 in vec3 pos;
 
@@ -194,6 +196,51 @@ uniform float turn_around;
 uniform vec4 color_back;
 uniform vec4 color_fore;
 uniform vec4 color_turn_around;
+
+
+vec3 rgb2hsv(vec3 c)
+{
+    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+
+    float d = q.x - min(q.w, q.y);
+    float e = 1.0e-10;
+    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+vec3 hsv2rgb(vec3 c)
+{
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+float lerp_hue(float h1,float h2,float v )
+{
+	if (abs(h1-h2)>0.5){
+		//loop around lerp (i.e. modular lerp)
+			float v2=(h1-h2)*v+h1;
+			if (v2<0){
+				float a1=h2-h1;
+				float a=((1-h2)*a1)/(h1-a1);
+				float b=h2-a;
+				v2=(a)*(v)+b;
+			}
+			return v2;
+		}
+	else
+		return mix(h1,h2,v);
+}
+vec4 mix_hsl(vec4 c1,vec4 c2,float v)
+{
+	vec3 c1hsv=rgb2hsv(c1.xyz);
+	vec3 c2hsv=rgb2hsv(c2.xyz);
+
+	vec3 ret;
+	ret.x=lerp_hue(c1hsv.x,c2hsv.x,v);
+	ret.yz=mix(c1hsv.yz,c2hsv.yz,v);
+	float a=mix(c1.a,c2.a,v);
+	return vec4(hsv2rgb(ret.xyz),a);
+}
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     //normed=normed/zoom+translate;
@@ -203,9 +250,9 @@ void main(){
     //float v=pow(pixel.x/3,2.4);
     float v=pixel.x/turn_around;
     if(v<1)
-    	color=mix(color_back,color_fore,v);
+    	color=mix_hsl(color_back,color_fore,v);
     else
-    	color=mix(color_fore,color_turn_around,clamp((v-1)*1,0,1));
+    	color=mix_hsl(color_fore,color_turn_around,clamp((v-1)*1,0,1));
 }
 ]==]
 local agent_logic_shader=shaders.Make[==[
@@ -234,6 +281,12 @@ float sample_heading(vec2 p,float h,float dist)
 	p+=vec2(cos(h),sin(h))*dist;
 	return texture(tex_main,p/rez).x;
 }
+float fun(float l,float r)
+{
+	float x=l*r-0.5*cos(r)*l*ag_turn_angle;
+	float y=(r-l)*sin(l*cos(r));
+	return atan(y,x);
+}
 #define TURNAROUND
 void main(){
 	float step_size=ag_step_size;
@@ -248,37 +301,44 @@ void main(){
 	//figure out new heading
 	float head=state.z;
 	float fow=sample_heading(state.xy,head,sensor_distance);
-	float lft=sample_heading(state.xy,head-sensor_angle,sensor_distance);
-	float rgt=sample_heading(state.xy,head+sensor_angle,sensor_distance);
-
-	if(fow<lft && fow<rgt)
+	
+	float lft=sample_heading(state.xy,head-sensor_angle,sensor_distance)-fow;
+	float rgt=sample_heading(state.xy,head+sensor_angle,sensor_distance)-fow;
+	/*
+	if(0<lft && 0<rgt)
 	{
 		head+=(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
 	}
-	else if(rgt>fow)
+	else if(rgt>0)
 	{
 	#ifdef TURNAROUND
-		if(rgt>=turn_around)
-			head+=turn_size+M_PI;
-		else
+		if(rgt>=turn_around-fow)
+			step_size*=-1;
+			//head+=turn_size*2;
+		//else
 	#endif
 			head+=turn_size;
 	}
-	else if(lft>fow)
+	else if(lft>0)
 	{
 	#ifdef TURNAROUND
-		if(lft>=turn_around)
-			head-=turn_size+M_PI;
-		else
+		if(lft>=turn_around-fow)
+			step_size*=-1;
+			//head-=turn_size*2;
+		//else
 	#endif
 			head-=turn_size;
 	}
 	#ifdef TURNAROUND
-	else if(fow>turn_around)
+	else 
+	#endif*/
+	head=clamp(fun(lft,rgt),-M_PI,M_PI);
+	if(fow>turn_around)
 	{
-		head+=M_PI;//(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
+		//head+=(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
+		//head+=M_PI;//turn_size*2;//(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
+		step_size*=-1;
 	}
-	#endif
 	//step in heading direction
 	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
 	state.z=head;
@@ -456,6 +516,7 @@ function update()
     			 math.random()*math.pi*2,
     			 0})
     		--]]
+    		-- [[
     		local a = math.random() * 2 * math.pi
 			local r = map_w/8 * math.sqrt(math.random())
 			local x = r * math.cos(a)
@@ -463,8 +524,33 @@ function update()
 			agent_data:set(i,j,
     			{math.cos(a)*r+map_w/2,
     			 math.sin(a)*r+map_h/2,
+    			 a,
+    			 0})
+    		--]]
+    		--[[
+    		local side=math.random(1,4)
+    		local x,y
+    		if side==1 then
+    			x=math.random()*map_w
+    			y=0
+    		elseif side==2 then
+    			x=math.random()*map_w
+    			y=map_h-1
+			elseif side==3 then
+    			x=map_w-1
+				y=math.random()*map_h
+			else
+				x=0
+				y=math.random()*map_h
+			end
+			--local d=math.sqrt(x*x+y*y)
+			local a=math.atan(y-map_h/2,x-map_w/2)
+			agent_data:set(i,j,
+    			{x,
+    			 y,
     			 a+math.pi,
     			 0})
+			--]]
 			end
     	end
     	agents_togpu()
