@@ -51,7 +51,8 @@ if agent_data==nil or agent_data.w~=agent_count or agent_data.h~=agent_count the
 	end
 end
 
-
+str_x="l"
+str_y="r"
 
 update_buffers()
 config=make_config({
@@ -71,6 +72,11 @@ config=make_config({
 	{"ag_trail_amount",0.019,type="float",min=0,max=0.5},
 	{"trail_size",2,type="int",min=1,max=5},
 	{"turn_around",0.969,type="float",min=0,max=5},
+	{"complexity",3,type="int",min=1,max=15},
+	{"v0",-0.211,type="float",min=-5,max=5},
+	{"v1",-0.184,type="float",min=-5,max=5},
+	{"v2",-0.184,type="float",min=-5,max=5},
+	{"v3",-0.184,type="float",min=-5,max=5},
     },config)
 
 local decay_diffuse_shader=shaders.Make[==[
@@ -255,7 +261,71 @@ void main(){
     	color=mix_hsl(color_fore,color_turn_around,clamp((v-1)*1,0,1));
 }
 ]==]
-local agent_logic_shader=shaders.Make[==[
+
+local terminal_symbols={["l"]=5,["r"]=5,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["1"]=0.1,["0"]=0.1}
+local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=2,["(R)*(R)"]=4,["(R)-(R)"]=8,["(R)+(R)"]=8}
+
+function normalize( tbl )
+	local sum=0
+	for i,v in pairs(tbl) do
+		sum=sum+v
+	end
+	for i,v in pairs(tbl) do
+		tbl[i]=tbl[i]/sum
+	end
+end
+normalize(terminal_symbols)
+normalize(normal_symbols)
+function rand_weighted(tbl)
+	local r=math.random()
+	local sum=0
+	for i,v in pairs(tbl) do
+		sum=sum+v
+		if sum>= r then
+			return i
+		end
+	end
+end
+function replace_random( s,substr,rep )
+	local num_match=0
+	local function count(  )
+		num_match=num_match+1
+		return false
+	end
+	string.gsub(s,substr,count)
+	num_rep=math.random(0,num_match-1)
+	function rep_one(  )
+		if num_rep==0 then
+			num_rep=num_rep-1
+			return rep()
+		else
+			num_rep=num_rep-1
+			return false
+		end
+	end
+	local ret=string.gsub(s,substr,rep_one)
+	return ret
+end
+function random_math( steps,seed )
+	local cur_string=seed or "R"
+
+	function M(  )
+		return rand_weighted(normal_symbols)
+	end
+	function MT(  )
+		return rand_weighted(terminal_symbols)
+	end
+
+	for i=1,steps do
+		cur_string=replace_random(cur_string,"R",M)
+	end
+	cur_string=string.gsub(cur_string,"R",MT)
+	return cur_string
+end
+
+local agent_logic_shader
+function reset_agent_logic(  )
+	agent_logic_shader=shaders.Make(string.format([==[
 #version 330
 #line 121
 out vec4 color;
@@ -271,6 +341,7 @@ uniform float ag_sensor_angle;
 uniform float ag_turn_angle;
 uniform float ag_step_size;
 uniform float ag_turn_around;
+uniform vec4 params;
 //
 float rand(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x))));}
 
@@ -283,8 +354,8 @@ float sample_heading(vec2 p,float h,float dist)
 }
 float fun(float l,float r)
 {
-	float x=l*r-0.5*cos(r)*l*ag_turn_angle;
-	float y=(r-l)*sin(l*cos(r));
+	float x=%s;
+	float y=%s;
 	return atan(y,x);
 }
 #define TURNAROUND
@@ -345,7 +416,10 @@ void main(){
 	state.xy=mod(state.xy,rez);
 	color=vec4(state.xyz,1);
 }
-]==]
+]==],str_x,str_y))
+end
+reset_agent_logic()
+
 if tex_agent == nil then
 	tex_agent=textures:Make()
 	tex_agent:use(1)
@@ -371,6 +445,7 @@ function do_agent_logic(  )
 	agent_logic_shader:set("ag_turn_angle",config.ag_turn_angle)
 	agent_logic_shader:set("ag_step_size",config.ag_step_size)
 	agent_logic_shader:set("ag_turn_around",config.turn_around)
+	agent_logic_shader:set("params",config.v0,config.v1,config.v2,config.v3)
 	--
 	agent_logic_shader:set("rez",map_w,map_h)
     if not tex_agent_result:render_to(agent_count,agent_count) then
@@ -554,6 +629,15 @@ function update()
 			end
     	end
     	agents_togpu()
+    end
+    imgui.SameLine()
+    if imgui.Button("Random") then
+    	str_x=random_math(config.complexity)
+    	str_x=random_math(config.complexity)
+    	print("===========================")
+    	print(str_x)
+    	print(str_y)
+    	reset_agent_logic()
     end
     imgui.End()
     -- [[
