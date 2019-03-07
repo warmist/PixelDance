@@ -281,12 +281,6 @@ float sample_heading(vec2 p,float h,float dist)
 	p+=vec2(cos(h),sin(h))*dist;
 	return texture(tex_main,p/rez).x;
 }
-float fun(float l,float r)
-{
-	float x=l*r-0.5*cos(r)*l*ag_turn_angle;
-	float y=(r-l)*sin(l*cos(r));
-	return atan(y,x);
-}
 #define TURNAROUND
 void main(){
 	float step_size=ag_step_size;
@@ -302,27 +296,27 @@ void main(){
 	float head=state.z;
 	float fow=sample_heading(state.xy,head,sensor_distance);
 	
-	float lft=sample_heading(state.xy,head-sensor_angle,sensor_distance)-fow;
-	float rgt=sample_heading(state.xy,head+sensor_angle,sensor_distance)-fow;
-	/*
-	if(0<lft && 0<rgt)
+	float lft=sample_heading(state.xy,head-sensor_angle,sensor_distance);
+	float rgt=sample_heading(state.xy,head+sensor_angle,sensor_distance);
+
+	if(fow<lft && fow<rgt)
 	{
 		head+=(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
 	}
-	else if(rgt>0)
+	else if(rgt>fow)
 	{
 	#ifdef TURNAROUND
-		if(rgt>=turn_around-fow)
+		if(rgt>=turn_around)
 			step_size*=-1;
 			//head+=turn_size*2;
 		//else
 	#endif
 			head+=turn_size;
 	}
-	else if(lft>0)
+	else if(lft>fow)
 	{
 	#ifdef TURNAROUND
-		if(lft>=turn_around-fow)
+		if(lft>=turn_around)
 			step_size*=-1;
 			//head-=turn_size*2;
 		//else
@@ -332,7 +326,6 @@ void main(){
 	#ifdef TURNAROUND
 	else 
 	#endif*/
-	head=clamp(fun(lft,rgt),-M_PI,M_PI);
 	if(fow>turn_around)
 	{
 		//head+=(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
