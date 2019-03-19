@@ -10,7 +10,7 @@ local aspect_ratio=win_w/win_h
 local size=STATE.size
 local max_palette_size=50
 local sample_count=131072
-local max_sample=10000000 --for halton seq.
+local max_sample=1000000000 --for halton seq.
 local need_clear=false
 local oversample=1
 local render_lines=false --does not work :<
@@ -796,9 +796,9 @@ function rand_function(  )
 	local s=random_math(rand_complexity)
 	str_cmplx=random_math_complex(rand_complexity)
 	--mandelbrot?
-	--[[
-	str_cmplx="c_mul(s,s)+p
-	--]]
+	--[=[
+	str_cmplx="c_mul(s,s)+p"
+	--]=]
 
 	--[[ julia
 	str_cmplx="c_mul(s,s)+params.xy"
@@ -1089,7 +1089,10 @@ if add_visit_shader==nil or force then
 	add_visit_shader=shaders.Make(
 string.format([==[
 #version 330
-#line 1074
+#line 1092
+#define COMPLEX_NUMBERS
+//#define DUAL_NUMBERS //aka boring numbers :<
+//#define HYPERBOLIC_NUMBERS //aka split-complex
 layout(location = 0) in vec3 position;
 out vec3 pos;
 
@@ -1139,13 +1142,15 @@ vec2 sinh(vec2 val) {
 vec2 c_one() { return vec2(1., 0.); }
 vec2 c_i() { return vec2(0., 1.); }
 
+vec2 c_conj(vec2 c) {
+  return vec2(c.x, -c.y);
+}
+
+#ifdef COMPLEX_NUMBERS
 float arg(vec2 c) {
   return atan(c.y, c.x);
 }
 
-vec2 c_conj(vec2 c) {
-  return vec2(c.x, -c.y);
-}
 
 vec2 c_from_polar(float r, float theta) {
   return vec2(r * cos(theta), r * sin(theta));
@@ -1312,6 +1317,46 @@ vec2 c_inv(vec2 c) {
   float norm = length(c);
 	return vec2(c.x, -c.y) / (norm * norm);
 }
+#endif
+#ifdef DUAL_NUMBERS
+float arg(vec2 z)
+{
+	return z.y/z.x;
+}
+
+vec2 c_mul(vec2 v1, vec2 v2) {
+    return vec2(v1.x*v2.x,v1.x*v2.y+v2.x*v1.y);
+}
+
+vec2 c_div(vec2 v1, vec2 v2) {
+    float norm = v1.x*v1.x;
+    return vec2(v1.x*v2.x,(v1.x*v2.y-v2.x*v1.y))/norm;
+}
+vec2 c_inv(vec2 c) {
+	return vec2(c.x, -c.y) / (c.x*c.x);
+}
+vec2 c_sin(vec2 z)
+{
+	return vec2(sin(z.x),cos(z.x)*z.y);
+}
+vec2 c_cos(vec2 z)
+{
+	return vec2(cos(z.x),-sin(z.x)*z.y);
+}
+vec2 c_tan(vec2 z)
+{
+	float cx=cos(z.x);
+	return vec2(tan(z.x),-z.y/(cx*cx));
+}
+#endif
+#ifdef HYPERBOLIC_NUMBERS
+vec2 c_mul(vec2 z, vec2 w) {
+    return vec2(z.x * w.x + z.y * w.y,
+                z.x * w.y + z.y * w.x);
+}
+
+#endif
+
 
 vec2 cell_pos(int id,int max_id,float dist)
 {
@@ -1336,9 +1381,11 @@ vec3 func_actual(vec2 p,int it_count)
 			%s
 			%s
 			%s
-
 			if(e>normed_i && dot(s,s)>4)
+				{
 				e=normed_i;
+				break;
+				}
 		}
 	return vec3(s.x,s.y,e);
 }
@@ -1586,7 +1633,9 @@ void main(){
 	//if(pos.z>float(it_count)/10)
 	//	discard;
 	float v=pos.z;
-	//v=smoothstep(v,0,1);
+	//float v=log(pos.z*exp(1)+1);
+	//float v=exp(pos.z-0.5);
+	//v=smoothstep(v,0,0.5);
 	v=clamp(v,0,1);
 	//float v=1;
 #else
@@ -1611,7 +1660,9 @@ void main(){
 end
 
 end
+
 make_visit_shader(true)
+
 if samples==nil or samples.w~=sample_count then
 	samples=make_flt_half_buffer(sample_count,1)
 end
@@ -1808,8 +1859,8 @@ function visit_iter()
 			y=math.floor(y/grid_size)*grid_size
 			--]]
 			--[[ blur mod
-			local blur_str=0.0001
-			x,y=gaussian2(x,blur_str,y,blur_str)
+			local blur_str=0.0000005
+			x,y=gaussian2(x,blur_str,y,blur_str*aspect_ratio)
 			--]]
 			--[[ blur mod linear
 			local blur_str=0.1
