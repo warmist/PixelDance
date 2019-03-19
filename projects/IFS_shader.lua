@@ -3,19 +3,26 @@ require "common"
 require "colors"
 local luv=require "colors_luv"
 local size_mult=1
-local win_w=1024*size_mult
-local win_h=win_w--math.floor(1024*size_mult*(1/math.sqrt(2)))
+local win_w=1500*size_mult
+local win_h=math.floor(win_w*size_mult*(1/math.sqrt(2)))
 __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/win_h
 local size=STATE.size
 local max_palette_size=50
-local sample_count=100000
-local max_sample=100000000 --for halton seq.
+local sample_count=131072
+local max_sample=10000000 --for halton seq.
 local need_clear=false
 local oversample=1
 local render_lines=false --does not work :<
+local complex=true
+local init_zero=false
+local escape_fractal=true
+
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
+
+str_cmplx=str_cmplx or "c_mul(s,s)+p"
+
 str_preamble=str_preamble or ""
 str_postamble=str_postamble or ""
 img_buf=make_image_buffer(size[1],size[2])
@@ -57,7 +64,7 @@ config=make_config({
 	{"cx",0,type="float",min=-10,max=10},
 	{"cy",0,type="float",min=-10,max=10},
 	{"min_value",0,type="float",min=0,max=20},
-	{"gen_radius",1,type="float",min=0,max=10},
+	{"gen_radius",2,type="float",min=0,max=10},
 	{"animation",0,type="float",min=0,max=1},
 },config)
 
@@ -617,6 +624,7 @@ function save_img()
 	end
 	config_serial=config_serial..string.format("str_x=%q\n",str_x)
 	config_serial=config_serial..string.format("str_y=%q\n",str_y)
+	config_serial=config_serial..string.format("str_cmplx=%q\n",str_cmplx)
 	config_serial=config_serial..string.format("str_preamble=%q\n",str_preamble)
 	config_serial=config_serial..string.format("str_postamble=%q\n",str_postamble)
 	config_serial=config_serial..palette_serialize()
@@ -624,10 +632,19 @@ function save_img()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
 
-local terminal_symbols={["s.x"]=5,["s.y"]=5,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=2,["1"]=0.1,["0"]=0.1}
+local terminal_symbols={["s.x"]=10,["s.y"]=10,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=0.05,["1"]=0.1,["0"]=0.1}
 local terminal_symbols_alt={["p.x"]=3,["p.y"]=3}
-local terminal_symbols_param={["s.x"]=5,["s.y"]=5,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=2}
-local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=2,["(R)*(R)"]=4,["(R)-(R)"]=8,["(R)+(R)"]=8}
+local terminal_symbols_param={["s.x"]=10,["s.y"]=105,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=0.05}
+local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=2,["(R)*(R)"]=4,["(R)-(R)"]=6,["(R)+(R)"]=6}
+
+local terminal_symbols_complex={["s"]=10,["p"]=3,["params.xy"]=1,["params.zw"]=1,["(c_one()*normed_i)"]=0.05,["(c_i()*normed_i)"]=0.05,["c_one()"]=0.1,["c_i()"]=0.1}
+local normal_symbols_complex={
+["c_sqrt(R)"]=0.1,
+["c_ln(R)"]=0.1,["c_exp(R)"]=0.01,
+["c_acos(R)"]=0.1,["c_asin(R)"]=0.1,["c_atan(R)"]=0.1,
+["c_tan(R)"]=1,["c_sin(R)"]=1,["c_cos(R)"]=1,
+["c_div(R,R)"]=2,["c_mul(R,R)"]=4,["c_inv(R)"]=1,["c_conj(R)"]=1,
+["(R)-(R)"]=6,["(R)+(R)"]=6}
 
 function normalize( tbl )
 	local sum=0
@@ -642,6 +659,8 @@ normalize(terminal_symbols)
 normalize(terminal_symbols_alt)
 normalize(terminal_symbols_param)
 normalize(normal_symbols)
+normalize(terminal_symbols_complex)
+normalize(normal_symbols_complex)
 function rand_weighted(tbl)
 	local r=math.random()
 	local sum=0
@@ -680,6 +699,22 @@ function random_math( steps,seed )
 	end
 	function MT(  )
 		return rand_weighted(terminal_symbols)
+	end
+
+	for i=1,steps do
+		cur_string=replace_random(cur_string,"R",M)
+	end
+	cur_string=string.gsub(cur_string,"R",MT)
+	return cur_string
+end
+function random_math_complex( steps,seed )
+	local cur_string=seed or "R"
+
+	function M(  )
+		return rand_weighted(normal_symbols_complex)
+	end
+	function MT(  )
+		return rand_weighted(terminal_symbols_complex)
 	end
 
 	for i=1,steps do
@@ -759,30 +794,46 @@ end
 animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
+	str_cmplx=random_math_complex(rand_complexity)
+	--mandelbrot?
+	--[[
+	str_cmplx="c_mul(s,s)+p
+	--]]
 
+	--[[ julia
+	str_cmplx="c_mul(s,s)+params.xy"
+	--]]
+
+	--[[
+	--str_x="p.x*params.x+s.y*s.x*params.y"
+	--str_y="s.y+p.x*s.y*params.w"
+	--]]
+
+	--local s="((p.y)+(p.x))+((tan(tan((normed_i)/(params.w))))*(s.y))"
 	--str_x="sin("..s.."-s.x*s.y)"
 	--str_y="cos("..s.."-s.y*s.x)"
-	--str_x=random_math_centered(5,rand_complexity)
-	--str_y=random_math_centered(5,rand_complexity)
+	--str_x=random_math_centered(3,rand_complexity)
+	--str_y=random_math_centered(3,rand_complexity)
 	str_x=random_math(rand_complexity)
 	str_y=random_math(rand_complexity)
-
+	
 	--[[
 	local str1="p.x"
 	local str2="p.y"
-	local max_i=7
+	local max_i=3
 	for i=0,max_i-1 do
-		str1=str1..("+(%s)*%.3f"):format(s,math.cos((i/max_i)*math.pi*2))
-		str2=str2..("+(%s)*%.3f"):format(s,math.sin((i/max_i)*math.pi*2))
+		local s=random_math(rand_complexity)
+		str1=str1..("+(%s)*(%.3f)"):format(s,math.cos((i/max_i)*math.pi*2))
+		str2=str2..("+(%s)*(%.3f)"):format(s,math.sin((i/max_i)*math.pi*2))
 	end
-	--str_x=random_math(rand_complexity,str1)
-	--str_y=random_math(rand_complexity,str2)
+	str_x=str1--random_math(rand_complexity,str1)
+	str_y=str2--random_math(rand_complexity,str2)
 	--]]
-	--str_x=random_math(rand_complexity,"R*length(s)")
-	--str_y=random_math(rand_complexity,"R*length(s)")
+	--str_x=random_math(rand_complexity,"(R)*length(s)")
+	--str_y=random_math(rand_complexity,"(R)*length(s)")
 
-	--str_x=s.."*(length(s-p))"
-	--str_y=s.."*(-length(s-p))"
+	--str_x=s.."*(length(p)/(length(s)+1))"
+	--str_y=s.."*(length(s)/(length(p)+1))"
 
 	--str_x=random_math(rand_complexity,"log(abs(R))")
 	--str_y=random_math(rand_complexity,"log(abs(R))")
@@ -798,21 +849,21 @@ function rand_function(  )
 	--str_x=random_math_fourier(3,rand_complexity)
 	--str_y=random_math_fourier(3,rand_complexity)
 
-	--str_x=random_math_power(5,rand_complexity)
-	--str_y=random_math_power(5,rand_complexity)
+	--str_x=random_math_power(8,rand_complexity)
+	--str_y=random_math_power(8,rand_complexity)
 
-	--str_x=random_math(rand_complexity,"R*s.x*s.x-R*s.y*s.y")
-	--str_y=random_math(rand_complexity,"R*s.x*s.x-R*s.y*s.y")
+	--str_x=random_math(rand_complexity,"(R)*s.x*s.x-(R)*s.y*s.y")
+	--str_y=random_math(rand_complexity,"(R)*s.x*s.x-(R)*s.y*s.y")
 
 
-	--str_x=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
-	--str_y=random_math(rand_complexity,"R+R*s.x+R*s.y+R*s.x*s.y")
+	--str_x=random_math(rand_complexity,"R+(R)*s.x+R*s.y+(R)*s.x*s.y*params.x")
+	--str_y=random_math(rand_complexity,"R+(R)*s.x+R*s.y+(R)*s.x*s.y*params.y")
 	--str_x="s.x"
 	--str_y="s.y"
 
 	--str_y="-"..str_x
-	--str_x=random_math(rand_complexity,"cos(R)*R")
-	--str_y=random_math(rand_complexity,"sin(R)*R")
+	--str_x=random_math(rand_complexity,"cos(R)*(R)")
+	--str_y=random_math(rand_complexity,"sin(R)*(R)")
 	--str_y="sin("..str_x..")"
 	--str_x="cos("..str_x..")"
 	--str_x=random_math_power(2,rand_complexity).."/"..random_math_power(2,rand_complexity)
@@ -839,7 +890,7 @@ function rand_function(  )
 	--[[ boost
 	str_preamble=str_preamble.."s*=move_dist;"
 	--]]
-	-- [[ boost less with distance
+	--[[ boost less with distance
 	str_preamble=str_preamble.."s*=move_dist*exp(-1/dot(s,s));"
 	--]]
 	--[[ center PRE
@@ -854,9 +905,9 @@ function rand_function(  )
 	--[[ logitify PRE
 	str_preamble=str_preamble.."s=log(abs(s));"
 	--]]
-	--[[ gaussination
+	-- [[ gaussination
 	--str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
-	str_postamble=str_postamble.."s=s*vec2(exp(1/(-p.x*p.x)),exp(1/(-p.y*p.y)));"
+	--str_postamble=str_postamble.."s=s*vec2(exp(move_dist/(-p.x*p.x)),exp(move_dist/(-p.y*p.y)));"
 	--]]
 	--[[ offset
 	str_preamble=str_preamble.."s+=params.xy;"
@@ -867,9 +918,9 @@ function rand_function(  )
 
 	--]]
 	--[[ rotate (p)
-	--str_preamble=str_preamble.."s=vec2(cos(p.x)*s.x-sin(p.x)*s.y,cos(p.x)*s.y+sin(p.x)*s.x);"
+	str_preamble=str_preamble.."s=vec2(cos(p.x)*s.x-sin(p.x)*s.y,cos(p.x)*s.y+sin(p.x)*s.x);"
 	--str_preamble=str_preamble.."s=vec2(cos(p.y)*s.x-sin(p.y)*s.y,cos(p.y)*s.y+sin(p.y)*s.x);"
-	str_preamble=str_preamble.."s=vec2(cos(normed_i*M_PI*2)*s.x-sin(normed_i*M_PI*2)*s.y,cos(normed_i*M_PI*2)*s.y+sin(normed_i*M_PI*2)*s.x);"
+	--str_preamble=str_preamble.."s=vec2(cos(normed_i*M_PI*2)*s.x-sin(normed_i*M_PI*2)*s.y,cos(normed_i*M_PI*2)*s.y+sin(normed_i*M_PI*2)*s.x);"
 	--]]
 	--[[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
@@ -900,7 +951,9 @@ function rand_function(  )
 	--]]
 	--[[ unrotate POST
 	--str_postamble=str_postamble.."s=vec2(cos(-params.z)*s.x-sin(-params.z)*s.y,cos(-params.z)*s.y+sin(-params.z)*s.x);"
-	str_postamble=str_postamble.."p=vec2(cos(-params.z*M_PI*2)*p.x-sin(-params.z*M_PI*2)*p.y,cos(-params.z*M_PI*2)*p.y+sin(-params.z*M_PI*2)*p.x);"
+	str_postamble=str_postamble.."s=vec2(cos(-0.7853981)*s.x-sin(-0.7853981)*s.y,cos(-0.7853981)*s.y+sin(-0.7853981)*s.x);"
+	--str_postamble=str_postamble.."p=vec2(cos(-params.z*M_PI*2)*p.x-sin(-params.z*M_PI*2)*p.y,cos(-params.z*M_PI*2)*p.y+sin(-params.z*M_PI*2)*p.x);"
+	--str_preamble=str_preamble.."s=vec2(cos(-normed_i*M_PI*2)*s.x-sin(-normed_i*M_PI*2)*s.y,cos(-normed_i*M_PI*2)*s.y+sin(-normed_i*M_PI*2)*s.x);"
 	--]]
 	--[[ unoffset POST
 	str_postamble=str_postamble.."s-=params.xy;"
@@ -914,10 +967,17 @@ function rand_function(  )
 	--[[ uncenter POST
 	str_postamble=str_postamble.."s=s+p;"
 	--]]
+	--[[ crazyness
+	str_postamble=str_postamble.."p=tp;"
+	--]]
 	print("==============")
 	print(str_preamble)
-	print(str_x)
-	print(str_y)
+	if complex then
+		print(str_cmplx)
+	else
+		print(str_x)
+		print(str_y)
+	end
 	print(str_postamble)
 	make_visit_shader(true)
 	need_clear=true
@@ -1003,12 +1063,33 @@ end
 
 knock_buf=knock_buf or load_png("knock.png")
 local knock_texture
+function make_coord_change(  )
+	if complex then
+		return string.format("s=%s;",str_cmplx)
+	else
+		return string.format("s=vec2(%s,%s);",str_x,str_y)
+	end
+end
+function make_init_cond(  )
+	if init_zero then
+		return "vec2(0,0)"
+	else
+		return "p"
+	end
+end
+function escape_mode_str(  )
+	if escape_fractal then
+		return "1"
+	else
+		return "0"
+	end
+end
 function make_visit_shader( force )
 if add_visit_shader==nil or force then
 	add_visit_shader=shaders.Make(
 string.format([==[
 #version 330
-#line 1322
+#line 1074
 layout(location = 0) in vec3 position;
 out vec3 pos;
 
@@ -1025,6 +1106,213 @@ uniform vec4 params;
 
 float rand1(float n){return fract(sin(n) * 43758.5453123);}
 float rand2(float n){return fract(sin(n) * 78745.6326871);}
+float cosh(float val) {
+  float tmp = exp(val);
+  return (tmp + 1.0 / tmp) / 2.0;
+}
+ 
+float tanh(float val) {
+  float tmp = exp(val);
+  return (tmp - 1.0 / tmp) / (tmp + 1.0 / tmp);
+}
+ 
+float sinh(float val) {
+  float tmp = exp(val);
+  return (tmp - 1.0 / tmp) / 2.0;
+}
+
+vec2 cosh(vec2 val) {
+  vec2 tmp = exp(val);
+  return(tmp + 1.0 / tmp) / 2.0;
+}
+ 
+vec2 tanh(vec2 val) {
+  vec2 tmp = exp(val);
+  return (tmp - 1.0 / tmp) / (tmp + 1.0 / tmp);
+}
+ 
+vec2 sinh(vec2 val) {
+  vec2 tmp = exp(val);
+  return (tmp - 1.0 / tmp) / 2.0;
+}
+
+vec2 c_one() { return vec2(1., 0.); }
+vec2 c_i() { return vec2(0., 1.); }
+
+float arg(vec2 c) {
+  return atan(c.y, c.x);
+}
+
+vec2 c_conj(vec2 c) {
+  return vec2(c.x, -c.y);
+}
+
+vec2 c_from_polar(float r, float theta) {
+  return vec2(r * cos(theta), r * sin(theta));
+}
+
+vec2 c_to_polar(vec2 c) {
+  return vec2(length(c), atan(c.y, c.x));
+}
+
+/// Computes `e^(c)`, where `e` is the base of the natural logarithm.
+vec2 c_exp(vec2 c) {
+  return c_from_polar(exp(c.x), c.y);
+}
+
+
+/// Raises a floating point number to the complex power `c`.
+vec2 c_exp(float base, vec2 c) {
+  return c_from_polar(pow(base, c.x), c.y * log(base));
+}
+
+/// Computes the principal value of natural logarithm of `c`.
+vec2 c_ln(vec2 c) {
+  vec2 polar = c_to_polar(c);
+  return vec2(log(polar.x), polar.y);
+}
+
+/// Returns the logarithm of `c` with respect to an arbitrary base.
+vec2 c_log(vec2 c, float base) {
+  vec2 polar = c_to_polar(c);
+  return vec2(log(polar.r), polar.y) / log(base);
+}
+
+vec2 c_sqrt(vec2 c) {
+  vec2 p = c_to_polar(c);
+  return c_from_polar(sqrt(p.x), p.y/2.);
+}
+
+/// Raises `c` to a floating point power `e`.
+vec2 c_pow(vec2 c, float e) {
+  vec2 p = c_to_polar(c);
+  return c_from_polar(pow(p.x, e), p.y*e);
+}
+
+/// Raises `c` to a complex power `e`.
+vec2 c_pow(vec2 c, vec2 e) {
+  vec2 polar = c_to_polar(c);
+  return c_from_polar(
+     pow(polar.x, e.x) * exp(-e.y * polar.y),
+     e.x * polar.y + e.y * log(polar.x)
+  );
+}
+
+vec2 c_mul(vec2 self, vec2 other) {
+    return vec2(self.x * other.x - self.y * other.y, 
+                self.x * other.y + self.y * other.x);
+}
+
+vec2 c_div(vec2 self, vec2 other) {
+    float norm = length(other);
+    return vec2(self.x * other.x + self.y * other.y,
+                self.y * other.x - self.x * other.y)/(norm * norm);
+}
+
+vec2 c_sin(vec2 c) {
+  return vec2(sin(c.x) * cosh(c.y), cos(c.x) * sinh(c.y));
+}
+
+vec2 c_cos(vec2 c) {
+  // formula: cos(a + bi) = cos(a)cosh(b) - i*sin(a)sinh(b)
+  return vec2(cos(c.x) * cosh(c.y), -sin(c.x) * sinh(c.y));
+}
+
+vec2 c_tan(vec2 c) {
+  vec2 c2 = 2. * c;
+  return vec2(sin(c2.x), sinh(c2.y))/(cos(c2.x) + cosh(c2.y));
+}
+
+vec2 c_atan(vec2 c) {
+  // formula: arctan(z) = (ln(1+iz) - ln(1-iz))/(2i)
+  vec2 i = c_i();
+  vec2 one = c_one();
+  vec2 two = one + one;
+  if (c == i) {
+    return vec2(0., 1./0.0);
+  } else if (c == -i) {
+    return vec2(0., -1./0.0);
+  }
+
+  return c_div(
+    c_ln(one + c_mul(i, c)) - c_ln(one - c_mul(i, c)),
+    c_mul(two, i)
+  );
+}
+
+vec2 c_asin(vec2 c) {
+ // formula: arcsin(z) = -i ln(sqrt(1-z^2) + iz)
+  vec2 i = c_i(); vec2 one = c_one();
+  return c_mul(-i, c_ln(
+    c_sqrt(c_one() - c_mul(c, c)) + c_mul(i, c)
+  ));
+}
+
+vec2 c_acos(vec2 c) {
+  // formula: arccos(z) = -i ln(i sqrt(1-z^2) + z)
+  vec2 i = c_i();
+
+  return c_mul(-i, c_ln(
+    c_mul(i, c_sqrt(c_one() - c_mul(c, c))) + c
+  ));
+}
+
+vec2 c_sinh(vec2 c) {
+  return vec2(sinh(c.x) * cos(c.y), cosh(c.x) * sin(c.y));
+}
+
+vec2 c_cosh(vec2 c) {
+  return vec2(cosh(c.x) * cos(c.y), sinh(c.x) * sin(c.y));
+}
+
+vec2 c_tanh(vec2 c) {
+  vec2 c2 = 2. * c;
+  return vec2(sinh(c2.x), sin(c2.y))/(cosh(c2.x) + cos(c2.y));
+}
+
+vec2 c_asinh(vec2 c) {
+  // formula: arcsinh(z) = ln(z + sqrt(1+z^2))
+  vec2 one = c_one();
+  return c_ln(c + c_sqrt(one + c_mul(c, c)));
+}
+
+vec2 c_acosh(vec2 c) {
+  // formula: arccosh(z) = 2 ln(sqrt((z+1)/2) + sqrt((z-1)/2))
+  vec2 one = c_one();
+  vec2 two = one + one;
+  return c_mul(two,
+      c_ln(
+        c_sqrt(c_div((c + one), two)) + c_sqrt(c_div((c - one), two))
+      ));
+}
+
+vec2 c_atanh(vec2 c) {
+  // formula: arctanh(z) = (ln(1+z) - ln(1-z))/2
+  vec2 one = c_one();
+  vec2 two = one + one;
+  if (c == one) {
+      return vec2(1./0., vec2(0.));
+  } else if (c == -one) {
+      return vec2(-1./0., vec2(0.));
+  }
+  return c_div(c_ln(one + c) - c_ln(one - c), two);
+}
+
+// Attempts to identify the gaussian integer whose product with `modulus`
+// is closest to `c`
+vec2 c_rem(vec2 c, vec2 modulus) {
+  vec2 c0 = c_div(c, modulus);
+  // This is the gaussian integer corresponding to the true ratio
+  // rounded towards zero.
+  vec2 c1 = vec2(c0.x - mod(c0.x, 1.), c0.y - mod(c0.y, 1.));
+  return c - c_mul(modulus, c1);
+}
+
+vec2 c_inv(vec2 c) {
+  float norm = length(c);
+	return vec2(c.x, -c.y) / (norm * norm);
+}
+
 vec2 cell_pos(int id,int max_id,float dist)
 {
 	float v=float(id)/float(max_id);
@@ -1038,18 +1326,21 @@ vec2 from_polar(vec2 p)
 {
 	return vec2(cos(p.y)*p.x,sin(p.y)*p.x);
 }
-vec2 func_actual(vec2 p,int it_count)
+vec3 func_actual(vec2 p,int it_count)
 {
-	vec2 s=vec2(p.x,p.y);
-	
+	vec2 s = %s;
+	float e=1;
 	for(int i=0;i<it_count;i++)
 		{
 			float normed_i=float(i)/float(it_count);
 			%s
-			s=vec2(%s,%s);
 			%s
+			%s
+
+			if(e>normed_i && dot(s,s)>4)
+				e=normed_i;
 		}
-	return s;
+	return vec3(s.x,s.y,e);
 }
 vec2 tRotate(vec2 p, float a) {
 	float c=cos(a);
@@ -1063,7 +1354,7 @@ vec2 tReflect(vec2 p,float a){
 	mat2 m=mat2(c,s,s,-c);
 	return m*p;
 }
-vec2 func(vec2 p,int it_count)
+vec3 func(vec2 p,int it_count)
 {
 	const float ang=(M_PI/20)*2;
 #if 1
@@ -1091,10 +1382,10 @@ vec2 func(vec2 p,int it_count)
 	//return p/length(p-r);
 #endif
 #if 0
-	vec2 r=func_actual(p,it_count);
+	vec3 r=func_actual(p,it_count);
 	//vec2 delta=p-r;
 	//return p*exp(1/-dot(delta,delta));
-	return p*exp(1/-dot(r,r));
+	return vec3(p*exp(1/-dot(r.xy,r.xy)),r.z);
 	//return r*exp(1/-dot(p,p));
 	//return vec2(exp(1/-(r.x*r.x)),exp(1/-(r.y*r.y)))*p;
 	//return vec2(exp(1/-(p.x*p.x)),exp(1/-(p.y*p.y)))+r;
@@ -1119,7 +1410,7 @@ vec2 func(vec2 p,int it_count)
 	return r;
 #endif
 #if 0
-	const float symetry_defect=0.002;
+	const float symetry_defect=0.02;
 	vec2 v=to_polar(p);
 	
 	float av=floor((v.y+M_PI)/ang);
@@ -1132,12 +1423,12 @@ vec2 func(vec2 p,int it_count)
 
 	p=tRotate(p,ang*av+symetry_defect*av);
 	//p=tReflect(p,ang*av/2+symetry_defect*av);
-	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
+	vec3 r=func_actual(p,it_count);//+vec2(0,-dist_div);
 	//r=tReflect(r,ang*av/2);
-	r=tRotate(r,-ang*av);
+	r.xy=tRotate(r.xy,-ang*av);
 
 	//r+=c*0.25*av;
-	r+=c;
+	r.xy+=c;
 	//r=to_polar(r);
 	//r.x+=dist_div;
 	//r.y+=av*ang;
@@ -1165,7 +1456,7 @@ vec2 func(vec2 p,int it_count)
 	return r;
 #endif
 #if 0
-	const float symetry_defect=0.000;//0.01;
+	const float symetry_defect=0.1;//0.01;
 	const float rotate_amount=M_PI*2;//M_PI/3;
 
 	const int cell_count=50;
@@ -1197,10 +1488,10 @@ vec2 func(vec2 p,int it_count)
 	p-=c*symetry_defect*av;
 	p=tRotate(p,rotate_amount*av);
 	//p=tReflect(p,rotate_amount*av/2+symetry_defect*av);
-	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
+	vec3 r=func_actual(p,it_count);//+vec2(0,-dist_div);
 	//r=tReflect(r,rotate_amount*av/2);
-	r=tRotate(r,-rotate_amount*av);
-	r+=c;
+	r.xy=tRotate(r.xy,-rotate_amount*av);
+	r.xy+=c;
 	return r;
 #endif
 }
@@ -1215,7 +1506,7 @@ vec2 gaussian(float mean,float var,vec2 rnd)
 vec2 mapping(vec2 p)
 {
 	return p;
-	//return mod(p+vec2(1),2)-vec2(1);
+	//return mod(p+vec2(1),0.8)-vec2(1);
 
 	/* polar
 	float angle=(2*M_PI)/3;
@@ -1246,46 +1537,39 @@ vec2 mapping(vec2 p)
 	return p-vec2(w/2,h/2);
 	//*/
 }
-vec2 dfun(vec2 p,int iter,float h)
-{
-	vec2 x1=func(p+vec2(1,1)*h,iter);
-	vec2 x2=func(p+vec2(1,-1)*h,iter);
-	vec2 x3=func(p+vec2(-1,1)*h,iter);
-	vec2 x4=func(p+vec2(-1,-1)*h,iter);
-	
-	return (x1-x2-x3+x4)/(4*h*h);
-
-}
+#define ESCAPE_MODE %s
 void main()
 {
 	float d=0;
-	
 
-	//float h1=hash(position.xy*seed);
-	//float h2=hash(position.xy*5464+vec2(1244,234)*seed);
-	//vec2 p_rnd=position.xy+gaussian(0,1,vec2(h1,h2));
-	/*vec2 p_far=func(p_rnd,max_iters);
-	if(d>1)
-		pos.x=1;
-	else
-		pos.x=0;*/
-	//gl_Position.xy = mapping(dfun(position.xy,iters,0.1)*scale+center);
-	gl_Position.xy = mapping(func(position.xy,iters)*scale+center);
-	gl_PointSize=pix_size;
+#if ESCAPE_MODE
+	vec2 inp_p=mapping((position.xy-center)/scale);
+    vec3 rez= func(inp_p,iters);//*scale+center;
+    pos.xy=position.xy;//*scale+center;
+    gl_Position.xy=position.xy;//*scale+center;
+    pos.z=rez.z;//length(rez);
+#else
+	gl_Position.xy = mapping(func(position.xy,iters).xy*scale+center);
+	
+    pos=gl_Position.xyz;
+#endif
+
+    gl_PointSize=pix_size;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
-    pos=gl_Position.xyz;
 }
-]==],str_preamble,str_x,str_y,str_postamble),
-[==[
+]==],make_init_cond(),str_preamble,make_coord_change(),str_postamble,escape_mode_str()),
+string.format([==[
 #version 330
-#line 1228
+#line 1282
+
+#define ESCAPE_MODE %s
 
 out vec4 color;
 in vec3 pos;
 uniform sampler2D img_tex;
 uniform int pix_size;
-
+uniform int it_count;
 float shape_point(vec2 pos)
 {
 	//float rr=clamp(1-txt.r,0,1);
@@ -1298,13 +1582,22 @@ float shape_point(vec2 pos)
 	return delta_size;
 }
 void main(){
+#if ESCAPE_MODE
+	//if(pos.z>float(it_count)/10)
+	//	discard;
+	float v=pos.z;
+	//v=smoothstep(v,0,1);
+	v=clamp(v,0,1);
+	//float v=1;
+#else
+	float v=1;
+#endif
 	//vec4 txt=texture(img_tex,mod(pos.xy*vec2(0.5,-0.5)+vec2(0.5,0.5),1));
 #if 0
 	float delta_size=shape_point(pos.xy);
 #else
 	float delta_size=1;
 #endif
-
 	//float delta_size=txt.r;
  	float r = 2*length(gl_PointCoord - 0.5)/(delta_size);
 	float a = 1 - smoothstep(0, 1, r);
@@ -1312,9 +1605,9 @@ void main(){
 	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
 	//color=vec4(a,0,0,1);
-	color=vec4(a*intensity,0,0,1);
+	color=vec4(a*intensity*v,0,0,1);
 }
-]==])
+]==],escape_mode_str()))
 end
 
 end
@@ -1341,6 +1634,11 @@ local visit_plan={
 	--{1,120},
 	--]]
 	-- [[
+	{75,2},
+	{10,6},
+	{1,24},
+	--]]
+	--[[
 	{64,1},
 	{128,2},
 	{16,4},
@@ -1418,13 +1716,9 @@ function visit_iter()
 			--print("Clearing")
 		end
 
-		local step=1
-		if draw_lines then
-			step=2
-		end
 		local sample_count=samples.w*samples.h-1
 		local sample_count_w=math.floor(math.sqrt(sample_count))
-		for i=0,sample_count,step do
+		for i=0,sample_count do
 			--[[ exact grid
 			local x=((i%sample_count_w)/sample_count_w-0.5)*2
 			local y=(math.floor(i/sample_count_w)/sample_count_w-0.5)*2
@@ -1445,14 +1739,29 @@ function visit_iter()
 			local x=math.sqrt(-2*gen_radius*math.log(u1))*math.cos(u2)
 			local y=math.sqrt(-2*gen_radius*math.log(u1))*math.sin(u2)
 			--]]
-			--[[ square
+			--[[
+			local cc=i/sample_count
+			local pix_id=cc*win_w*win_h
+
+			local x=(math.floor(pix_id%win_w)/win_w)*2-1
+			local y=(math.floor(pix_id/win_w)/win_h)*2-1
+			local blur_x=0.05/win_w
+			local blur_y=0.05/win_h
+			--[=[
+			x=x+math.random()*blur_x-blur_x/2
+			y=y+math.random()*blur_y-blur_y/2
+			--]=]
+			x,y=gaussian2(x,blur_x,y,blur_y)
+			--print(x,y,i)
+			--]]
+			-- [[ square
 			local x=math.random()*gen_radius-gen_radius/2
 			local y=math.random()*gen_radius-gen_radius/2
 			--]]
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=3
 			local rad=2+gen_radius*gen_radius
@@ -1499,11 +1808,11 @@ function visit_iter()
 			y=math.floor(y/grid_size)*grid_size
 			--]]
 			--[[ blur mod
-			local blur_str=0.005
+			local blur_str=0.0001
 			x,y=gaussian2(x,blur_str,y,blur_str)
 			--]]
 			--[[ blur mod linear
-			local blur_str=0.01
+			local blur_str=0.1
 			x=x+math.random()*blur_str-blur_str/2
 			y=y+math.random()*blur_str-blur_str/2
 			--]]
@@ -1513,13 +1822,7 @@ function visit_iter()
 			x=x+math.cos(a2)*circle_size
 			y=y+math.sin(a2)*circle_size
 			--]]
-			local angle_off=math.atan2(y,x)
 			samples.d[i]={x,y}
-			if step==2 then
-				local dx=math.cos(config.rand_angle+angle_off)*config.rand_dist
-				local dy=math.sin(config.rand_angle+angle_off)*config.rand_dist
-				samples.d[i+1]={x+dx,y+dy}
-			end
 		end
 
 		if config.only_last then

@@ -14,7 +14,7 @@ local win_w=1024
 local win_h=1024
 
 __set_window_size(win_w,win_h)
-local oversample=1
+local oversample=0.5
 local agent_count=1024
 --[[ perf:
 	oversample 2 768x768
@@ -66,7 +66,8 @@ config=make_config({
     {"ag_sensor_distance",9,type="float",min=0.1,max=10},
     --{"ag_sensor_size",1,type="int",min=1,max=3},
     {"ag_sensor_angle",math.pi/2,type="float",min=0,max=math.pi/2},
-    {"ag_turn_angle",math.pi/2,type="float",min=0,max=math.pi/2},
+    {"ag_turn_angle",math.pi/2,type="float",min=-math.pi/2,max=math.pi/2},
+    {"ag_turn_avoid",math.pi/2,type="float",min=-math.pi/2,max=math.pi/2},
 	{"ag_step_size",1,type="float",min=0.01,max=10},
 	{"ag_trail_amount",0.019,type="float",min=0,max=0.5},
 	{"trail_size",2,type="int",min=1,max=5},
@@ -271,6 +272,7 @@ uniform float ag_sensor_angle;
 uniform float ag_turn_angle;
 uniform float ag_step_size;
 uniform float ag_turn_around;
+uniform float ag_turn_avoid;
 //
 float rand(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x))));}
 
@@ -307,9 +309,9 @@ void main(){
 	{
 	#ifdef TURNAROUND
 		if(rgt>=turn_around)
-			step_size*=-1;
-			//head+=turn_size*2;
-		//else
+			//step_size*=-1;
+			head+=ag_turn_avoid;
+		else
 	#endif
 			head+=turn_size;
 	}
@@ -317,9 +319,9 @@ void main(){
 	{
 	#ifdef TURNAROUND
 		if(lft>=turn_around)
-			step_size*=-1;
-			//head-=turn_size*2;
-		//else
+			//step_size*=-1;
+			head-=ag_turn_avoid;
+		else
 	#endif
 			head-=turn_size;
 	}
@@ -330,7 +332,8 @@ void main(){
 	{
 		//head+=(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
 		//head+=M_PI;//turn_size*2;//(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
-		step_size*=-1;
+		//step_size*=-1;
+		head+=(rand(pos.xy+state.xy*4578)-0.5)*ag_turn_avoid;
 	}
 	//step in heading direction
 	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
@@ -364,6 +367,7 @@ function do_agent_logic(  )
 	agent_logic_shader:set("ag_turn_angle",config.ag_turn_angle)
 	agent_logic_shader:set("ag_step_size",config.ag_step_size)
 	agent_logic_shader:set("ag_turn_around",config.turn_around)
+	agent_logic_shader:set("ag_turn_avoid",config.ag_turn_avoid)
 	--
 	agent_logic_shader:set("rez",map_w,map_h)
     if not tex_agent_result:render_to(agent_count,agent_count) then
@@ -517,7 +521,7 @@ function update()
 			agent_data:set(i,j,
     			{math.cos(a)*r+map_w/2,
     			 math.sin(a)*r+map_h/2,
-    			 a,
+    			 a+math.pi/2,
     			 0})
     		--]]
     		--[[
