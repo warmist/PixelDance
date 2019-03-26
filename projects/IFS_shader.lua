@@ -2,9 +2,9 @@
 require "common"
 require "colors"
 local luv=require "colors_luv"
-local size_mult=1
-local win_w=1500*size_mult
-local win_h=math.floor(win_w*size_mult*(1/math.sqrt(2)))
+local size_mult=0.5
+local win_w=2560*size_mult
+local win_h=1440*size_mult--math.floor(win_w*size_mult*(1/math.sqrt(2)))
 __set_window_size(win_w,win_h)
 local aspect_ratio=win_w/win_h
 local size=STATE.size
@@ -16,7 +16,7 @@ local oversample=1
 local render_lines=false --does not work :<
 local complex=true
 local init_zero=false
-local escape_fractal=true
+local escape_fractal=false
 
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
@@ -47,7 +47,7 @@ function make_visits_buf(  )
 end
 tick=tick or 0
 config=make_config({
-	{"only_last",false,type="boolean"},
+	{"only_last",true,type="boolean"},
 	{"auto_scale_color",false,type="boolean"},
 	{"draw",true,type="boolean"},
 	{"point_size",0,type="int",min=0,max=10},
@@ -639,11 +639,14 @@ local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fra
 
 local terminal_symbols_complex={["s"]=10,["p"]=3,["params.xy"]=1,["params.zw"]=1,["(c_one()*normed_i)"]=0.05,["(c_i()*normed_i)"]=0.05,["c_one()"]=0.1,["c_i()"]=0.1}
 local normal_symbols_complex={
+-- [=[
 ["c_sqrt(R)"]=0.1,
 ["c_ln(R)"]=0.1,["c_exp(R)"]=0.01,
 ["c_acos(R)"]=0.1,["c_asin(R)"]=0.1,["c_atan(R)"]=0.1,
 ["c_tan(R)"]=1,["c_sin(R)"]=1,["c_cos(R)"]=1,
-["c_div(R,R)"]=2,["c_mul(R,R)"]=4,["c_inv(R)"]=1,["c_conj(R)"]=1,
+["c_div(R,R)"]=2,["c_inv(R)"]=1,["c_conj(R)"]=1,
+--]=]
+["c_mul(R,R)"]=4,
 ["(R)-(R)"]=6,["(R)+(R)"]=6}
 
 function normalize( tbl )
@@ -803,7 +806,13 @@ function rand_function(  )
 	--[[ julia
 	str_cmplx="c_mul(s,s)+params.xy"
 	--]]
-
+	--[[ cubebrot julian
+	str_cmplx="c_mul(s,c_mul(s,s))+c_mul(p,params.zw)+params.xy"
+	--]]
+	--[[
+	str_x="s.x*s.x-s.y*s.y+params.x"
+	str_y="s.x*s.y-s.y*s.y+params.y"
+	--]]
 	--[[
 	--str_x="p.x*params.x+s.y*s.x*params.y"
 	--str_y="s.y+p.x*s.y*params.w"
@@ -1093,6 +1102,8 @@ string.format([==[
 #define COMPLEX_NUMBERS
 //#define DUAL_NUMBERS //aka boring numbers :<
 //#define HYPERBOLIC_NUMBERS //aka split-complex
+//#define STRANGE_NUMBERS1
+//#define STRANGE_NUMBERS2
 layout(location = 0) in vec3 position;
 out vec3 pos;
 
@@ -1358,6 +1369,24 @@ vec2 c_mul(vec2 z, vec2 w) {
 #endif
 
 
+#ifdef STRANGE_NUMBERS1
+
+vec2 c_mul(vec2 z, vec2 w) {
+    return vec2(z.x * w.x - z.y * w.y,
+                z.x * w.y - z.y * w.x);
+}
+
+#endif
+
+#ifdef STRANGE_NUMBERS2
+
+vec2 c_mul(vec2 z, vec2 w) {
+    return vec2(z.x * w.x - z.y * w.y+0.5*w.x*w.x-0.5*z.x*z.x,
+                z.x * w.y + z.y * w.x+0.5*w.y*w.y-0.5*z.y*z.y);
+}
+
+#endif
+
 vec2 cell_pos(int id,int max_id,float dist)
 {
 	float v=float(id)/float(max_id);
@@ -1381,11 +1410,13 @@ vec3 func_actual(vec2 p,int it_count)
 			%s
 			%s
 			%s
+			#ifdef ESCAPE_MODE
 			if(e>normed_i && dot(s,s)>4)
 				{
 				e=normed_i;
 				break;
 				}
+			#endif
 		}
 	return vec3(s.x,s.y,e);
 }
@@ -1541,6 +1572,7 @@ vec3 func(vec2 p,int it_count)
 	r.xy+=c;
 	return r;
 #endif
+
 }
 float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
 vec2 gaussian(float mean,float var,vec2 rnd)
@@ -1805,14 +1837,14 @@ function visit_iter()
 			x,y=gaussian2(x,blur_x,y,blur_y)
 			--print(x,y,i)
 			--]]
-			-- [[ square
+			--[[ square
 			local x=math.random()*gen_radius-gen_radius/2
 			local y=math.random()*gen_radius-gen_radius/2
 			--]]
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-			--local x,y=gaussian2(0,gen_radius,0,gen_radius)
+		 	local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=3
 			local rad=2+gen_radius*gen_radius
