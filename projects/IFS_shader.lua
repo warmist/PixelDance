@@ -1099,6 +1099,7 @@ if add_visit_shader==nil or force then
 string.format([==[
 #version 330
 #line 1092
+#define ESCAPE_MODE %s
 #define COMPLEX_NUMBERS
 //#define DUAL_NUMBERS //aka boring numbers :<
 //#define HYPERBOLIC_NUMBERS //aka split-complex
@@ -1410,13 +1411,13 @@ vec3 func_actual(vec2 p,int it_count)
 			%s
 			%s
 			%s
-			#ifdef ESCAPE_MODE
+#if ESCAPE_MODE
 			if(e>normed_i && dot(s,s)>4)
 				{
 				e=normed_i;
 				break;
 				}
-			#endif
+#endif
 		}
 	return vec3(s.x,s.y,e);
 }
@@ -1616,7 +1617,7 @@ vec2 mapping(vec2 p)
 	return p-vec2(w/2,h/2);
 	//*/
 }
-#define ESCAPE_MODE %s
+
 void main()
 {
 	float d=0;
@@ -1637,7 +1638,7 @@ void main()
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
 }
-]==],make_init_cond(),str_preamble,make_coord_change(),str_postamble,escape_mode_str()),
+]==],escape_mode_str(),make_init_cond(),str_preamble,make_coord_change(),str_postamble),
 string.format([==[
 #version 330
 #line 1282
