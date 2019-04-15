@@ -43,9 +43,11 @@ uniform float diffuse;
 uniform float decay;
 
 uniform sampler2D tex_main;
+uniform sampler2D tex_mask;
 float sample_around(vec2 pos)
 {
 	float ret=0;
+
 	ret+=textureOffset(tex_main,pos,ivec2(-1,-1)).x;
 	ret+=textureOffset(tex_main,pos,ivec2(-1,1)).x;
 	ret+=textureOffset(tex_main,pos,ivec2(1,-1)).x;
@@ -102,6 +104,15 @@ function write_mat()
 	material:write_texture(mat_tex2)
 end
 write_mat()
+local img_tex1=textures.Make()
+local img_tex2=textures.Make()
+function write_img(  )
+	img_tex1:use(0)
+	img_buf:write_texture(img_tex1)
+	img_tex2:use(0)
+	img_buf:write_texture(img_tex2)
+end
+write_img()
 function save_img()
 	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
 	for k,v in pairs(config) do
@@ -141,15 +152,11 @@ function update(  )
 	draw_config(config)
 
 	if imgui.Button("Clear image") then
-		print(material.w,material.h)
 		--clear_screen(true)
 		for j=0,map_h-1 do
 			for i=0,map_w-1 do
 				material:set(i,j,0)
 			end
-		end
-		for i=0,map_w-1 do
-			material:set(i,math.floor(map_h/2),1000)
 		end
 		write_mat()
 	end
@@ -159,7 +166,7 @@ function update(  )
 			mat_tex1:use(0)
 			material:read_texture(mat_tex1)
 			for i=0,map_w-1 do
-				material:set(i,math.floor(map_h/2),1000)
+				material:set(i,math.floor(map_h/2),1+material:get(i,math.floor(map_h/2)))
 			end
 			material:write_texture(mat_tex1)
 		end
