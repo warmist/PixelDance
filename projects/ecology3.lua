@@ -15,7 +15,7 @@ local size=STATE.size
 
 is_remade=false
 local max_particle_count=win_w*win_h
-current_particle_count=current_particle_count or 100
+current_particle_count= 1000
 function update_particle_buffer()
 	if particles==nil or particles.w~=max_particle_count then
 		particles=make_flt_half_buffer(max_particle_count,1)
@@ -93,8 +93,8 @@ function particle_step(  )
             local dx=pt.r-p.r
             local dy=pt.g-p.g
             local len=math.sqrt(dx*dx+dy*dy)
-            s.r=s.r+(dx/len)*0.000001
-            s.g=s.g+(dy/len)*0.000001
+            s.r=s.r+(dx/len)*0.0000001
+            s.g=s.g+(dy/len)*0.0000001
         end
         s.r=s.r*0.99
         s.g=s.g*0.99
@@ -112,6 +112,7 @@ if tex_pixel==nil then
     tex_pixel:use(0,0,1)
     tex_pixel:set(img_buf.w,img_buf.h,0)
 end
+need_clear=false
 function update()
     __clear()
     __no_redraw()
@@ -123,10 +124,7 @@ function update()
     if imgui.Button("Reset world") then
         img_buf=nil
         update_img_buf()
-        pixel_init()
-        for k,v in pairs(sim_master_list) do
-            v.items={}
-        end
+        need_clear=true
     end
     if is_remade then
         is_remade=false
@@ -145,13 +143,15 @@ function update()
 
     if config.draw then
         update_img_buf()
-        
 
     	place_pixels_shader:use()
-        
-        
+
         if not tex_pixel:render_to(img_buf.w,img_buf.h) then
             error("failed to set framebuffer up")
+        end
+        if need_clear then
+            __clear()
+            need_clear=false
         end
         place_pixels_shader:draw_points(particles.d,current_particle_count)
         __render_to_window()

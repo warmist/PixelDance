@@ -1,195 +1,86 @@
+--[[
+	* mass transfer and crystalization
+	* block diffusion by other crystals
+--]]
 require "common"
+local win_w=768
+local win_h=768
+
+__set_window_size(win_w,win_h)
+local oversample=0.5
+local map_w=(win_w*oversample)
+local map_h=(win_h*oversample)
 
 local size=STATE.size
-local max_size=math.min(size[1],size[2])/2
-img_buf=img_buf or make_image_buffer(size[1],size[2])
-visits=visits or make_flt_buffer(size[1],size[2])
+
+img_buf=img_buf or make_image_buffer(map_w,map_h)
+material=material or make_flt_buffer(map_w,map_h)
 function resize( w,h )
-	visits=make_flt_buffer(size[1],size[2])
-	img_buf=make_image_buffer(size[1],size[2])
+	img_buf=make_image_buffer(map_w,map_h)
+	material=make_flt_buffer(map_w,map_h)
 end
 
 local size=STATE.size
-
 
 tick=tick or 0
 config=make_config({
-	{"prev_color",{0.5,0,0,1},type="color"},
-	{"color",{0.5,0,0,1},type="color"},
-	{"next_color",{0.79,0.59,0.59,1},type="color"},
-	{"color_step",0,type="float",min=0,max=1},
-	{"ppframe",100,type="int",min=1,max=10000}, --particles per frame
-	{"seed_size",100,type="int",min=1,max=500},
-	{"random_color",false,type="boolean"},
-	{"square",true,type="boolean"},
-	{"phase_offset",0.5,type="float"},
-	{"radius",250,type="float",min=0,max=size[1]},
-	{"rnd_offset",0.005,type="float",min=0,max=2},
-	{"restart",0,type="int",min=0,max=10000},
-	{"auto_scale_color",true,type="boolean"},
+	{"simulate",true,type="boolean"},
 },config)
 image_no=image_no or 0
 
-function ray( sx,sy,tx,ty ,p)
-	local dx=tx-sx
-	local dy=ty-sy
-	local dir_l=math.sqrt(dx*dx+dy*dy)
-	dx=dx/dir_l
-	dy=dy/dir_l
-	local iter=0
-	local lx=sx
-	local ly=sy
-	--local debug_ray=true
-	local log_based=config.log_based
-
-	while sx>=0 and sx<visits.w and
-		sy>=0 and sy<visits.h and iter<10000 do
-		
-		if debug_ray then
-			local pp=visits:get(math.floor(sx),math.floor(sy))
-			pp.r=pp.r+p.r
-			pp.g=pp.g+p.g
-			pp.b=pp.b+p.b
-			pp.a=1
-		else
-			local c=visits:get(math.floor(sx),math.floor(sy))
-
-			if c.a>0 then
-				pp=visits:get(math.floor(lx),math.floor(ly))
-				pp.r=pp.r+p.r
-				pp.g=pp.g+p.g
-				pp.b=pp.b+p.b
-				pp.a=1
-				return
-			end
-		end
-	
-		lx=sx
-		ly=sy
-		sx=sx+dx
-		sy=sy+dy
-		iter=iter+1
-	end
-end
-function rnd( r )
-	return (r()*2-1)
-end
-function rgbToHsl(r, g, b, a)
-  r, g, b = r , g , b
-
-  local max, min = math.max(r, g, b), math.min(r, g, b)
-  local h, s, l
-
-  l = (max + min) / 2
-
-  if max == min then
-    h, s = 0, 0 -- achromatic
-  else
-    local d = max - min
-    if l > 0.5 then s = d / (2 - max - min) else s = d / (max + min) end
-    if max == r then
-      h = (g - b) / d
-      if g < b then h = h + 6 end
-    elseif max == g then h = (b - r) / d + 2
-    elseif max == b then h = (r - g) / d + 4
-    end
-    h = h / 6
-  end
-
-  return h, s, l, a or 1
-end
-
---[[
- * Converts an HSL color value to RGB. Conversion formula
- * adapted from http://en.wikipedia.org/wiki/HSL_color_space.
- * Assumes h, s, and l are contained in the set [0, 1] and
- * returns r, g, and b in the set [0, 255].
- *
- * @param   Number  h       The hue
- * @param   Number  s       The saturation
- * @param   Number  l       The lightness
- * @return  Array           The RGB representation
-]]
-function hslToRgb(h, s, l, a)
-  local r, g, b
-  a=a or 1
-  if s == 0 then
-    r, g, b = l, l, l -- achromatic
-  else
-    function hue2rgb(p, q, t)
-      if t < 0   then t = t + 1 end
-      if t > 1   then t = t - 1 end
-      if t < 1/6 then return p + (q - p) * 6 * t end
-      if t < 1/2 then return q end
-      if t < 2/3 then return p + (q - p) * (2/3 - t) * 6 end
-      return p
-    end
-
-    local q
-    if l < 0.5 then q = l * (1 + s) else q = l + s - l * s end
-    local p = 2 * l - q
-
-    r = hue2rgb(p, q, h + 1/3)
-    g = hue2rgb(p, q, h)
-    b = hue2rgb(p, q, h - 1/3)
-  end
-
-  return r , g , b , a
-end
-
-function step_color_hsl( from,to,step )
-
-	local hf={rgbToHsl(from[1],from[2],from[3])}
-	local ht={rgbToHsl(unpack(to))}
-	
-	local dx=ht[1]-hf[1]
-	local dy=ht[2]-hf[2]
-	local dz=ht[3]-hf[3]
-	local delta=math.sqrt(dx*dx+dy*dy+dz*dz)
-	local full_delta=delta
-	if delta<0.0001 then
-		return from,delta
-	end
-	dx=dx/delta
-	dy=dy/delta
-	dz=dz/delta
-
-	local nf={hf[1]+dx*step,hf[2]+dy*step,hf[3]+dz*step}
-	for i=1,3 do
-		if nf[i]>1 then nf[i]=1 end
-		if nf[i]<0 then nf[i]=0 end
-	end
-	
-	return {hslToRgb(unpack(nf))},full_delta
-end
-local log_shader=shaders.Make[==[
+local decay_diffuse_shader=shaders.Make[==[
 #version 330
 
 out vec4 color;
 in vec3 pos;
 
-uniform vec2 min_max;
+uniform float diffuse;
+uniform float decay;
+
 uniform sampler2D tex_main;
-uniform int auto_scale_color;
+float sample_around(vec2 pos)
+{
+	float ret=0;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,-1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(1,-1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(1,1)).x;
 
-
+	ret+=textureOffset(tex_main,pos,ivec2(0,-1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,0)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(1,0)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(0,1)).x;
+	return ret/8;
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	vec3 col=texture(tex_main,normed).xyz;
-	vec2 lmm=min_max;
-
-	if(auto_scale_color==1)
-		col=(log(col+vec3(1,1,1))-vec3(lmm.x))/(lmm.y-lmm.x);
-	else
-		col=log(col+vec3(1))/lmm.y;
-	col=clamp(col,0,1);
-	//nv=math.min(math.max(nv,0),1);
-	//--mix(pix_out,c_u8,c_back,nv)
-	//mix_palette(pix_out,nv)
-	//img_buf:set(x,y,pix_out)
-	color = vec4(col,1);
+	float r=sample_around(normed)*diffuse;
+	r+=texture(tex_main,normed).x*(1-diffuse);
+	r*=decay;
+	//r=clamp(r,0,1);
+	color=vec4(r,0,0,1);
 }
 ]==]
+function diffuse_and_decay( tex,tex_out,w,h,diffuse,decay )
+	--[[
+	TODO:
+		* add step count
+		* add mask to block mass transfer
+	--]]
+	decay_diffuse_shader:use()
+    tex:use(0)
+    --tex_pixel.t:set(size[1]*oversample,size[2]*oversample,3)
+    decay_diffuse_shader:set_i("tex_main",0)
+    decay_diffuse_shader:set("decay",decay)
+    decay_diffuse_shader:set("diffuse",diffuse)
+    if not tex_out:render_to(w,h) then
+		error("failed to set framebuffer up")
+	end
+    decay_diffuse_shader:draw_quad()
+    __render_to_window()
+end
+
+
 local need_save
 local visit_tex = textures.Make()
 last_pos=last_pos or {0,0}
@@ -233,43 +124,7 @@ function draw_visits(  )
 	end
 end
 
-function rand_ray(rand,roff, c )
 
-	local r=rand(1,4)
-	
-	local fx,fy
-	if r==4 then
-		fx=1
-		fy=rand(1,size[2]-1)
-	elseif r==3 then
-		fx=rand(1,size[1]-1)
-		fy=1
-	elseif r==2 then
-		fx=rand(1,size[1]-1)
-		fy=size[2]-1
-	else
-		fx=size[1]-1
-		fy=rand(1,size[2]-1)
-	end
-	local tx,ty
-	if config.square then
-		tx,ty=size[1]/2+rnd(rand)*config.radius,size[2]/2+rnd(rand)*config.radius
-	else
-		--[[local dx=fx-size[1]/2
-		local dy=fy-size[2]/2
-		local dd=math.sqrt(dx*dx+dy*dy)
-		dx=dx/dd
-		dy=dy/dd
-		local a=math.atan(dy,dx)]]
-		local a=rand()*math.pi*2
-		local ph=config.phase_offset*math.pi*2
-		tx,ty=size[1]/2+math.cos(a+ph)*config.radius,size[2]/2+math.sin(a+ph)*config.radius
-	end
-
-	tx=tx+(rnd(roff)-0.5)*config.rnd_offset
-	ty=ty+(rnd(roff)-0.5)*config.rnd_offset
-	ray(fx,fy,tx,ty,c)
-end
 function blend_rgb( c1,c2,t )
 	local ret={}
 	for i=1,4 do
@@ -277,11 +132,6 @@ function blend_rgb( c1,c2,t )
 	end
 	return ret
 end
-restart_count=restart_count or 0
-rand=rand or pcg_rand.Make()
-rand_off=rand_off or pcg_rand.Make()
-rand:seed(42)
-rand_off:seed(102)
 function clear_screen(full )
 	local s=STATE.size
 	if full then
@@ -326,12 +176,7 @@ function update(  )
 	imgui.End()
 	local color_dt
 	config.color,color_dt=step_color_hsl(config.color,config.next_color,config.color_step)
-	--[[if color_dt <0.01 and config.random_color then
-		config.next_color={math.random(),math.random(),math.random(),1}
-	end]]
-	
-	
-	
+
 	for i=1,config.ppframe do
 		config.color=blend_rgb(config.prev_color,config.next_color,(i-1)/config.ppframe)
 		local c=flt_pixel(config.color)
