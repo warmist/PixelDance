@@ -24,7 +24,7 @@ local size=STATE.size
 
 tick=tick or 0
 config=make_config({
-
+	{"material_needed",1,min=0,max=10,type="float"},
 	{"diffuse_steps",1,min=0,max=10,type="int"},
 	{"diffuse",0.5,type="float"},
 	{"decay",0.99,type="float"},
@@ -44,20 +44,32 @@ uniform float decay;
 
 uniform sampler2D tex_main;
 uniform sampler2D tex_mask;
+
+
 float sample_around(vec2 pos)
 {
 	float ret=0;
+	float w=0;
+	float tw=0;
 
-	ret+=textureOffset(tex_main,pos,ivec2(-1,-1)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(-1,1)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(1,-1)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(1,1)).x;
+	#define sample_tex(dx,dy) tw=1-textureOffset(tex_mask,pos,ivec2(dx,dy)).x;\
+	w+=tw;\
+	ret+=textureOffset(tex_main,pos,ivec2(dx,dy)).x*tw
 
-	ret+=textureOffset(tex_main,pos,ivec2(0,-1)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(-1,0)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(1,0)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(0,1)).x;
-	return ret/8;
+	sample_tex(-1,-1);
+	sample_tex(-1,1);
+	sample_tex(1,-1);
+	sample_tex(1,1);
+
+	sample_tex(0,-1);
+	sample_tex(-1,0);
+	sample_tex(1,0);
+	sample_tex(0,1);
+
+	if(w>0)
+		return ret/w;
+	else
+		return 0;
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -68,13 +80,15 @@ void main(){
 	color=vec4(r,0,0,1);
 }
 ]==]
-function diffuse_and_decay( tex,tex_out,w,h,diffuse,decay,steps )
+function diffuse_and_decay( tex,tex_out,w,h,diffuse,decay,steps,mask )
 	steps=steps or 1
 	--[[
 	TODO:
 		* add mask to block mass transfer
 	--]]
 	decay_diffuse_shader:use()
+	mask:use(1)
+	decay_diffuse_shader:set_i("tex_mask",1)
 	for i=1,steps do
 	    tex:use(0)
 	    decay_diffuse_shader:set_i("tex_main",0)
@@ -105,6 +119,12 @@ function write_mat()
 end
 write_mat()
 local img_tex1=textures.Make()
+function write_img(  )
+	img_tex1:use(0)
+	img_buf:write_texture(img_tex1)
+end
+write_img()
+--[===[
 local img_tex2=textures.Make()
 function write_img(  )
 	img_tex1:use(0)
@@ -113,15 +133,76 @@ function write_img(  )
 	img_buf:write_texture(img_tex2)
 end
 write_img()
+local crystalize_shader=shaders.Make[==[
+#version 330
+
+out vec4 color;
+in vec3 pos;
+void main()
+{
+
+}
+--]===]
+function count_nn( x,y )
+	local dx={1,1,0,-1,-1,-1,0,1}
+	local dy={0,-1,-1,-1,0,1,1,1}
+	local ret=0
+	for i=1,8 do
+		local tx=x+dx[i]
+		if tx<0 then tx=map_w-1 end
+		if tx>=map_w then tx=0 end
+		local ty=y+dy[i]
+		if ty<0 then ty=map_h-1 end
+		if ty>=map_h then ty=0 end
+		local v=img_buf:get(tx,ty)
+		if v.a~=0 then
+			ret=ret+1
+		end
+	end
+	return ret
+end
+function crystal_step()
+	material:read_texture(mat_tex1)
+	local crystal_chances={
+		[0]=0.0000001, --0
+		0.01,--1
+		0.01,
+		0.01,
+		0.01,--4
+		0,
+		0,
+		1,
+		0.01,
+	}
+	for x=0,map_w-1 do
+		for y=0,map_h-1 do
+			local v=material:get(x,y)
+			if v>config.material_needed then
+				local c=count_nn(x,y)
+				local r = crystal_chances[c]
+				if r>math.random() then
+					material:set(x,y,0)
+					img_buf:set(x,y,{255,255,255,255})
+				end
+			end
+		end
+	end
+	write_img()
+end
+
 function save_img()
+	if save_buf==nil or save_buf.w~=win_w or save_buf.h~=win_h then
+		save_buf=make_image_buffer(win_w,win_h)
+	end
+
 	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
 	for k,v in pairs(config) do
 		if type(v)~="table" then
 			config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
 		end
 	end
-	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
-	image_no=image_no+1
+	save_buf:read_frame()
+	save_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
 local draw_shader=shaders.Make(
 [==[
@@ -131,18 +212,24 @@ out vec4 color;
 in vec3 pos;
 
 uniform sampler2D tex_main;
-
+uniform sampler2D tex_cryst;
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     vec4 pixel=texture(tex_main,normed);
-    color=vec4(pixel.x,0,0,1);
+    vec4 pixel_c=texture(tex_cryst,normed);
+    color=vec4(max(pixel.x,pixel_c.x),pixel_c.y,pixel_c.z,1);
 }
 ]==])
 function draw(  )
 	draw_shader:use()
     mat_tex1:use(0)
+    img_tex1:use(1)
 	draw_shader:set_i("tex_main",0)
+	draw_shader:set_i("tex_cryst",1)
 	draw_shader:draw_quad()
+end
+function add_mat( x,y,v )
+	material:set(x,y,v+material:get(x,y))
 end
 function update(  )
 	__no_redraw()
@@ -156,27 +243,44 @@ function update(  )
 		for j=0,map_h-1 do
 			for i=0,map_w-1 do
 				material:set(i,j,0)
+				img_buf:set(i,j,{0,0,0,0})
 			end
 		end
 		write_mat()
+		write_img()
+	end
+	imgui.SameLine()
+	if imgui.Button("Save") then
+		need_save=true
 	end
 	imgui.End()
 	if config.simulate then
 		if config.add_mat then
 			mat_tex1:use(0)
 			material:read_texture(mat_tex1)
-			for i=0,map_w-1 do
-				material:set(i,math.floor(map_h/2),1+material:get(i,math.floor(map_h/2)))
+
+			local rw=math.floor(map_w/15)
+			local rh=math.floor(map_h/15)
+			local cx=math.floor(map_w/2)
+			local cy=math.floor(map_h/2)
+			for x=cx-rw,cx+rw do
+			for y=cy-rh,cy+rh do
+				add_mat(x,y,0.5)
+			end
 			end
 			material:write_texture(mat_tex1)
 		end
-		diffuse_and_decay(mat_tex1,mat_tex2,map_w,map_h,config.diffuse,config.decay,config.diffuse_steps)
+		diffuse_and_decay(mat_tex1,mat_tex2,map_w,map_h,config.diffuse,config.decay,config.diffuse_steps,img_tex1)
 		if(config.diffuse_steps%2==1) then
 			local c=mat_tex1
 			mat_tex1=mat_tex2
 			mat_tex2=c
 	    end
+	    crystal_step()
 	end
 	draw()
-
+	if need_save then
+		save_img()
+		need_save=false
+	end
 end
