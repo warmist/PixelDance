@@ -3,8 +3,8 @@
 	* block diffusion by other crystals
 --]]
 require "common"
-local win_w=768
-local win_h=768
+local win_w=1024
+local win_h=1024
 
 __set_window_size(win_w,win_h)
 local oversample=0.5
@@ -60,10 +60,10 @@ float sample_around(vec2 pos)
 	w+=tw;\
 	ret+=textureOffset(tex_main,pos,ivec2(dx,dy)).x*tw
 
-	sample_tex(-1,-1);
+	/*sample_tex(-1,-1);
 	sample_tex(-1,1);
 	sample_tex(1,-1);
-	sample_tex(1,1);
+	sample_tex(1,1);*/
 
 	sample_tex(0,-1);
 	sample_tex(-1,0);
@@ -77,6 +77,12 @@ float sample_around(vec2 pos)
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
+	float dist=0.01;
+	if(normed.x<dist || normed.x>(1-dist) || normed.y<dist || normed.y>(1-dist))
+		{
+			color=vec4(0,0,0,1);
+			return;
+		}
 	float r=sample_around(normed)*diffuse;
 	r+=texture(tex_main,normed).x*(1-diffuse);
 	r*=decay;
@@ -148,10 +154,16 @@ void main()
 }
 --]===]
 function count_nn( x,y )
+	-- [[
 	local dx={1,1,0,-1,-1,-1,0,1}
 	local dy={0,-1,-1,-1,0,1,1,1}
+	--]]
+	--[[
+	local dx={1,0,-1,0}
+	local dy={0,-1,0,1}
+	--]]
 	local ret=0
-	for i=1,8 do
+	for i=1,#dx do
 		local tx=x+dx[i]
 		if tx<0 then tx=map_w-1 end
 		if tx>=map_w then tx=0 end
@@ -168,16 +180,17 @@ end
 function crystal_step()
 	material:read_texture(mat_tex1)
 	local crystal_chances={
-		[0]=0.00000000001, --0
-		0.0001,--1
+		[0]=0, --0
+		0.001,--1
+		1,
+		0.01,
+		0.0001,--4
 		0.1,
-		0.00001,
-		0.005,--4
 		0,
-		0,
-		0.00000000001,
-		0.00000000001,
+		0.000001,
+		0.000001,
 	}
+	local chance_mod=0.05
 	for x=0,map_w-1 do
 		for y=0,map_h-1 do
 			local v=material:get(x,y)
@@ -187,10 +200,10 @@ function crystal_step()
 				pp=pp*pp
 				local r =1-math.exp(pp/(-c*c))--crystal_chances[c]
 				]]
-				local r =crystal_chances[c]
-				if r>math.random() then
+				local r =crystal_chances[c]*chance_mod
+				if r>math.random() and v>config.material_needed then
 					--material:set(x,y,0)
-					material:set(x,y,material:get(x,y)-config.material_needed)
+					material:set(x,y,material:get(x,y)-config.material_needed*1.1)
 					local c=config.color
 					img_buf:set(x,y,{c[1]*255,c[2]*255,c[3]*255,255})
 				end
@@ -236,7 +249,8 @@ void main(){
     vec4 pixel=texture(tex_main,normed);
     vec4 pixel_c=texture(tex_cryst,normed);
     //color=vec4(max(pixel.x,pixel_c.x),pixel_c.y,pixel_c.z,1);
-    color=vec4(clamp(pixel+pixel_c,0,1).xyz,1);
+
+    color=vec4(clamp(pixel*(1-pixel_c.a)+pixel_c,0,1).xyz,1);
 }
 ]==])
 function draw(  )
@@ -292,6 +306,7 @@ function update(  )
 			end
 			material:write_texture(mat_tex1)
 		end
+
 		diffuse_and_decay(mat_tex1,mat_tex2,map_w,map_h,0.5,config.decay,config.diffuse_steps,img_tex1)
 		if(config.diffuse_steps%2==1) then
 			local c=mat_tex1
