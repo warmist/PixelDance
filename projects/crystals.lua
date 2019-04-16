@@ -24,12 +24,16 @@ local size=STATE.size
 
 tick=tick or 0
 config=make_config({
+	{"color",{1,1,1,1},type="color"},
 	{"material_needed",1,min=0,max=10,type="float"},
+	{"material_max",100,min=0,max=100,type="float"},
+	{"material_melt",100,min=0,max=100,type="float"},
 	{"diffuse_steps",1,min=0,max=10,type="int"},
-	{"diffuse",0.5,type="float"},
+	--{"cryst_pow",1,min=0.0001,max=5,type="float"},
+	--{"diffuse",0.5,type="float"},
 	{"decay",0.99,type="float"},
+	{"add_mat",0.5,type="float"},
 	{"simulate",true,type="boolean"},
-	{"add_mat",true,type="boolean"},
 },config)
 image_no=image_no or 0
 
@@ -52,7 +56,7 @@ float sample_around(vec2 pos)
 	float w=0;
 	float tw=0;
 
-	#define sample_tex(dx,dy) tw=1-textureOffset(tex_mask,pos,ivec2(dx,dy)).x;\
+	#define sample_tex(dx,dy) tw=1-textureOffset(tex_mask,pos,ivec2(dx,dy)).w;\
 	w+=tw;\
 	ret+=textureOffset(tex_main,pos,ivec2(dx,dy)).x*tw
 
@@ -164,30 +168,44 @@ end
 function crystal_step()
 	material:read_texture(mat_tex1)
 	local crystal_chances={
-		[0]=0.0000001, --0
-		0.01,--1
-		0.01,
-		0.01,
-		0.01,--4
+		[0]=0.00000000001, --0
+		0.0001,--1
+		0.1,
+		0.00001,
+		0.005,--4
 		0,
 		0,
-		1,
-		0.01,
+		0.00000000001,
+		0.00000000001,
 	}
 	for x=0,map_w-1 do
 		for y=0,map_h-1 do
 			local v=material:get(x,y)
-			if v>config.material_needed then
+			if v>config.material_needed and v<config.material_max then
 				local c=count_nn(x,y)
-				local r = crystal_chances[c]
+				--[[local pp=config.cryst_pow
+				pp=pp*pp
+				local r =1-math.exp(pp/(-c*c))--crystal_chances[c]
+				]]
+				local r =crystal_chances[c]
 				if r>math.random() then
-					material:set(x,y,0)
-					img_buf:set(x,y,{255,255,255,255})
+					--material:set(x,y,0)
+					material:set(x,y,material:get(x,y)-config.material_needed)
+					local c=config.color
+					img_buf:set(x,y,{c[1]*255,c[2]*255,c[3]*255,255})
 				end
 			end
+			if v>=config.material_melt then
+				if img_buf:get(x,y).a~=0 then
+					material:set(x,y,material:get(x,y)+config.material_needed)
+					img_buf:set(x,y,{0,0,0,0})
+				end
+			end
+
 		end
 	end
 	write_img()
+	write_mat()
 end
 
 function save_img()
@@ -217,7 +235,8 @@ void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     vec4 pixel=texture(tex_main,normed);
     vec4 pixel_c=texture(tex_cryst,normed);
-    color=vec4(max(pixel.x,pixel_c.x),pixel_c.y,pixel_c.z,1);
+    //color=vec4(max(pixel.x,pixel_c.x),pixel_c.y,pixel_c.z,1);
+    color=vec4(clamp(pixel+pixel_c,0,1).xyz,1);
 }
 ]==])
 function draw(  )
@@ -246,6 +265,9 @@ function update(  )
 				img_buf:set(i,j,{0,0,0,0})
 			end
 		end
+		for i=1,5 do
+			img_buf:set(math.random(0,map_w-1),math.random(0,map_h-1),{255,255,255,255})
+		end
 		write_mat()
 		write_img()
 	end
@@ -255,7 +277,7 @@ function update(  )
 	end
 	imgui.End()
 	if config.simulate then
-		if config.add_mat then
+		if config.add_mat >0 then
 			mat_tex1:use(0)
 			material:read_texture(mat_tex1)
 
@@ -265,12 +287,12 @@ function update(  )
 			local cy=math.floor(map_h/2)
 			for x=cx-rw,cx+rw do
 			for y=cy-rh,cy+rh do
-				add_mat(x,y,0.5)
+				add_mat(x,y,config.add_mat)
 			end
 			end
 			material:write_texture(mat_tex1)
 		end
-		diffuse_and_decay(mat_tex1,mat_tex2,map_w,map_h,config.diffuse,config.decay,config.diffuse_steps,img_tex1)
+		diffuse_and_decay(mat_tex1,mat_tex2,map_w,map_h,0.5,config.decay,config.diffuse_steps,img_tex1)
 		if(config.diffuse_steps%2==1) then
 			local c=mat_tex1
 			mat_tex1=mat_tex2
