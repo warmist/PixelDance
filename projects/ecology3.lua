@@ -1,13 +1,28 @@
 require 'common'
 require 'bit'
+
+--[[
+    Ecology the last version to rule all the other versions.
+
+    Features wanted:
+        * sand/water/etc behavior i.e. a simpl-ish particles that do one thing
+        * material layers that are diffusing e.g. scent, nutrients, maybe water? 
+            with masks (e.g. nutrients only in water, scent only in air)
+        * multi-cell organisms (??)
+            - allow mutations and stuff
+            - more general "what is me" system
+        * maybe some physics: springs and such
+        * maybe try going big (e.g. with quadtrees and stuff)
+--]]
+
 local win_w=768
 local win_h=768
 
 __set_window_size(win_w,win_h)
-local oversample=0.5
+local oversample=1
 
-local map_w=(win_w*oversample)
-local map_h=(win_h*oversample)
+local map_w=math.floor(win_w*oversample)
+local map_h=math.floor(win_h*oversample)
 
 local aspect_ratio=win_w/win_h
 local map_aspect_ratio=map_w/map_h
@@ -16,25 +31,20 @@ local size=STATE.size
 is_remade=false
 local max_particle_count=win_w*win_h
 current_particle_count= 1000
-function update_particle_buffer()
-	if particles==nil or particles.w~=max_particle_count then
-		particles=make_flt_half_buffer(max_particle_count,1)
+function update_buffers()
+	if particles_pos==nil or particles_pos.w~=max_particle_count then
+		particles_pos=make_flt_half_buffer(max_particle_count,1)
         particles_speeds=make_flt_half_buffer(max_particle_count,1)
 		particle_types=make_char_buffer(max_particle_count,1)
         is_remade=true
 	end
-end
-update_particle_buffer()
-function update_img_buf(  )
-    local nw=math.floor(map_w)
-    local nh=math.floor(map_h)
-
-    if img_buf==nil or img_buf.w~=nw or img_buf.h~=nh then
-        img_buf=make_image_buffer(nw,nh)
-        sun_buffer=make_float_buffer(nw,1)
+    if img_buf==nil or img_buf.w~=map_w or img_buf.h~=map_h then
+        img_buf=make_image_buffer(map_w,map_h)
         is_remade=true
     end
 end
+update_buffers()
+
 
 config=make_config({
     {"pause",false,type="bool"},
@@ -106,6 +116,9 @@ function particle_step(  )
         p.g=p.g+s.g+rnd(0.005)
     end
 end
+function sim_tick(  )
+    particle_step()
+end
 if tex_pixel==nil then
     update_img_buf()
     tex_pixel=textures:Make()
@@ -133,7 +146,9 @@ function update()
             particles_speeds:set(i,0,{math.random()*0.005-0.0025,math.random()*0.005-0.0025})
         end
     end
-    particle_step()
+    if not config.pause then
+        sim_tick()
+    end
     imgui.SameLine()
     if imgui.Button("Save") then
         need_save=true

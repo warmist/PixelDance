@@ -2,11 +2,18 @@
 require "common"
 require "colors"
 local luv=require "colors_luv"
-local size_mult=0.5
-local win_w=2560*size_mult
-local win_h=1440*size_mult--math.floor(win_w*size_mult*(1/math.sqrt(2)))
-__set_window_size(win_w,win_h)
-local aspect_ratio=win_w/win_h
+local size_mult=1
+local win_w
+local win_h
+local aspect_ratio
+function update_size(  )
+	win_w=2560*size_mult
+	win_h=1440*size_mult--math.floor(win_w*size_mult*(1/math.sqrt(2)))
+	aspect_ratio=win_w/win_h
+	__set_window_size(win_w,win_h)
+end
+update_size()
+
 local size=STATE.size
 local max_palette_size=50
 local sample_count=131072
@@ -15,8 +22,8 @@ local need_clear=false
 local oversample=1
 local render_lines=false --does not work :<
 local complex=true
-local init_zero=false
-local escape_fractal=false
+local init_zero=true
+local escape_fractal=true
 
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
@@ -52,6 +59,7 @@ config=make_config({
 	{"draw",true,type="boolean"},
 	{"point_size",0,type="int",min=0,max=10},
 	{"ticking",1,type="int",min=1,max=2},
+	{"size_mult",true,type="boolean"},
 	{"v0",-0.211,type="float",min=-5,max=5},
 	{"v1",-0.184,type="float",min=-5,max=5},
 	{"v2",-0.184,type="float",min=-5,max=5},
@@ -817,7 +825,6 @@ function rand_function(  )
 	--str_x="p.x*params.x+s.y*s.x*params.y"
 	--str_y="s.y+p.x*s.y*params.w"
 	--]]
-
 	--local s="((p.y)+(p.x))+((tan(tan((normed_i)/(params.w))))*(s.y))"
 	--str_x="sin("..s.."-s.x*s.y)"
 	--str_y="cos("..s.."-s.y*s.x)"
@@ -995,6 +1002,12 @@ function gui()
 	imgui.Begin("IFS play")
 	palette_chooser()
 	draw_config(config)
+	if config.size_mult then
+		size_mult=1
+	else
+		size_mult=0.5
+	end
+	update_size()
 	local s=STATE.size
 	if imgui.Button("Clear image") then
 		clear_buffers()
