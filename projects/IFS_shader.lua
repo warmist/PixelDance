@@ -20,9 +20,9 @@ local sample_count=131072
 local max_sample=1000000000 --for halton seq.
 local need_clear=false
 local oversample=1
-local render_lines=false --does not work :<
+local render_lines=false
 local complex=true
-local init_zero=true
+local init_zero=false
 local escape_fractal=true
 
 str_x=str_x or "s.x"
@@ -1700,6 +1700,7 @@ void main(){
 	//float delta_size=txt.r;
  	float r = 2*length(gl_PointCoord - 0.5)/(delta_size);
 	float a = 1 - smoothstep(0, 1, r);
+	//float a=1; //uncomment this for line mode
 	float intensity=1/float(pix_size);
 	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
