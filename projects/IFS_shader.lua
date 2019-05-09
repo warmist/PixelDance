@@ -806,6 +806,10 @@ animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
 	str_cmplx=random_math_complex(rand_complexity)
+	-- [=[ http://www.fractalsciencekit.com/topics/mobius.htm maybe?
+	--str_cmplx="c_div(c_mul(params.xy,s)+vec2(-0.1,0.2),c_mul(vec2(0.2,0.1),s)+params.zw)"
+	str_cmplx=random_math_complex(rand_complexity,"c_div(c_mul(R,s)+R,c_mul(R,s)+R)")
+	--]=]
 	--mandelbrot?
 	--[=[
 	str_cmplx="c_mul(s,s)+p"
