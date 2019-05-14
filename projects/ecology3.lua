@@ -6,7 +6,7 @@ require 'bit'
 
     Features wanted:
         * sand/water/etc behavior i.e. a simpl-ish particles that do one thing
-        * material layers that are diffusing e.g. scent, nutrients, maybe water? 
+        * material layers that are diffusing e.g. scent, nutrients, maybe water(wetness)?
             with masks (e.g. nutrients only in water, scent only in air)
         * multi-cell organisms (??)
             - allow mutations and stuff
@@ -38,8 +38,8 @@ function update_buffers()
 		particle_types=make_char_buffer(max_particle_count,1)
         is_remade=true
 	end
-    if img_buf==nil or img_buf.w~=map_w or img_buf.h~=map_h then
-        img_buf=make_image_buffer(map_w,map_h)
+    if static_layer==nil or static_layer.w~=map_w or static_layer.h~=map_h then
+        static_layer=make_image_buffer(map_w,map_h)
         is_remade=true
     end
 end
@@ -95,25 +95,43 @@ function rnd( v )
     return math.random()*v*2-v
 end
 function particle_step(  )
+    local gravity=0.01
     for i=0,current_particle_count do
-        local p=particles:get(i,0)
-        local s=particles_speeds:get(i,0)
-        for j=i+1,current_particle_count do
-            local pt=particles:get(j,0)
-            local dx=pt.r-p.r
-            local dy=pt.g-p.g
-            local len=math.sqrt(dx*dx+dy*dy)
-            s.r=s.r+(dx/len)*0.0000001
-            s.g=s.g+(dy/len)*0.0000001
+        local t=particle_types:get(i,0)
+        if t~= 0 then
+            local p=particles_pos:get(i,0)
+            local s=particles_speeds:get(i,0)
+            
+            --add gravity to all particles that use it
+            if t==1 then
+                s.g=s.g+gravity
+            end
+            --limit speed for stability of sim
+            local speed_len=math.sqrt(s.r*s.r+s.g*s.g)
+            if speed_len>1 then
+                s.r=s.r/speed_len
+                s.g=s.g/speed_len
+            end
+
+            --move particles with intersection testing
+            p.r=p.r+s.r
+            p.g=p.g+s.g
+            
+            if p.r>map_w-1 then p.r=0 end
+            if p.g>map_h-1 then p.g=0 end
+            if p.r<0 then p.r=map_w-1 end
+            if p.g<0 then p.g=map_h-1 end
+
+            local x=math.round(p.r)
+            local y=math.round(p.g)
+
+            local sl=static_layer:get(x,y)
+
+            if sl~=0 then
+                particle_types:set(i,0,0)
+                stability_layer:set(x,y,t)
+            end
         end
-        s.r=s.r*0.99
-        s.g=s.g*0.99
-    end
-    for i=0,current_particle_count do
-        local p=particles:get(i,0)
-        local s=particles_speeds:get(i,0)
-        p.r=p.r+s.r+rnd(0.005)
-        p.g=p.g+s.g+rnd(0.005)
     end
 end
 function sim_tick(  )
