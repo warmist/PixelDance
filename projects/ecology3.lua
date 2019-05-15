@@ -19,7 +19,7 @@ local win_w=768
 local win_h=768
 
 __set_window_size(win_w,win_h)
-local oversample=1
+local oversample=0.25
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -76,32 +76,44 @@ uniform vec2 zoom;
 uniform vec2 translate;
 
 void main(){
-    vec2 normed=(pos.xy+vec2(1,1))/2;
+    vec2 normed=(pos.xy+vec2(1,-1))*vec2(0.5,-0.5);
     normed=normed/zoom+translate;
 
     vec4 pixel=texture(tex_main,normed);
     color=vec4(pixel.xyz,1);
 }
 ]==])
-local place_pixels_shader=shaders.Make[==[
+local place_pixels_shader=shaders.Make(
+[==[
+#version 330
+layout(location = 0) in vec3 position;
+out vec3 pos;
+uniform int pix_size;
+uniform vec2 res;
+void main(){
+    gl_PointSize=pix_size;
+    gl_Position.xy=((floor(position.xy+vec2(0.5,0.5))+vec2(0.5,0.5))/res-vec2(0.5,0.5))*vec2(2,-2);
+    gl_Position.z=position.z;
+    pos=gl_Position.xyz;
+}
+]==],[==[
 #version 330
 out vec4 color;
 in vec3 pos;
 void main(){
-    color=vec4(1,0,0,0.1);
+    color=vec4(1,0,0,0.5);
 }
-]==]
+]==])
 function rnd( v )
     return math.random()*v*2-v
 end
 function particle_step(  )
-    local gravity=0.01
-    for i=0,current_particle_count do
+    local gravity=0.001
+    for i=0,current_particle_count-1 do
         local t=particle_types:get(i,0)
         if t~= 0 then
             local p=particles_pos:get(i,0)
             local s=particles_speeds:get(i,0)
-            
             --add gravity to all particles that use it
             if t==1 then
                 s.g=s.g+gravity
@@ -114,6 +126,7 @@ function particle_step(  )
             end
 
             --move particles with intersection testing
+            local old={p.r,p.g}
             p.r=p.r+s.r
             p.g=p.g+s.g
             
@@ -122,26 +135,48 @@ function particle_step(  )
             if p.r<0 then p.r=map_w-1 end
             if p.g<0 then p.g=map_h-1 end
 
-            local x=math.round(p.r)
-            local y=math.round(p.g)
+            local x=math.floor(p.r+0.5)
+            local y=math.floor(p.g+0.5)
 
             local sl=static_layer:get(x,y)
 
-            if sl~=0 then
-                particle_types:set(i,0,0)
-                stability_layer:set(x,y,t)
+            if sl.r~=0 then
+                --reset position because we intersect :<
+                p.r=old[1]
+                p.g=old[2]
+            end
+        end
+    end
+end
+function sand_step(  )
+    for i=0,current_particle_count-1 do
+        local t=particle_types:get(i,0)
+        if t== 1 then
+            local p=particles_pos:get(i,0)
+            local s=particles_speeds:get(i,0)
+
+            local x=math.floor(p.r+0.5)
+            local y=math.floor(p.g+0.5)
+            local ly=y+1
+            if ly<map_h-1 then
+                local sl=static_layer:get(x,ly)
+                if sl.r~=0 then
+                    static_layer:set(x,y,{255,255,255,255})
+                    particle_types:set(i,0,0)
+                end
             end
         end
     end
 end
 function sim_tick(  )
     particle_step()
+    sand_step()
 end
 if tex_pixel==nil then
-    update_img_buf()
+    update_buffers()
     tex_pixel=textures:Make()
     tex_pixel:use(0,0,1)
-    tex_pixel:set(img_buf.w,img_buf.h,0)
+    tex_pixel:set(static_layer.w,static_layer.h,0)
 end
 need_clear=false
 function update()
@@ -153,15 +188,20 @@ function update()
 
     --imgui.SameLine()
     if imgui.Button("Reset world") then
-        img_buf=nil
-        update_img_buf()
+        static_layer=nil
+        update_buffers()
         need_clear=true
     end
     if is_remade then
         is_remade=false
         for i=0,max_particle_count-1 do
-            particles:set(i,0,{math.random()*2-1,math.random()*2-1})
+            particles_pos:set(i,0,{math.random()*map_w,math.random()*map_h})
             particles_speeds:set(i,0,{math.random()*0.005-0.0025,math.random()*0.005-0.0025})
+            particle_types:set(i,0,1);
+            
+        end
+        for x=0,map_w-1 do
+            static_layer:set(x,math.floor(map_h/2),{255,255,255,255})
         end
     end
     if not config.pause then
@@ -175,31 +215,34 @@ function update()
     __render_to_window()
 
     if config.draw then
-        update_img_buf()
+        update_buffers()
 
-    	place_pixels_shader:use()
-
-        if not tex_pixel:render_to(img_buf.w,img_buf.h) then
-            error("failed to set framebuffer up")
-        end
-        if need_clear then
-            __clear()
-            need_clear=false
-        end
-        place_pixels_shader:draw_points(particles.d,current_particle_count)
-        __render_to_window()
-        
         draw_shader:use()
         tex_pixel:use(0,0,1)
 
-        --img_buf:write_texture(tex_pixel)
+        static_layer:write_texture(tex_pixel)
 
         draw_shader:set_i("tex_main",0)
         draw_shader:set_i("rez",map_w,map_h)
         draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
         draw_shader:set("translate",config.t_x,config.t_y)
         draw_shader:draw_quad()
+
+    	place_pixels_shader:use()
+        place_pixels_shader:set_i("pix_size",math.floor(1/oversample))
+        place_pixels_shader:set("res",map_w,map_h)
+        --[[if not tex_pixel:render_to(img_buf.w,img_buf.h) then
+            error("failed to set framebuffer up")
+        end]]
+        if need_clear then
+            __clear()
+            need_clear=false
+        end
+        place_pixels_shader:draw_points(particles_pos.d,current_particle_count)
+        --[[__render_to_window()
         
+        
+        ]]
     end
 
     if need_save then

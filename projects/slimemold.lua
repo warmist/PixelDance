@@ -14,7 +14,7 @@ local win_w=1024
 local win_h=1024
 
 __set_window_size(win_w,win_h)
-local oversample=0.5
+local oversample=1
 local agent_count=1024
 --[[ perf:
 	oversample 2 768x768
@@ -63,15 +63,15 @@ config=make_config({
     {"decay",0.99,type="float"},
     {"diffuse",0.5,type="float"},
     --agent
-    {"ag_sensor_distance",9,type="float",min=0.1,max=10},
+    {"ag_sensor_distance",4,type="float",min=0.1,max=10},
     --{"ag_sensor_size",1,type="int",min=1,max=3},
     {"ag_sensor_angle",math.pi/2,type="float",min=0,max=math.pi/2},
-    {"ag_turn_angle",math.pi/2,type="float",min=-math.pi/2,max=math.pi/2},
-    {"ag_turn_avoid",math.pi/2,type="float",min=-math.pi/2,max=math.pi/2},
-	{"ag_step_size",1,type="float",min=0.01,max=10},
-	{"ag_trail_amount",0.019,type="float",min=0,max=0.5},
-	{"trail_size",2,type="int",min=1,max=5},
-	{"turn_around",0.969,type="float",min=0,max=5},
+    {"ag_turn_angle",math.pi/8,type="float",min=-math.pi/2,max=math.pi/2},
+    {"ag_turn_avoid",-math.pi/8,type="float",min=-math.pi/2,max=math.pi/2},
+	{"ag_step_size",1.5,type="float",min=0.01,max=10},
+	{"ag_trail_amount",0.001,type="float",min=0,max=0.5},
+	{"trail_size",4,type="int",min=1,max=5},
+	{"turn_around",1,type="float",min=0,max=5},
     },config)
 
 local decay_diffuse_shader=shaders.Make[==[
@@ -258,7 +258,7 @@ void main(){
 ]==]
 local agent_logic_shader=shaders.Make[==[
 #version 330
-#line 121
+#line 261
 out vec4 color;
 in vec3 pos;
 
@@ -327,14 +327,16 @@ void main(){
 	}
 	#ifdef TURNAROUND
 	else 
-	#endif*/
+	#endif
 	if(fow>turn_around)
 	{
 		//head+=(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
 		//head+=M_PI;//turn_size*2;//(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
 		//step_size*=-1;
 		head+=(rand(pos.xy+state.xy*4578)-0.5)*ag_turn_avoid;
+
 	}
+	//step_size/=clamp(rgt/lft,0.5,2);
 	//step in heading direction
 	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
 	state.z=head;
