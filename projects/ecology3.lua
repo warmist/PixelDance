@@ -40,6 +40,7 @@ function update_buffers()
 	end
     if static_layer==nil or static_layer.w~=map_w or static_layer.h~=map_h then
         static_layer=make_image_buffer(map_w,map_h)
+        scratch_layer=make_image_buffer(map_w,map_h)
         is_remade=true
     end
 end
@@ -101,7 +102,7 @@ void main(){
 out vec4 color;
 in vec3 pos;
 void main(){
-    color=vec4(1,0,0,1);
+    color=vec4(1,0,0,0.5);
 }
 ]==])
 function rnd( v )
@@ -138,7 +139,7 @@ function particle_step(  )
             local x=math.floor(p.r+0.5)
             local y=math.floor(p.g+0.5)
 
-            local sl=static_layer:get(x,y)
+            local sl=scratch_layer:get(x,y)
 
             if sl.r~=0 then
                 --reset position because we intersect :<
@@ -158,25 +159,72 @@ function sand_step(  )
             local x=math.floor(p.r+0.5)
             local y=math.floor(p.g+0.5)
             local ly=y+1
+            local x1=x-1
+            if x1<0 then x1=map_w-1 end
+            local x2=x+1
+            if x2>=map_w then x2=0 end
+
             if ly<map_h-1 then
-                local sl=static_layer:get(x,ly)
+                local sl=scratch_layer:get(x,ly)
                 if sl.r~=0 then
-                    static_layer:set(x,y,{255,255,255,255})
-                    particle_types:set(i,0,0)
+                    local s1=scratch_layer:get(x1,ly).r
+                    local s2=scratch_layer:get(x2,ly).r
+                    if s1==0 then
+                        p.r=p.r-1
+                    elseif s2==0 then
+                        p.r=p.r+1
+                    else
+                        static_layer:set(x,y,{255,255,255,255})
+                        particle_types:set(i,0,0)
+                    end
                 end
             end
         end
     end
 end
+function scratch_update(  )
+    draw_shader:use()
+    tex_pixel:use(0,0,1)
+
+    static_layer:write_texture(tex_pixel)
+
+    draw_shader:set_i("tex_main",0)
+    draw_shader:set_i("res",map_w,map_h)
+    draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
+    draw_shader:set("translate",config.t_x,config.t_y)
+    draw_shader:draw_quad()
+
+    place_pixels_shader:use()
+    place_pixels_shader:set_i("pix_size",math.floor(1/oversample))
+    place_pixels_shader:set("res",map_w,map_h)
+    if not tex_scratch:render_to(scratch_layer.w,scratch_layer.h) then
+        error("failed to set framebuffer up")
+    end
+    if need_clear then
+        __clear()
+        need_clear=false
+    end
+    place_pixels_shader:draw_points(particles_pos.d,current_particle_count)
+    scratch_layer:read_texture(tex_scratch)
+    __render_to_window()
+end
 function sim_tick(  )
+    scratch_update()
     particle_step()
     sand_step()
 end
+
 if tex_pixel==nil then
     update_buffers()
     tex_pixel=textures:Make()
     tex_pixel:use(0,0,1)
     tex_pixel:set(static_layer.w,static_layer.h,0)
+end
+if tex_scratch==nil then
+    update_buffers()
+    tex_scratch=textures:Make()
+    tex_scratch:use(0,0,1)
+    tex_scratch:set(scratch_layer.w,scratch_layer.h,0)
 end
 need_clear=false
 function update()

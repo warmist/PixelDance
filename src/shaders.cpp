@@ -167,13 +167,14 @@ static int push_attribute(lua_State* L)
 	}
 	if (data == nullptr)
 		luaL_error(L,"Incorrect second argument: expected pointer to array");
-	const char* name= luaL_checkstring(L,3)
+    const char* name = luaL_checkstring(L, 3);
 	auto pos_idx = glGetAttribLocation(s->id, name);
 	auto float_count=luaL_checkint(L,4);
 	glEnableVertexAttribArray(pos_idx);
 	glVertexAttribPointer(pos_idx, float_count, GL_FLOAT, false, 0, data);
 
 	pushed_attributes.push_back(pos_idx);
+    return pos_idx;
 }
 void clear_attributes()
 {
