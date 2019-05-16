@@ -70,7 +70,7 @@ local draw_shader=shaders.Make(
 out vec4 color;
 in vec3 pos;
 
-uniform ivec2 rez;
+uniform ivec2 res;
 uniform sampler2D tex_main;
 uniform vec2 zoom;
 uniform vec2 translate;
@@ -93,7 +93,7 @@ uniform vec2 res;
 void main(){
     gl_PointSize=pix_size;
     gl_Position.xy=((floor(position.xy+vec2(0.5,0.5))+vec2(0.5,0.5))/res-vec2(0.5,0.5))*vec2(2,-2);
-    gl_Position.z=position.z;
+    gl_Position.zw=vec2(0,1.0);//position.z;
     pos=gl_Position.xyz;
 }
 ]==],[==[
@@ -101,7 +101,7 @@ void main(){
 out vec4 color;
 in vec3 pos;
 void main(){
-    color=vec4(1,0,0,0.5);
+    color=vec4(1,0,0,1);
 }
 ]==])
 function rnd( v )
@@ -223,7 +223,7 @@ function update()
         static_layer:write_texture(tex_pixel)
 
         draw_shader:set_i("tex_main",0)
-        draw_shader:set_i("rez",map_w,map_h)
+        draw_shader:set_i("res",map_w,map_h)
         draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
         draw_shader:set("translate",config.t_x,config.t_y)
         draw_shader:draw_quad()
