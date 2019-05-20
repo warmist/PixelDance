@@ -99,8 +99,15 @@ void main(){
     gl_Position.xy=((floor(position.xy+vec2(0.5,0.5))+vec2(0.5,0.5))/res-vec2(0.5,0.5))*vec2(2,-2);
     gl_Position.zw=vec2(0,1.0);//position.z;
     pos=gl_Position.xyz;
-    float v=particle_type;
-    col=vec4(1,v/255.0,v/255.0,0.5);
+    if (particle_type==1)
+        col=vec4(0,0,1,0.8);
+    else if(particle_type==0)
+        col=vec4(0,0,0,0);
+    else
+    {
+        float v=particle_type;
+        col=vec4(1,v/255.0,v/255.0,0.5);
+    }
 }
 ]==],[==[
 #version 330
@@ -151,7 +158,7 @@ function particle_step(  )
             local old_x=math.floor(old[1]+0.5)
             local old_y=math.floor(old[2]+0.5)
             if old_x~=x or old_y~=y then
-                local sl=scratch_layer:get(x,map_h-y-1)
+                local sl=scratch_layer:get(x,map_h-1-y)
                 --print(x,map_h-y-1,sl.r,sl.g,sl.b,sl.a)
                 if sl.r>0 then
                     --reset position because we intersect :<
@@ -178,10 +185,10 @@ function sand_step(  )
             if x2>=map_w then x2=0 end
 
             if ly<map_h-1 then
-                local sl=scratch_layer:get(x,ly)
+                local sl=scratch_layer:get(x,map_h-1-ly)
                 if sl.r~=0 then
-                    local s1=scratch_layer:get(x1,ly).r
-                    local s2=scratch_layer:get(x2,ly).r
+                    local s1=scratch_layer:get(x1,map_h-1-ly).r
+                    local s2=scratch_layer:get(x2,map_h-1-ly).r
                     if s1==0 then
                         p.r=p.r-1
                     elseif s2==0 then
@@ -266,8 +273,11 @@ function update()
         for i=0,current_particle_count-1 do
             particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
             particles_speeds:set(i,0,{math.random()*0.5-0.25,math.random()*0.5-0.25})
-            particle_types:set(i,0,math.random(0,255));
-            
+            if math.random()<0.3 then
+                particle_types:set(i,0,math.random(0,255));
+            else
+                particle_types:set(i,0,1);
+            end
         end
         for x=0,map_w-1 do
             --static_layer:set(x,math.floor(map_h/2),{255,255,255,255})
