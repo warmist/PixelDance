@@ -169,11 +169,48 @@ static int push_attribute(lua_State* L)
 		luaL_error(L,"Incorrect second argument: expected pointer to array");
     const char* name = luaL_checkstring(L, 3);
 	auto pos_idx = glGetAttribLocation(s->id, name);
+    if (pos_idx == -1)
+        luaL_error(L, "Attribute %s not found in shader", name);
 	auto float_count=luaL_checkint(L,4);
+    int attrib_type = luaL_optint(L, 5, GL_FLOAT);
+    GLenum err;
+    if ((err = glGetError()) != GL_NO_ERROR)
+        printf("Pre:%d\n", err);
 	glEnableVertexAttribArray(pos_idx);
-	glVertexAttribPointer(pos_idx, float_count, GL_FLOAT, false, 0, data);
-
+    if ((err = glGetError()) != GL_NO_ERROR)
+        printf("enable:%d\n", err);
+	glVertexAttribPointer(pos_idx, float_count, attrib_type, false, 0, data);
+    if ((err = glGetError()) != GL_NO_ERROR)
+        printf("vertex_pointer:%d\n", err);
 	pushed_attributes.push_back(pos_idx);
+    return pos_idx;
+}
+static int push_iattribute(lua_State* L)
+{
+    auto s = check(L, 1);
+    const void* data = nullptr;
+    if ((lua_type(L, 2) == 10) /*cdata*/ || (lua_type(L, 2) == LUA_TLIGHTUSERDATA))
+    {
+        data = lua_topointer(L, 2); //TODO: check pointer?
+    }
+    if (data == nullptr)
+        luaL_error(L, "Incorrect second argument: expected pointer to array");
+    const char* name = luaL_checkstring(L, 3);
+    auto pos_idx = glGetAttribLocation(s->id, name);
+    if (pos_idx == -1)
+        luaL_error(L, "Attribute %s not found in shader", name);
+    auto float_count = luaL_checkint(L, 4);
+    int attrib_type = luaL_optint(L, 5, GL_FLOAT);
+    GLenum err;
+    if ((err = glGetError()) != GL_NO_ERROR)
+        printf("Pre:%d\n", err);
+    glEnableVertexAttribArray(pos_idx);
+    if ((err = glGetError()) != GL_NO_ERROR)
+        printf("enable:%d\n", err);
+    glVertexAttribIPointer(pos_idx, float_count, attrib_type, 0, data);
+    if ((err = glGetError()) != GL_NO_ERROR)
+        printf("vertex_pointer:%d\n", err);
+    pushed_attributes.push_back(pos_idx);
     return pos_idx;
 }
 void clear_attributes()
@@ -352,6 +389,9 @@ static int make_shader(lua_State* L, const char* vertex, const char* fragment) {
 
         lua_pushcfunction(L, push_attribute);
         lua_setfield(L,-2, "push_attribute");
+
+        lua_pushcfunction(L, push_iattribute);
+        lua_setfield(L, -2, "push_iattribute");
 		/*
 		lua_pushcfunction(L, set_variable); //either uniform or attribute
 		lua_setfield(L, -2, "set");

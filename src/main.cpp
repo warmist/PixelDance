@@ -485,6 +485,7 @@ int extract_script(const char* path)
     fclose(f2);
     return 0;
 }
+//TODO: opengl 4.3 supports debug message hook
 int main(int argc, char** argv)
 {
     if (argc == 1)

@@ -30,7 +30,7 @@ local size=STATE.size
 
 is_remade=false
 local max_particle_count=win_w*win_h
-current_particle_count= 1000
+current_particle_count= 5000
 function update_buffers()
 	if particles_pos==nil or particles_pos.w~=max_particle_count then
 		particles_pos=make_flt_half_buffer(max_particle_count,1)
@@ -88,7 +88,10 @@ local place_pixels_shader=shaders.Make(
 [==[
 #version 330
 layout(location = 0) in vec3 position;
+layout(location = 1) in uint particle_type;
+
 out vec3 pos;
+out vec4 col;
 uniform int pix_size;
 uniform vec2 res;
 void main(){
@@ -96,13 +99,17 @@ void main(){
     gl_Position.xy=((floor(position.xy+vec2(0.5,0.5))+vec2(0.5,0.5))/res-vec2(0.5,0.5))*vec2(2,-2);
     gl_Position.zw=vec2(0,1.0);//position.z;
     pos=gl_Position.xyz;
+    float v=particle_type;
+    col=vec4(1,v/255.0,v/255.0,0.5);
 }
 ]==],[==[
 #version 330
+
 out vec4 color;
+in vec4 col;
 in vec3 pos;
 void main(){
-    color=vec4(1,0,0,0.5);
+    color=col;//vec4(1,(particle_type*110)/255,0,0.5);
 }
 ]==])
 function rnd( v )
@@ -110,6 +117,9 @@ function rnd( v )
 end
 function particle_step(  )
     local gravity=0.001
+    for x=0,map_w-1 do
+
+    end
     for i=0,current_particle_count-1 do
         local t=particle_types:get(i,0)
         if t~= 0 then
@@ -138,13 +148,16 @@ function particle_step(  )
 
             local x=math.floor(p.r+0.5)
             local y=math.floor(p.g+0.5)
-
-            local sl=scratch_layer:get(x,y)
-
-            if sl.r~=0 then
-                --reset position because we intersect :<
-                p.r=old[1]
-                p.g=old[2]
+            local old_x=math.floor(old[1]+0.5)
+            local old_y=math.floor(old[2]+0.5)
+            if old_x~=x or old_y~=y then
+                local sl=scratch_layer:get(x,map_h-y-1)
+                --print(x,map_h-y-1,sl.r,sl.g,sl.b,sl.a)
+                if sl.r>0 then
+                    --reset position because we intersect :<
+                    p.r=old[1]
+                    p.g=old[2]
+                end
             end
         end
     end
@@ -185,28 +198,35 @@ end
 function scratch_update(  )
     draw_shader:use()
     tex_pixel:use(0,0,1)
-
+    tex_scratch:use(1,0,1)
+    if not tex_scratch:render_to(scratch_layer.w,scratch_layer.h) then
+        error("failed to set framebuffer up")
+    end
+    __clear()
     static_layer:write_texture(tex_pixel)
 
     draw_shader:set_i("tex_main",0)
     draw_shader:set_i("res",map_w,map_h)
     draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
     draw_shader:set("translate",config.t_x,config.t_y)
-    draw_shader:draw_quad()
+    --draw_shader:draw_quad()
 
     place_pixels_shader:use()
-    place_pixels_shader:set_i("pix_size",math.floor(1/oversample))
-    place_pixels_shader:set("res",map_w,map_h)
+    --[[tex_scratch:use(1,0,1)
     if not tex_scratch:render_to(scratch_layer.w,scratch_layer.h) then
         error("failed to set framebuffer up")
-    end
+    end]]
+    place_pixels_shader:set_i("pix_size",1)
+    place_pixels_shader:set("res",map_w,map_h)
+    
     if need_clear then
         __clear()
         need_clear=false
     end
+    place_pixels_shader:push_iattribute(particle_types.d,"particle_type",1,GL_UNSIGNED_BYTE)
     place_pixels_shader:draw_points(particles_pos.d,current_particle_count)
-    scratch_layer:read_texture(tex_scratch)
     __render_to_window()
+    scratch_layer:read_texture(tex_scratch)
 end
 function sim_tick(  )
     scratch_update()
@@ -242,14 +262,15 @@ function update()
     end
     if is_remade then
         is_remade=false
-        for i=0,max_particle_count-1 do
-            particles_pos:set(i,0,{math.random()*map_w,math.random()*map_h})
-            particles_speeds:set(i,0,{math.random()*0.005-0.0025,math.random()*0.005-0.0025})
-            particle_types:set(i,0,1);
+
+        for i=0,current_particle_count-1 do
+            particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
+            particles_speeds:set(i,0,{math.random()*0.5-0.25,math.random()*0.5-0.25})
+            particle_types:set(i,0,math.random(0,255));
             
         end
         for x=0,map_w-1 do
-            static_layer:set(x,math.floor(map_h/2),{255,255,255,255})
+            --static_layer:set(x,math.floor(map_h/2),{255,255,255,255})
         end
     end
     if not config.pause then
@@ -267,7 +288,9 @@ function update()
 
         draw_shader:use()
         tex_pixel:use(0,0,1)
+        --tex_scratch:use(0,0,1)
 
+        
         static_layer:write_texture(tex_pixel)
 
         draw_shader:set_i("tex_main",0)
@@ -276,6 +299,7 @@ function update()
         draw_shader:set("translate",config.t_x,config.t_y)
         draw_shader:draw_quad()
 
+        -- [==[
     	place_pixels_shader:use()
         place_pixels_shader:set_i("pix_size",math.floor(1/oversample))
         place_pixels_shader:set("res",map_w,map_h)
@@ -286,11 +310,13 @@ function update()
             __clear()
             need_clear=false
         end
+        place_pixels_shader:push_iattribute(particle_types.d,"particle_type",1,GL_UNSIGNED_BYTE)
         place_pixels_shader:draw_points(particles_pos.d,current_particle_count)
         --[[__render_to_window()
-        
-        
         ]]
+        --]==]
+        
+        
     end
 
     if need_save then
