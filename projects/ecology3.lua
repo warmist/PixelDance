@@ -19,7 +19,7 @@ local win_w=768
 local win_h=768
 
 __set_window_size(win_w,win_h)
-local oversample=0.25
+local oversample=0.5
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -30,7 +30,7 @@ local size=STATE.size
 
 is_remade=false
 local max_particle_count=win_w*win_h
-current_particle_count= 5000
+current_particle_count= 10000
 function update_buffers()
 	if particles_pos==nil or particles_pos.w~=max_particle_count then
 		particles_pos=make_flt_half_buffer(max_particle_count,1)
@@ -122,8 +122,78 @@ void main(){
 function rnd( v )
     return math.random()*v*2-v
 end
+int_count=0
+intersect_list={}
+function resolve_intersects(  )
+    for k,v in pairs(intersect_list) do
+        for i,v in ipairs(v) do
+            local t=particle_types:get(v[1],0)
+
+            if t==1 then
+                local water_move_speed=0.01
+                local p=particles_pos:get(v[1],0)
+                local s=particles_speeds:get(v[1],0)
+                --target pos
+                local tx=math.floor(v[2]+0.5)
+                local ty=math.floor(v[3]+0.5)
+                --reset pos because we hit something anyways
+                p.r=v[2]
+                p.g=v[3]
+
+                local ly=ty+1
+                local x1=tx-1
+                if x1<0 then x1=map_w-1 end
+                local x2=tx+1
+                if x2>=map_w then x2=0 end
+
+                if ly<map_h-1 then
+                    local sl=scratch_layer:get(tx,map_h-1-ty).a
+                    if sl>0 then
+                        local s1=scratch_layer:get(x1,map_h-1-ty).a
+                        local s2=scratch_layer:get(x2,map_h-1-ty).a
+                        if s1==0 then
+                            s.r=s.r-water_move_speed
+                        elseif s2==0 then
+                            s.r=s.r+water_move_speed
+                        else
+                            static_layer:set(tx,ty,{255,255,255,255})
+                            particle_types:set(v[1],0,0)
+                        end
+                    end
+                end
+            else
+                --reset position because we intersect :<
+                local p=particles_pos:get(v[1],0)
+                p.r=v[2]
+                p.g=v[3]
+                --flip speed
+                local s=particles_speeds:get(v[1],0)
+                s.r=-s.r*0.8
+                s.g=-s.g*0.8
+                local l=math.sqrt(s.r*s.r+s.g*s.g)
+                if l<0.001 then
+                    local tx=math.floor(v[2]+0.5)
+                    local ty=math.floor(v[3]+0.5)
+                    static_layer:set(tx,ty,{255,255,255,255})
+                    particle_types:set(v[1],0,0)
+                end
+            end
+            
+        end
+    end
+    
+    intersect_list={}
+    
+end
+function add_intersect( tx,ty,p_id,ox,oy )
+    local intersect_id=tx+ty*map_w
+    local tbl=intersect_list[intersect_id] or {}
+    intersect_list[intersect_id]=tbl
+    table.insert(tbl,{p_id,ox,oy})
+    int_count=int_count+1
+end
 function particle_step(  )
-    local gravity=0.001
+    local gravity=0.01
     for x=0,map_w-1 do
 
     end
@@ -135,6 +205,14 @@ function particle_step(  )
             --add gravity to all particles that use it
             if t==1 then
                 s.g=s.g+gravity
+            else
+                --[[ particles go to center!
+                local dx=p.r-map_w/2
+                local dy=p.g-map_h/2
+                local dist=math.sqrt(dx*dx+dy*dy)
+                s.r=s.r-(dx/dist)*gravity
+                s.g=s.g-(dy/dist)*gravity
+                ]]
             end
             --limit speed for stability of sim
             local speed_len=math.sqrt(s.r*s.r+s.g*s.g)
@@ -159,44 +237,8 @@ function particle_step(  )
             local old_y=math.floor(old[2]+0.5)
             if old_x~=x or old_y~=y then
                 local sl=scratch_layer:get(x,map_h-1-y)
-                --print(x,map_h-y-1,sl.r,sl.g,sl.b,sl.a)
-                if sl.r>0 then
-                    --reset position because we intersect :<
-                    p.r=old[1]
-                    p.g=old[2]
-                end
-            end
-        end
-    end
-end
-function sand_step(  )
-    for i=0,current_particle_count-1 do
-        local t=particle_types:get(i,0)
-        if t== 1 then
-            local p=particles_pos:get(i,0)
-            local s=particles_speeds:get(i,0)
-
-            local x=math.floor(p.r+0.5)
-            local y=math.floor(p.g+0.5)
-            local ly=y+1
-            local x1=x-1
-            if x1<0 then x1=map_w-1 end
-            local x2=x+1
-            if x2>=map_w then x2=0 end
-
-            if ly<map_h-1 then
-                local sl=scratch_layer:get(x,map_h-1-ly)
-                if sl.r~=0 then
-                    local s1=scratch_layer:get(x1,map_h-1-ly).r
-                    local s2=scratch_layer:get(x2,map_h-1-ly).r
-                    if s1==0 then
-                        p.r=p.r-1
-                    elseif s2==0 then
-                        p.r=p.r+1
-                    else
-                        static_layer:set(x,y,{255,255,255,255})
-                        particle_types:set(i,0,0)
-                    end
+                if sl.a>0 then
+                    add_intersect(x,y,i,old[1],old[2])
                 end
             end
         end
@@ -236,9 +278,10 @@ function scratch_update(  )
     scratch_layer:read_texture(tex_scratch)
 end
 function sim_tick(  )
+    int_count=0
     scratch_update()
     particle_step()
-    sand_step()
+    resolve_intersects()
 end
 
 if tex_pixel==nil then
@@ -254,6 +297,17 @@ if tex_scratch==nil then
     tex_scratch:set(scratch_layer.w,scratch_layer.h,0)
 end
 need_clear=false
+function save_img(  )
+    img_buf_save=make_image_buffer(size[1],size[2])
+    local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
+    for k,v in pairs(config) do
+        if type(v)~="table" then
+            config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
+        end
+    end
+    img_buf_save:read_frame()
+    img_buf_save:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
+end
 function update()
     __clear()
     __no_redraw()
@@ -271,16 +325,22 @@ function update()
         is_remade=false
 
         for i=0,current_particle_count-1 do
-            particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
-            particles_speeds:set(i,0,{math.random()*0.5-0.25,math.random()*0.5-0.25})
-            if math.random()<0.3 then
+            local r=math.sqrt(math.random())*map_w/4
+            local a=math.random()*math.pi*2
+            --particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
+            particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.sin(a)*r})
+            particles_speeds:set(i,0,{math.random()*1-0.5,math.random()*1-0.5})
+            if math.random()<0.1 then
                 particle_types:set(i,0,math.random(0,255));
             else
                 particle_types:set(i,0,1);
             end
         end
         for x=0,map_w-1 do
-            --static_layer:set(x,math.floor(map_h/2),{255,255,255,255})
+            static_layer:set(x,map_h-1,{255,255,255,255})
+        end
+        for x=math.floor(map_w/4),math.floor(map_w-map_w/4) do
+            static_layer:set(x,map_h/2,{255,255,255,255})
         end
     end
     if not config.pause then
@@ -290,6 +350,7 @@ function update()
     if imgui.Button("Save") then
         need_save=true
     end
+    imgui.Text(string.format("Intesects:%d",int_count))
     imgui.End()
     __render_to_window()
 
