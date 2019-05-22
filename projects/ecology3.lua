@@ -19,7 +19,7 @@ local win_w=768
 local win_h=768
 
 __set_window_size(win_w,win_h)
-local oversample=0.5
+local oversample=0.125
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -30,7 +30,7 @@ local size=STATE.size
 
 is_remade=false
 local max_particle_count=win_w*win_h
-current_particle_count= 10000
+current_particle_count= 500
 function update_buffers()
 	if particles_pos==nil or particles_pos.w~=max_particle_count then
 		particles_pos=make_flt_half_buffer(max_particle_count,1)
@@ -78,7 +78,7 @@ uniform vec2 translate;
 
 void main(){
     vec2 normed=(pos.xy+vec2(1,-1))*vec2(0.5,-0.5);
-    normed=normed/zoom+translate;
+    normed=(normed-vec2(0.5,0.5)-translate)/zoom+vec2(0.5,0.5);
 
     vec4 pixel=texture(tex_main,normed);
     color=vec4(pixel.xyz,1);
@@ -94,9 +94,14 @@ out vec3 pos;
 out vec4 col;
 uniform int pix_size;
 uniform vec2 res;
+uniform vec2 zoom;
+uniform vec2 translate;
 void main(){
-    gl_PointSize=pix_size;
-    gl_Position.xy=((floor(position.xy+vec2(0.5,0.5))+vec2(0.5,0.5))/res-vec2(0.5,0.5))*vec2(2,-2);
+    gl_PointSize=pix_size*zoom.y;
+    vec2 pix_int_pos=floor(position.xy+vec2(0.5,0.5))+vec2(0.5,0.5);
+    vec2 pix_pos=(pix_int_pos/res-vec2(0.5,0.5))*vec2(2,-2);
+    gl_Position.xy=pix_pos;
+    gl_Position.xy=(gl_Position.xy*zoom+translate*vec2(2,-2));
     gl_Position.zw=vec2(0,1.0);//position.z;
     pos=gl_Position.xyz;
     if (particle_type==1)
@@ -140,24 +145,29 @@ function resolve_intersects(  )
                 p.r=v[2]
                 p.g=v[3]
 
-                local ly=ty+1
+                local ly=ty
                 local x1=tx-1
                 if x1<0 then x1=map_w-1 end
                 local x2=tx+1
                 if x2>=map_w then x2=0 end
 
                 if ly<map_h-1 then
-                    local sl=scratch_layer:get(tx,map_h-1-ty).a
+                    local sl=scratch_layer:get(tx,ly).a
                     if sl>0 then
-                        local s1=scratch_layer:get(x1,map_h-1-ty).a
-                        local s2=scratch_layer:get(x2,map_h-1-ty).a
+                        local s1=scratch_layer:get(x1,ly).a
+                        local s2=scratch_layer:get(x2,ly).a
                         if s1==0 then
                             s.r=s.r-water_move_speed
                         elseif s2==0 then
                             s.r=s.r+water_move_speed
                         else
-                            static_layer:set(tx,ty,{255,255,255,255})
-                            particle_types:set(v[1],0,0)
+                            local ss1=static_layer:get(tx,ly).a
+                            local ss2=static_layer:get(x1,ly).a
+                            local ss3=static_layer:get(x2,ly).a
+                            print(tx,ly,ss1,ss2,ss3)
+                            --static_layer:set(tx,ty,{255,255,255,255})
+                            --particle_types:set(v[1],0,0)
+                            
                         end
                     end
                 end
@@ -227,16 +237,16 @@ function particle_step(  )
             p.g=p.g+s.g
             
             if p.r>map_w-1 then p.r=0 end
-            if p.g>map_h-1 then p.g=0 end
+            if p.g>map_h-1 then p.g=map_h-1 end
             if p.r<0 then p.r=map_w-1 end
-            if p.g<0 then p.g=map_h-1 end
+            if p.g<0 then p.g=0 end
 
             local x=math.floor(p.r+0.5)
             local y=math.floor(p.g+0.5)
             local old_x=math.floor(old[1]+0.5)
             local old_y=math.floor(old[2]+0.5)
             if old_x~=x or old_y~=y then
-                local sl=scratch_layer:get(x,map_h-1-y)
+                local sl=scratch_layer:get(x,y)
                 if sl.a>0 then
                     add_intersect(x,y,i,old[1],old[2])
                 end
@@ -256,8 +266,8 @@ function scratch_update(  )
 
     draw_shader:set_i("tex_main",0)
     draw_shader:set_i("res",map_w,map_h)
-    draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
-    draw_shader:set("translate",config.t_x,config.t_y)
+    draw_shader:set("zoom",1*map_aspect_ratio,1)
+    draw_shader:set("translate",0,0)
     --draw_shader:draw_quad()
 
     place_pixels_shader:use()
@@ -267,7 +277,8 @@ function scratch_update(  )
     end]]
     place_pixels_shader:set_i("pix_size",1)
     place_pixels_shader:set("res",map_w,map_h)
-    
+    place_pixels_shader:set("zoom",1*map_aspect_ratio,-1)
+    place_pixels_shader:set("translate",0,0)
     if need_clear then
         __clear()
         need_clear=false
@@ -321,6 +332,9 @@ function update()
         update_buffers()
         need_clear=true
     end
+    if imgui.Button("step") then
+        sim_tick()
+    end
     if is_remade then
         is_remade=false
 
@@ -328,14 +342,18 @@ function update()
             local r=math.sqrt(math.random())*map_w/4
             local a=math.random()*math.pi*2
             --particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
-            particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.sin(a)*r})
+            particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.abs(math.sin(a)*r)})
             particles_speeds:set(i,0,{math.random()*1-0.5,math.random()*1-0.5})
-            if math.random()<0.1 then
+            if math.random()<0.0 then
                 particle_types:set(i,0,math.random(0,255));
             else
                 particle_types:set(i,0,1);
             end
         end
+        particles_pos:set(0,0,{0,0})
+        particles_pos:set(1,0,{map_w-1,map_h-1})
+        particles_pos:set(2,0,{0,map_h-1})
+        particles_pos:set(3,0,{map_w-1,0})
         for x=0,map_w-1 do
             static_layer:set(x,map_h-1,{255,255,255,255})
         end
@@ -359,10 +377,10 @@ function update()
 
         draw_shader:use()
         tex_pixel:use(0,0,1)
-        --tex_scratch:use(0,0,1)
+        tex_scratch:use(0,0,1)
 
         
-        static_layer:write_texture(tex_pixel)
+        --static_layer:write_texture(tex_pixel)
 
         draw_shader:set_i("tex_main",0)
         draw_shader:set_i("res",map_w,map_h)
@@ -370,10 +388,12 @@ function update()
         draw_shader:set("translate",config.t_x,config.t_y)
         draw_shader:draw_quad()
 
-        -- [==[
+        --[==[
     	place_pixels_shader:use()
         place_pixels_shader:set_i("pix_size",math.floor(1/oversample))
         place_pixels_shader:set("res",map_w,map_h)
+        place_pixels_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
+        place_pixels_shader:set("translate",config.t_x,config.t_y)
         --[[if not tex_pixel:render_to(img_buf.w,img_buf.h) then
             error("failed to set framebuffer up")
         end]]
