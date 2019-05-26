@@ -46,7 +46,27 @@ function update_buffers()
 end
 update_buffers()
 
-
+particle_colors={
+    {0,0,0,0},
+    {124,100,80,255},
+    {130,120,100,255},
+    {70 ,70 ,150,255},
+}
+function update_particle_colors(  )
+    local pcb=particle_colors_buf
+    if pcb==nil or pcb.w~=#particle_colors then
+        particle_colors_buf=make_image_buffer(#particle_colors,1)
+        for i,v in ipairs(particle_colors) do
+            particle_colors_buf:set(i-1,0,v)
+        end
+        pcb=particle_colors_buf
+        tex_pcb=textures:Make()
+        tex_pcb:use(0,0,1)
+        tex_pcb:set(pcb.w,1,0)
+        pcb:write_texture(tex_pcb)
+    end
+end
+update_particle_colors()
 config=make_config({
     {"pause",false,type="bool"},
     {"draw",true,type="bool"},
@@ -92,6 +112,7 @@ layout(location = 1) in uint particle_type;
 
 out vec3 pos;
 out vec4 col;
+uniform sampler2D pcb_colors;
 uniform int pix_size;
 uniform vec2 res;
 uniform vec2 zoom;
@@ -106,7 +127,8 @@ void main(){
     pos=gl_Position.xyz;
     
 
-    
+    col=texelFetch(pcb_colors,ivec2(particle_type,0),0);
+    /*
     if (particle_type==1u)
         col=vec4(0,0,1,0.8);
     else if(particle_type==0u)
@@ -116,6 +138,7 @@ void main(){
         float v=particle_type;
         col=vec4(1,v/255.0,v/255.0,0.5);
     }
+    //*/
 }
 ]==],[==[
 #version 330
@@ -138,7 +161,7 @@ function resolve_intersects(  )
         for i,v in ipairs(v) do
             local t=particle_types:get(v[1],0)
             if t==1 then --sand
-                local sand_move_speed=0.05
+                local sand_move_speed=0.125
                 local p=particles_pos:get(v[1],0)
                 local s=particles_speeds:get(v[1],0)
                 --target pos
@@ -159,16 +182,71 @@ function resolve_intersects(  )
                     if sl>0 then
                         local s1=scratch_layer:get(x1,ly).a
                         local s2=scratch_layer:get(x2,ly).a
-                        if s1==0 then
+                        if s1==0 and s2==0 then
+                            s.r=s.r+(math.random()-0.5)*sand_move_speed
+                        elseif s1==0 then
                             s.r=s.r-sand_move_speed
                         elseif s2==0 then
                             s.r=s.r+sand_move_speed
+                            --s.r=s.r+math.random()*sand_move_speed
                         else
                             local ss1=static_layer:get(tx,ly).a
                             local ss2=static_layer:get(x1,ly).a
                             local ss3=static_layer:get(x2,ly).a
                             if ss1>0 and ss2>0 and ss3>0 then
-                                static_layer:set(tx,ty,{255,255,255,255})
+                                static_layer:set(tx,ty,particle_colors[3] or {255,0,0,255})
+                                particle_types:set(v[1],0,0)
+                            end
+                        end
+                    end
+                end
+            elseif t==3 then --water
+                local water_move_speed=0.3
+                local water_lift=0.05
+                local p=particles_pos:get(v[1],0)
+                local s=particles_speeds:get(v[1],0)
+                --target pos
+                local tx=math.floor(v[2]+0.5)
+                local ty=math.floor(v[3]+0.5)
+                --reset pos because we hit something anyways
+                p.r=v[2]
+                p.g=v[3]
+
+                local ly=ty+1
+                local x1=tx-1
+                if x1<0 then x1=map_w-1 end
+                local x2=tx+1
+                if x2>=map_w then x2=0 end
+
+                if ly<=map_h-1 then
+                    local sl=scratch_layer:get(tx,ly).a
+                    if sl>0 then
+                        local s1=scratch_layer:get(x1,ty).a
+                        local s2=scratch_layer:get(x2,ty).a
+
+                        local s3=scratch_layer:get(x1,ly).a
+                        local s4=scratch_layer:get(x2,ly).a
+                        
+                        if (s1==0 and s2==0) or (s3==0 and s4==0) then
+                            s.r=s.r+(math.random()-0.5)*water_move_speed
+                            --s.g=s.g*0.1
+                            s.g=s.g-water_lift
+                        elseif s1==0 or s3==0 then
+                            s.r=s.r-water_move_speed
+                            --s.g=s.g*0.1
+                            s.g=s.g-water_lift
+                        elseif s2==0 or s4==0 then
+                            s.r=s.r+water_move_speed
+                            --s.g=s.g*0.1
+                            --s.r=s.r+math.random()*sand_move_speed
+                            s.g=s.g-water_lift
+                        else
+                            --TODO: not sure if this works for water...
+                            local ss1=scratch_layer:get(tx,ly).a
+                            local ss2=scratch_layer:get(x1,ty).a
+                            local ss3=scratch_layer:get(x2,ty).a
+                            if ss1>0 and ss2>0 and ss3>0 then
+                                static_layer:set(tx,ty, particle_colors[4] or {255,0,0,255})
                                 particle_types:set(v[1],0,0)
                             end
                         end
@@ -187,7 +265,7 @@ function resolve_intersects(  )
                 if l<0.001 then
                     local tx=math.floor(v[2]+0.5)
                     local ty=math.floor(v[3]+0.5)
-                    static_layer:set(tx,ty,{255,255,255,255})
+                    static_layer:set(tx,ty,particle_colors[t+1] or {255,0,0,255})
                     particle_types:set(v[1],0,0)
                 end
             end
@@ -216,7 +294,7 @@ function particle_step(  )
             local p=particles_pos:get(i,0)
             local s=particles_speeds:get(i,0)
             --add gravity to all particles that use it
-            if t==1 then
+            if t==1 or t==3 then
                 s.g=s.g+gravity
             else
                 --[[ particles go to center!
@@ -250,6 +328,7 @@ function particle_step(  )
             local old_y=math.floor(old[2]+0.5)
             if old_x~=x or old_y~=y then
                 local sl=scratch_layer:get(x,y)
+                --print(x,y,sl.a)
                 if sl.a>0 then
                     add_intersect(x,y,i,old[1],old[2])
                 end
@@ -276,11 +355,16 @@ function scratch_update(  )
     place_pixels_shader:use()
 
     -- [[
+    --huh? these two must go before tex_scratch stuff...
+    tex_pcb:use(2,0,1)
+    place_pixels_shader:set_i("pcb_colors",2)
+
     tex_scratch:use(1,0,1)
     if not tex_scratch:render_to(scratch_layer.w,scratch_layer.h) then
         error("failed to set framebuffer up")
     end
     --]]
+
     place_pixels_shader:set_i("pix_size",1)
     place_pixels_shader:set("res",map_w,map_h)
     place_pixels_shader:set("zoom",1*map_aspect_ratio,-1)
@@ -339,24 +423,24 @@ function update()
         sim_tick()
     end
     if is_remade then
+        --print("==============================")
         is_remade=false
 
+        -- [[
         for i=0,current_particle_count-1 do
             local r=math.sqrt(math.random())*map_w/4
             local a=math.random()*math.pi*2
             --particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
-            particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.abs(math.sin(a)*r)})
+            particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.sin(a)*r})
             particles_speeds:set(i,0,{math.random()*1-0.5,math.random()*1-0.5})
-            if math.random()<0.0 then
-                particle_types:set(i,0,math.random(0,255));
+            if math.random()<1 then
+                particle_types:set(i,0,3);
             else
                 particle_types:set(i,0,1);
             end
         end
-        particles_pos:set(0,0,{0,0})
-        particles_pos:set(1,0,{map_w-1,map_h-1})
-        particles_pos:set(2,0,{0,map_h-1})
-        particles_pos:set(3,0,{map_w-1,0})
+        --]]
+
         for x=0,map_w-1 do
             static_layer:set(x,map_h-1,{255,255,255,255})
         end
@@ -394,6 +478,8 @@ function update()
 
     if config.draw then
     	place_pixels_shader:use()
+        tex_pcb:use(2,0,1)
+        place_pixels_shader:set_i("pcb_colors",2)
         place_pixels_shader:set_i("pix_size",math.floor(1/oversample))
         place_pixels_shader:set("res",map_w,map_h)
         place_pixels_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
