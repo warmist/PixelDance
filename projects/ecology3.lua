@@ -19,7 +19,7 @@ local win_w=768
 local win_h=768
 
 __set_window_size(win_w,win_h)
-local oversample=0.25
+local oversample=0.5
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -30,7 +30,7 @@ local size=STATE.size
 
 is_remade=false
 local max_particle_count=win_w*win_h
-current_particle_count= 5000
+current_particle_count= 10000
 function update_buffers()
 	if particles_pos==nil or particles_pos.w~=max_particle_count then
 		particles_pos=make_flt_half_buffer(max_particle_count,1)
@@ -48,9 +48,9 @@ update_buffers()
 
 particle_colors={
     {0,0,0,0},
-    {124,100,80,255},
-    {130,120,100,255},
-    {70 ,70 ,150,255},
+    {124,100,80,1},
+    {130,120,100,2},
+    {70 ,70 ,150,3},
 }
 function update_particle_colors(  )
     local pcb=particle_colors_buf
@@ -128,6 +128,8 @@ void main(){
     
 
     col=texelFetch(pcb_colors,ivec2(particle_type,0),0);
+    if(col.a!=0)
+        col.a=1;
     /*
     if (particle_type==1u)
         col=vec4(0,0,1,0.8);
@@ -190,11 +192,11 @@ function resolve_intersects(  )
                             s.r=s.r+sand_move_speed
                             --s.r=s.r+math.random()*sand_move_speed
                         else
-                            local ss1=static_layer:get(tx,ly).a
-                            local ss2=static_layer:get(x1,ly).a
-                            local ss3=static_layer:get(x2,ly).a
+                            local ss1=scratch_layer:get(tx,ly).a
+                            local ss2=scratch_layer:get(x1,ly).a
+                            local ss3=scratch_layer:get(x2,ly).a
                             if ss1>0 and ss2>0 and ss3>0 then
-                                static_layer:set(tx,ty,particle_colors[3] or {255,0,0,255})
+                                static_layer:set(tx,ty,particle_colors[2] or {255,0,0,255})
                                 particle_types:set(v[1],0,0)
                             end
                         end
@@ -276,12 +278,61 @@ function resolve_intersects(  )
     intersect_list={}
     
 end
+
 function add_intersect( tx,ty,p_id,ox,oy )
     local intersect_id=tx+ty*map_w
     local tbl=intersect_list[intersect_id] or {}
     intersect_list[intersect_id]=tbl
     table.insert(tbl,{p_id,ox,oy})
     int_count=int_count+1
+end
+function reserve_particle_id(  )
+    for i=0,current_particle_count-1 do
+        if particle_types:get(i,0)==0 then
+            return i
+        end
+    end
+    if current_particle_count<max_particle_count then
+        current_particle_count=current_particle_count+1
+        return current_particle_count-1
+    end
+    --TODO: resolve this?
+    return 0
+end
+add_list={}
+function add_particle( p )
+    local id=reserve_particle_id()
+    particles_pos:set(id,0,{p[1],p[2]})
+    particles_speeds:set(id,0,{p[3],p[4]})
+    particle_types:set(id,0,p[5])
+end
+function wake_pixels( x,y,s)
+    local dx={ -1, 0, 1,-1, 1,-1, 0, 1}
+    local dy={ -1,-1,-1, 0, 0, 1, 1, 1}
+    local new_speed=s*0.2
+    for i=1,8 do
+        local tx=x+dx[i]
+        if tx<0 then tx=tx+map_w end
+        if tx>=map_w then tx=tx-map_w end
+        local ty=y+dy[i]
+        if ty<0 then ty=ty+map_h end
+        if ty>=map_h then ty=ty-map_h end
+
+        local a=static_layer:get(tx,ty).a
+        if a~=0 and a~=255 then
+            table.insert(add_list,{tx,ty,
+            math.random()*new_speed-new_speed/2,math.random()*new_speed-new_speed/2,
+            a})
+            static_layer:set(tx,ty,{0,0,0,0})
+        end
+       
+    end
+end
+function resolve_adds(  )
+    for i,v in ipairs(add_list) do
+        add_particle(v)
+    end
+    add_list={}
 end
 function particle_step(  )
     local gravity=0.01
@@ -310,6 +361,7 @@ function particle_step(  )
             if speed_len>1 then
                 s.r=s.r/speed_len
                 s.g=s.g/speed_len
+                speed_len=1
             end
 
             --move particles with intersection testing
@@ -332,6 +384,7 @@ function particle_step(  )
                 if sl.a>0 then
                     add_intersect(x,y,i,old[1],old[2])
                 end
+                wake_pixels(old_x,old_y,speed_len)
             end
         end
     end
@@ -380,6 +433,7 @@ function sim_tick(  )
     scratch_update()
     particle_step()
     resolve_intersects()
+    resolve_adds()
 end
 
 if tex_pixel==nil then
@@ -433,7 +487,7 @@ function update()
             --particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
             particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.sin(a)*r})
             particles_speeds:set(i,0,{math.random()*1-0.5,math.random()*1-0.5})
-            if math.random()<1 then
+            if math.random()<0.5 then
                 particle_types:set(i,0,3);
             else
                 particle_types:set(i,0,1);
