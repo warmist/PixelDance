@@ -19,7 +19,7 @@ local win_w=768
 local win_h=768
 
 __set_window_size(win_w,win_h)
-local oversample=0.5
+local oversample=0.25
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -30,7 +30,7 @@ local size=STATE.size
 
 is_remade=false
 local max_particle_count=win_w*win_h
-current_particle_count= 10000
+current_particle_count= 1500
 function update_buffers()
 	if particles_pos==nil or particles_pos.w~=max_particle_count then
 		particles_pos=make_flt_half_buffer(max_particle_count,1)
@@ -274,7 +274,6 @@ function resolve_intersects(  )
 
         end
     end
-    
     intersect_list={}
     
 end
@@ -300,6 +299,7 @@ function reserve_particle_id(  )
     return 0
 end
 add_list={}
+add_count=0
 function add_particle( p )
     local id=reserve_particle_id()
     particles_pos:set(id,0,{p[1],p[2]})
@@ -332,6 +332,7 @@ function resolve_adds(  )
     for i,v in ipairs(add_list) do
         add_particle(v)
     end
+    add_count=#add_list
     add_list={}
 end
 function particle_step(  )
@@ -504,12 +505,14 @@ function update()
     end
     if not config.pause then
         sim_tick()
+        --add_particle{map_w/2,0,math.random()*0.25-0.125,math.random()-0.5,3}
     end
     imgui.SameLine()
     if imgui.Button("Save") then
         need_save=true
     end
     imgui.Text(string.format("Intesects:%d",int_count))
+    imgui.Text(string.format("Added particles:%d",add_count))
     imgui.End()
     __render_to_window()
 
