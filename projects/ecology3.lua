@@ -384,8 +384,9 @@ function particle_step(  )
                 --print(x,y,sl.a)
                 if sl.a>0 then
                     add_intersect(x,y,i,old[1],old[2])
+                else
+                    wake_pixels(old_x,old_y,speed_len)
                 end
-                wake_pixels(old_x,old_y,speed_len)
             end
         end
     end
