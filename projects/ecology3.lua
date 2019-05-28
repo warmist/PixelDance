@@ -49,8 +49,14 @@ update_buffers()
 particle_colors={
     {0,0,0,0},
     {124,100,80,1},
-    {130,120,100,2},
-    {70 ,70 ,150,3},
+    {70 ,70 ,150,2},
+    {81,138,61,3},
+}
+tile={
+    empty=0,
+    sand=1,
+    water=2,
+    plant=3,
 }
 function update_particle_colors(  )
     local pcb=particle_colors_buf
@@ -162,7 +168,7 @@ function resolve_intersects(  )
         --local num_close=#v todo: maybe some crowding prevention?
         for i,v in ipairs(v) do
             local t=particle_types:get(v[1],0)
-            if t==1 then --sand
+            if t==tile.sand then --sand
                 local sand_move_speed=0.125
                 local p=particles_pos:get(v[1],0)
                 local s=particles_speeds:get(v[1],0)
@@ -196,13 +202,13 @@ function resolve_intersects(  )
                             local ss2=scratch_layer:get(x1,ly).a
                             local ss3=scratch_layer:get(x2,ly).a
                             if ss1>0 and ss2>0 and ss3>0 then
-                                static_layer:set(tx,ty,particle_colors[2] or {255,0,0,255})
+                                static_layer:set(tx,ty,particle_colors[tile.sand+1] or {255,0,0,255})
                                 particle_types:set(v[1],0,0)
                             end
                         end
                     end
                 end
-            elseif t==3 then --water
+            elseif t==tile.water then --water
                 local water_move_speed=0.3
                 local water_lift=0.05
                 local p=particles_pos:get(v[1],0)
@@ -248,7 +254,7 @@ function resolve_intersects(  )
                             local ss2=scratch_layer:get(x1,ty).a
                             local ss3=scratch_layer:get(x2,ty).a
                             if ss1>0 and ss2>0 and ss3>0 then
-                                static_layer:set(tx,ty, particle_colors[4] or {255,0,0,255})
+                                static_layer:set(tx,ty, particle_colors[tile.water+1] or {255,0,0,255})
                                 particle_types:set(v[1],0,0)
                             end
                         end
@@ -264,12 +270,14 @@ function resolve_intersects(  )
                 s.r=-s.r*0.8
                 s.g=-s.g*0.8
                 local l=math.sqrt(s.r*s.r+s.g*s.g)
+                --[[
                 if l<0.001 then
                     local tx=math.floor(v[2]+0.5)
                     local ty=math.floor(v[3]+0.5)
                     static_layer:set(tx,ty,particle_colors[t+1] or {255,0,0,255})
                     particle_types:set(v[1],0,0)
                 end
+                --]]
             end
 
         end
@@ -346,7 +354,7 @@ function particle_step(  )
             local p=particles_pos:get(i,0)
             local s=particles_speeds:get(i,0)
             --add gravity to all particles that use it
-            if t==1 or t==3 then
+            if t==tile.sand or t==tile.water then
                 s.g=s.g+gravity
             else
                 --[[ particles go to center!
@@ -490,9 +498,9 @@ function update()
             particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.sin(a)*r})
             particles_speeds:set(i,0,{math.random()*1-0.5,math.random()*1-0.5})
             if math.random()<0.5 then
-                particle_types:set(i,0,3);
+                particle_types:set(i,0,tile.water);
             else
-                particle_types:set(i,0,1);
+                particle_types:set(i,0,tile.sand);
             end
         end
         --]]
