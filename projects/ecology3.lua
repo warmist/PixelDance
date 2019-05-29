@@ -13,6 +13,7 @@ require 'bit'
             - more general "what is me" system
         * maybe some physics: springs and such
         * maybe try going big (e.g. with quadtrees and stuff)
+        * add physics: https://www.toptal.com/game/video-game-physics-part-iii-constrained-rigid-body-simulation
 --]]
 
 local win_w=768
@@ -45,19 +46,19 @@ function update_buffers()
     end
 end
 update_buffers()
-
-particle_colors={
-    {0,0,0,0},
-    {124,100,80,1},
-    {70 ,70 ,150,2},
-    {81,138,61,3},
-}
 tile={
     empty=0,
     sand=1,
     water=2,
     plant=3,
 }
+particle_colors={
+    {0,0,0,tile.empty},
+    {124,100,80,tile.sand},
+    {70 ,70 ,150,tile.water},
+    {81,138,61,tile.plant},
+}
+
 function update_particle_colors(  )
     local pcb=particle_colors_buf
     if pcb==nil or pcb.w~=#particle_colors then
