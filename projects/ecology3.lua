@@ -81,7 +81,31 @@ config=make_config({
     {"t_x",0,type="float",min=0,max=1},
     {"t_y",0,type="float",min=0,max=1},
     },config)
+dist_constraints={}
 
+function clear_dead_constraints()
+    local old_c=dist_constraints
+    dist_constraints={}
+    for i,v in ipairs(dist_constraints) do
+        local t1=particle_types:get(v[1],0)
+        local t2=particle_types:get(v[2],0)
+        if t1~=0 and t2~=0 then
+            table.insert(dist_constraints,v)
+        end
+    end
+end
+
+function add_dist_constraint( p1,p2,dist )
+    table.insert(dist_constraints,{p1,p2,dist})
+end
+function resolve_dist_constraints(iter_count)
+    clear_dead_constraints()
+    for i=1,iter_count do
+        for i,v in ipairs(dist_constraints) do
+            
+        end
+    end
+end
 --[==[
 #version 330
 layout(location = 0) in vec3 position;
@@ -262,6 +286,7 @@ function resolve_intersects(  )
                     end
                 end
             else
+                --TODO: make this work like iterative rigid body solver
                 --reset position because we intersect :<
                 local p=particles_pos:get(v[1],0)
                 p.r=v[2]
