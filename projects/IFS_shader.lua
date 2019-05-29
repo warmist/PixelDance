@@ -645,10 +645,10 @@ local terminal_symbols_alt={["p.x"]=3,["p.y"]=3}
 local terminal_symbols_param={["s.x"]=10,["s.y"]=105,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=0.05}
 local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=2,["(R)*(R)"]=4,["(R)-(R)"]=6,["(R)+(R)"]=6}
 
-local terminal_symbols_complex={["s"]=10,["p"]=3,["params.xy"]=1,["params.zw"]=1,["(c_one()*normed_i)"]=0.05,["(c_i()*normed_i)"]=0.05,["c_one()"]=0.1,["c_i()"]=0.1}
+local terminal_symbols_complex={["s"]=3,["p"]=3,["params.xy"]=1,["params.zw"]=1,["(c_one()*normed_i)"]=0.05,["(c_i()*normed_i)"]=0.05,["c_one()"]=0.1,["c_i()"]=0.1}
 local normal_symbols_complex={
 -- [=[
-["c_sqrt(R)"]=0.1,
+["c_sqrt(R)"]=1,
 ["c_ln(R)"]=0.1,["c_exp(R)"]=0.01,
 ["c_acos(R)"]=0.1,["c_asin(R)"]=0.1,["c_atan(R)"]=0.1,
 ["c_tan(R)"]=1,["c_sin(R)"]=1,["c_cos(R)"]=1,
@@ -806,7 +806,7 @@ animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
 	str_cmplx=random_math_complex(rand_complexity)
-	-- [=[ http://www.fractalsciencekit.com/topics/mobius.htm maybe?
+	--[=[ http://www.fractalsciencekit.com/topics/mobius.htm maybe?
 	--str_cmplx="c_div(c_mul(params.xy,s)+vec2(-0.1,0.2),c_mul(vec2(0.2,0.1),s)+params.zw)"
 	str_cmplx=random_math_complex(rand_complexity,"c_div(c_mul(R,s)+R,c_mul(R,s)+R)")
 	--]=]
@@ -1820,6 +1820,8 @@ function visit_iter()
 
 		local sample_count=samples.w*samples.h-1
 		local sample_count_w=math.floor(math.sqrt(sample_count))
+		
+
 		for i=0,sample_count do
 			--[[ exact grid
 			local x=((i%sample_count_w)/sample_count_w-0.5)*2
@@ -1856,14 +1858,14 @@ function visit_iter()
 			x,y=gaussian2(x,blur_x,y,blur_y)
 			--print(x,y,i)
 			--]]
-			--[[ square
+			-- [[ square
 			local x=math.random()*gen_radius-gen_radius/2
 			local y=math.random()*gen_radius-gen_radius/2
 			--]]
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-		 	local x,y=gaussian2(0,gen_radius,0,gen_radius)
+		 	--local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=3
 			local rad=2+gen_radius*gen_radius
@@ -1925,13 +1927,19 @@ function visit_iter()
 			y=y+math.sin(a2)*circle_size
 			--]]
 			samples.d[i]={x,y}
+			--[[ for lines
+			local a2 = math.random() * 2 * math.pi
+			x=x+math.cos(a2)*config.move_dist
+			y=y+math.sin(a2)*config.move_dist
+			--samples.d[i+1]={x,y}
+			--]]
 		end
 
 		if config.only_last then
 			add_visit_shader:set("seed",math.random())
 			add_visit_shader:set_i("iters",config.IFS_steps)
 			if render_lines then
-				add_visit_shader:draw_lines(samples.d,samples.w*samples.h,false)
+				add_visit_shader:draw_lines(samples.d,samples.w*samples.h,true)
 			else
 				add_visit_shader:draw_points(samples.d,samples.w*samples.h)
 			end
@@ -1940,7 +1948,7 @@ function visit_iter()
 				add_visit_shader:set("seed",math.random())
 				add_visit_shader:set_i("iters",i)
 				if render_lines then
-					add_visit_shader:draw_lines(samples.d,samples.w*samples.h,false)
+					add_visit_shader:draw_lines(samples.d,samples.w*samples.h,true)
 				else
 					add_visit_shader:draw_points(samples.d,samples.w*samples.h)
 				end
