@@ -28,11 +28,17 @@ include(InstallRequiredSystemLibraries)
 
 message(STATUS OPENMP: ${MSVC_OPENMP_DIR})
 
-include(EmbedFileFTO)
-
+option(EMBED_ASSETS "pack assets into binary" OFF)
+if(EMBED_ASSETS)
+  include(EmbedFileFTO)
+  embed_file("${PROJECT_SOURCE_DIR}/assets/cp437_12x12.png")
+else()
+  set(EMBEDDED_HDRS)
+  set(EMBEDDED_LIBS)
+  add_definitions(-DNO_EMBEDS)
+endif()
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-embed_file("${PROJECT_SOURCE_DIR}/assets/cp437_12x12.png")
 
 set(SRCS
   src/main.cpp

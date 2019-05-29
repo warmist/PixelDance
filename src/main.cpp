@@ -20,8 +20,9 @@
 #include "shaders.h"
 #include "textures.hpp"
 #include <unordered_map>
-
+#ifndef NO_EMBEDS
 #include "asset_cp437_12x12.hpp"
+#endif
 struct emb_text
 {
 	unsigned char* data;
@@ -445,11 +446,17 @@ static int lua_get_my_source(lua_State* L)
 }
 void load_assets()
 {
+#ifdef NO_EMBEDS
+    cp437.data = nullptr;
+    cp437.w = 0;
+    cp437.h = 0;
+#else
 	int x, y,comp;
 	auto data=stbi_load_from_memory((const stbi_uc*)EMB_FILE_cp437_12x12, EMB_FILE_SIZE_cp437_12x12, &x, &y, &comp, 4);
 	cp437.data = data;
 	cp437.w = x;
 	cp437.h = y;
+#endif
 	//printf("Loaded pointer:%llX (%dx%d)x%d\n", data,x,y,comp);
 }
 template <int N>
