@@ -188,12 +188,15 @@ function rnd( v )
 end
 int_count=0
 intersect_list={}
-function resolve_intersects(  )
+function reset_intersects(  )
+    intersect_list={}
+end
+function resolve_intersects_slips(  )
     for k,v in pairs(intersect_list) do
         --local num_close=#v todo: maybe some crowding prevention?
         for i,v in ipairs(v) do
             local t=particle_types:get(v[1],0)
-            if t==tile.sand then --sand
+            if t==tile.sand then --sand slipping
                 local sand_move_speed=0.125
                 local p=particles_pos:get(v[1],0)
                 local s=particles_speeds:get(v[1],0)
@@ -233,7 +236,7 @@ function resolve_intersects(  )
                         end
                     end
                 end
-            elseif t==tile.water then --water
+            elseif t==tile.water then --water slipping+ejection?
                 local water_move_speed=0.3
                 local water_lift=0.05
                 local p=particles_pos:get(v[1],0)
@@ -286,32 +289,47 @@ function resolve_intersects(  )
                     end
                 end
             else
-                --TODO: make this work like iterative rigid body solver
-                --reset position because we intersect :<
+                --we intesected so we reset positions
                 local p=particles_pos:get(v[1],0)
                 p.r=v[2]
                 p.g=v[3]
-                --flip speed
-                local s=particles_speeds:get(v[1],0)
-                s.r=-s.r*0.8
-                s.g=-s.g*0.8
-                local l=math.sqrt(s.r*s.r+s.g*s.g)
-                --[[
-                if l<0.001 then
-                    local tx=math.floor(v[2]+0.5)
-                    local ty=math.floor(v[3]+0.5)
-                    static_layer:set(tx,ty,particle_colors[t+1] or {255,0,0,255})
-                    particle_types:set(v[1],0,0)
-                end
-                --]]
+                --rest of resolution, done at iterative solver
             end
-
         end
     end
-    intersect_list={}
-    
 end
-
+function clear_dead_intersects(  )
+    local old_i=intersect_list
+    intersect_list={}
+    for i,v in ipairs(old_i) do
+        if #v > 0 then
+            local tbl={}
+            for _,iv in ipairs(v) do
+                local t1=particle_types:get(iv[1],0)
+                if t1~=0 then
+                    table.insert(tbl,iv)
+                end
+            end
+            if #tbl>0 then
+                table.insert(intersect_list,tbl)
+            end
+        end
+    end
+end
+function resolve_intersects(  )
+    for i,v in ipairs(intersect_list) do
+        for _,iv in ipairs(table_name) do
+            local p=particles_pos:get(iv[1],0)
+            local s=particles_speeds:get(v[1],0)
+            --calculate forces
+            --apply forces
+            --update speeds
+            s.r=-s.r*0.8
+            s.g=-s.g*0.8
+            local l=math.sqrt(s.r*s.r+s.g*s.g)
+        end
+    end
+end
 function add_intersect( tx,ty,p_id,ox,oy )
     local intersect_id=tx+ty*map_w
     local tbl=intersect_list[intersect_id] or {}
@@ -468,7 +486,9 @@ function sim_tick(  )
     int_count=0
     scratch_update()
     particle_step()
-    resolve_intersects()
+    resolve_intersects_slips()
+    clear_dead_intersects()
+    
     resolve_adds()
 end
 
