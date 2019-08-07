@@ -22,8 +22,8 @@ local need_clear=false
 local oversample=1
 local render_lines=false
 local complex=true
-local init_zero=false
-local escape_fractal=true
+local init_zero=true
+local escape_fractal=false
 
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
@@ -60,10 +60,10 @@ config=make_config({
 	{"point_size",0,type="int",min=0,max=10},
 	{"ticking",1,type="int",min=1,max=2},
 	{"size_mult",true,type="boolean"},
-	{"v0",-0.211,type="float",min=-5,max=5},
-	{"v1",-0.184,type="float",min=-5,max=5},
-	{"v2",-0.184,type="float",min=-5,max=5},
-	{"v3",-0.184,type="float",min=-5,max=5},
+	{"v0",-0.211,type="float",min=-1,max=1},
+	{"v1",-0.184,type="float",min=-1,max=1},
+	{"v2",-0.184,type="float",min=-1,max=1},
+	{"v3",-0.184,type="float",min=-1,max=1},
 	{"IFS_steps",10,type="int",min=1,max=100},
 	{"move_dist",0.1,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
@@ -734,6 +734,23 @@ function random_math_complex( steps,seed )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
+function random_math_complex_pts(steps,pts,seed )
+	local cur_string=seed or "R"
+
+	function M(  )
+		return rand_weighted(normal_symbols_complex)
+	end
+	function MT(  )
+		local p=pts[math.random(1,#pts)]
+		return rand_weighted(terminal_symbols_complex)..string.format("+vec2(%.3f,%.3f)",p[1],p[2])
+	end
+
+	for i=1,steps do
+		cur_string=replace_random(cur_string,"R",M)
+	end
+	cur_string=string.gsub(cur_string,"R",MT)
+	return cur_string
+end
 function random_math_centered(steps,complications,seed )
 	local cur_string=("R+%.3f"):format(math.random()*2-1) or seed
 	for i=1,steps do
@@ -805,7 +822,14 @@ end
 animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
-	str_cmplx=random_math_complex(rand_complexity)
+	--str_cmplx=random_math_complex(rand_complexity)
+	local pts={}
+	local num_roots=7
+	for i=1,num_roots do
+		local angle=((i-1)/num_roots)*math.pi*2
+		table.insert(pts,{math.cos(angle)*config.move_dist,math.sin(angle)*config.move_dist})
+	end
+	str_cmplx=random_math_complex_pts(rand_complexity,pts)
 	--[=[ http://www.fractalsciencekit.com/topics/mobius.htm maybe?
 	--str_cmplx="c_div(c_mul(params.xy,s)+vec2(-0.1,0.2),c_mul(vec2(0.2,0.1),s)+params.zw)"
 	str_cmplx=random_math_complex(rand_complexity,"c_div(c_mul(R,s)+R,c_mul(R,s)+R)")
@@ -1858,14 +1882,14 @@ function visit_iter()
 			x,y=gaussian2(x,blur_x,y,blur_y)
 			--print(x,y,i)
 			--]]
-			-- [[ square
+			--[[ square
 			local x=math.random()*gen_radius-gen_radius/2
 			local y=math.random()*gen_radius-gen_radius/2
 			--]]
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
 			--gaussian blob
-		 	--local x,y=gaussian2(0,gen_radius,0,gen_radius)
+		 	local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ n gaussian blobs
 			local count=3
 			local rad=2+gen_radius*gen_radius
@@ -1883,7 +1907,7 @@ function visit_iter()
 
 			--[[ circle area
 			local a = math.random() * 2 * math.pi
-			local r = gen_radius * math.sqrt(math.random())
+			local r = gen_radius *math.sqrt(math.random())
 			local x = r * math.cos(a)
 			local y = r * math.sin(a)
 			--]]
