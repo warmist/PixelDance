@@ -81,7 +81,22 @@ function update( )
 	gui()
 	update_real()
 end
+function waves_solve(  )
+	
+	make_textures()
+	make_solver_shader()
+	solver_shader:use()
 
+	visit_tex.t:use(0)
+	knock_texture:use(1)
+	add_visit_shader:blend_add()
+	add_visit_shader:set_i("img_tex",1)
+	add_visit_shader:set_i("pix_size",psize)
+	if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
+		error("failed to set framebuffer up")
+	end
+	
+end
 function update_real(  )
 	__no_redraw()
 	if animate then
@@ -95,7 +110,7 @@ function update_real(  )
 		end
 	end
 	auto_clear()
-	visit_iter()
+	waves_solve()
 	local scale=config.scale
 	--[[
 	local c,x,y= is_mouse_down()
