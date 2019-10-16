@@ -73,11 +73,12 @@ float f(float v)
 void main(){
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	float lv=texture(values,normed).x;
-	if (lv>0)
+	float lv=f(abs(texture(values,normed).x));
+	color=vec4(lv,lv,lv,1);
+	/*if (lv>0)
 		color=vec4(f(lv),0,0,1);
 	else
-		color=vec4(0,0,f(-lv),1);
+		color=vec4(0,0,f(-lv),1);*/
 }
 ]==]
 
@@ -94,26 +95,56 @@ uniform float c_const;
 uniform float time;
 uniform float decay;
 uniform float freq;
+uniform vec2 tex_size;
 //uniform vec2 dpos;
+
+#define M_PI 3.14159265358979323846264338327950288
 
 #define DX(dx,dy) textureOffset(values_cur,normed,ivec2(dx,dy)).x
 float func(vec2 pos)
 {
-	if(length(pos)<0.0025 && time<100)
-		return cos(time/freq)+cos(time/(2*freq/3))+cos(time/(3*freq/2));
+	//if(length(pos)<0.0025 && time<100)
+	//	return cos(time/freq)+cos(time/(2*freq/3))+cos(time/(3*freq/2));
 	return 0;
 	//return 0.1;//0.0001*sin(time/1000)/(1+length(pos));
 }
 float func_init_speed(vec2 pos)
 {
-	//if(length(pos)<0.005)
-	//	return 2;
+	float p=length(pos);
+	float w=M_PI/0.5;
+	float m1=3;
+	float m2=7;
+
+	//float d=exp(-dot(pos,pos)/0.005);
+	//return exp(-dot(pos,pos)/0.00005);
+
+	//return (sin(p*w*m1)+sin(p*w*m2))*0.05;
+	//if(max(abs(pos.x),abs(pos.y))<0.002)
+	//	return 1;
 	return 0;
 }
+float func_init(vec2 pos)
+{
+	//float theta=atan(pos.y,pos.x);
+	//float r=length(pos);
+
+	float w=M_PI/0.5;
+	float m1=2;
+	float m2=3;
+
+	//float d=exp(-dot(pos,pos)/0.005);
+	//return exp(-dot(pos,pos)/0.00005);
+
+	return (sin(pos.x*w*m1)*sin(pos.y*w*m2))*0.005;
+	//if(max(abs(pos.x),abs(pos.y))<0.002)
+	//	return 1;
+	return 0;
+	return 0; //TODO
+}
+#define IDX(dx,dy) func_init(pos+vec2(dx,dy)*dtex)
 float calc_new_value(vec2 pos)
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-
 	float dcsqr=dt*dt*c_const*c_const;
 	float dcsqrx=dcsqr;
 	float dcsqry=dcsqr;
@@ -130,15 +161,16 @@ float calc_init_value(vec2 pos)
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 
-	float dcsqr=dt*dt*c_const*c_const;
-	float dcsqrx=dcsqr;
-	float dcsqry=dcsqr;
+	vec2 dtex=1/tex_size;
+	//float dcsqr=dt*dt*c_const*c_const;
+	float dcsqrx=dt*dt*c_const*c_const/(dtex.x*dtex.x);
+	float dcsqry=dt*dt*c_const*c_const/(dtex.y*dtex.y);
 
 	float ret=
-		2*DX(0,0)+
+		2*IDX(0,0)+
 		dt*func_init_speed(pos)+
-		0.5*dcsqrx*(DX(1,0)-2*DX(0,0)+DX(-1,0))+
-		0.5*dcsqry*(DX(0,1)-2*DX(0,0)+DX(0,-1))+
+		0.5*dcsqrx*(IDX(1,0)-2*IDX(0,0)+IDX(-1,0))+
+		0.5*dcsqry*(IDX(0,1)-2*IDX(0,0)+IDX(0,-1))+
 		dt*dt*func(pos);
 
 	return ret;
@@ -147,18 +179,22 @@ float boundary_condition(vec2 pos)
 {
 	return 0;
 }
+//rectangle
+//#define BOUNDARY_SHAPE max(abs(pos.x),abs(pos.y))
+//circle
+#define BOUNDARY_SHAPE length(pos.xy)
 void main(){
 	float v=0;
-	float max_d=.99;
+	float max_d=.5;
 	float w=0.01;
-	if(length(pos)<max_d)
+	if(BOUNDARY_SHAPE<max_d)
 	{
 		if(init==1)
 			v=calc_init_value(pos.xy);
 		else
 			v=calc_new_value(pos.xy);
 	}
-	else if(length(pos)<max_d+w)
+	else if(BOUNDARY_SHAPE>max_d+w)
 	{
 		v=boundary_condition(pos.xy);
 	}
@@ -240,11 +276,12 @@ function waves_solve(  )
 		solver_shader:set("init",0);
 	end
 	solver_shader:set("dt",config.dt);
-	solver_shader:set("c_const",0.2);
+	solver_shader:set("c_const",0.1);
 	solver_shader:set("time",current_time);
 	solver_shader:set("decay",config.decay);
 	solver_shader:set("freq",config.freq)
 	local trg_tex=textures[id_next];
+	solver_shader:set("tex_size",trg_tex.w,trg_tex.h)
 	if not trg_tex.t:render_to(trg_tex.w,trg_tex.h) then
 		error("failed to set framebuffer up")
 	end
