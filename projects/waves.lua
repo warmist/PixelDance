@@ -1,5 +1,5 @@
 require "common"
-
+--basically implementing: http://hplgit.github.io/num-methods-for-PDEs/doc/pub/wave/html/._wave006.html
 
 local size_mult=1
 local oversample=1
@@ -129,13 +129,15 @@ float func_init(vec2 pos)
 	//float r=length(pos);
 
 	float w=M_PI/0.5;
-	float m1=2;
-	float m2=3;
-
+	float m1=5;
+	float m2=7;
+	float a=1;
+	float b=-1;
 	//float d=exp(-dot(pos,pos)/0.005);
 	//return exp(-dot(pos,pos)/0.00005);
-
-	return (sin(pos.x*w*m1)*sin(pos.y*w*m2))*0.005;
+	//solution from https://thelig.ht/chladni/
+	return (a*sin(pos.x*w*m1)*sin(pos.y*w*m2)+
+			b*sin(pos.x*w*m2)*sin(pos.y*w*m1))*0.0005;
 	//if(max(abs(pos.x),abs(pos.y))<0.002)
 	//	return 1;
 	return 0;
