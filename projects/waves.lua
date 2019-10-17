@@ -2,7 +2,7 @@ require "common"
 --basically implementing: http://hplgit.github.io/num-methods-for-PDEs/doc/pub/wave/html/._wave006.html
 
 local size_mult=1
-local oversample=1
+local oversample=2
 local win_w
 local win_h
 local aspect_ratio
@@ -26,16 +26,26 @@ function resize( w,h )
 	print("new size:",w,h)
 end
 
-textures=textures or {}
+
+texture_buffers=texture_buffers or {}
+function make_sand_buffer()
+	local t={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
+	t.t:use(0,1)
+	t.t:set(size[1]*oversample,size[2]*oversample,2)
+	texture_buffers.sand=t
+end
 function make_textures()
-	if #textures==0 or textures[1].w~=size[1]*oversample or textures[1].h~=size[2]*oversample then
+	if #texture_buffers==0 or
+		texture_buffers[1].w~=size[1]*oversample or
+		texture_buffers[1].h~=size[2]*oversample then
 		--print("making tex")
 		for i=1,3 do
 			local t={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
 			t.t:use(0,1)
 			t.t:set(size[1]*oversample,size[2]*oversample,2)
-			textures[i]=t
+			texture_buffers[i]=t
 		end
+		make_sand_buffer()
 	end
 end
 make_textures()
@@ -50,38 +60,64 @@ make_io_buffer()
 
 config=make_config({
 	{"dt",1,type="float",min=0.001,max=2},
-	{"freq",1000,type="float",min=1,max=4000},
-	{"decay",1,type="float",min=0.99,max=1},
+	{"freq",0.5,type="float",min=0,max=1},
+	{"decay",0,type="floatsci",min=0,max=0.01,power=10},
+	{"n",1,type="int",min=0,max=15},
+	{"m",1,type="int",min=0,max=15},
 	{"draw",true,type="boolean"},
+	{"accumulate",true,type="boolean"},
 	{"size_mult",true,type="boolean"},
 },config)
 
 
+add_shader=shaders.Make[==[
+#version 330
+
+out vec4 color;
+in vec3 pos;
+uniform sampler2D values;
+uniform float mult;
+
+void main(){
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	float lv=abs(texture(values,normed).x*mult);
+	color=vec4(lv,lv,lv,1);
+}
+]==]
 draw_shader=shaders.Make[==[
 #version 330
 
 out vec4 color;
 in vec3 pos;
 uniform sampler2D values;
-uniform float line_w;
-uniform vec2 limits;
-uniform vec4 in_col;
+uniform float mult;
+uniform float add;
+
 float f(float v)
 {
-	return clamp(pow(v,1),0,1);
+#if LOG_MODE
+	return log(v+1);
+#else
+	return v;
+#endif
 }
+
+
 void main(){
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	float lv=f(abs(texture(values,normed).x));
-	color=vec4(lv,lv,lv,1);
-	/*if (lv>0)
+#ifdef RG
+	float lv=(texture(values,normed).x+add)*mult;
+	if (lv>0)
 		color=vec4(f(lv),0,0,1);
 	else
-		color=vec4(0,0,f(-lv),1);*/
+		color=vec4(0,0,f(-lv),1);
+#else
+	float lv=f(abs(texture(values,normed).x+add))*mult;
+	color=vec4(lv,lv,lv,1);
+#endif
 }
 ]==]
-
 solver_shader=shaders.Make[==[
 #version 330
 
@@ -96,6 +132,7 @@ uniform float time;
 uniform float decay;
 uniform float freq;
 uniform vec2 tex_size;
+uniform vec2 nm_vec;
 //uniform vec2 dpos;
 
 #define M_PI 3.14159265358979323846264338327950288
@@ -105,7 +142,9 @@ float func(vec2 pos)
 {
 	//if(length(pos)<0.0025 && time<100)
 	//	return cos(time/freq)+cos(time/(2*freq/3))+cos(time/(3*freq/2));
-	return 0;
+	//if(length(pos)<0.05)
+	if(max(abs(pos.x),abs(pos.y))<0.005)
+		return (sin(time*freq*M_PI/1000)+sin(time*freq*3*M_PI/1000))*0.0005;
 	//return 0.1;//0.0001*sin(time/1000)/(1+length(pos));
 }
 float func_init_speed(vec2 pos)
@@ -118,7 +157,7 @@ float func_init_speed(vec2 pos)
 	//float d=exp(-dot(pos,pos)/0.005);
 	//return exp(-dot(pos,pos)/0.00005);
 
-	//return (sin(p*w*m1)+sin(p*w*m2))*0.05;
+	//return (sin(p*w*m1)+sin(p*w*m2))*0.005;
 	//if(max(abs(pos.x),abs(pos.y))<0.002)
 	//	return 1;
 	return 0;
@@ -129,8 +168,8 @@ float func_init(vec2 pos)
 	//float r=length(pos);
 
 	float w=M_PI/0.5;
-	float m1=5;
-	float m2=7;
+	float m1=nm_vec.x;
+	float m2=nm_vec.y;
 	float a=1;
 	float b=-1;
 	//float d=exp(-dot(pos,pos)/0.005);
@@ -151,13 +190,13 @@ float calc_new_value(vec2 pos)
 	float dcsqrx=dcsqr;
 	float dcsqry=dcsqr;
 
-	float ret=-texture(values_old,normed).x+
+	float ret=(0.5*decay*dt-1)*texture(values_old,normed).x+
 		2*DX(0,0)+
 		dcsqrx*(DX(1,0)-2*DX(0,0)+DX(-1,0))+
 		dcsqry*(DX(0,1)-2*DX(0,0)+DX(0,-1))+
 		dt*dt*func(pos);
 
-	return ret*decay;
+	return ret/(1+0.5*decay*dt);
 }
 float calc_init_value(vec2 pos)
 {
@@ -179,28 +218,40 @@ float calc_init_value(vec2 pos)
 }
 float boundary_condition(vec2 pos)
 {
+	//TODO: implement the other boundary condition (one that flips sign)
 	return 0;
 }
-//rectangle
-//#define BOUNDARY_SHAPE max(abs(pos.x),abs(pos.y))
-//circle
-#define BOUNDARY_SHAPE length(pos.xy)
+float sh_circle(in vec2 st,in float rad,in float fw)
+{
+	return 1-smoothstep(rad-fw*0.75,rad+fw*0.75,dot(st,st)*4);
+}
+float sh_polyhedron(in vec2 st,in float num,in float size,in float rot,in float fw)
+{
+	float a=atan(st.x,st.y)+rot;
+	float b=6.28319/num;
+	return 1-(smoothstep(size-fw,size+fw, cos(floor(0.5+a/b)*b-a)*length(st.xy)));
+}
 void main(){
 	float v=0;
 	float max_d=.5;
 	float w=0.01;
-	if(BOUNDARY_SHAPE<max_d)
+	float sh_v=sh_polyhedron(pos.xy,4,max_d,0,w);
+	//float sh_v=sh_circle(pos.xy,max_d,w);
+	if(sh_v>0)
 	{
+
 		if(init==1)
 			v=calc_init_value(pos.xy);
 		else
 			v=calc_new_value(pos.xy);
+
 	}
-	else if(BOUNDARY_SHAPE>max_d+w)
+	else if(sh_v<0-w)
 	{
 		v=boundary_condition(pos.xy);
+
 	}
-	color=vec4(clamp(v,-100,100),0,0,1);
+	color=vec4(v,0,0,1);
 }
 ]==]
 
@@ -225,6 +276,14 @@ function auto_clear(  )
 		end
 	end
 end
+function clear_sand(  )
+	make_sand_buffer()
+end
+function clear_buffers(  )
+	texture_buffers={}
+	make_textures()
+	--TODO: @PERF
+end
 local need_save
 function gui()
 	imgui.Begin("Waviness")
@@ -239,6 +298,11 @@ function gui()
 	if imgui.Button("Reset") then
 		current_time=0
 		solver_iteration=0
+		clear_buffers()
+	end
+	imgui.SameLine()
+	if imgui.Button("Reset Accumlate") then
+		clear_sand()
 	end
 --[[
 	if imgui.Button("Clear image") then
@@ -268,8 +332,8 @@ function waves_solve(  )
 	local id_old=solver_iteration % 3 +1
 	local id_cur=(solver_iteration+1) % 3 +1
 	local id_next=(solver_iteration+2) % 3 +1
-	textures[id_old].t:use(0)
-	textures[id_cur].t:use(1)
+	texture_buffers[id_old].t:use(0)
+	texture_buffers[id_cur].t:use(1)
 	solver_shader:set_i("values_old",0)
 	solver_shader:set_i("values_cur",1)
 	if current_time==0 then
@@ -282,7 +346,8 @@ function waves_solve(  )
 	solver_shader:set("time",current_time);
 	solver_shader:set("decay",config.decay);
 	solver_shader:set("freq",config.freq)
-	local trg_tex=textures[id_next];
+	solver_shader:set("nm_vec",config.n,config.m)
+	local trg_tex=texture_buffers[id_next];
 	solver_shader:set("tex_size",trg_tex.w,trg_tex.h)
 	if not trg_tex.t:render_to(trg_tex.w,trg_tex.h) then
 		error("failed to set framebuffer up")
@@ -308,14 +373,64 @@ function save_img(  )
 	img_buf:read_frame()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
+function calc_range_value( tex )
+	io_buffer:read_texture(tex.t)
+	local m1=math.huge;
+	local m2=-math.huge;
+	for x=0,io_buffer.w-1 do
+		for y=0,io_buffer.h-1 do
+			local v=io_buffer:get(x,y)
+			if v>m2 then m2=v end
+			if v<m1 then m1=v end
+		end
+	end
+	return m1,m2
+end
 function draw_texture(  )
 	local id_next=(solver_iteration+2) % 3 +1
-	local trg_tex=textures[id_next];
-	draw_shader:use()
-	trg_tex.t:use(0)
-	draw_shader:set_i("values",0)
-	--draw_shader:set("in_col",config.color[1],config.color[2],config.color[3],config.color[4])
-	draw_shader:draw_quad()
+	local src_tex=texture_buffers[id_next];
+	local trg_tex=texture_buffers.sand;
+
+	add_shader:use()
+	src_tex.t:use(0,1)
+	add_shader:set_i("values",0)
+	add_shader:set("mult",1)
+	local need_draw=false
+	if config.accumulate then
+		add_shader:blend_add()
+		--draw_shader:set("in_col",config.color[1],config.color[2],config.color[3],config.color[4])
+		if not trg_tex.t:render_to(trg_tex.w,trg_tex.h) then
+			error("failed to set framebuffer up")
+		end
+		add_shader:draw_quad()
+		__render_to_window()
+
+		if config.draw then
+			draw_shader:use()
+			trg_tex.t:use(0,1)
+			local minv,maxv=calc_range_value(trg_tex)
+			draw_shader:set_i("values",0)
+			-- [[
+			draw_shader:set("add",-minv)
+			draw_shader:set("mult",1/(maxv-minv))
+			--]]
+			--[[
+			draw_shader:set("add",0)
+			draw_shader:set("mult",1/math.log(maxv+1))
+			--]]
+			draw_shader:blend_default()
+			draw_shader:draw_quad()
+		else
+			need_draw=true
+		end
+	else
+		need_draw=true
+	end
+	if need_draw then
+		add_shader:blend_default()
+		add_shader:draw_quad()
+	end
+
 	if need_save then
 		save_img()
 		need_save=nil
@@ -330,9 +445,7 @@ function update_real(  )
 
 	else
 		__clear()
-		if config.draw then
-			draw_texture()
-		end
+		draw_texture()
 	end
 	auto_clear()
 	waves_solve()
