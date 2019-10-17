@@ -2,7 +2,7 @@ require "common"
 --basically implementing: http://hplgit.github.io/num-methods-for-PDEs/doc/pub/wave/html/._wave006.html
 
 local size_mult=1
-local oversample=2
+local oversample=1
 local win_w
 local win_h
 local aspect_ratio
@@ -65,7 +65,7 @@ config=make_config({
 	{"n",1,type="int",min=0,max=15},
 	{"m",1,type="int",min=0,max=15},
 	{"draw",true,type="boolean"},
-	{"accumulate",true,type="boolean"},
+	{"accumulate",false,type="boolean"},
 	{"size_mult",true,type="boolean"},
 },config)
 
@@ -142,9 +142,14 @@ float func(vec2 pos)
 {
 	//if(length(pos)<0.0025 && time<100)
 	//	return cos(time/freq)+cos(time/(2*freq/3))+cos(time/(3*freq/2));
-	//if(length(pos)<0.05)
-	if(max(abs(pos.x),abs(pos.y))<0.005)
-		return (sin(time*freq*M_PI/1000)+sin(time*freq*3*M_PI/1000))*0.0005;
+	//vec2 pos_off=vec2(cos(time*0.001)*0.5,sin(time*0.001)*0.5);
+	if(length(pos)<0.005)
+	//if(max(abs(pos.x),abs(pos.y))<0.005)
+		return (
+		sin(time*freq*M_PI/1000)
+		/*+sin(time*freq*2*M_PI/1000)*/
+		/*+sin(time*freq*3*M_PI/1000)*/
+									)*0.0005;
 	//return 0.1;//0.0001*sin(time/1000)/(1+length(pos));
 }
 float func_init_speed(vec2 pos)
@@ -231,12 +236,19 @@ float sh_polyhedron(in vec2 st,in float num,in float size,in float rot,in float 
 	float b=6.28319/num;
 	return 1-(smoothstep(size-fw,size+fw, cos(floor(0.5+a/b)*b-a)*length(st.xy)));
 }
+float sh_wavy(in vec2 st,float rad)
+{
+	float a=atan(st.y,st.x);
+	float r=length(st);
+	return 1-smoothstep(rad-0.01,rad+0.01,r+cos(a*5)*0.05);
+}
 void main(){
 	float v=0;
 	float max_d=.5;
 	float w=0.01;
-	float sh_v=sh_polyhedron(pos.xy,4,max_d,0,w);
+	//float sh_v=sh_polyhedron(pos.xy,4,max_d,0,w);
 	//float sh_v=sh_circle(pos.xy,max_d,w);
+	float sh_v=sh_wavy(pos.xy,max_d);
 	if(sh_v>0)
 	{
 
@@ -374,6 +386,7 @@ function save_img(  )
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
 function calc_range_value( tex )
+	make_io_buffer()
 	io_buffer:read_texture(tex.t)
 	local m1=math.huge;
 	local m2=-math.huge;
@@ -407,6 +420,7 @@ function draw_texture(  )
 
 		if config.draw then
 			draw_shader:use()
+			draw_shader:blend_default()
 			trg_tex.t:use(0,1)
 			local minv,maxv=calc_range_value(trg_tex)
 			draw_shader:set_i("values",0)
@@ -418,7 +432,6 @@ function draw_texture(  )
 			draw_shader:set("add",0)
 			draw_shader:set("mult",1/math.log(maxv+1))
 			--]]
-			draw_shader:blend_default()
 			draw_shader:draw_quad()
 		else
 			need_draw=true
