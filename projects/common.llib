@@ -95,7 +95,7 @@ function draw_config( tbl )
 				end
 			elseif entry.type=="float" then
 				local changing
-				changing,tbl[k]=imgui.SliderFloat(k,tbl[k],entry.min or 0,entry.max or 1)
+				changing,tbl[k]=imgui.SliderFloat(k,tbl[k],entry.min or 0,entry.max or 1,"%.3f",entry.power or 1)
 				entry.changing=changing
 				imgui.SameLine()
 				if imgui.Button("Random##"..k) then
@@ -125,6 +125,17 @@ function draw_config( tbl )
 					local mm=entry.max or 1
 					local mi=entry.min or 0
 					tbl[k]={math.random(),math.random(),math.random(),1}
+				end
+			elseif entry.type=="floatsci" then
+				local changing
+				changing,tbl[k]=imgui.SliderFloat(k,tbl[k],entry.min or 0,entry.max or 1,"%g",entry.power or 1)
+				entry.changing=changing
+				imgui.SameLine()
+				if imgui.Button("Random##"..k) then
+					entry.changing=true
+					local mm=entry.max or 1
+					local mi=entry.min or 0
+					tbl[k]=math.random()*(mm-mi)+mi
 				end
 			end
 		
