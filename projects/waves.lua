@@ -1,6 +1,10 @@
 require "common"
 --basically implementing: http://hplgit.github.io/num-methods-for-PDEs/doc/pub/wave/html/._wave006.html
+--[[
+	TODO:
+		actually implement dx/dy that would help with bogus units problem
 
+--]]
 local size_mult=1
 local oversample=1
 local win_w
@@ -64,8 +68,10 @@ config=make_config({
 	{"decay",0,type="floatsci",min=0,max=0.01,power=10},
 	{"n",1,type="int",min=0,max=15},
 	{"m",1,type="int",min=0,max=15},
+	{"gamma",1,type="float",min=0.01,max=5},
 	{"draw",true,type="boolean"},
 	{"accumulate",false,type="boolean"},
+	{"animate",false,type="boolean"},
 	{"size_mult",true,type="boolean"},
 },config)
 
@@ -92,7 +98,7 @@ in vec3 pos;
 uniform sampler2D values;
 uniform float mult;
 uniform float add;
-
+uniform float gamma;
 float f(float v)
 {
 #if LOG_MODE
@@ -114,13 +120,15 @@ void main(){
 		color=vec4(0,0,f(-lv),1);
 #else
 	float lv=f(abs(texture(values,normed).x+add))*mult;
+	lv=pow(lv,gamma);
 	color=vec4(lv,lv,lv,1);
+
 #endif
 }
 ]==]
 solver_shader=shaders.Make[==[
 #version 330
-
+#line 127
 out vec4 color;
 in vec3 pos;
 uniform sampler2D values_cur;
@@ -136,6 +144,44 @@ uniform vec2 nm_vec;
 //uniform vec2 dpos;
 
 #define M_PI 3.14159265358979323846264338327950288
+//shapes
+
+float sh_circle(in vec2 st,in float rad,in float fw)
+{
+	return 1-smoothstep(rad-fw*0.75,rad+fw*0.75,dot(st,st)*4);
+}
+float sh_ring(in vec2 st,in float rad1,in float rad2,in float fw)
+{
+	return sh_circle(st,rad1,fw)-sh_circle(st,rad2,fw);
+}
+float sh_polyhedron(in vec2 st,in float num,in float size,in float rot,in float fw)
+{
+	float a=atan(st.x,st.y)+rot;
+	float b=6.28319/num;
+	return 1-(smoothstep(size-fw,size+fw, cos(floor(0.5+a/b)*b-a)*length(st.xy)));
+}
+float dagger(in vec2 st,float fw)
+{
+	float v=sh_polyhedron(st*vec2(0.4,0.5)+vec2(0,0.122),3,0.1,0,fw/2);
+	v=max(v,sh_polyhedron(st+vec2(0,-0.2),3,0.25,M_PI/3,fw));
+	return v;
+}
+float leaf(in vec2 st,float fw)
+{
+	float size=0.35;
+	float x_dist=(size*sqrt(2)/2)*1.8;
+	float y_dist=size;
+	float v=sh_polyhedron(st*vec2(1,0.6),4,size,M_PI/4,fw/2);
+	v=max(v-sh_circle(st+vec2(x_dist,y_dist),x_dist,fw/2),0);
+	v=max(v-sh_circle(st+vec2(-x_dist,y_dist),x_dist,fw/2),0);
+	return v;
+}
+float sh_wavy(in vec2 st,float rad)
+{
+	float a=atan(st.y,st.x);
+	float r=length(st);
+	return 1-smoothstep(rad-0.01,rad+0.01,r+cos(a*7)*0.05);
+}
 
 #define DX(dx,dy) textureOffset(values_cur,normed,ivec2(dx,dy)).x
 float func(vec2 pos)
@@ -143,14 +189,44 @@ float func(vec2 pos)
 	//if(length(pos)<0.0025 && time<100)
 	//	return cos(time/freq)+cos(time/(2*freq/3))+cos(time/(3*freq/2));
 	//vec2 pos_off=vec2(cos(time*0.001)*0.5,sin(time*0.001)*0.5);
-	if(length(pos)<0.005)
-	//if(max(abs(pos.x),abs(pos.y))<0.005)
-		return (
-		sin(time*freq*M_PI/1000)
-		/*+sin(time*freq*2*M_PI/1000)*/
-		/*+sin(time*freq*3*M_PI/1000)*/
-									)*0.0005;
+	//if(sh_ring(pos,1.2,1.1,0.001)>0)
+	float max_time=10000;
+	float min_freq=1;
+	float max_freq=5;
+
+	float fr=freq;
+	//fr*=mix(min_freq,max_freq,time/max_time);
+	float max_a=4;
+	float r=0.08;
+	#if 1
+	for(float a=0;a<max_a;a++)
+	{
+		float ang=(a/max_a)*M_PI*2;
+
+		vec2 dv=vec2(cos(ang)*r,sin(ang)*r);
+		if(length(pos+dv)<0.005 && time<max_time)
+		//if(time<max_time)
+			return (
+			sin(time*fr*M_PI/1000)
+			+sin(time*fr*M_PI/1000*1.618)
+			/*+sin(time*freq*3*M_PI/1000)*/
+										)*0.00005;
+	}
+	#endif
+	#if 0
+	//if(time<max_time)
+		return (sin(time*fr*M_PI/1000
+		//+pos.x*M_PI*2*nm_vec.x
+		//+pos.y*M_PI*2*nm_vec.y
+		))*0.00005;
+	#endif
+
+	/*if(length(pos+vec2(0.1,0.3))<0.005)
+		return sin(time*freq*2.5*M_PI/1000)*0.0005;
+	if(length(pos+vec2(-0.212,0.111))<0.005)
+		return sin(time*freq*7.13*M_PI/1000)*0.0005;*/
 	//return 0.1;//0.0001*sin(time/1000)/(1+length(pos));
+	return 0;
 }
 float func_init_speed(vec2 pos)
 {
@@ -175,8 +251,8 @@ float func_init(vec2 pos)
 	float w=M_PI/0.5;
 	float m1=nm_vec.x;
 	float m2=nm_vec.y;
-	float a=1;
-	float b=-1;
+	float a=1.2;
+	float b=-1.1;
 	//float d=exp(-dot(pos,pos)/0.005);
 	//return exp(-dot(pos,pos)/0.00005);
 	//solution from https://thelig.ht/chladni/
@@ -221,47 +297,146 @@ float calc_init_value(vec2 pos)
 
 	return ret;
 }
-float boundary_condition(vec2 pos)
+#define BOUND_N 0
+float boundary_condition(vec2 pos,vec2 dir)
 {
-	//TODO: implement the other boundary condition (one that flips sign)
+	//TODO: open boundary condition??
+
+	//neumann boundary condition
+#if BOUND_N
+	//TODO
+	float dx=1;
+	float dy=1;
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	//float dist=1/length(tex_size,normed);
+
+	//vec2 dtex=1/tex_size;
+
+	float dcsqr=dt*dt*c_const*c_const;
+	float dcsqrx=dcsqr;
+	float dcsqry=dcsqr;
+
+
+	if(abs(dir.x)>=abs(dir.y))
+	{
+		float u_2dy=DX(0,1)-DX(0,-1);
+		float u_2dx=-(u_2dy*2*dx*dir.y)/(2*dy*dir.x);
+
+		float ret=-texture(values_old,normed).x+
+			2*DX(0,0)+
+			dcsqrx*(u_2dx-2*(DX(0,0)-DX(-1,0)))+
+			dcsqry*(DX(0,1)-2*DX(0,0)+DX(0,-1))+
+			dt*dt*func(pos);
+		return ret;
+	}
+	else
+	{
+		float u_2dx=DX(1,0)-DX(-1,0);
+		float u_2dy=-(u_2dx*dir.x*2*dy)/(2*dx*pos.y);
+
+		float ret=-texture(values_old,normed).x+
+			2*DX(0,0)+
+			dcsqrx*(DX(1,0)-2*DX(0,0)+DX(-1,0))+
+			dcsqry*(u_2dy-2*(DX(0,0)-DX(0,-1)))+
+			dt*dt*func(pos);
+
+		return ret;
+	}
+
+
 	return 0;
+#else
+	//simples condition (i.e. bounce)
+	return 0;
+#endif
 }
-float sh_circle(in vec2 st,in float rad,in float fw)
+float boundary_condition_init(vec2 pos,vec2 dir)
 {
-	return 1-smoothstep(rad-fw*0.75,rad+fw*0.75,dot(st,st)*4);
-}
-float sh_polyhedron(in vec2 st,in float num,in float size,in float rot,in float fw)
-{
-	float a=atan(st.x,st.y)+rot;
-	float b=6.28319/num;
-	return 1-(smoothstep(size-fw,size+fw, cos(floor(0.5+a/b)*b-a)*length(st.xy)));
-}
-float sh_wavy(in vec2 st,float rad)
-{
-	float a=atan(st.y,st.x);
-	float r=length(st);
-	return 1-smoothstep(rad-0.01,rad+0.01,r+cos(a*5)*0.05);
+	//TODO: open boundary condition??
+
+	//neumann boundary condition
+#if BOUND_N
+	//TODO
+	float dx=1;
+	float dy=1;
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	//float dist=1/length(tex_size,normed);
+
+	//vec2 dtex=1/tex_size;
+
+	vec2 dtex=1/tex_size;
+	//float dcsqr=dt*dt*c_const*c_const;
+	float dcsqrx=dt*dt*c_const*c_const/(dtex.x*dtex.x);
+	float dcsqry=dt*dt*c_const*c_const/(dtex.y*dtex.y);
+
+	
+
+
+	if(abs(dir.x)>=abs(dir.y))
+	{
+		float u_2dy=DX(0,1)-DX(0,-1);
+		float u_2dx=-(u_2dy*2*dx*dir.y)/(2*dy*dir.x);
+
+
+		float ret=
+		2*IDX(0,0)+
+		dt*func_init_speed(pos)+
+		0.5*dcsqrx*(u_2dx-2*(IDX(0,0)-IDX(-1,0)))+
+		0.5*dcsqry*(IDX(0,1)-2*IDX(0,0)+IDX(0,-1))+
+		dt*dt*func(pos);
+
+		return ret;
+	}
+	else
+	{
+		float u_2dx=DX(1,0)-DX(-1,0);
+		float u_2dy=-(u_2dx*dir.x*2*dy)/(2*dx*pos.y);
+
+	float ret=
+		2*IDX(0,0)+
+		dt*func_init_speed(pos)+
+		0.5*dcsqrx*(IDX(1,0)-2*IDX(0,0)+IDX(-1,0))+
+		0.5*dcsqry*(u_2dy-2*(IDX(0,0)-IDX(0,-1)))+
+		dt*dt*func(pos);
+
+		return ret;
+	}
+
+
+	return 0;
+#else
+	//simples condition (i.e. bounce)
+	return 0;
+#endif
 }
 void main(){
 	float v=0;
 	float max_d=.5;
-	float w=0.01;
+	float w=0.001;
 	//float sh_v=sh_polyhedron(pos.xy,4,max_d,0,w);
 	//float sh_v=sh_circle(pos.xy,max_d,w);
-	float sh_v=sh_wavy(pos.xy,max_d);
-	if(sh_v>0)
+	//float sh_v=sh_wavy(pos.xy,max_d);
+	//float sh_v=dagger(pos.xy,w);
+	float sh_v=leaf(pos.xy,w);
+	if(sh_v>1-w)
 	{
 
 		if(init==1)
 			v=calc_init_value(pos.xy);
 		else
 			v=calc_new_value(pos.xy);
-
+		//v=1;
 	}
-	else if(sh_v<0-w)
+	else if(sh_v>0)
 	{
-		v=boundary_condition(pos.xy);
-
+		//todo: derivate
+		/*vec2 dir=-normalize(pos.xy);
+		if(init==1)
+			v=boundary_condition_init(pos.xy,dir);
+		else
+			v=boundary_condition(pos.xy,dir);*/
+		v=0;
+		//v=0.5;
 	}
 	color=vec4(v,0,0,1);
 }
@@ -296,6 +471,13 @@ function clear_buffers(  )
 	make_textures()
 	--TODO: @PERF
 end
+
+function reset_state(  )
+	current_time=0
+	solver_iteration=0
+	clear_buffers()
+end
+
 local need_save
 function gui()
 	imgui.Begin("Waviness")
@@ -308,9 +490,9 @@ function gui()
 	update_size()
 	local s=STATE.size
 	if imgui.Button("Reset") then
-		current_time=0
-		solver_iteration=0
-		clear_buffers()
+		reset_state()
+		current_tick=0
+		current_frame=0
 	end
 	imgui.SameLine()
 	if imgui.Button("Reset Accumlate") then
@@ -372,7 +554,7 @@ function waves_solve(  )
 	current_time=current_time+config.dt
 end
 
-function save_img(  )
+function save_img( id )
 	--make_image_buffer()
 	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
 	for k,v in pairs(config) do
@@ -380,10 +562,12 @@ function save_img(  )
 			config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
 		end
 	end
-	config_serial=config_serial..string.format("str_x=%q\n",str_x)
-	config_serial=config_serial..string.format("str_y=%q\n",str_y)
 	img_buf:read_frame()
-	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
+	if id then
+		img_buf:save(string.format("saved (%d).png",id),config_serial)
+	else
+		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
+	end
 end
 function calc_range_value( tex )
 	make_io_buffer()
@@ -399,7 +583,7 @@ function calc_range_value( tex )
 	end
 	return m1,m2
 end
-function draw_texture(  )
+function draw_texture( id )
 	local id_next=(solver_iteration+2) % 3 +1
 	local src_tex=texture_buffers[id_next];
 	local trg_tex=texture_buffers.sand;
@@ -411,6 +595,7 @@ function draw_texture(  )
 	local need_draw=false
 	if config.accumulate then
 		add_shader:blend_add()
+		--add_shader:blend_default()
 		--draw_shader:set("in_col",config.color[1],config.color[2],config.color[3],config.color[4])
 		if not trg_tex.t:render_to(trg_tex.w,trg_tex.h) then
 			error("failed to set framebuffer up")
@@ -418,12 +603,13 @@ function draw_texture(  )
 		add_shader:draw_quad()
 		__render_to_window()
 
-		if config.draw then
+		if config.draw or id then
 			draw_shader:use()
 			draw_shader:blend_default()
 			trg_tex.t:use(0,1)
 			local minv,maxv=calc_range_value(trg_tex)
 			draw_shader:set_i("values",0)
+			draw_shader:set("gamma",config.gamma)
 			-- [[
 			draw_shader:set("add",-minv)
 			draw_shader:set("mult",1/(maxv-minv))
@@ -444,18 +630,44 @@ function draw_texture(  )
 		add_shader:draw_quad()
 	end
 
-	if need_save then
-		save_img()
+	if need_save or id then
+		save_img(id)
 		need_save=nil
 	end
 end
+local frame_count=90
 
+local tick_count=10000
+local tick_wait=tick_count*0.75
+current_frame=current_frame or 0
+function animate_step(  )
+	local t=current_frame/frame_count
+	if t>=1 then
+		config.animate=false
+	end
+
+	local start_frq=0.75
+	local end_frq=2.5
+
+	config.freq=(end_frq-start_frq)*t+start_frq
+	current_frame=current_frame+1
+end
+current_tick=current_tick or 0
 function update_real(  )
 	__no_redraw()
-	if animate then
-		tick=tick or 0
-		tick=tick+1
+	if config.animate then
+		current_tick=current_tick+1
+		if current_tick>=tick_count then
+			animate_step(  )
+			__clear()
+			draw_texture(current_frame)
 
+			current_tick=0
+			reset_state()
+		elseif current_tick>=tick_wait then
+			__clear()
+			draw_texture()
+		end
 	else
 		__clear()
 		draw_texture()
