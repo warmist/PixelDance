@@ -193,6 +193,12 @@ float leaf(in vec2 st,float fw)
 	v=max(v-sh_circle(st+vec2(-x_dist,y_dist),x_dist,fw/2),0);
 	return v;
 }
+float chalice(in vec2 st,float fw)
+{
+	float ret=max(leaf(st,fw)-sh_circle(st+vec2(0,-0.4),0.8,fw),0);
+	ret=max(ret,sh_circle(st+vec2(0,-0.2),0.35,fw));
+	return ret;
+}
 float sh_wavy(in vec2 st,float rad)
 {
 	float a=atan(st.y,st.x);
@@ -432,6 +438,8 @@ float boundary_condition_init(vec2 pos,vec2 dir)
 	return 0;
 #endif
 }
+
+//#define DRAW_FORM
 void main(){
 	float v=0;
 	float max_d=.55;
@@ -440,7 +448,8 @@ void main(){
 	//float sh_v=sh_circle(pos.xy,max_d,w);
 	//float sh_v=sh_wavy(pos.xy,max_d);
 	//float sh_v=dagger(pos.xy,w);
-	float sh_v=leaf(pos.xy,w);
+	//float sh_v=leaf(pos.xy,w);
+	float sh_v=chalice(pos.xy,w);
 	if(sh_v>1-w)
 	{
 
@@ -448,7 +457,9 @@ void main(){
 			v=calc_init_value(pos.xy);
 		else
 			v=calc_new_value(pos.xy);
-		//v=1;
+#ifdef DRAW_FORM
+		v=1;
+#endif
 	}
 	else if(sh_v>0)
 	{
@@ -459,7 +470,9 @@ void main(){
 		else
 			v=boundary_condition(pos.xy,dir);*/
 		v=0;
-		//v=0.5;
+#ifdef DRAW_FORM
+		v=0.5;
+#endif
 	}
 	color=vec4(v,0,0,1);
 }
