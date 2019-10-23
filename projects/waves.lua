@@ -233,7 +233,17 @@ float sh_wavy(in vec2 st,float rad)
 	float r=length(st);
 	return 1-smoothstep(rad-0.01,rad+0.01,r+cos(a*7)*0.05);
 }
-
+float balance(in vec2 st,float fw)
+{
+	int count=6;
+	float ret=sh_polyhedron(st,count,0.5,0,fw);
+	for(int i=0;i<count/2;i++)
+	{
+		float ang=(i/float(count))*M_PI*4+M_PI/2;
+		ret=max(ret-sh_circle(st+vec2(cos(ang),sin(ang))*0.5,0.35,fw),0);
+	}
+	return ret;
+}
 #define DX(dx,dy) textureOffset(values_cur,normed,ivec2(dx,dy)).x
 float func(vec2 pos)
 {
@@ -476,7 +486,8 @@ void main(){
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=leaf(pos.xy,w);
 	//float sh_v=chalice(pos.xy,w);
-	float sh_v=flower(pos.xy,w);
+	//float sh_v=flower(pos.xy,w);
+	float sh_v=balance(pos.xy,w);
 #ifdef DRAW_FORM
 	v=sh_v;
 #else
