@@ -177,6 +177,34 @@ float sh_polyhedron(in vec2 st,in float num,in float size,in float rot,in float 
 	float b=6.28319/num;
 	return 1-(smoothstep(size-fw,size+fw, cos(floor(0.5+a/b)*b-a)*length(st.xy)));
 }
+void t_rot(inout vec2 st,float angle)
+{
+	float c=cos(angle);
+	float s=sin(angle);
+	mat2 m=mat2(c,-s,s,c);
+	st*=m;
+}
+void t_ref(inout vec2 st,float angle)
+{
+	float c=cos(2*angle);
+	float s=sin(2*angle);
+	mat2 m=mat2(c,s,s,-c);
+	st*=m;
+}
+float flower(in vec2 st,float fw)
+{
+	float size=0.15;
+	st-=vec2(0.15,0.15);
+	vec2 off=vec2(0.0,0.2);
+	float ret=0;
+	for(int i=0;i<6;i++)
+	{
+		st=st+off;
+		t_rot(st,(M_PI/6)*2);
+		ret=max(ret,sh_polyhedron(st*vec2(1,0.3),5,size,M_PI,fw*0.1));
+	}
+	return ret;
+}
 float dagger(in vec2 st,float fw)
 {
 	float v=sh_polyhedron(st*vec2(0.4,0.5)+vec2(0,0.122),3,0.1,0,fw/2);
@@ -398,8 +426,6 @@ float boundary_condition_init(vec2 pos,vec2 dir)
 	float dcsqrx=dt*dt*c_const*c_const/(dtex.x*dtex.x);
 	float dcsqry=dt*dt*c_const*c_const/(dtex.y*dtex.y);
 
-	
-
 
 	if(abs(dir.x)>=abs(dir.y))
 	{
@@ -443,13 +469,17 @@ float boundary_condition_init(vec2 pos,vec2 dir)
 void main(){
 	float v=0;
 	float max_d=.55;
-	float w=0.001;
+	float w=0.005;
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
 	//float sh_v=sh_circle(pos.xy,max_d,w);
 	//float sh_v=sh_wavy(pos.xy,max_d);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=leaf(pos.xy,w);
-	float sh_v=chalice(pos.xy,w);
+	//float sh_v=chalice(pos.xy,w);
+	float sh_v=flower(pos.xy,w);
+#ifdef DRAW_FORM
+	v=sh_v;
+#else
 	if(sh_v>1-w)
 	{
 
@@ -457,9 +487,6 @@ void main(){
 			v=calc_init_value(pos.xy);
 		else
 			v=calc_new_value(pos.xy);
-#ifdef DRAW_FORM
-		v=1;
-#endif
 	}
 	else if(sh_v>0)
 	{
@@ -470,10 +497,9 @@ void main(){
 		else
 			v=boundary_condition(pos.xy,dir);*/
 		v=0;
-#ifdef DRAW_FORM
-		v=0.5;
-#endif
+
 	}
+#endif
 	color=vec4(v,0,0,1);
 }
 ]==]
