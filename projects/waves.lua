@@ -75,6 +75,7 @@ config=make_config({
 	{"draw",true,type="boolean"},
 	{"accumulate",false,type="boolean"},
 	{"animate",false,type="boolean"},
+	{"animate_simple",false,type="boolean"},
 	{"size_mult",true,type="boolean"},
 },config)
 
@@ -244,6 +245,22 @@ float balance(in vec2 st,float fw)
 	}
 	return ret;
 }
+float sh_jaws(in vec2 st,float fw)
+{
+	float ret=sh_polyhedron(st,4,0.4,M_PI/4,fw);
+	vec2 center=vec2(0,0.25);
+	ret=max(ret-sh_circle(st-center,0.5,fw),0);
+	ret=max(ret-sh_polyhedron(st+vec2(0,0.5),4,0.2,M_PI/4,fw),0);
+	int count=4;
+	float dist=0.35;
+	float ang_offset=M_PI/count;
+	for(int i=0;i<=count;i++)
+	{
+		float ang=(i/float(count))*(M_PI-ang_offset)+ang_offset/2;
+		ret=max(ret,sh_polyhedron(st-center+vec2(cos(ang),sin(ang))*dist,3,0.04,ang*4,fw));
+	}
+	return ret;
+}
 #define DX(dx,dy) textureOffset(values_cur,normed,ivec2(dx,dy)).x
 float func(vec2 pos)
 {
@@ -251,7 +268,7 @@ float func(vec2 pos)
 	//	return cos(time/freq)+cos(time/(2*freq/3))+cos(time/(3*freq/2));
 	//vec2 pos_off=vec2(cos(time*0.001)*0.5,sin(time*0.001)*0.5);
 	//if(sh_ring(pos,1.2,1.1,0.001)>0)
-	float max_time=10000;
+	float max_time=1000;
 	float min_freq=1;
 	float max_freq=5;
 
@@ -260,6 +277,20 @@ float func(vec2 pos)
 	//fr*=mix(min_freq,max_freq,time/max_time);
 	float max_a=4;
 	float r=0.08;
+	#if 1
+		if(time<max_time)
+		if(pos.x<-0.35)
+			return (
+		ab_vec.x*sin(time*fr*M_PI/1000
+		//+pos.x*M_PI*2*nm_vec.x
+		//+pos.y*M_PI*2*nm_vec.y
+		)*cos(pos.x*M_PI*nm_vec.x)+
+		ab_vec.y*sin(time*fr2*M_PI/1000
+		//+pos.x*M_PI*2*nm_vec.x
+		//+pos.y*M_PI*2*nm_vec.y
+		)*cos(pos.y*M_PI*nm_vec.y)
+		);
+	#endif
 	#if 0
 	for(float a=0;a<max_a;a++)
 	{
@@ -275,7 +306,7 @@ float func(vec2 pos)
 										)*0.00005;
 	}
 	#endif
-	#if 1
+	#if 0
 	//if(time<max_time)
 		return (
 		ab_vec.x*sin(time*fr*M_PI/1000
@@ -481,13 +512,15 @@ void main(){
 	float max_d=.55;
 	float w=0.005;
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
-	//float sh_v=sh_circle(pos.xy,max_d,w);
+	float sh_v=sh_circle(pos.xy,max_d,w);
 	//float sh_v=sh_wavy(pos.xy,max_d);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=leaf(pos.xy,w);
 	//float sh_v=chalice(pos.xy,w);
 	//float sh_v=flower(pos.xy,w);
-	float sh_v=balance(pos.xy,w);
+	//float sh_v=balance(pos.xy,w);
+	//float sh_v=sh_jaws(pos.xy,w);
+	//float sh_v=sh_polyhedron(pos.xy*vec2(0.2,1),4,0.2,0,w);
 #ifdef DRAW_FORM
 	v=sh_v;
 #else
@@ -552,6 +585,7 @@ function reset_state(  )
 end
 
 local need_save
+local single_shot_value
 function gui()
 	imgui.Begin("Waviness")
 	draw_config(config)
@@ -570,6 +604,13 @@ function gui()
 	imgui.SameLine()
 	if imgui.Button("Reset Accumlate") then
 		clear_sand()
+	end
+	if imgui.Button("SingleShotNorm") then
+		single_shot_value=true
+	end
+	imgui.SameLine()
+	if imgui.Button("ClearNorm") then
+		single_shot_value=nil
 	end
 --[[
 	if imgui.Button("Clear image") then
@@ -639,7 +680,7 @@ function save_img( id )
 	end
 	img_buf:read_frame()
 	if id then
-		img_buf:save(string.format("saved (%d).png",id),config_serial)
+		img_buf:save(string.format("video/saved (%d).png",id),config_serial)
 	else
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 	end
@@ -658,6 +699,7 @@ function calc_range_value( tex )
 	end
 	return m1,m2
 end
+
 function draw_texture( id )
 	local id_next=(solver_iteration+2) % 3 +1
 	local src_tex=texture_buffers[id_next];
@@ -678,11 +720,12 @@ function draw_texture( id )
 		add_shader:draw_quad()
 		__render_to_window()
 
-		if config.draw or id then
+		if config.draw or id  then
 			draw_shader:use()
 			draw_shader:blend_default()
 			trg_tex.t:use(0,1)
-			local minv,maxv=calc_range_value(trg_tex)
+			local minv,maxv
+			minv,maxv=calc_range_value(trg_tex)
 			draw_shader:set_i("values",0)
 			draw_shader:set("gamma",config.gamma)
 			--[[
@@ -705,8 +748,16 @@ function draw_texture( id )
 		need_draw=true
 	end
 	if need_draw then
-		if config.draw then
-			local minv,maxv=calc_range_value(src_tex)
+		if config.draw or single_shot_value then
+			local minv,maxv
+			if single_shot_value==true then
+				minv,maxv=calc_range_value(src_tex)
+				single_shot_value={minv,maxv}
+			elseif type(single_shot_value)=="table" then
+				minv,maxv=single_shot_value[1],single_shot_value[2]
+			else
+				minv,maxv=calc_range_value(src_tex)
+			end
 			add_shader:set("mult",1/(math.max(math.abs(maxv),math.abs(minv))))
 		end
 		add_shader:blend_default()
@@ -718,10 +769,13 @@ function draw_texture( id )
 		need_save=nil
 	end
 end
-local frame_count=90
+local frame_count=1800
+local tick_skip=50
 
 local tick_count=10000
 local tick_wait=tick_count*0.75
+
+
 current_frame=current_frame or 0
 function ncos(t)
 	return (math.cos(t*math.pi*2)+1)/2
@@ -758,6 +812,20 @@ function update_real(  )
 			current_tick=0
 			reset_state()
 		elseif current_tick>=tick_wait then
+			__clear()
+			draw_texture()
+		end
+	elseif config.animate_simple then
+		current_tick=current_tick+1
+		if current_tick>=tick_skip then
+			__clear()
+			draw_texture(current_frame)
+			current_tick=0
+			current_frame=current_frame+1
+			if current_frame>frame_count then
+				config.animate_simple=false
+			end
+		else
 			__clear()
 			draw_texture()
 		end
