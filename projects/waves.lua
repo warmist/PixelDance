@@ -19,8 +19,17 @@ end
 --update_size()
 
 local size=STATE.size
-
-
+function count_lines( s )
+	local n=0
+	for i in s:gmatch("\n") do n=n+1 end
+	return n
+end
+function shader_make( s_in )
+	local sl=count_lines(s_in)
+	s="#version 330\n#line "..(debug.getinfo(2, 'l').currentline-sl).."\n"
+	s=s..s_in
+	return shaders.Make(s)
+end
 
 img_buf=make_image_buffer(size[1],size[2])
 
@@ -80,9 +89,7 @@ config=make_config({
 },config)
 
 
-add_shader=shaders.Make[==[
-#version 330
-
+add_shader=shader_make[==[
 out vec4 color;
 in vec3 pos;
 uniform sampler2D values;
@@ -142,9 +149,7 @@ void main(){
 #endif
 }
 ]==]
-solver_shader=shaders.Make[==[
-#version 330
-#line 127
+solver_shader=shader_make[==[
 out vec4 color;
 in vec3 pos;
 uniform sampler2D values_cur;
@@ -262,13 +267,15 @@ float sh_jaws(in vec2 st,float fw)
 	return ret;
 }
 #define DX(dx,dy) textureOffset(values_cur,normed,ivec2(dx,dy)).x
+float hash(float n) { return fract(sin(n) * 1e4); }
+float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
 float func(vec2 pos)
 {
 	//if(length(pos)<0.0025 && time<100)
 	//	return cos(time/freq)+cos(time/(2*freq/3))+cos(time/(3*freq/2));
 	//vec2 pos_off=vec2(cos(time*0.001)*0.5,sin(time*0.001)*0.5);
 	//if(sh_ring(pos,1.2,1.1,0.001)>0)
-	float max_time=1000;
+	float max_time=500;
 	float min_freq=1;
 	float max_freq=5;
 
@@ -277,6 +284,11 @@ float func(vec2 pos)
 	//fr*=mix(min_freq,max_freq,time/max_time);
 	float max_a=4;
 	float r=0.08;
+	#if 0
+		if(time<max_time)
+			//if(pos.x<-0.35)
+				return (hash(time*freq2)*hash(pos*freq))/2;
+	#endif
 	#if 1
 		if(time<max_time)
 		if(pos.x<-0.35)
@@ -368,14 +380,18 @@ float calc_new_value(vec2 pos)
 	float dcsqr=dt*dt*c_const*c_const;
 	float dcsqrx=dcsqr;
 	float dcsqry=dcsqr;
-
-	float ret=(0.5*decay*dt-1)*texture(values_old,normed).x+
+#if 0
+	float dec=length(pos)*length(pos)*decay;//abs(hash(pos*100))*decay;
+#else
+	float dec=decay;
+#endif
+	float ret=(0.5*dec*dt-1)*texture(values_old,normed).x+
 		2*DX(0,0)+
 		dcsqrx*(DX(1,0)-2*DX(0,0)+DX(-1,0))+
 		dcsqry*(DX(0,1)-2*DX(0,0)+DX(0,-1))+
 		dt*dt*func(pos);
 
-	return ret/(1+0.5*decay*dt);
+	return ret/(1+0.5*dec*dt);
 }
 float calc_init_value(vec2 pos)
 {
@@ -512,11 +528,11 @@ void main(){
 	float max_d=.55;
 	float w=0.005;
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
-	float sh_v=sh_circle(pos.xy,max_d,w);
+	//float sh_v=sh_circle(pos.xy,max_d,w);
 	//float sh_v=sh_wavy(pos.xy,max_d);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=leaf(pos.xy,w);
-	//float sh_v=chalice(pos.xy,w);
+	float sh_v=chalice(pos.xy,w);
 	//float sh_v=flower(pos.xy,w);
 	//float sh_v=balance(pos.xy,w);
 	//float sh_v=sh_jaws(pos.xy,w);
