@@ -126,7 +126,7 @@ void main(){
     v/=(rescale.y-rescale.x);
 
     vec3 pixel=plt(pow(v,gamma));
-    if(normed.y<0.1 && draw_cols>0)
+    if(normed.y>0.9 && draw_cols>0)
     	color=vec4(plt(normed.x),1);
     else
     	color=vec4(pixel,1);
