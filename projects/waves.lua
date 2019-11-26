@@ -375,6 +375,13 @@ float petals(in vec2 st, float fw)
 	}
 	return ret;
 }
+float grid(in vec2 st,float fw)
+{
+	st=mod(st,0.25)-vec2(0.125,0.125);
+	st*=vec2(5,5);
+	float r=leaf(st,fw);
+	return r;
+}
 #define DX(dx,dy) textureOffset(values_cur,normed,ivec2(dx,dy)).x
 float hash(float n) { return fract(sin(n) * 1e4); }
 float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
@@ -648,7 +655,8 @@ void main(){
 	//float sh_v=sh_jaws(pos.xy,w);
 	//float sh_v=sh_polyhedron(pos.xy*vec2(0.2,1),4,0.2,0,w);
 	//float sh_v=ankh(pos.xy,w);
-	float sh_v=petals(pos.xy,w);
+	//float sh_v=petals(pos.xy,w);
+	float sh_v=grid(pos.xy,w);
 #if DRAW_FORM
 	v=sh_v;
 #else
@@ -922,10 +930,10 @@ function animate_step(  )
 	end
 
 	local start_frq=1.5
-	local end_frq=2.0
+	local end_frq=3.5
 
-	local start_frq2=1.0
-	local end_frq2=1.5
+	local start_frq2=0
+	local end_frq2=0
 	config.freq=ncos(t)*(end_frq-start_frq)+start_frq
 	config.freq2=nsin(t)*(end_frq2-start_frq2)+start_frq2
 	current_frame=current_frame+1
