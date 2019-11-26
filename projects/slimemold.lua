@@ -231,6 +231,11 @@ float lerp_hue(float h1,float h2,float v )
 	else
 		return mix(h1,h2,v);
 }
+float gain(float x, float k)
+{
+    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
+    return (x<0.5)?a:1.0-a;
+}
 vec4 mix_hsl(vec4 c1,vec4 c2,float v)
 {
 	vec3 c1hsv=rgb2hsv(c1.xyz);
@@ -248,8 +253,9 @@ void main(){
 
     vec4 pixel=texture(tex_main,normed);
     //float v=log(pixel.x+1);
-    //float v=pow(pixel.x/3,2.4);
-    float v=pixel.x/turn_around;
+    float v=pow(pixel.x/turn_around,2);
+    //float v=pixel.x/turn_around;
+    //float v=gain(pixel.x/turn_around,-0.8);
     if(v<1)
     	color=mix_hsl(color_back,color_fore,v);
     else
@@ -291,6 +297,10 @@ float cubicPulse( float c, float w, float x )
     x /= w;
     return 1.0 - x*x*(3.0-2.0*x);
 }
+float expStep( float x, float k, float n )
+{
+    return exp( -k*pow(x,n) );
+}
 void main(){
 	float step_size=ag_step_size;
 	float sensor_distance=ag_sensor_distance;
@@ -299,8 +309,15 @@ void main(){
 	float turn_around=ag_turn_around;
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-
 	vec3 state=texture(old_state,normed).xyz;
+	vec2 normed_p=(state.xy/rez)*2-vec2(1,1);
+	float pl=length(normed_p);
+
+	sensor_distance*=cubicPulse(0.1,0.5,abs(normed_p.x));
+	sensor_distance=clamp(sensor_distance,2,15);
+
+	turn_around-=cubicPulse(0.6,0.3,abs(normed_p.x));
+	clamp(turn_around,0.2,5);
 	//figure out new heading
 	float head=state.z;
 	float fow=sample_heading(state.xy,head,sensor_distance);
@@ -345,10 +362,13 @@ void main(){
 	}
 	//step_size/=clamp(rgt/lft,0.5,2);
 	//step in heading direction
-	float l=length(state.xy-rez/2)/length(rez/2);
 
-	step_size*=cubicPulse(0.3,0.2,l)+0.005;
-	step_size=clamp(step_size,0.05,10);
+	
+	
+	//step_size*=1-clamp(cubicPulse(0,0.1,fow),0,1);
+	step_size*=cubicPulse(0.2,0.6,abs(normed_p.y));
+	//step_size*=expStep(abs(pl-0.2),1,2);
+	step_size=clamp(step_size,0.1,10);
 	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
 	state.z=head;
 	state.xy=mod(state.xy,rez);
