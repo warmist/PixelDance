@@ -15,7 +15,7 @@ local win_h=1024
 
 __set_window_size(win_w,win_h)
 local oversample=1
-local agent_count=1024
+local agent_count=2048
 --[[ perf:
 	oversample 2 768x768
 		ac: 3000 -> 43fps
@@ -284,6 +284,13 @@ float sample_heading(vec2 p,float h,float dist)
 	return texture(tex_main,p/rez).x;
 }
 #define TURNAROUND
+float cubicPulse( float c, float w, float x )
+{
+    x = abs(x - c);
+    if( x>w ) return 0.0;
+    x /= w;
+    return 1.0 - x*x*(3.0-2.0*x);
+}
 void main(){
 	float step_size=ag_step_size;
 	float sensor_distance=ag_sensor_distance;
@@ -338,6 +345,10 @@ void main(){
 	}
 	//step_size/=clamp(rgt/lft,0.5,2);
 	//step in heading direction
+	float l=length(state.xy-rez/2)/length(rez/2);
+
+	step_size*=cubicPulse(0.3,0.2,l)+0.005;
+	step_size=clamp(step_size,0.05,10);
 	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
 	state.z=head;
 	state.xy=mod(state.xy,rez);
