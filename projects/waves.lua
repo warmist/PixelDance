@@ -118,7 +118,10 @@ float f(float v)
 	return v;
 #endif
 }
-
+vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
+{
+    return a + b*cos( 6.28318*(c*t+d) );
+}
 //#define RG
 void main(){
 
@@ -139,12 +142,15 @@ void main(){
 		}
 #else
 	float lv=f(abs(texture(values,normed).x+add))*mult;
-	lv=pow(1-lv,gamma);
+	//float lv=f(abs(log(texture(values,normed).x+1)+add))*mult;
+	//lv=pow(1-lv,gamma);
+	lv=pow(lv,gamma);
 	/* quantize
 	float q=7;
 	lv=clamp(floor(lv*q)/q,0,1);
 	*/
-	color=vec4(lv,lv,lv,1);
+	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(0.5,2.0,1.5),vec3(0.1,0.4,0.4)),1);
+	color=vec4(vec3(lv),1);
 
 #endif
 }
@@ -350,6 +356,24 @@ float ankh(in vec2 st,float fw)
 	float h2=sh_polyhedron(st*vec2(1.0,6)-vec2(0.2,0),3,0.2,-M_PI/2,fw);
 	float d=sh_polyhedron(st*vec2(6.0,1)+vec2(0,0.4),4,0.4,0,fw);
 	return max(max(ret,h1),max(d,h2));
+}
+float petals(in vec2 st, float fw)
+{
+	float ret=0;
+	float ang=(M_PI/3.0);
+	for(int i=0;i<6;i++)
+	{
+		//*float(i);
+		vec2 v2=st;
+		t_rot(v2,ang*float(i));
+		v2-=vec2(0.25,0);
+		v2*=vec2(0.5,1);
+		//t_rot(v2,-ang*float(i));
+		//v2/=vec2(0.5,1);
+		//v2-=vec2(0.13,0);
+		ret=max(sh_polyhedron(v2,6,0.1,0,0),ret);
+	}
+	return ret;
 }
 #define DX(dx,dy) textureOffset(values_cur,normed,ivec2(dx,dy)).x
 float hash(float n) { return fract(sin(n) * 1e4); }
@@ -623,7 +647,8 @@ void main(){
 	//float sh_v=balance(pos.xy,w);
 	//float sh_v=sh_jaws(pos.xy,w);
 	//float sh_v=sh_polyhedron(pos.xy*vec2(0.2,1),4,0.2,0,w);
-	float sh_v=ankh(pos.xy,w);
+	//float sh_v=ankh(pos.xy,w);
+	float sh_v=petals(pos.xy,w);
 #if DRAW_FORM
 	v=sh_v;
 #else
@@ -838,6 +863,10 @@ function draw_texture( id )
 			-- [[
 			draw_shader:set("add",-minv)
 			draw_shader:set("mult",1/(maxv-minv))
+			--]]
+			--[[
+			draw_shader:set("add",-math.log(minv+1))
+			draw_shader:set("mult",1/(math.log(maxv+1)-math.log(minv+1)))
 			--]]
 			--[[
 			draw_shader:set("add",0)
