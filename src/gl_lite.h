@@ -86,7 +86,10 @@ distribute, and modify this file as you see fit.
 #define GL_CLAMP_READ_COLOR_ARB           0x891C
 #define GL_PROGRAM_POINT_SIZE			  0x8642
 #define GL_POINT_SPRITE					  0x8861
-
+#define GL_INTERLEAVED_ATTRIBS            0x8C8C
+#define GL_SEPARATE_ATTRIBS               0x8C8D
+#define GL_TRANSFORM_FEEDBACK_BUFFER      0x8C8E
+#define GL_RASTERIZER_DISCARD             0x8C89 
 
 typedef char GLchar;
 typedef ptrdiff_t GLintptr;
@@ -152,6 +155,12 @@ typedef ptrdiff_t GLsizeiptr;
 	GLE(void,	   Enablei,					GLenum cap, GLuint index)\
 	GLE(void,	   Disablei,				GLenum cap, GLuint index)\
 	GLE(void,      ClampColorARB,			GLenum target,GLenum clamp)\
+    GLE(void,      TransformFeedbackVaryings, GLuint program, GLsizei count, const char** varyings,GLenum bufferMode)\
+    GLE(void,      BindBufferBase,          GLenum target,GLuint index,GLuint buffer)\
+    GLE(void,      BeginTransformFeedback,	GLenum primitiveMode)\
+    GLE(void,      EndTransformFeedback,	void)\
+    GLE(void,      GetBufferSubData,        GLenum target, GLintptr offset, GLsizeiptr size,void * data )\
+    GLE(void,      GetNamedBufferSubData,   GLuint buffer, GLintptr offset, GLsizeiptr size,void * data )\
     /* end */
 //GLE(void, DeleteTextures, GLsizei count, const GLuint * textures)
 //GLE(void, GetTexImage, GLenum target, GLint level, GLenum format, GLenum type, GLvoid * img)

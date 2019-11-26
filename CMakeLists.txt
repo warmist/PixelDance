@@ -48,6 +48,7 @@ set(SRCS
   src/lua_buffers.cpp
   src/shaders.cpp
   src/textures.cpp
+  src/buffer_data.cpp
   src/lua_random.cpp
   ${IMGUI}/imgui.cpp
   ${IMGUI}/imgui_draw.cpp
@@ -65,6 +66,7 @@ set(HDRS
   src/shaders.h
   src/gl_lite.h
   src/textures.hpp
+  src/buffer_data.hpp
   src/lua_random.h
   src/pcg_random.h
   ${LUA}/lua.hpp

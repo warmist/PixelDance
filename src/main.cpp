@@ -19,6 +19,7 @@
 
 #include "shaders.h"
 #include "textures.hpp"
+#include "buffer_data.hpp"
 #include <unordered_map>
 #ifndef NO_EMBEDS
 #include "asset_cp437_12x12.hpp"
@@ -238,6 +239,11 @@ static int clear_screen(lua_State* L)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	return 0;
 }
+static int flush_gl(lua_State* L)
+{
+    glFlush();
+    return 0;
+}
 bool auto_redraw = true;
 static int no_auto_redraw(lua_State* L)
 {
@@ -253,6 +259,14 @@ static int read_fb(lua_State* L)
 	int sy = luaL_optint(L, 5, 0);
 	glReadPixels(sx, sy, w, h, GL_RGBA, GL_UNSIGNED_BYTE, data);
 	return 0;
+}
+static int read_feedback(lua_State* L)
+{
+    void* data = const_cast<void*>(lua_topointer(L, 1));
+    int s = luaL_checkint(L, 2);
+    int off = luaL_optint(L, 3, 0);
+    glGetBufferSubData(GL_TRANSFORM_FEEDBACK_BUFFER, off, s, data);
+    return 0;
 }
 static int unset_render_target(lua_State* L)
 {
@@ -291,6 +305,7 @@ struct project {
 		lua_open_buffers(L);
 		lua_open_shaders(L);
 		lua_open_textures(L);
+        lua_open_buffer_data(L);
 		lua_open_random(L);
 #ifdef WRAP_CPP_EXCEPTIONS
 		lua_pushlightuserdata(L, (void *)wrap_exceptions);
@@ -320,6 +335,12 @@ struct project {
 
 		lua_pushcfunction(L, read_fb);
 		lua_setglobal(L, "__read_fb");
+
+        lua_pushcfunction(L, flush_gl);
+        lua_setglobal(L, "__flush_gl");
+        
+        lua_pushcfunction(L, read_feedback);
+        lua_setglobal(L, "__read_feedback");
 
 		lua_pushcfunction(L, set_window_size);
 		lua_setglobal(L, "__set_window_size");

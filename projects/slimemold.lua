@@ -253,7 +253,7 @@ void main(){
 
     vec4 pixel=texture(tex_main,normed);
     //float v=log(pixel.x+1);
-    float v=pow(pixel.x/turn_around,2);
+    float v=pow(pixel.x/turn_around,1);
     //float v=pixel.x/turn_around;
     //float v=gain(pixel.x/turn_around,-0.8);
     if(v<1)

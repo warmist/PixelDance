@@ -147,6 +147,7 @@ static int blend_additive(lua_State* L)
 	glBlendFunc(GL_ONE, GL_ONE);
 	return 0;
 }
+
 static int depth_test(lua_State* L)
 {
     bool t = lua_toboolean(L, 1);
@@ -154,6 +155,15 @@ static int depth_test(lua_State* L)
         glEnable(GL_DEPTH_TEST);
     else
         glDisable(GL_DEPTH_TEST);
+    return 0;
+}
+static int raster_discard(lua_State* L)
+{
+    bool t = lua_toboolean(L, 1);
+    if (t)
+        glEnable(GL_RASTERIZER_DISCARD);
+    else
+        glDisable(GL_RASTERIZER_DISCARD);
     return 0;
 }
 std::vector<int> pushed_attributes;
@@ -232,6 +242,9 @@ static int draw_array_points(lua_State* L)
 	size_t count = luaL_checkinteger(L, 3);
 	auto pos_idx = glGetAttribLocation(s->id, "position");
 	auto float_count=luaL_optint(L,4,2);
+    auto feedbackmode= luaL_optint(L, 5, 0);
+    if (feedbackmode)
+        glBeginTransformFeedback(GL_POINTS);
 	glEnableVertexAttribArray(pos_idx);
 	glVertexAttribPointer(pos_idx, float_count, GL_FLOAT, false, 0, data);
 	glEnable(GL_PROGRAM_POINT_SIZE);
@@ -239,6 +252,8 @@ static int draw_array_points(lua_State* L)
 	glDrawArrays(GL_POINTS, 0, count);
 	glDisableVertexAttribArray(pos_idx);
 
+    if (feedbackmode)
+        glEndTransformFeedback();
 	clear_attributes();
 
 	return 0;
@@ -255,7 +270,9 @@ static int draw_array_lines(lua_State* L)
         luaL_error(L, "Incorrect second argument: expected pointer to array");
     size_t count = luaL_checkinteger(L, 3);
     bool is_strip = lua_toboolean(L, 4);
-
+    auto feedbackmode = luaL_optint(L, 5, 0);
+    if (feedbackmode)
+        glBeginTransformFeedback(GL_LINES);
     auto pos_idx = glGetAttribLocation(s->id, "position");
     glEnableVertexAttribArray(pos_idx);
     glVertexAttribPointer(pos_idx, 2, GL_FLOAT, false, 0, data);
@@ -265,7 +282,8 @@ static int draw_array_lines(lua_State* L)
         glDrawArrays(GL_LINES, 0, count);
 
     glDisableVertexAttribArray(pos_idx);
-
+    if (feedbackmode)
+        glEndTransformFeedback();
     clear_attributes();
     return 0;
 }
@@ -302,7 +320,7 @@ void debug_program(shader_program& s)
 	}
 
 }
-static int make_shader(lua_State* L, const char* vertex, const char* fragment) {
+static int make_shader(lua_State* L, const char* vertex, const char* fragment,const char* feedback) {
 	//TODO: check ret->id
 	auto make_shader=[L](const char* source,GLuint type) {
 		auto ret_s = glCreateShader(type);
@@ -329,6 +347,12 @@ static int make_shader(lua_State* L, const char* vertex, const char* fragment) {
 	ret->id = glCreateProgram();
 	glAttachShader(ret->id, vert_shader);
 	glAttachShader(ret->id, frag_shader);
+
+    if (feedback)
+    {
+        //TODO: one for now
+        glTransformFeedbackVaryings(ret->id, 1, &feedback, GL_INTERLEAVED_ATTRIBS);
+    }
 	glLinkProgram(ret->id);
 
 	glDeleteShader(vert_shader);
@@ -387,6 +411,9 @@ static int make_shader(lua_State* L, const char* vertex, const char* fragment) {
         lua_pushcfunction(L, depth_test);
         lua_setfield(L, -2, "depth_test");
 
+        lua_pushcfunction(L, raster_discard);
+        lua_setfield(L, -2, "raster_discard");
+
         lua_pushcfunction(L, push_attribute);
         lua_setfield(L,-2, "push_attribute");
 
@@ -430,15 +457,23 @@ int make_lua_shader_prog(lua_State* L )
 	{
 		//expecting a fragment shader
 		const char* fs = luaL_checkstring(L, 1);
-		return make_shader(L, default_vertex_shader, fs);
+		return make_shader(L, default_vertex_shader, fs, nullptr);
 	}
 	else if (v == 2)
 	{
 		const char* vs = luaL_checkstring(L, 1);
 		const char* fs = luaL_checkstring(L, 2);
 		//expecting a vertex+fragment shader
-		return make_shader(L, vs, fs);
+        return make_shader(L, vs, fs, nullptr);
 	}
+    else if (v == 3)
+    {
+        const char* vs = luaL_checkstring(L, 1);
+        const char* fs = luaL_checkstring(L, 2);
+        const char* feedback = luaL_checkstring(L, 3);
+        //expecting a vertex+fragment shader
+        return make_shader(L, vs, fs,feedback);
+    }
 	else
 	{
 		luaL_error(L, "expected (optional) vertex shader source and fragment shader source");
