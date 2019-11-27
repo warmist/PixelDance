@@ -110,6 +110,7 @@ uniform sampler2D values;
 uniform float mult;
 uniform float add;
 uniform float gamma;
+#define M_PI 3.14159265358979323846264338327950288
 float f(float v)
 {
 #if LOG_MODE
@@ -121,6 +122,11 @@ float f(float v)
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
     return a + b*cos( 6.28318*(c*t+d) );
+}
+float gain(float x, float k)
+{
+    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
+    return (x<0.5)?a:1.0-a;
 }
 //#define RG
 void main(){
@@ -144,13 +150,17 @@ void main(){
 	float lv=f(abs(texture(values,normed).x+add))*mult;
 	//float lv=f(abs(log(texture(values,normed).x+1)+add))*mult;
 	//lv=pow(1-lv,gamma);
+	//lv=gain(lv,gamma);
 	lv=pow(lv,gamma);
 	/* quantize
 	float q=7;
 	lv=clamp(floor(lv*q)/q,0,1);
-	*/
+	//*/
 	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(0.5,2.0,1.5),vec3(0.1,0.4,0.4)),1);
-	color=vec4(vec3(lv),1);
+	if(lv>0.5)
+		color=vec4(vec3(lv-0.5),1);
+	else
+		color=vec4(vec3(sin(lv*2*M_PI),0,0),1);
 
 #endif
 }
@@ -249,6 +259,57 @@ float n4rand_inv( vec2 n )
     float v3 = 0.5 * remap( 0.5, 1.0, v1 );
     return (nrnd4<0.5) ? v2 : v3;
 }
+//sdfs
+float sdCircle( vec2 p, float r )
+{
+  return length(p) - r;
+}
+float sdBox( in vec2 p, in vec2 b )
+{
+    vec2 d = abs(p)-b;
+    return length(max(d,vec2(0))) + min(max(d.x,d.y),0.0);
+}
+float sdEquilateralTriangle( in vec2 p )
+{
+    const float k = sqrt(3.0);
+    p.x = abs(p.x) - 1.0;
+    p.y = p.y + 1.0/k;
+    if( p.x+k*p.y>0.0 ) p = vec2(p.x-k*p.y,-k*p.x-p.y)/2.0;
+    p.x -= clamp( p.x, -2.0, 0.0 );
+    return -length(p)*sign(p.y);
+}
+float sdTriangle( in vec2 p, in vec2 p0, in vec2 p1, in vec2 p2 )
+{
+    vec2 e0 = p1-p0, e1 = p2-p1, e2 = p0-p2;
+    vec2 v0 = p -p0, v1 = p -p1, v2 = p -p2;
+    vec2 pq0 = v0 - e0*clamp( dot(v0,e0)/dot(e0,e0), 0.0, 1.0 );
+    vec2 pq1 = v1 - e1*clamp( dot(v1,e1)/dot(e1,e1), 0.0, 1.0 );
+    vec2 pq2 = v2 - e2*clamp( dot(v2,e2)/dot(e2,e2), 0.0, 1.0 );
+    float s = sign( e0.x*e2.y - e0.y*e2.x );
+    vec2 d = min(min(vec2(dot(pq0,pq0), s*(v0.x*e0.y-v0.y*e0.x)),
+                     vec2(dot(pq1,pq1), s*(v1.x*e1.y-v1.y*e1.x))),
+                     vec2(dot(pq2,pq2), s*(v2.x*e2.y-v2.y*e2.x)));
+    return -sqrt(d.x)*sign(d.y);
+}
+//sdops
+float opUnion( float d1, float d2 ) {  return min(d1,d2); }
+
+float opSubtraction( float d1, float d2 ) { return max(-d1,d2); }
+
+float opIntersection( float d1, float d2 ) { return max(d1,d2); }
+
+float opSmoothUnion( float d1, float d2, float k ) {
+    float h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
+    return mix( d2, d1, h ) - k*h*(1.0-h); }
+
+float opSmoothSubtraction( float d1, float d2, float k ) {
+    float h = clamp( 0.5 - 0.5*(d2+d1)/k, 0.0, 1.0 );
+    return mix( d2, -d1, h ) + k*h*(1.0-h); }
+
+float opSmoothIntersection( float d1, float d2, float k ) {
+    float h = clamp( 0.5 - 0.5*(d2-d1)/k, 0.0, 1.0 );
+    return mix( d2, d1, h ) + k*h*(1.0-h); }
+
 //shapes
 
 float sh_circle(in vec2 st,in float rad,in float fw)
@@ -356,6 +417,20 @@ float ankh(in vec2 st,float fw)
 	float h2=sh_polyhedron(st*vec2(1.0,6)-vec2(0.2,0),3,0.2,-M_PI/2,fw);
 	float d=sh_polyhedron(st*vec2(6.0,1)+vec2(0,0.4),4,0.4,0,fw);
 	return max(max(ret,h1),max(d,h2));
+}
+float ankh_sdf(in vec2 st)
+{
+	float ring=abs(sdCircle(st+vec2(0,-0.3),0.25))-0.15/4;
+	//float ring=abs(sdCircle(st+vec2(0,-0.3),0.275))-0.15/2;//-sdCircle(st+vec2(0,-0.3),0.2);
+	//float ret=max(ring,0);
+	float d=sdBox(st+vec2(0,0.35),vec2(0.07,0.4));
+	t_rot(st,M_PI/2);
+	float h1=sdEquilateralTriangle(st*vec2(15.0,4.0)+vec2(0.0,1));
+	t_rot(st,-M_PI);
+	float h2=sdEquilateralTriangle(st*vec2(15.0,4.0)+vec2(0.0,1));
+	
+	float v=opUnion(opUnion(ring,d),opUnion(h1,h2));
+	return step(v-0.02,0);//max(max(ret,h1),max(d,h2));
 }
 float petals(in vec2 st, float fw)
 {
@@ -655,8 +730,9 @@ void main(){
 	//float sh_v=sh_jaws(pos.xy,w);
 	//float sh_v=sh_polyhedron(pos.xy*vec2(0.2,1),4,0.2,0,w);
 	//float sh_v=ankh(pos.xy,w);
+	float sh_v=ankh_sdf(pos.xy);
 	//float sh_v=petals(pos.xy,w);
-	float sh_v=grid(pos.xy,w);
+	//float sh_v=grid(pos.xy,w);
 #if DRAW_FORM
 	v=sh_v;
 #else
@@ -909,7 +985,7 @@ function draw_texture( id )
 		need_save=nil
 	end
 end
-local frame_count=1800
+local frame_count=300
 local tick_skip=50
 
 local tick_count=10000
@@ -932,7 +1008,7 @@ function animate_step(  )
 	local start_frq=1.5
 	local end_frq=3.5
 
-	local start_frq2=0
+	local start_frq2=1
 	local end_frq2=0
 	config.freq=ncos(t)*(end_frq-start_frq)+start_frq
 	config.freq2=nsin(t)*(end_frq2-start_frq2)+start_frq2
