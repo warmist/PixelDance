@@ -15,7 +15,7 @@ local win_h=1024
 
 __set_window_size(win_w,win_h)
 local oversample=1
-local agent_count=5e6
+local agent_count=1e7
 --[[ perf:
 	oversample 2 768x768
 		ac: 3000 -> 43fps
@@ -24,6 +24,10 @@ local agent_count=5e6
 		gpu: 200*200 (40k)->35 fps
 	map: 1024x1024
 		200*200 -> 180 fps
+	feedback: 
+		RTX 2060
+			33554432 ~20fps
+			1e7 ~60fps
 
 ]]
 local map_w=math.floor(win_w*oversample)
@@ -102,6 +106,7 @@ uniform float diffuse;
 uniform float decay;
 
 uniform sampler2D tex_main;
+
 float sample_around(vec2 pos)
 {
 	float ret=0;
@@ -291,7 +296,7 @@ void main(){
 
     vec4 pixel=texture(tex_main,normed);
     //float v=log(pixel.x+1);
-    float v=pow(pixel.x/turn_around,2.5);
+    float v=pow(pixel.x/turn_around,1);
     //float v=pixel.x/turn_around;
     //float v=gain(pixel.x/turn_around,-0.8);
     //v=noise(pos.xy*rez/100);
@@ -396,25 +401,25 @@ void main(){
 	}
 	else if(rgt>fow)
 	{
-		float ov=(rgt-fow)/fow;
+		//float ov=(rgt-fow)/fow;
 	#ifdef TURNAROUND
 		if(rgt>=turn_around)
 			//step_size*=-1;
 			head+=ag_turn_avoid;
 		else
 	#endif
-			head+=turn_size*ov;
+			head+=turn_size;
 	}
 	else if(lft>fow)
 	{
-		float ov=(lft-fow)/fow;
+		//float ov=(lft-fow)/fow;
 	#ifdef TURNAROUND
 		if(lft>=turn_around)
 			//step_size*=-1;
 			head-=ag_turn_avoid;
 		else
 	#endif
-			head-=turn_size*ov;
+			head-=turn_size;
 	}
 	#ifdef TURNAROUND
 	else 
@@ -425,20 +430,25 @@ void main(){
 		//head+=M_PI;//turn_size*2;//(rand(position.xy+state.xy*4572)-0.5)*turn_size*2;
 		//step_size*=-1;
 		head+=(rand(position.xy*position.z+state.xy*4578)-0.5)*ag_turn_avoid;
+		//head+=ag_turn_avoid;
 
 	}
 	//step_size/=clamp(rgt/lft,0.5,2);
 
 
-	/* turn head to center somewhat
+	/* turn head to center somewhat (really stupid way of doing it...)
 	vec2 c=rez/2;
-	vec2 d_c=c-state.xy;
-	float T_c=0.0005;
-	float a_c=atan(d_c.y*T_c+sin(head)*(1-T_c),d_c.x*T_c+cos(head)*(1-T_c));
-	head=a_c;
+	vec2 d_c=(c-state.xy);
+	d_c*=1/sqrt(dot(d_c,d_c));
+	vec2 nh=vec2(cos(head),sin(head));
+	float T_c=0.1;
+	vec2 new_h=d_c*T_c+nh*(1-T_c);
+	new_h*=1/sqrt(dot(new_h,new_h));
+	head=atan(new_h.y,new_h.x);
 	//*/
 	//step_size*=1-clamp(cubicPulse(0,0.1,fow),0,1);
-	step_size*=1-cubicPulse(0,0.4,abs(pl))*0.5;
+	//step_size*=1-cubicPulse(0,0.4,abs(pl))*0.5;
+	//step_size*=(clamp(fow/turn_around,0,1))*0.95+0.05;
 	//step_size*=noise(state.xy/100);
 	//step_size*=expStep(abs(pl-0.2),1,2);
 	//step_size=clamp(step_size,0.1,100);
@@ -598,7 +608,7 @@ function update()
 			agent_data:set(i,0,
     			{math.cos(a)*r+map_w/2,
     			 math.sin(a)*r+map_h/2,
-    			 a+math.pi/2,
+    			 a+math.pi/4,
     			 math.random()*10})
     		--]]
     		--[[
