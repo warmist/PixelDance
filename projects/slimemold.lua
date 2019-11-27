@@ -15,7 +15,7 @@ local win_h=1024
 
 __set_window_size(win_w,win_h)
 local oversample=1
-local agent_count=2048
+local agent_count=5000000
 --[[ perf:
 	oversample 2 768x768
 		ac: 3000 -> 43fps
@@ -42,8 +42,8 @@ function update_buffers(  )
     end
 end
 
-if agent_data==nil or agent_data.w~=agent_count or agent_data.h~=agent_count then
-	agent_data=make_flt_buffer(agent_count,agent_count)
+if agent_data==nil or agent_data.w~=agent_count then
+	agent_data=make_flt_buffer(agent_count,1)
 	agent_buffers={buffer_data.Make(),buffer_data.Make(),current=1,other=2,flip=function( t )
 		if t.current==1 then
 			t.current=2
@@ -61,13 +61,11 @@ if agent_data==nil or agent_data.w~=agent_count or agent_data.h~=agent_count the
 	end}
 
 	for i=0,agent_count-1 do
-		for j=0,agent_count-1 do
-			agent_data:set(i,j,{math.random()*map_w,math.random()*map_h,math.random()*math.pi*2,0})
-		end
+			agent_data:set(i,0,{math.random()*map_w,math.random()*map_h,math.random()*math.pi*2,0})
 	end
 	for i=1,2 do
 		agent_buffers[i]:use()
-		agent_buffers[i]:set(agent_data.d,agent_count*agent_count*4*4)
+		agent_buffers[i]:set(agent_data.d,agent_count*4*4)
 	end
 end
 
@@ -184,26 +182,6 @@ void main(){
 	//color=vec4(1,0,0,1);
 }
 ]==])
-function add_trails(  )
-	add_visit_shader:use()
-	tex_pixel:use(0)
-	add_visit_shader:blend_add()
-	add_visit_shader:set_i("pix_size",config.trail_size)
-	add_visit_shader:set("trail_amount",config.ag_trail_amount)
-	add_visit_shader:set("rez",map_w,map_h)
-	if not tex_pixel:render_to(map_w,map_h) then
-		error("failed to set framebuffer up")
-	end
-	if need_clear then
-		__clear()
-		need_clear=false
-		--print("Clearing")
-	end
-	add_visit_shader:draw_points(agent_data.d,agent_data.w*agent_data.h,4)
-
-	add_visit_shader:blend_default()
-	__render_to_window()
-end
 function add_trails_fbk(  )
 	add_visit_shader:use()
 	tex_pixel:use(0)
@@ -220,7 +198,7 @@ function add_trails_fbk(  )
 		--print("Clearing")
 	end
 	agent_buffers:get_current():use()
-	add_visit_shader:draw_points(0,agent_count*agent_count,4)
+	add_visit_shader:draw_points(0,agent_count,4)
 
 	add_visit_shader:blend_default()
 	__render_to_window()
@@ -304,119 +282,6 @@ void main(){
     	color=mix_hsl(color_fore,color_turn_around,clamp((v-1)*1,0,1));
 }
 ]==]
-local agent_logic_shader=shaders.Make[==[
-#version 330
-#line 261
-out vec4 color;
-in vec3 pos;
-
-uniform vec2 rez;
-
-uniform sampler2D old_state; //old agent state
-uniform sampler2D tex_main;  //signal buffer state
-//agent settings uniforms
-uniform float ag_sensor_distance;
-uniform float ag_sensor_angle;
-uniform float ag_turn_angle;
-uniform float ag_step_size;
-uniform float ag_turn_around;
-uniform float ag_turn_avoid;
-//
-float rand(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x))));}
-
-#define M_PI 3.1415926535897932384626433832795
-
-float sample_heading(vec2 p,float h,float dist)
-{
-	p+=vec2(cos(h),sin(h))*dist;
-	return texture(tex_main,p/rez).x;
-}
-#define TURNAROUND
-float cubicPulse( float c, float w, float x )
-{
-    x = abs(x - c);
-    if( x>w ) return 0.0;
-    x /= w;
-    return 1.0 - x*x*(3.0-2.0*x);
-}
-float expStep( float x, float k, float n )
-{
-    return exp( -k*pow(x,n) );
-}
-void main(){
-	float step_size=ag_step_size;
-	float sensor_distance=ag_sensor_distance;
-	float sensor_angle=ag_sensor_angle;
-	float turn_size=ag_turn_angle;
-	float turn_around=ag_turn_around;
-
-	vec2 normed=(pos.xy+vec2(1,1))/2;
-	vec3 state=texture(old_state,normed).xyz;
-	vec2 normed_p=(state.xy/rez)*2-vec2(1,1);
-	float pl=length(normed_p);
-
-	sensor_distance*=cubicPulse(0.1,0.5,abs(normed_p.x));
-	sensor_distance=clamp(sensor_distance,2,15);
-
-	turn_around-=cubicPulse(0.6,0.3,abs(normed_p.x));
-	clamp(turn_around,0.2,5);
-	//figure out new heading
-	float head=state.z;
-	float fow=sample_heading(state.xy,head,sensor_distance);
-	
-	float lft=sample_heading(state.xy,head-sensor_angle,sensor_distance);
-	float rgt=sample_heading(state.xy,head+sensor_angle,sensor_distance);
-
-	if(fow<lft && fow<rgt)
-	{
-		head+=(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
-	}
-	else if(rgt>fow)
-	{
-	#ifdef TURNAROUND
-		if(rgt>=turn_around)
-			//step_size*=-1;
-			head+=ag_turn_avoid;
-		else
-	#endif
-			head+=turn_size;
-	}
-	else if(lft>fow)
-	{
-	#ifdef TURNAROUND
-		if(lft>=turn_around)
-			//step_size*=-1;
-			head-=ag_turn_avoid;
-		else
-	#endif
-			head-=turn_size;
-	}
-	#ifdef TURNAROUND
-	else 
-	#endif
-	if(fow>turn_around)
-	{
-		//head+=(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
-		//head+=M_PI;//turn_size*2;//(rand(pos.xy+state.xy*4572)-0.5)*turn_size*2;
-		//step_size*=-1;
-		head+=(rand(pos.xy+state.xy*4578)-0.5)*ag_turn_avoid;
-
-	}
-	//step_size/=clamp(rgt/lft,0.5,2);
-	//step in heading direction
-
-	
-	
-	//step_size*=1-clamp(cubicPulse(0,0.1,fow),0,1);
-	step_size*=cubicPulse(0.2,0.6,abs(normed_p.y));
-	//step_size*=expStep(abs(pl-0.2),1,2);
-	step_size=clamp(step_size,0.1,10);
-	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
-	state.z=head;
-	state.xy=mod(state.xy,rez);
-	color=vec4(state.xyz,1);
-}
-]==]
 local agent_logic_shader_fbk=shaders.Make(
 [==[
 
@@ -461,7 +326,7 @@ float expStep( float x, float k, float n )
 void main(){
 	float step_size=ag_step_size;
 	float sensor_distance=ag_sensor_distance;
-	float sensor_angle=ag_sensor_angle;
+	float sensor_angle=ag_sensor_angle*position.w;
 	float turn_size=ag_turn_angle;
 	float turn_around=ag_turn_around;
 
@@ -469,7 +334,7 @@ void main(){
 	vec2 normed_p=(state.xy/rez)*2-vec2(1,1);
 	float pl=length(normed_p);
 
-	//sensor_distance*=cubicPulse(0.1,0.5,abs(normed_p.x));
+	//sensor_distance*=1-cubicPulse(0.1,0.5,abs(normed_p.x));
 	//sensor_distance=clamp(sensor_distance,2,15);
 
 	//turn_around-=cubicPulse(0.6,0.3,abs(normed_p.x));
@@ -487,23 +352,25 @@ void main(){
 	}
 	else if(rgt>fow)
 	{
+		float ov=(rgt-fow)/fow;
 	#ifdef TURNAROUND
 		if(rgt>=turn_around)
 			//step_size*=-1;
 			head+=ag_turn_avoid;
 		else
 	#endif
-			head+=turn_size;
+			head+=turn_size*ov;
 	}
 	else if(lft>fow)
 	{
+		float ov=(lft-fow)/fow;
 	#ifdef TURNAROUND
 		if(lft>=turn_around)
 			//step_size*=-1;
 			head-=ag_turn_avoid;
 		else
 	#endif
-			head-=turn_size;
+			head-=turn_size*ov;
 	}
 	#ifdef TURNAROUND
 	else 
@@ -528,7 +395,7 @@ void main(){
 	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
 	state.z=head;
 	state.xy=mod(state.xy,rez);
-	state_out=vec4(state.xyz,1);
+	state_out=vec4(state.xyz,position.w);
 
 }
 ]==]
@@ -538,18 +405,8 @@ void main()
 
 }
 ]===],"state_out")
-if tex_agent == nil then
-	tex_agent=textures:Make()
-	tex_agent:use(1)
-	tex_agent:set(agent_count,agent_count,1)
-end
-if tex_agent_result==nil then
-	tex_agent_result=textures:Make()
-	tex_agent_result:use(1)
-	tex_agent_result:set(agent_count,agent_count,1)
-end
+
 function do_agent_logic_fbk(  )
-	
 
 	agent_logic_shader_fbk:use()
 
@@ -571,7 +428,7 @@ function do_agent_logic_fbk(  )
 
 	local ac=agent_buffers:get_current()
 	ac:use()
-	agent_logic_shader_fbk:draw_points(0,agent_count*agent_count,4,1)
+	agent_logic_shader_fbk:draw_points(0,agent_count,4,1)
 	__flush_gl()
 	agent_logic_shader_fbk:raster_discard(false)
 	--__read_feedback(agent_data.d,agent_count*agent_count*4*4)
@@ -579,43 +436,18 @@ function do_agent_logic_fbk(  )
 	agent_buffers:flip()
 	__unbind_buffer()
 end
-function do_agent_logic(  )
-	agent_logic_shader:use()
-    tex_pixel:use(0)
-    agent_logic_shader:set_i("tex_main",0)
-	tex_agent:use(1)
-	agent_logic_shader:set_i("old_state",1)
-	tex_agent_result:use(2)
-
-	--set agent uniforms
-	agent_logic_shader:set("ag_sensor_distance",config.ag_sensor_distance)
-	agent_logic_shader:set("ag_sensor_angle",config.ag_sensor_angle)
-	agent_logic_shader:set("ag_turn_angle",config.ag_turn_angle)
-	agent_logic_shader:set("ag_step_size",config.ag_step_size)
-	agent_logic_shader:set("ag_turn_around",config.turn_around)
-	agent_logic_shader:set("ag_turn_avoid",config.ag_turn_avoid)
-	--
-	agent_logic_shader:set("rez",map_w,map_h)
-    if not tex_agent_result:render_to(agent_count,agent_count) then
-		error("failed to set framebuffer up")
-	end
-    agent_logic_shader:draw_quad()
-    __render_to_window()
-    --swap buffers
-    local t=tex_agent_result
-    tex_agent_result=tex_agent
-    tex_agent=t
-end
 function agents_tocpu()
 	--tex_agent:use(0)
 	--agent_data:read_texture(tex_agent)
+	agent_buffers:get_current():use()
+	agent_buffers:get_current():get(agent_data.d,agent_count*4*4)
 end
 function agents_togpu()
 	--tex_agent:use(0)
 	--agent_data:write_texture(tex_agent)
 
 	agent_buffers:get_current():use()
-	agent_buffers:get_current():set(agent_data.d,agent_count*agent_count*4*4)
+	agent_buffers:get_current():set(agent_data.d,agent_count*4*4)
 end
 function fill_buffer(  )
 	tex_pixel:use(0)
@@ -626,47 +458,6 @@ function fill_buffer(  )
     	end
     end
     signal_buf:write_texture(tex_pixel)
-end
-
-function wrap_pos( pos )
-	local w=signal_buf.w
-	local h=signal_buf.h
-	if pos[1]<0 then pos[1]=pos[1]+w end
-	if pos[1]>=w then pos[1]=pos[1]-w end
-	if pos[2]<0 then pos[2]=pos[2]+h end
-	if pos[2]>=h then pos[2]=pos[2]-h end
-end
-function sense( pos,size )
-	local tx=math.floor(pos[1])
-	local ty=math.floor(pos[2])
-
-	local sum=0
-	local wsum=0
-	for di=-size,size do
-		for dj=-size,size do
-			local ti=tx+di
-			local tj=ty+dj
-			if ti <0 then ti = signal_buf.w-1 end
-			if ti >=signal_buf.w then ti = 0 end
-			if tj <0 then tj = signal_buf.h-1 end
-			if tj >=signal_buf.h then tj = 0 end
-			local w=1--todo: sensing decay due to distance
-			if di==0 and dj==0 then
-				w=1
-			end
-			sum=sum+signal_buf:get(ti,tj)*w
-			wsum=wsum+w
-		end
-	end
-	return sum/wsum
-end
-
-function agents_step(  )
-
-	do_agent_logic()
-	agents_tocpu()
-	add_trails()
-
 end
 function agents_step_fbk(  )
 
@@ -738,7 +529,6 @@ function update()
      imgui.SameLine()
     if imgui.Button("Agentswarm") then
     	for i=0,agent_count-1 do
-    		for j=0,agent_count-1 do
     		--[[
     		local r=map_w/5+rnd(10)
     		local phi=math.random()*math.pi*2
@@ -753,11 +543,11 @@ function update()
 			local r = map_w/8 * math.sqrt(math.random())
 			local x = r * math.cos(a)
 			local y = r * math.sin(a)
-			agent_data:set(i,j,
+			agent_data:set(i,0,
     			{math.cos(a)*r+map_w/2,
     			 math.sin(a)*r+map_h/2,
     			 a+math.pi/2,
-    			 0})
+    			 math.random()+0.5})
     		--]]
     		--[[
     		local side=math.random(1,4)
@@ -783,7 +573,6 @@ function update()
     			 a+math.pi,
     			 0})
 			--]]
-			end
     	end
     	agents_togpu()
     end
@@ -798,9 +587,6 @@ function update()
 
     draw_shader:use()
     tex_pixel:use(0)
-
-    --tex_pixel.t:set(size[1]*oversample,size[2]*oversample,3)
-    --signal_buf:write_texture(tex_pixel)
 
     draw_shader:set_i("tex_main",0)
     draw_shader:set_i("rez",map_w,map_h)
