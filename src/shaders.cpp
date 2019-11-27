@@ -150,7 +150,7 @@ static int blend_additive(lua_State* L)
 
 static int depth_test(lua_State* L)
 {
-    bool t = lua_toboolean(L, 1);
+    bool t = lua_toboolean(L, 2);
     if (t)
         glEnable(GL_DEPTH_TEST);
     else
@@ -159,7 +159,7 @@ static int depth_test(lua_State* L)
 }
 static int raster_discard(lua_State* L)
 {
-    bool t = lua_toboolean(L, 1);
+    bool t = lua_toboolean(L, 2);
     if (t)
         glEnable(GL_RASTERIZER_DISCARD);
     else
@@ -175,8 +175,8 @@ static int push_attribute(lua_State* L)
 	{
 		data = lua_topointer(L, 2); //TODO: check pointer?
 	}
-	if (data == nullptr)
-		luaL_error(L,"Incorrect second argument: expected pointer to array");
+	//if (data == nullptr)
+	//	luaL_error(L,"Incorrect second argument: expected pointer to array");
     const char* name = luaL_checkstring(L, 3);
 	auto pos_idx = glGetAttribLocation(s->id, name);
     if (pos_idx == -1)
@@ -203,8 +203,9 @@ static int push_iattribute(lua_State* L)
     {
         data = lua_topointer(L, 2); //TODO: check pointer?
     }
-    if (data == nullptr)
-        luaL_error(L, "Incorrect second argument: expected pointer to array");
+    //TODO: all data==nullptr does not make sense anymore when doing bind-vao
+    //if (data == nullptr)
+    //    luaL_error(L, "Incorrect second argument: expected pointer to array");
     const char* name = luaL_checkstring(L, 3);
     auto pos_idx = glGetAttribLocation(s->id, name);
     if (pos_idx == -1)
@@ -237,8 +238,8 @@ static int draw_array_points(lua_State* L)
 	{
 		data = lua_topointer(L, 2); //TODO: check pointer?
 	}
-	if (data == nullptr)
-		luaL_error(L,"Incorrect second argument: expected pointer to array");
+	//if (data == nullptr)
+    //	luaL_error(L,"Incorrect second argument: expected pointer to array");
 	size_t count = luaL_checkinteger(L, 3);
 	auto pos_idx = glGetAttribLocation(s->id, "position");
 	auto float_count=luaL_optint(L,4,2);
@@ -266,8 +267,8 @@ static int draw_array_lines(lua_State* L)
     {
         data = lua_topointer(L, 2); //TODO: check pointer?
     }
-    if (data == nullptr)
-        luaL_error(L, "Incorrect second argument: expected pointer to array");
+    //if (data == nullptr)
+    //   luaL_error(L, "Incorrect second argument: expected pointer to array");
     size_t count = luaL_checkinteger(L, 3);
     bool is_strip = lua_toboolean(L, 4);
     auto feedbackmode = luaL_optint(L, 5, 0);
@@ -471,7 +472,7 @@ int make_lua_shader_prog(lua_State* L )
         const char* vs = luaL_checkstring(L, 1);
         const char* fs = luaL_checkstring(L, 2);
         const char* feedback = luaL_checkstring(L, 3);
-        //expecting a vertex+fragment shader
+        //expecting a vertex+fragment shader+feedback variable
         return make_shader(L, vs, fs,feedback);
     }
 	else

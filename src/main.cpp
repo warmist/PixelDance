@@ -268,6 +268,11 @@ static int read_feedback(lua_State* L)
     glGetBufferSubData(GL_TRANSFORM_FEEDBACK_BUFFER, off, s, data);
     return 0;
 }
+static int unbind_buffer(lua_State* L)
+{
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    return 0;
+}
 static int unset_render_target(lua_State* L)
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -341,6 +346,9 @@ struct project {
         
         lua_pushcfunction(L, read_feedback);
         lua_setglobal(L, "__read_feedback");
+
+        lua_pushcfunction(L, unbind_buffer);
+        lua_setglobal(L, "__unbind_buffer");
 
 		lua_pushcfunction(L, set_window_size);
 		lua_setglobal(L, "__set_window_size");

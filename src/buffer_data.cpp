@@ -29,7 +29,7 @@ static int set_buffer_data(lua_State* L)
     }
     else
         arg = 2;
-    auto size = luaL_checkint(L, arg++);
+    auto size = luaL_checkint(L, arg);
 
     glBufferData(GL_ARRAY_BUFFER, size, data, GL_DYNAMIC_DRAW); //TODO: other hints?
 
