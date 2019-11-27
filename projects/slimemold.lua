@@ -15,7 +15,7 @@ local win_h=1024
 
 __set_window_size(win_w,win_h)
 local oversample=1
-local agent_count=5000000
+local agent_count=5e6
 --[[ perf:
 	oversample 2 768x768
 		ac: 3000 -> 43fps
@@ -75,10 +75,10 @@ update_buffers()
 config=make_config({
     {"pause",false,type="bool"},
     {"color_back",{0,0,0,1},type="color"},
-    {"color_fore",{0.18,0,0.58,1},type="color"},
-    {"color_turn_around",{0.54,0.80,0.71,1},type="color"},
+    {"color_fore",{0.98,0.6,0.05,1},type="color"},
+    {"color_turn_around",{0.99,0.99,0.991,1},type="color"},
     --system
-    {"decay",0.99,type="float"},
+    {"decay",0.995181,type="floatsci",min=0.99,max=1},
     {"diffuse",0.5,type="float"},
     --agent
     {"ag_sensor_distance",4,type="float",min=0.1,max=10},
@@ -86,10 +86,10 @@ config=make_config({
     {"ag_sensor_angle",math.pi/2,type="float",min=0,max=math.pi/2},
     {"ag_turn_angle",math.pi/8,type="float",min=-math.pi/2,max=math.pi/2},
     {"ag_turn_avoid",-math.pi/8,type="float",min=-math.pi/2,max=math.pi/2},
-	{"ag_step_size",1.5,type="float",min=0.01,max=10},
-	{"ag_trail_amount",0.001,type="float",min=0,max=0.5},
-	{"trail_size",4,type="int",min=1,max=5},
-	{"turn_around",1,type="float",min=0,max=5},
+	{"ag_step_size",2.431,type="float",min=0.01,max=10},
+	{"ag_trail_amount",0.013,type="float",min=0,max=0.5},
+	{"trail_size",1,type="int",min=1,max=5},
+	{"turn_around",10,type="float",min=0,max=5},
     },config)
 
 local decay_diffuse_shader=shaders.Make[==[
@@ -206,7 +206,7 @@ function add_trails_fbk(  )
 end
 local draw_shader=shaders.Make[==[
 #version 330
-#line 188
+#line 209
 out vec4 color;
 in vec3 pos;
 
@@ -218,6 +218,20 @@ uniform vec4 color_back;
 uniform vec4 color_fore;
 uniform vec4 color_turn_around;
 
+float rand(vec2 n) { 
+	return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
+}
+
+float noise(vec2 p){
+	vec2 ip = floor(p);
+	vec2 u = fract(p);
+	u = u*u*(3.0-2.0*u);
+	
+	float res = mix(
+		mix(rand(ip),rand(ip+vec2(1.0,0.0)),u.x),
+		mix(rand(ip+vec2(0.0,1.0)),rand(ip+vec2(1.0,1.0)),u.x),u.y);
+	return res*res;
+}
 
 vec3 rgb2hsv(vec3 c)
 {
@@ -267,19 +281,33 @@ vec4 mix_hsl(vec4 c1,vec4 c2,float v)
 	float a=mix(c1.a,c2.a,v);
 	return vec4(hsv2rgb(ret.xyz),a);
 }
+vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
+{
+    return a + b*cos( 6.28318*(c*t+d) );
+}
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     //normed=normed/zoom+translate;
 
     vec4 pixel=texture(tex_main,normed);
     //float v=log(pixel.x+1);
-    float v=pow(pixel.x/turn_around,1);
+    float v=pow(pixel.x/turn_around,2.5);
     //float v=pixel.x/turn_around;
     //float v=gain(pixel.x/turn_around,-0.8);
+    //v=noise(pos.xy*rez/100);
     if(v<1)
     	color=mix_hsl(color_back,color_fore,v);
     else
     	color=mix_hsl(color_fore,color_turn_around,clamp((v-1)*1,0,1));
+
+	
+    /*if(v<1)
+    	color=vec4(palette(v,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,2.5,1.5),vec3(0.5,1.5,1.0)),1);
+    else
+    {
+    	float tv=clamp((v-1),0,1);
+    	color=vec4(palette(tv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,0.5,2.5),vec3(0.5,1.5,1.0)),1);
+    }*/
 }
 ]==]
 local agent_logic_shader_fbk=shaders.Make(
@@ -302,10 +330,23 @@ uniform float ag_step_size;
 uniform float ag_turn_around;
 uniform float ag_turn_avoid;
 //
-float rand(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x))));}
+//float rand(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x))));}
 
 #define M_PI 3.1415926535897932384626433832795
+float rand(vec2 n) { 
+	return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
+}
 
+float noise(vec2 p){
+	vec2 ip = floor(p);
+	vec2 u = fract(p);
+	u = u*u*(3.0-2.0*u);
+	
+	float res = mix(
+		mix(rand(ip),rand(ip+vec2(1.0,0.0)),u.x),
+		mix(rand(ip+vec2(0.0,1.0)),rand(ip+vec2(1.0,1.0)),u.x),u.y);
+	return res*res;
+}
 float sample_heading(vec2 p,float h,float dist)
 {
 	p+=vec2(cos(h),sin(h))*dist;
@@ -326,9 +367,10 @@ float expStep( float x, float k, float n )
 void main(){
 	float step_size=ag_step_size;
 	float sensor_distance=ag_sensor_distance;
-	float sensor_angle=ag_sensor_angle*position.w;
+	float sensor_angle=ag_sensor_angle;
 	float turn_size=ag_turn_angle;
 	float turn_around=ag_turn_around;
+
 
 	vec3 state=position.xyz;
 	vec2 normed_p=(state.xy/rez)*2-vec2(1,1);
@@ -337,12 +379,14 @@ void main(){
 	//sensor_distance*=1-cubicPulse(0.1,0.5,abs(normed_p.x));
 	//sensor_distance=clamp(sensor_distance,2,15);
 
+	//turn_around*=noise(state.xy/100);
 	//turn_around-=cubicPulse(0.6,0.3,abs(normed_p.x));
-	clamp(turn_around,0.2,5);
+	//clamp(turn_around,0.2,5);
 	//figure out new heading
+
 	float head=state.z;
 	float fow=sample_heading(state.xy,head,sensor_distance);
-	
+
 	float lft=sample_heading(state.xy,head-sensor_angle,sensor_distance);
 	float rgt=sample_heading(state.xy,head+sensor_angle,sensor_distance);
 
@@ -384,14 +428,22 @@ void main(){
 
 	}
 	//step_size/=clamp(rgt/lft,0.5,2);
-	//step in heading direction
 
-	
-	
+
+	/* turn head to center somewhat
+	vec2 c=rez/2;
+	vec2 d_c=c-state.xy;
+	float T_c=0.0005;
+	float a_c=atan(d_c.y*T_c+sin(head)*(1-T_c),d_c.x*T_c+cos(head)*(1-T_c));
+	head=a_c;
+	//*/
 	//step_size*=1-clamp(cubicPulse(0,0.1,fow),0,1);
-	//step_size*=cubicPulse(0.2,0.6,abs(normed_p.y));
+	step_size*=1-cubicPulse(0,0.4,abs(pl))*0.5;
+	//step_size*=noise(state.xy/100);
 	//step_size*=expStep(abs(pl-0.2),1,2);
-	//step_size=clamp(step_size,0.1,10);
+	//step_size=clamp(step_size,0.1,100);
+
+	//step in heading direction
 	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
 	state.z=head;
 	state.xy=mod(state.xy,rez);
@@ -547,7 +599,7 @@ function update()
     			{math.cos(a)*r+map_w/2,
     			 math.sin(a)*r+map_h/2,
     			 a+math.pi/2,
-    			 math.random()+0.5})
+    			 math.random()*10})
     		--]]
     		--[[
     		local side=math.random(1,4)
