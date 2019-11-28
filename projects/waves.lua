@@ -81,6 +81,7 @@ config=make_config({
 	{"a",1,type="float",min=-1,max=1},
 	{"b",1,type="float",min=-1,max=1},
 	{"gamma",1,type="float",min=0.01,max=5},
+	{"gain",1,type="float",min=-5,max=5},
 	{"draw",true,type="boolean"},
 	{"accumulate",false,type="boolean"},
 	{"animate",false,type="boolean"},
@@ -109,7 +110,8 @@ in vec3 pos;
 uniform sampler2D values;
 uniform float mult;
 uniform float add;
-uniform float gamma;
+uniform float v_gamma;
+uniform float v_gain;
 #define M_PI 3.14159265358979323846264338327950288
 float f(float v)
 {
@@ -150,8 +152,8 @@ void main(){
 	float lv=f(abs(texture(values,normed).x+add))*mult;
 	//float lv=f(abs(log(texture(values,normed).x+1)+add))*mult;
 	//lv=pow(1-lv,gamma);
-	//lv=gain(lv,gamma);
-	lv=pow(lv,gamma);
+	lv=gain(lv,v_gain);
+	lv=pow(lv,v_gamma);
 	/* quantize
 	float q=7;
 	lv=clamp(floor(lv*q)/q,0,1);
@@ -160,7 +162,10 @@ void main(){
 	if(lv>0.5)
 		color=vec4(vec3(lv-0.5),1);
 	else
-		color=vec4(vec3(sin(lv*2*M_PI),0,0),1);
+	{
+		float nv=sin(lv*2*M_PI);
+		color=vec4(vec3(124,50,30)*nv/255,1);
+	}
 
 #endif
 }
@@ -569,11 +574,16 @@ float func_init(vec2 pos)
 float calc_new_value(vec2 pos)
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
+	
 	float dcsqr=dt*dt*c_const*c_const;
+#if 0
+	vec2 p2=pos+vec2(0,-0.3);
+	dcsqr*=(dot(p2,p2)+0.05);
+#endif
 	float dcsqrx=dcsqr;
 	float dcsqry=dcsqr;
 #if 0
-	float dec=length(pos)*length(pos)*decay;//abs(hash(pos*100))*decay;
+	float dec=dot(pos,pos)*decay;//abs(hash(pos*100))*decay;
 #else
 	float dec=decay;
 #endif
@@ -733,6 +743,7 @@ void main(){
 	float sh_v=ankh_sdf(pos.xy);
 	//float sh_v=petals(pos.xy,w);
 	//float sh_v=grid(pos.xy,w);
+	//float sh_v=1;
 #if DRAW_FORM
 	v=sh_v;
 #else
@@ -939,7 +950,8 @@ function draw_texture( id )
 			local minv,maxv
 			minv,maxv=calc_range_value(trg_tex)
 			draw_shader:set_i("values",0)
-			draw_shader:set("gamma",config.gamma)
+			draw_shader:set("v_gamma",config.gamma)
+			draw_shader:set("v_gain",config.gain)
 			--[[
 			draw_shader:set("add",0)
 			draw_shader:set("mult",1/(math.max(math.abs(maxv),math.abs(minv))))
