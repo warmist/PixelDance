@@ -1,0 +1,3 @@
+--basically waves.lua but there is chance for waves to collapse into a particle
+--also limitation maybe only if it can "stick"
+--also maybe DLA but instead of diffusion waves push particles around
