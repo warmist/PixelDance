@@ -1,7 +1,7 @@
 --https://www.reddit.com/r/generative/comments/e12s8n/community_exhibition/
 require "common"
-local win_w=1024
-local win_h=1024
+local win_w=2560
+local win_h=1440
 
 __set_window_size(win_w,win_h)
 local map_w=math.floor(win_w)
@@ -36,6 +36,7 @@ config=make_config({
 	{"c",{1.,1.,1.},type="color"},
 	{"d",{0,0.1,0.2},type="color"},
 	{"gamma",0.6,type="float",min=0.01,max=5},
+	{"gain",1,type="float",min=-5,max=5},
 	{"draw_cols",false,type="boolean"},
 },config)
 update_image_buffer()
@@ -58,7 +59,7 @@ in vec3 pos;
 
 uniform sampler2D c_sizes;
 uniform sampler2D c_pos;
-
+uniform float aspect;
 float sh_circle(in vec2 st,in float rad,in float fw)
 {
 	return 1-smoothstep(rad-fw*0.75,rad+fw*0.75,dot(st,st)*4);
@@ -69,30 +70,33 @@ float sh_ring(in vec2 st,in float rad1,in float rad2,in float fw)
 }
 
 void main(){
-	float fw=0.02;
-	float c_w=0.93;
+	//float fw=0.002;
+	//float c_w=0.93;
 	float c=0;
-	float step=0.005;
-
+	float increment=0.00005;
+	vec2 npos=pos.xy;
     for(int i=0;i<100;i++)
     {
-    	vec2 p=texelFetch(c_pos,ivec2(i,0),0).rg-pos.xy;
+    	vec2 p=(texelFetch(c_pos,ivec2(i,0),0).rg-npos)*vec2(aspect,1);
+
     	float r=texelFetch(c_sizes,ivec2(i,0),0).r;
+
     	//r*=r;
     	//float lsq=dot(p,p);
     	//c+=(1-smoothstep(r-fw*0.75,r+fw*0.75,dot(p,p)*4));
-    	//c+=sh_ring(p,r,r*c_w,fw*r)*step;
+    	//c+=sh_ring(p,r,r*c_w,fw*r)*increment;
     	///*
     	float r2=r*0.02;
     	float d=abs(length(p)-r)-r2;
     	float distanceChange = fwidth(d) * 0.5;
     	float antialiasedCutoff = smoothstep(distanceChange, -distanceChange, d);
-    	c+=antialiasedCutoff*step;
+    	//float antialiasedCutoff=step(d,0);
+    	c+=antialiasedCutoff*increment;
     	//*/
     }
     //color=vec4(max(pixel.x,pixel_c.x),pixel_c.y,pixel_c.z,1);
-    c-=step;
-    c=clamp(c,0,step*100);
+    c-=increment;
+    c=clamp(c,0,increment*100);
     color=vec4(c,c,c,1);
 }
 ]==]
@@ -109,6 +113,7 @@ uniform vec3 c_b;
 uniform vec3 c_c;
 uniform vec3 c_d;
 uniform float gamma;
+uniform float gain;
 uniform float draw_cols;
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
@@ -118,14 +123,20 @@ vec3 plt(in float t)
 {
 	return palette(t,c_a,c_b,c_c,c_d);
 }
+float apply_gain(float x, float k)
+{
+    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
+    return (x<0.5)?a:1.0-a;
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
     float v=log(texture(image,normed).r+1);
     //float v=texture(image,normed).r;
     v-=rescale.x;
     v/=(rescale.y-rescale.x);
-
-    vec3 pixel=plt(pow(v,gamma));
+    v=apply_gain(v,gain);
+    v=pow(v,gamma);
+    vec3 pixel=plt(v);
     if(normed.y>0.9 && draw_cols>0)
     	color=vec4(plt(normed.x),1);
     else
@@ -155,6 +166,7 @@ function draw(  )
     draw_shader:set_i("image",0)
     draw_shader:set("rescale",math.log(mm+1),math.log(mx+1))
     draw_shader:set("gamma",config.gamma)
+    draw_shader:set("gain",config.gain)
     draw_shader:set("c_a",config.a[1],config.a[2],config.a[3])
     draw_shader:set("c_b",config.b[1],config.b[2],config.b[3])
     draw_shader:set("c_c",config.c[1],config.c[2],config.c[3])
@@ -169,14 +181,18 @@ function draw(  )
 
     return tex_out
 end
+function mrand( min,max )
+	return math.random()*(max-min)+min
+end
 function reset_circle( i )
-	local x=math.random()*2-1;
-	local y=math.random()*2-1;
 	local max_w=2/20
 	local min_w=0.05
+	local c_size=mrand(max_w,min_w)
+	local x=mrand(-1-c_size,1+c_size)
+	local y=mrand(-1-c_size,1+c_size)
 	circle_pos:set(i,0,{x,y})
-	circle_sizes:set(i,0,math.random()*(max_w-min_w)+min_w)
-	local r=math.random()*0.00125+0.0005
+	circle_sizes:set(i,0,c_size)
+	local r=--[[math.random()*0.00125+]]0.001
 	local a=math.random()*math.pi*2
 	circle_speed:set(i,0,{math.cos(a)*r,math.sin(a)*r})
 end
@@ -196,6 +212,7 @@ function circle_tick(  )
 	add_shader:blend_add()
 	tex_sizes:use(0)
 	add_shader:set_i("c_sizes",0)
+	add_shader:set("aspect",win_w/win_h)
 	tex_pos:use(1)
 	tex_out:use(2)
 	add_shader:set_i("c_pos",1)

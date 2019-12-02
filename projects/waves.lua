@@ -3,9 +3,10 @@ require "common"
 --[[
 	TODO:
 		actually implement dx/dy that would help with bogus units problem
+			-maybe only aspect ratio?
 
 --]]
-local size_mult=1
+local size_mult
 local oversample=1
 local win_w
 local win_h
@@ -72,6 +73,7 @@ end
 make_io_buffer()
 
 config=make_config({
+	{"pause",false,type="boolean"},
 	{"dt",1,type="float",min=0.001,max=2},
 	{"freq",0.5,type="float",min=0,max=1},
 	{"freq2",0.5,type="float",min=0,max=1},
@@ -80,6 +82,7 @@ config=make_config({
 	{"m",1,type="int",min=0,max=15},
 	{"a",1,type="float",min=-1,max=1},
 	{"b",1,type="float",min=-1,max=1},
+	{"color",{124/255,50/255,30/255},type="color"},
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"gain",1,type="float",min=-5,max=5},
 	{"draw",true,type="boolean"},
@@ -112,6 +115,7 @@ uniform float mult;
 uniform float add;
 uniform float v_gamma;
 uniform float v_gain;
+uniform vec3 mid_color;
 #define M_PI 3.14159265358979323846264338327950288
 float f(float v)
 {
@@ -159,13 +163,30 @@ void main(){
 	lv=clamp(floor(lv*q)/q,0,1);
 	//*/
 	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(0.5,2.0,1.5),vec3(0.1,0.4,0.4)),1);
+	color.a=1;
+	vec3 col_back=vec3(0);
+	vec3 col_top=vec3(1);
+	/* color with a down to dark break
+	
 	if(lv>0.5)
-		color=vec4(vec3(lv-0.5),1);
+		color.xyz=mix(col_back,col_top,(lv-0.5)*2);
 	else
 	{
 		float nv=sin(lv*2*M_PI);
-		color=vec4(vec3(124,50,30)*nv/255,1);
+		color.xyz=mix(col_back,mid_color,nv);
 	}
+	//*/
+	
+	///* continuous color
+	if(lv>0.5)
+	{
+		color.xyz=mix(mid_color,col_top,(lv-0.5)*2);
+	}
+	else
+	{
+		color.xyz=mix(col_back,mid_color,lv*2);
+	}
+	//*/
 
 #endif
 }
@@ -433,9 +454,9 @@ float ankh_sdf(in vec2 st)
 	float h1=sdEquilateralTriangle(st*vec2(15.0,4.0)+vec2(0.0,1));
 	t_rot(st,-M_PI);
 	float h2=sdEquilateralTriangle(st*vec2(15.0,4.0)+vec2(0.0,1));
-	
-	float v=opUnion(opUnion(ring,d),opUnion(h1,h2));
-	return step(v-0.02,0);//max(max(ret,h1),max(d,h2));
+	float v=opUnion(opUnion(ring,d),opUnion(h1,h2))-0.02;
+
+	return step(v,0);//max(max(ret,h1),max(d,h2));
 }
 float petals(in vec2 st, float fw)
 {
@@ -454,6 +475,12 @@ float petals(in vec2 st, float fw)
 		ret=max(sh_polyhedron(v2,6,0.1,0,0),ret);
 	}
 	return ret;
+}
+float radial_shape(in vec2 st)
+{
+	float a=atan(st.y,st.x);
+	float r=length(st)*1.5;
+	return step(r/(sin(a*3)+1.1)+cos(a*9+sin(r*r)*M_PI*4)/16-0.5,0);
 }
 float grid(in vec2 st,float fw)
 {
@@ -474,7 +501,8 @@ float func(vec2 pos)
 	float max_time=500;
 	float min_freq=1;
 	float max_freq=5;
-
+	float ang=atan(pos.y,pos.x);
+	float rad=length(pos);
 	float fr=freq;
 	float fr2=freq2;
 	//fr*=mix(min_freq,max_freq,time/max_time);
@@ -486,7 +514,7 @@ float func(vec2 pos)
 				//return (hash(time*freq2)*hash(pos*freq))/2;
 				return n4rand(pos);
 	#endif
-	#if 1
+	#if 0
 		//if(time<max_time)
 		//if(pos.x<-0.35)
 			return (
@@ -529,10 +557,22 @@ float func(vec2 pos)
 		)*0.00005;
 	#endif
 
-	/*if(length(pos+vec2(0.1,0.3))<0.005)
-		return sin(time*freq*2.5*M_PI/1000)*0.0005;
-	if(length(pos+vec2(-0.212,0.111))<0.005)
-		return sin(time*freq*7.13*M_PI/1000)*0.0005;*/
+	#if 1
+
+
+	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.65;
+	//if(time<max_time)
+	if(abs(length(pos)-0.7)<0.005)
+		return sin(time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
+	//if(length(pos+vec2(0,0.5)+p)<0.005)
+	//	return sin(time*fr2*M_PI/1000);
+
+
+	#endif
+	#if 0
+	if(length(pos+vec2(0,0.5))<0.005)
+		return sin(time*freq*7.13*M_PI/1000)*0.0005;
+	#endif
 	//return 0.1;//0.0001*sin(time/1000)/(1+length(pos));
 	return 0;
 }
@@ -727,7 +767,7 @@ float boundary_condition_init(vec2 pos,vec2 dir)
 #define DRAW_FORM 0
 void main(){
 	float v=0;
-	float max_d=.55;
+	float max_d=2;
 	float w=0.005;
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
 	//float sh_v=sh_circle(pos.xy,max_d,w);
@@ -740,7 +780,13 @@ void main(){
 	//float sh_v=sh_jaws(pos.xy,w);
 	//float sh_v=sh_polyhedron(pos.xy*vec2(0.2,1),4,0.2,0,w);
 	//float sh_v=ankh(pos.xy,w);
-	float sh_v=ankh_sdf(pos.xy);
+	float sh_v=radial_shape(pos.xy);
+	//vec2 mm=vec2(0.45);
+
+	//vec2 pm=mod(pos.xy+0.5*mm,mm)-0.5*mm;
+	//t_rot(pm.xy,M_PI/4);
+	//float sh_v=ankh_sdf(pos.xy*0.7);
+
 	//float sh_v=petals(pos.xy,w);
 	//float sh_v=grid(pos.xy,w);
 	//float sh_v=1;
@@ -815,7 +861,7 @@ function gui()
 	if config.size_mult then
 		size_mult=1
 	else
-		size_mult=0.5
+		size_mult=2
 	end
 	update_size()
 	local s=STATE.size
@@ -952,6 +998,7 @@ function draw_texture( id )
 			draw_shader:set_i("values",0)
 			draw_shader:set("v_gamma",config.gamma)
 			draw_shader:set("v_gain",config.gain)
+			draw_shader:set("mid_color",config.color[1],config.color[2],config.color[3])
 			--[[
 			draw_shader:set("add",0)
 			draw_shader:set("mult",1/(math.max(math.abs(maxv),math.abs(minv))))
@@ -997,14 +1044,20 @@ function draw_texture( id )
 		need_save=nil
 	end
 end
-local frame_count=300
-local tick_skip=50
+local frame_count=10000
+local tick_skip=9
 
-local tick_count=10000
+--480/100 452
+--4800/10 99
+--1000/1  877
+--1000/3  322
+--1000/9  620
+local tick_count=5000
 local tick_wait=tick_count*0.75
 
 
 current_frame=current_frame or 0
+current_tick=current_tick or 0
 function ncos(t)
 	return (math.cos(t*math.pi*2)+1)/2
 end
@@ -1017,52 +1070,68 @@ function animate_step(  )
 		config.animate=false
 	end
 
-	local start_frq=1.5
+	local start_frq=2.5
 	local end_frq=3.5
 
 	local start_frq2=1
 	local end_frq2=0
-	config.freq=ncos(t)*(end_frq-start_frq)+start_frq
-	config.freq2=nsin(t)*(end_frq2-start_frq2)+start_frq2
+	config.freq=t*(end_frq-start_frq)+start_frq--ncos(t)*(end_frq-start_frq)+start_frq
+	--config.freq2=--nsin(t)*(end_frq2-start_frq2)+start_frq2
 	current_frame=current_frame+1
 	print(config.freq,config.freq2)
 end
-current_tick=current_tick or 0
+
+last_animate=false
+function auto_clear_ticks(  )
+	if last_animate~= config.animate_simple then
+		last_animate= config.animate_simple
+		current_tick=0
+		current_frame=0
+	end
+end
 function update_real(  )
 	__no_redraw()
-	if config.animate then
-		current_tick=current_tick+1
-		if current_tick>=tick_count then
-			animate_step(  )
-			__clear()
-			draw_texture(current_frame)
+	if config.pause then
+		__clear()
+		draw_texture()
+	else
+		auto_clear_ticks()
+		if config.animate then
+			current_tick=current_tick+1
+			if current_tick>=tick_count then
+				animate_step(  )
+				__clear()
+				draw_texture(current_frame)
 
-			current_tick=0
-			reset_state()
-		elseif current_tick>=tick_wait then
-			__clear()
-			draw_texture()
-		end
-	elseif config.animate_simple then
-		current_tick=current_tick+1
-		if current_tick>=tick_skip then
-			__clear()
-			draw_texture(current_frame)
-			current_tick=0
-			current_frame=current_frame+1
-			if current_frame>frame_count then
-				config.animate_simple=false
+				current_tick=0
+				reset_state()
+			elseif current_tick>=tick_wait then
+				__clear()
+				draw_texture()
+			end
+		elseif config.animate_simple then
+			current_tick=current_tick+1
+			if current_tick>=tick_skip then
+				__clear()
+				config.draw=true
+				draw_texture(current_frame)
+				current_tick=0
+				current_frame=current_frame+1
+				config.draw=false
+				if current_frame>frame_count then
+					config.animate_simple=false
+				end
+			else
+				__clear()
+				draw_texture()
 			end
 		else
 			__clear()
 			draw_texture()
 		end
-	else
-		__clear()
-		draw_texture()
+		auto_clear()
+		waves_solve()
 	end
-	auto_clear()
-	waves_solve()
 	local scale=config.scale
 	--[[
 	local c,x,y= is_mouse_down()

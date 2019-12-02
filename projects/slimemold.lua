@@ -296,7 +296,7 @@ void main(){
 
     vec4 pixel=texture(tex_main,normed);
     //float v=log(pixel.x+1);
-    float v=pow(pixel.x/turn_around,1);
+    float v=pow(pixel.x/turn_around,3);
     //float v=pixel.x/turn_around;
     //float v=gain(pixel.x/turn_around,-0.8);
     //v=noise(pos.xy*rez/100);
@@ -397,7 +397,7 @@ void main(){
 
 	if(fow<lft && fow<rgt)
 	{
-		head+=(rand(position.xy*position.z+state.xy*4572)-0.5)*turn_size*2;
+		head+=(rand(position.xy*position.z*9999+state.xy*4572)-0.5)*turn_size*2;
 	}
 	else if(rgt>fow)
 	{
@@ -426,10 +426,10 @@ void main(){
 	#endif
 	if(fow>turn_around)
 	{
-		//head+=(rand(position.xy*position.z+state.xy*4572)-0.5)*turn_size*2;
+		//head+=(rand(position.xy*position.z*9999+state.xy*4572)-0.5)*turn_size*2;
 		//head+=M_PI;//turn_size*2;//(rand(position.xy+state.xy*4572)-0.5)*turn_size*2;
 		//step_size*=-1;
-		head+=(rand(position.xy*position.z+state.xy*4578)-0.5)*ag_turn_avoid;
+		head+=rand(position.xy*position.z*9999+state.xy*4572)*ag_turn_avoid;
 		//head+=ag_turn_avoid;
 
 	}
