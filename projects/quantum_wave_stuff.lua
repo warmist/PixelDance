@@ -38,7 +38,7 @@ function update_size(  )
 end
 --update_size()
 local agent_count=1000
-
+--------------------- buffer setup / size update
 if agent_data==nil or agent_data.w~=agent_count then
 	agent_data=make_flt_buffer(agent_count,1)
 	agent_buffers={buffer_data.Make(),buffer_data.Make(),current=1,other=2,flip=function( t )
@@ -65,6 +65,50 @@ if agent_data==nil or agent_data.w~=agent_count then
 		agent_buffers[i]:set(agent_data.d,agent_count*4*4)
 	end
 end
+
+function make_textures()
+	texture_buffers=texture_buffers or {}
+	if #texture_buffers==0 or
+		texture_buffers[1].w~=size[1]*oversample or
+		texture_buffers[1].h~=size[2]*oversample then
+
+		texture_buffers.old=1
+		texture_buffers.cur=2
+		texture_buffers.next=3
+		--print("making tex")
+		for i=1,3 do
+			local t={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
+			t.t:use(0,1)
+			t.t:set(size[1]*oversample,size[2]*oversample,2)
+			texture_buffers[i]=t
+		end
+		texture_buffers.advance=function( t )
+			local l=t.old
+			t.old=t.cur
+			t.cur=t.next
+			t.next=t.old
+		end
+		texture_buffers.get_old=function (t)
+			return t[t.old]
+		end
+		texture_buffers.get_cur=function ( t )
+			return t[t.cur]
+		end
+		texture_buffers.get_next=function ( t )
+			return t[t.next]
+		end
+	end
+end
+make_textures()
+
+function make_io_buffer(  )
+	if io_buffer==nil or io_buffer.w~=size[1]*oversample or io_buffer.h~=size[2]*oversample then
+		io_buffer=make_float_buffer(size[1]*oversample,size[2]*oversample)
+	end
+end
+
+make_io_buffer()
+-----------------------------------------------------
 
 local size=STATE.size
 function count_lines( s )
@@ -270,6 +314,8 @@ float rand(vec2 n) {
 void main(){
 
 	vec3 state=position.xyz;
+	float step_size=position.w; //w==0 means frozen
+
 	vec2 normed_p=(state.xy/rez)*2-vec2(1,1);
 
 	float head=state.z;
@@ -292,20 +338,22 @@ function do_agent_logic_fbk(  )
 
 	agent_logic_shader_fbk:use()
 
-    tex_pixel:use(0)
-    agent_logic_shader_fbk:set_i("tex_main",0)
+    ???:use(0) --wave texture goes here
 
+    agent_logic_shader_fbk:set_i("wave_height",0)
 	agent_logic_shader_fbk:set("rez",win_w,win_h)
-
 	agent_logic_shader_fbk:raster_discard(true)
+	--setup feedback buffer
 	local ao=agent_buffers:get_other()
 	ao:use()
 	ao:bind_to_feedback()
-
+	--setup input buffer
 	local ac=agent_buffers:get_current()
 	ac:use()
 	agent_logic_shader_fbk:draw_points(0,agent_count,4,1)
 	__flush_gl()
+
+	-- cleanup
 	agent_logic_shader_fbk:raster_discard(false)
 	--__read_feedback(agent_data.d,agent_count*agent_count*4*4)
 	--print(agent_data:get(0,0).r)
@@ -344,36 +392,7 @@ end
 
 
 
-texture_buffers=texture_buffers or {}
-function make_sand_buffer()
-	local t={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
-	t.t:use(0,1)
-	t.t:set(size[1]*oversample,size[2]*oversample,2)
-	texture_buffers.sand=t
-end
-function make_textures()
-	if #texture_buffers==0 or
-		texture_buffers[1].w~=size[1]*oversample or
-		texture_buffers[1].h~=size[2]*oversample then
-		--print("making tex")
-		for i=1,3 do
-			local t={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
-			t.t:use(0,1)
-			t.t:set(size[1]*oversample,size[2]*oversample,2)
-			texture_buffers[i]=t
-		end
-		make_sand_buffer()
-	end
-end
-make_textures()
 
-function make_io_buffer(  )
-	if io_buffer==nil or io_buffer.w~=size[1]*oversample or io_buffer.h~=size[2]*oversample then
-		io_buffer=make_float_buffer(size[1]*oversample,size[2]*oversample)
-	end
-end
-
-make_io_buffer()
 
 
 
@@ -1028,23 +1047,16 @@ function update( )
 	gui()
 	update_real()
 end
-solver_iteration=solver_iteration or 0
 current_time=current_time or 0
 function waves_solve(  )
-
-	solver_iteration=solver_iteration+1
-	if solver_iteration>2 then solver_iteration=0 end
-
 	make_textures()
 
 	solver_shader:use()
-	local id_old=solver_iteration % 3 +1
-	local id_cur=(solver_iteration+1) % 3 +1
-	local id_next=(solver_iteration+2) % 3 +1
-	texture_buffers[id_old].t:use(0)
-	texture_buffers[id_cur].t:use(1)
+	texture_buffers:get_old():use(0)
+	texture_buffers:get_cur():use(0)
 	solver_shader:set_i("values_old",0)
 	solver_shader:set_i("values_cur",1)
+
 	if current_time==0 then
 		solver_shader:set("init",1);
 	else
@@ -1058,7 +1070,7 @@ function waves_solve(  )
 	solver_shader:set("freq2",config.freq2)
 	solver_shader:set("nm_vec",config.n,config.m)
 	solver_shader:set("ab_vec",config.a,config.b)
-	local trg_tex=texture_buffers[id_next];
+	local trg_tex=texture_buffers:get_next()
 	solver_shader:set("tex_size",trg_tex.w,trg_tex.h)
 	if not trg_tex.t:render_to(trg_tex.w,trg_tex.h) then
 		error("failed to set framebuffer up")
@@ -1086,6 +1098,7 @@ function save_img( id )
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 	end
 end
+
 function calc_range_value( tex )
 	make_io_buffer()
 	io_buffer:read_texture(tex.t)
@@ -1102,50 +1115,10 @@ function calc_range_value( tex )
 end
 
 function draw_texture( id )
-	local id_next=(solver_iteration+2) % 3 +1
-	local src_tex=texture_buffers[id_next];
-	local trg_tex=texture_buffers.sand;
+	__render_to_window()
 
-
-	local need_draw=false
-	if config.accumulate then
-
-		__render_to_window()
-
-		if config.draw or id  then
-			draw_shader:use()
-			draw_shader:blend_default()
-			trg_tex.t:use(0,1)
-			local minv,maxv
-			minv,maxv=calc_range_value(trg_tex)
-			draw_shader:set_i("values",0)
-			draw_shader:set("v_gamma",config.gamma)
-			draw_shader:set("v_gain",config.gain)
-			draw_shader:set("mid_color",config.color[1],config.color[2],config.color[3])
-			--[[
-			draw_shader:set("add",0)
-			draw_shader:set("mult",1/(math.max(math.abs(maxv),math.abs(minv))))
-			--]]
-			-- [[
-			draw_shader:set("add",-minv)
-			draw_shader:set("mult",1/(maxv-minv))
-			--]]
-			--[[
-			draw_shader:set("add",-math.log(minv+1))
-			draw_shader:set("mult",1/(math.log(maxv+1)-math.log(minv+1)))
-			--]]
-			--[[
-			draw_shader:set("add",0)
-			draw_shader:set("mult",1/math.log(maxv+1))
-			--]]
-			draw_shader:draw_quad()
-		else
-			need_draw=true
-		end
-	else
-		need_draw=true
-	end
-
+	--figure out what to draw
+	--ideally waves AND particles?
 	if need_save or id then
 		save_img(id)
 		need_save=nil
