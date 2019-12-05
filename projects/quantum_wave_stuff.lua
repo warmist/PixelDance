@@ -7,8 +7,8 @@ require "common"
 
 local size_mult
 local oversample=1
-local win_w
-local win_h
+local win_w, win_h
+local map_w, map_h
 local aspect_ratio
 
 config=make_config({
@@ -31,13 +31,16 @@ config=make_config({
 },config)
 
 function update_size(  )
-	win_w=1280*size_mult
-	win_h=1280*size_mult--math.floor(win_w*size_mult*(1/math.sqrt(2)))
+	win_w=1280
+	win_h=1280--math.floor(win_w*size_mult*(1/math.sqrt(2)))
 	aspect_ratio=win_w/win_h
 	__set_window_size(win_w,win_h)
+	map_w=math.floor(win_w*oversample)
+	map_h=math.floor(win_h*oversample)
 end
---update_size()
-local agent_count=1000
+update_size()
+
+local agent_count=10000
 --------------------- buffer setup / size update
 if agent_data==nil or agent_data.w~=agent_count then
 	agent_data=make_flt_buffer(agent_count,1)
@@ -58,28 +61,30 @@ if agent_data==nil or agent_data.w~=agent_count then
 	end}
 
 	for i=0,agent_count-1 do
-			agent_data:set(i,0,{math.random()*map_w,math.random()*map_h,math.random()*math.pi*2,0})
+			agent_data:set(i,0,{math.random()*map_w,math.random()*map_h,math.random()*math.pi*2,1})
 	end
 	for i=1,2 do
 		agent_buffers[i]:use()
 		agent_buffers[i]:set(agent_data.d,agent_count*4*4)
 	end
+	__unbind_buffer()
 end
-
+local size=STATE.size
 function make_textures()
+	--three buffers for wave simulation stuff
 	texture_buffers=texture_buffers or {}
 	if #texture_buffers==0 or
-		texture_buffers[1].w~=size[1]*oversample or
-		texture_buffers[1].h~=size[2]*oversample then
+		texture_buffers[1].w~=map_w or
+		texture_buffers[1].h~=map_h then
 
 		texture_buffers.old=1
 		texture_buffers.cur=2
 		texture_buffers.next=3
 		--print("making tex")
 		for i=1,3 do
-			local t={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
+			local t={t=textures:Make(),w=map_w,h=map_h}
 			t.t:use(0,1)
-			t.t:set(size[1]*oversample,size[2]*oversample,2)
+			t.t:set(map_w,map_h,2)
 			texture_buffers[i]=t
 		end
 		texture_buffers.advance=function( t )
@@ -98,19 +103,40 @@ function make_textures()
 			return t[t.next]
 		end
 	end
+	--particles that are stuck in there... wihtout a way to move :<
+	texture_particles=texture_particles or {}
+	if #texture_particles==0 or
+		texture_particles[1].w~=map_w or
+		texture_particles[1].h~=map_h then
+
+		texture_particles.cur=1
+		texture_particles.next=2
+		--print("making tex")
+		for i=1,2 do
+			local t={t=textures:Make(),w=map_w,h=map_h}
+			t.t:use(0,1)
+			t.t:set(map_w,map_h,2)
+			texture_particles[i]=t
+		end
+		texture_particles.advance=function( t )
+			local l=t.cur
+			t.cur=t.next
+			t.next=l
+		end
+		texture_particles.get_cur=function (t)
+			return t[t.cur]
+		end
+		texture_particles.get_next=function ( t )
+			return t[t.next]
+		end
+	end
 end
 make_textures()
 
-function make_io_buffer(  )
-	if io_buffer==nil or io_buffer.w~=size[1]*oversample or io_buffer.h~=size[2]*oversample then
-		io_buffer=make_float_buffer(size[1]*oversample,size[2]*oversample)
-	end
-end
-
-make_io_buffer()
 -----------------------------------------------------
 
-local size=STATE.size
+current_time=current_time or 0
+
 function count_lines( s )
 	local n=0
 	for i in s:gmatch("\n") do n=n+1 end
@@ -142,7 +168,7 @@ uniform float seed;
 uniform float move_dist;
 uniform vec4 params;
 uniform vec2 rez;
-
+out float step_size;
 void main()
 {
 	vec2 normed=(position.xy/rez)*2-vec2(1,1);
@@ -150,6 +176,7 @@ void main()
 	gl_PointSize=pix_size;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
+    step_size=position.w;
 }
 ]==],
 [==[
@@ -157,31 +184,32 @@ void main()
 #line 125
 out vec4 color;
 uniform float trail_amount;
+in float step_size;
 void main(){
-	color=vec4(trail_amount,0,0,1);
+
+	color=vec4(1-step_size/2,0,0,1);
 }
 ]==])
 function add_trails_fbk(  )
+
 	add_visit_shader:use()
-	tex_pixel:use(0)
-	add_visit_shader:blend_add()
+	texture_particles:get_cur().t:use(0)
+	--add_visit_shader:blend_add()
 	add_visit_shader:set_i("pix_size",1)
-	add_visit_shader:set("trail_amount",config.ag_trail_amount)
-	add_visit_shader:set("rez",win_w,win_h)
-	if not tex_pixel:render_to(win_w,win_h) then
+	add_visit_shader:set("trail_amount",1)
+	add_visit_shader:set("rez",map_w,map_h)
+	if not texture_particles:get_cur().t:render_to(map_w,map_h) then
 		error("failed to set framebuffer up")
 	end
-	if need_clear then
-		__clear()
-		need_clear=false
-		--print("Clearing")
-	end
+	__clear()
 	agent_buffers:get_current():use()
 	add_visit_shader:draw_points(0,agent_count,4)
 
 	add_visit_shader:blend_default()
 	__render_to_window()
 	__unbind_buffer()
+
+	--texture_particles:advance()
 end
 local draw_shader=shaders.Make[==[
 #version 330
@@ -297,18 +325,17 @@ local agent_logic_shader_fbk=shaders.Make(
 layout(location = 0) in vec4 position;//i.e. state
 out vec4 state_out;
 
-uniform sampler2D wave_height;
+uniform sampler2D static_layer;
 
 uniform vec2 rez;
 
 //agent settings uniforms
 uniform float ag_wave_influence;
+uniform float time;
 
 #define M_PI 3.1415926535897932384626433832795
-float rand(vec2 n) { 
-	return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
-}
 
+float rand(float n){return fract(sin(n) * 43758.5453123);}
 
 
 void main(){
@@ -316,14 +343,31 @@ void main(){
 	vec3 state=position.xyz;
 	float step_size=position.w; //w==0 means frozen
 
-	vec2 normed_p=(state.xy/rez)*2-vec2(1,1);
-
 	float head=state.z;
+	step_size=clamp(step_size,0,1);
+	if(rand(state.x*77.54f+487.04f+time*77.1674f+state.y*664.0f)>0.9)
+	{
+		head+=(rand(state.x*12.54f+884.04f+time*61.164f+state.y*888.0f)-0.5)*M_PI/4;
+	}
+	vec2 trg=state.xy+vec2(cos(head),sin(head))*step_size;
+	vec2 normed_trg=trg.xy/rez;
+	float v=texture(static_layer,normed_trg).r;
+	if(v>0.9)
+	{
+		step_size=0;
+		//state.xy=trg;
+	}
+	else
+	{
+		state.xy=trg;
+	}
+	//float dx=rand(state.x*890.2+state.y*77.1f+time*12.0)*2-1;
+	//float dy=rand(state.x*4870.2+state.y*741.1f+time*77.0)*2-1;
+	//state.xy+=vec2(dx,dy);
 
-	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
 	state.z=head;
 	state.xy=mod(state.xy,rez);
-	state_out=vec4(state.xyz,position.w);
+	state_out=vec4(state.xyz,step_size);
 
 }
 ]==]
@@ -338,10 +382,11 @@ function do_agent_logic_fbk(  )
 
 	agent_logic_shader_fbk:use()
 
-    ???:use(0) --wave texture goes here
-
-    agent_logic_shader_fbk:set_i("wave_height",0)
-	agent_logic_shader_fbk:set("rez",win_w,win_h)
+	local txt_in=texture_particles:get_cur()
+    --???:use(0) --wave texture goes here
+    txt_in.t:use(0)
+    agent_logic_shader_fbk:set_i("static_layer",0)
+	agent_logic_shader_fbk:set("rez",map_w,map_h)
 	agent_logic_shader_fbk:raster_discard(true)
 	--setup feedback buffer
 	local ao=agent_buffers:get_other()
@@ -355,8 +400,10 @@ function do_agent_logic_fbk(  )
 
 	-- cleanup
 	agent_logic_shader_fbk:raster_discard(false)
+
 	--__read_feedback(agent_data.d,agent_count*agent_count*4*4)
-	--print(agent_data:get(0,0).r)
+	--print("ag:",agent_data:get(0,0).r)
+
 	agent_buffers:flip()
 	__unbind_buffer()
 end
@@ -372,12 +419,13 @@ function agents_togpu()
 
 	agent_buffers:get_current():use()
 	agent_buffers:get_current():set(agent_data.d,agent_count*4*4)
+	__unbind_buffer()
 end
 function fill_buffer(  )
-	tex_pixel:use(0)
+	texture_particles:get_cur().t:use(0)
 	signal_buf:read_texture(tex_pixel)
-	for i=0,map_w-1 do
-    	for j=0,map_h-1 do
+	for i=0,win_w-1 do
+    	for j=0,win_h-1 do
     		signal_buf:set(math.floor(i),math.floor(j),math.random()*0.1)
     	end
     end
@@ -392,7 +440,20 @@ end
 
 
 
+simple_shader=shader_make[==[
+out vec4 color;
+in vec3 pos;
+uniform sampler2D values;
 
+void main(){
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	float lv=texture(values,normed).x;
+	if(lv>0.5)
+		color=vec4(lv,0,0,1);
+	else
+		color=vec4(lv,lv,lv,1);
+}
+]==]
 
 
 
@@ -511,286 +572,7 @@ uniform vec2 ab_vec;
 //uniform vec2 dpos;
 
 #define M_PI 3.14159265358979323846264338327950288
-//randoms
-float nrand( vec2 n )
-{
-	return fract(sin(dot(n.xy, vec2(12.9898, 78.233)))* 43758.5453);
-}
-//note: remaps v to [0;1] in interval [a;b]
-float remap( float a, float b, float v )
-{
-	return clamp( (v-a) / (b-a), 0.0, 1.0 );
-}
-//note: quantizes in l levels
-float truncate( float a, float l )
-{
-	return floor(a*l)/l;
-}
 
-float n1rand( vec2 n )
-{
-	float t = fract( time );
-	float nrnd0 = nrand( n + 0.07*t );
-	return nrnd0;
-}
-float n2rand( vec2 n )
-{
-	float t = fract( time );
-	float nrnd0 = nrand( n + 0.07*t );
-	float nrnd1 = nrand( n + 0.11*t );
-	return (nrnd0+nrnd1) / 2.0;
-}
-
-float n2rand_faster( vec2 n )
-{
-	float t = fract( time );
-	float nrnd0 = nrand( n + 0.07*t );
-
-    // Convert uniform distribution into triangle-shaped distribution.
-    float orig = nrnd0*2.0-1.0;
-    nrnd0 = orig*inversesqrt(abs(orig));
-    nrnd0 = max(-1.0,nrnd0); // Nerf the NaN generated by 0*rsqrt(0). Thanks @FioraAeterna!
-    nrnd0 = nrnd0-sign(orig)+0.5;
-    
-    // Result is range [-0.5,1.5] which is
-    // useful for actual dithering.
-    // convert to [0,1] for histogram.
-    return (nrnd0+0.5) * 0.5;
-}
-float n3rand( vec2 n )
-{
-	float t = fract( time );
-	float nrnd0 = nrand( n + 0.07*t );
-	float nrnd1 = nrand( n + 0.11*t );
-	float nrnd2 = nrand( n + 0.13*t );
-	return (nrnd0+nrnd1+nrnd2) / 3.0;
-}
-float n4rand( vec2 n )
-{
-	float t = fract( time );
-	float nrnd0 = nrand( n + 0.07*t );
-	float nrnd1 = nrand( n + 0.11*t );	
-	float nrnd2 = nrand( n + 0.13*t );
-	float nrnd3 = nrand( n + 0.17*t );
-	return (nrnd0+nrnd1+nrnd2+nrnd3) / 4.0;
-}
-float n4rand_inv( vec2 n )
-{
-	float t = fract( time );
-	float nrnd0 = nrand( n + 0.07*t );
-	float nrnd1 = nrand( n + 0.11*t );	
-	float nrnd2 = nrand( n + 0.13*t );
-	float nrnd3 = nrand( n + 0.17*t );
-    float nrnd4 = nrand( n + 0.19*t );
-	float v1 = (nrnd0+nrnd1+nrnd2+nrnd3) / 4.0;
-    float v2 = 0.5 * remap( 0.0, 0.5, v1 ) + 0.5;
-    float v3 = 0.5 * remap( 0.5, 1.0, v1 );
-    return (nrnd4<0.5) ? v2 : v3;
-}
-//sdfs
-float sdCircle( vec2 p, float r )
-{
-  return length(p) - r;
-}
-float sdBox( in vec2 p, in vec2 b )
-{
-    vec2 d = abs(p)-b;
-    return length(max(d,vec2(0))) + min(max(d.x,d.y),0.0);
-}
-float sdEquilateralTriangle( in vec2 p )
-{
-    const float k = sqrt(3.0);
-    p.x = abs(p.x) - 1.0;
-    p.y = p.y + 1.0/k;
-    if( p.x+k*p.y>0.0 ) p = vec2(p.x-k*p.y,-k*p.x-p.y)/2.0;
-    p.x -= clamp( p.x, -2.0, 0.0 );
-    return -length(p)*sign(p.y);
-}
-float sdTriangle( in vec2 p, in vec2 p0, in vec2 p1, in vec2 p2 )
-{
-    vec2 e0 = p1-p0, e1 = p2-p1, e2 = p0-p2;
-    vec2 v0 = p -p0, v1 = p -p1, v2 = p -p2;
-    vec2 pq0 = v0 - e0*clamp( dot(v0,e0)/dot(e0,e0), 0.0, 1.0 );
-    vec2 pq1 = v1 - e1*clamp( dot(v1,e1)/dot(e1,e1), 0.0, 1.0 );
-    vec2 pq2 = v2 - e2*clamp( dot(v2,e2)/dot(e2,e2), 0.0, 1.0 );
-    float s = sign( e0.x*e2.y - e0.y*e2.x );
-    vec2 d = min(min(vec2(dot(pq0,pq0), s*(v0.x*e0.y-v0.y*e0.x)),
-                     vec2(dot(pq1,pq1), s*(v1.x*e1.y-v1.y*e1.x))),
-                     vec2(dot(pq2,pq2), s*(v2.x*e2.y-v2.y*e2.x)));
-    return -sqrt(d.x)*sign(d.y);
-}
-//sdops
-float opUnion( float d1, float d2 ) {  return min(d1,d2); }
-
-float opSubtraction( float d1, float d2 ) { return max(-d1,d2); }
-
-float opIntersection( float d1, float d2 ) { return max(d1,d2); }
-
-float opSmoothUnion( float d1, float d2, float k ) {
-    float h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
-    return mix( d2, d1, h ) - k*h*(1.0-h); }
-
-float opSmoothSubtraction( float d1, float d2, float k ) {
-    float h = clamp( 0.5 - 0.5*(d2+d1)/k, 0.0, 1.0 );
-    return mix( d2, -d1, h ) + k*h*(1.0-h); }
-
-float opSmoothIntersection( float d1, float d2, float k ) {
-    float h = clamp( 0.5 - 0.5*(d2-d1)/k, 0.0, 1.0 );
-    return mix( d2, d1, h ) + k*h*(1.0-h); }
-
-//shapes
-
-float sh_circle(in vec2 st,in float rad,in float fw)
-{
-	return 1-smoothstep(rad-fw*0.75,rad+fw*0.75,dot(st,st)*4);
-}
-float sh_ring(in vec2 st,in float rad1,in float rad2,in float fw)
-{
-	return sh_circle(st,rad1,fw)-sh_circle(st,rad2,fw);
-}
-float sh_polyhedron(in vec2 st,in float num,in float size,in float rot,in float fw)
-{
-	float a=atan(st.x,st.y)+rot;
-	float b=6.28319/num;
-	return 1-(smoothstep(size-fw,size+fw, cos(floor(0.5+a/b)*b-a)*length(st.xy)));
-}
-void t_rot(inout vec2 st,float angle)
-{
-	float c=cos(angle);
-	float s=sin(angle);
-	mat2 m=mat2(c,-s,s,c);
-	st*=m;
-}
-void t_ref(inout vec2 st,float angle)
-{
-	float c=cos(2*angle);
-	float s=sin(2*angle);
-	mat2 m=mat2(c,s,s,-c);
-	st*=m;
-}
-float flower(in vec2 st,float fw)
-{
-	float size=0.15;
-	st-=vec2(0.15,0.15);
-	vec2 off=vec2(0.0,0.2);
-	float ret=0;
-	for(int i=0;i<6;i++)
-	{
-		st=st+off;
-		t_rot(st,(M_PI/6)*2);
-		ret=max(ret,sh_polyhedron(st*vec2(1,0.3),5,size,M_PI,fw*0.1));
-	}
-	return ret;
-}
-float dagger(in vec2 st,float fw)
-{
-	float v=sh_polyhedron(st*vec2(0.4,0.5)+vec2(0,0.122),3,0.1,0,fw/2);
-	v=max(v,sh_polyhedron(st+vec2(0,-0.2),3,0.25,M_PI/3,fw));
-	return v;
-}
-float leaf(in vec2 st,float fw)
-{
-	float size=0.35;
-	float x_dist=(size*sqrt(2)/2)*1.8;
-	float y_dist=size;
-	float v=sh_polyhedron(st*vec2(1,0.6),4,size,M_PI/4,fw/2);
-	v=max(v-sh_circle(st+vec2(x_dist,y_dist),x_dist,fw/2),0);
-	v=max(v-sh_circle(st+vec2(-x_dist,y_dist),x_dist,fw/2),0);
-	return v;
-}
-float chalice(in vec2 st,float fw)
-{
-	float ret=max(leaf(st,fw)-sh_circle(st+vec2(0,-0.4),0.8,fw),0);
-	ret=max(ret,sh_circle(st+vec2(0,-0.2),0.35,fw));
-	return ret;
-}
-float sh_wavy(in vec2 st,float rad)
-{
-	float a=atan(st.y,st.x);
-	float r=length(st);
-	return 1-smoothstep(rad-0.01,rad+0.01,r+cos(a*7)*0.05);
-}
-float balance(in vec2 st,float fw)
-{
-	int count=6;
-	float ret=sh_polyhedron(st,count,0.5,0,fw);
-	for(int i=0;i<count/2;i++)
-	{
-		float ang=(i/float(count))*M_PI*4+M_PI/2;
-		ret=max(ret-sh_circle(st+vec2(cos(ang),sin(ang))*0.5,0.35,fw),0);
-	}
-	return ret;
-}
-float sh_jaws(in vec2 st,float fw)
-{
-	float ret=sh_polyhedron(st,4,0.4,M_PI/4,fw);
-	vec2 center=vec2(0,0.25);
-	ret=max(ret-sh_circle(st-center,0.5,fw),0);
-	ret=max(ret-sh_polyhedron(st+vec2(0,0.5),4,0.2,M_PI/4,fw),0);
-	int count=4;
-	float dist=0.35;
-	float ang_offset=M_PI/count;
-	for(int i=0;i<=count;i++)
-	{
-		float ang=(i/float(count))*(M_PI-ang_offset)+ang_offset/2;
-		ret=max(ret,sh_polyhedron(st-center+vec2(cos(ang),sin(ang))*dist,3,0.04,ang*4,fw));
-	}
-	return ret;
-}
-float ankh(in vec2 st,float fw)
-{
-	float ring=sh_circle(st+vec2(0,-0.3),0.35,fw)-sh_circle(st+vec2(0,-0.3),0.2,fw);
-	float ret=max(ring,0);
-	float h1=sh_polyhedron(st*vec2(1.0,6)+vec2(0.2,0),3,0.2,M_PI/2,fw);
-	float h2=sh_polyhedron(st*vec2(1.0,6)-vec2(0.2,0),3,0.2,-M_PI/2,fw);
-	float d=sh_polyhedron(st*vec2(6.0,1)+vec2(0,0.4),4,0.4,0,fw);
-	return max(max(ret,h1),max(d,h2));
-}
-float ankh_sdf(in vec2 st)
-{
-	float ring=abs(sdCircle(st+vec2(0,-0.3),0.25))-0.15/4;
-	//float ring=abs(sdCircle(st+vec2(0,-0.3),0.275))-0.15/2;//-sdCircle(st+vec2(0,-0.3),0.2);
-	//float ret=max(ring,0);
-	float d=sdBox(st+vec2(0,0.35),vec2(0.07,0.4));
-	t_rot(st,M_PI/2);
-	float h1=sdEquilateralTriangle(st*vec2(15.0,4.0)+vec2(0.0,1));
-	t_rot(st,-M_PI);
-	float h2=sdEquilateralTriangle(st*vec2(15.0,4.0)+vec2(0.0,1));
-	float v=opUnion(opUnion(ring,d),opUnion(h1,h2))-0.02;
-
-	return step(v,0);//max(max(ret,h1),max(d,h2));
-}
-float petals(in vec2 st, float fw)
-{
-	float ret=0;
-	float ang=(M_PI/3.0);
-	for(int i=0;i<6;i++)
-	{
-		//*float(i);
-		vec2 v2=st;
-		t_rot(v2,ang*float(i));
-		v2-=vec2(0.25,0);
-		v2*=vec2(0.5,1);
-		//t_rot(v2,-ang*float(i));
-		//v2/=vec2(0.5,1);
-		//v2-=vec2(0.13,0);
-		ret=max(sh_polyhedron(v2,6,0.1,0,0),ret);
-	}
-	return ret;
-}
-float radial_shape(in vec2 st)
-{
-	float a=atan(st.y,st.x);
-	float r=length(st)*1.5;
-	return step(r/(sin(a*3)+1.1)+cos(a*9+sin(r*r)*M_PI*4)/16-0.5,0);
-}
-float grid(in vec2 st,float fw)
-{
-	st=mod(st,0.25)-vec2(0.125,0.125);
-	st*=vec2(5,5);
-	float r=leaf(st,fw);
-	return r;
-}
 #define DX(dx,dy) textureOffset(values_cur,normed,ivec2(dx,dy)).x
 float hash(float n) { return fract(sin(n) * 1e4); }
 float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
@@ -943,27 +725,15 @@ float boundary_condition_init(vec2 pos,vec2 dir)
 	return 0;
 }
 
-#define DRAW_FORM 0
 void main(){
 	float v=0;
 	float sh_v=1;
 
-#if DRAW_FORM
-	v=sh_v;
-#else
-	if(sh_v>1-w)
-	{
+	if(init==1)
+		v=calc_init_value(pos.xy);
+	else
+		v=calc_new_value(pos.xy);
 
-		if(init==1)
-			v=calc_init_value(pos.xy);
-		else
-			v=calc_new_value(pos.xy);
-	}
-	else if(sh_v>0)
-	{
-		v=0;
-	}
-#endif
 	color=vec4(v,0,0,1);
 }
 ]==]
@@ -1040,6 +810,38 @@ function gui()
 	if imgui.Button("Save image") then
 		need_save=true
 	end
+	if imgui.Button("Agentswarm") then
+    	for i=0,agent_count-1 do
+
+    		--local a = math.random() * 2 * math.pi
+			--local r = win_w/8 * math.sqrt(math.random())
+			--local x = r * math.cos(a)
+			--local y = r * math.sin(a)
+			local w=0
+			if i~=0 then
+				w=1
+			end
+			agent_data:set(i,0,
+    			{math.random()*map_w,
+    			 math.random()*map_h,
+    			 0,--math.random() * 2 * math.pi,
+    			 w})
+    	end
+
+    	agents_togpu()
+    end
+    if imgui.Button("Place Line") then
+    	local txt=texture_particles:get_cur().t
+    	txt:use(0)
+    	signal_buf=signal_buf or make_float_buffer(map_w,map_h)
+		signal_buf:read_texture(txt)
+		for i=0,map_w-1 do
+	    	--for j=0,win_h-1 do
+	    		signal_buf:set(math.floor(i),map_h/2,1)
+	    	--end
+	    end
+	    signal_buf:write_texture(txt)
+    end
 	imgui.End()
 end
 
@@ -1047,13 +849,13 @@ function update( )
 	gui()
 	update_real()
 end
-current_time=current_time or 0
+
 function waves_solve(  )
 	make_textures()
 
 	solver_shader:use()
-	texture_buffers:get_old():use(0)
-	texture_buffers:get_cur():use(0)
+	texture_buffers:get_old().t:use(0)
+	texture_buffers:get_cur().t:use(0)
 	solver_shader:set_i("values_old",0)
 	solver_shader:set_i("values_cur",1)
 
@@ -1077,10 +879,6 @@ function waves_solve(  )
 	end
 	solver_shader:draw_quad()
 	__render_to_window()
-
-
-
-	current_time=current_time+config.dt
 end
 
 function save_img( id )
@@ -1116,7 +914,10 @@ end
 
 function draw_texture( id )
 	__render_to_window()
-
+	simple_shader:use()
+	texture_particles:get_cur().t:use(0)
+	simple_shader:set_i("values",0)
+	simple_shader:draw_quad()
 	--figure out what to draw
 	--ideally waves AND particles?
 	if need_save or id then
@@ -1124,15 +925,21 @@ function draw_texture( id )
 		need_save=nil
 	end
 end
-
+local tick_refill=10000
+current_particle_tick=current_particle_tick or 0
 function update_real(  )
 	__no_redraw()
+	__clear()
+	__render_to_window()
 	if config.pause then
-		__clear()
 		draw_texture()
 	else
-		auto_clear()
-		waves_solve()
+		agents_step_fbk()
+		draw_texture()
+		current_time=current_time+config.dt
+		current_particle_tick=current_particle_tick+1
+		if tick_refill<current_particle_tick then
+			current_particle_tick=0
+		end
 	end
-	local scale=config.scale
 end
