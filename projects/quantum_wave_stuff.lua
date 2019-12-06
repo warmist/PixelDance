@@ -1,7 +1,10 @@
 --basically waves.lua but there is chance for waves to collapse into a particle
 --also limitation maybe only if it can "stick"
 --also maybe DLA but instead of diffusion waves push particles around
-
+--[[
+	TODO:
+		* refill particles everyonce a while
+]]
 require "common"
 -- see waves.lua
 
@@ -28,6 +31,7 @@ config=make_config({
 	{"animate",false,type="boolean"},
 	{"animate_simple",false,type="boolean"},
 	{"size_mult",true,type="boolean"},
+	{"particle_step",0.1,type="float",min=0.01,max=1},
 },config)
 
 function update_size(  )
@@ -40,7 +44,7 @@ function update_size(  )
 end
 update_size()
 
-local agent_count=10000
+local agent_count=300000
 --------------------- buffer setup / size update
 if agent_data==nil or agent_data.w~=agent_count then
 	agent_data=make_flt_buffer(agent_count,1)
@@ -132,7 +136,13 @@ function make_textures()
 	end
 end
 make_textures()
+function make_io_buffer(  )
+	if io_buffer==nil or io_buffer.w~=map_w or io_buffer.h~=map_h then
+		io_buffer=make_float_buffer(map_w,map_h)
+	end
+end
 
+make_io_buffer()
 -----------------------------------------------------
 
 current_time=current_time or 0
@@ -326,48 +336,89 @@ layout(location = 0) in vec4 position;//i.e. state
 out vec4 state_out;
 
 uniform sampler2D static_layer;
+uniform sampler2D wave_layer;
 
 uniform vec2 rez;
 
 //agent settings uniforms
 uniform float ag_wave_influence;
 uniform float time;
-
+uniform float particle_step_size;
 #define M_PI 3.1415926535897932384626433832795
 
 float rand(float n){return fract(sin(n) * 43758.5453123);}
 
-
+vec2 wave_grad(vec2 pos)
+{
+	vec2 grad;
+	grad.x=textureOffset(wave_layer,pos,ivec2(1,0)).x-
+		textureOffset(wave_layer,pos,ivec2(-1,0)).x;
+	grad.y=textureOffset(wave_layer,pos,ivec2(0,1)).x-
+		textureOffset(wave_layer,pos,ivec2(0,-1)).x;
+	return grad;
+}
 void main(){
 
 	vec3 state=position.xyz;
-	float step_size=position.w; //w==0 means frozen
-
+	float is_moving=position.w; //w==0 means frozen
 	float head=state.z;
-	step_size=clamp(step_size,0,1);
+	//random walk
+#if 0
+	float step_size=clamp(is_moving,0,1);
 	if(rand(state.x*77.54f+487.04f+time*77.1674f+state.y*664.0f)>0.9)
 	{
 		head+=(rand(state.x*12.54f+884.04f+time*61.164f+state.y*888.0f)-0.5)*M_PI/4;
 	}
 	vec2 trg=state.xy+vec2(cos(head),sin(head))*step_size;
+	//collision logic
 	vec2 normed_trg=trg.xy/rez;
 	float v=texture(static_layer,normed_trg).r;
 	if(v>0.9)
 	{
-		step_size=0;
+		is_moving=0;
 		//state.xy=trg;
 	}
 	else
 	{
 		state.xy=trg;
 	}
+#else
+	vec2 normed_pos=state.xy/rez;
+	vec2 g=wave_grad(normed_pos);
+	float w_value=texture(wave_layer,normed_pos).r;
+	float w_str=length(g);
+	if (w_str>0.5 && w_value>0)
+	{
+		head=atan(-g.y,-g.x);
+		float step_size=particle_step_size;//50000*length(g);
+
+		step_size=clamp(is_moving*step_size,0,1);
+
+		vec2 trg=state.xy+vec2(cos(head),sin(head))*step_size;
+		vec2 normed_trg=trg.xy/rez;
+		float v=texture(static_layer,normed_trg).r;
+		if(v>0.9) //stop if hitting aggregated particles
+		{
+			is_moving=0;
+			//state.xy=trg;
+		}
+		else if(v>0) //collide with other moving particles
+		{
+
+		}
+		else
+		{
+			state.xy=trg;
+		}
+	}
+#endif
 	//float dx=rand(state.x*890.2+state.y*77.1f+time*12.0)*2-1;
 	//float dy=rand(state.x*4870.2+state.y*741.1f+time*77.0)*2-1;
 	//state.xy+=vec2(dx,dy);
 
 	state.z=head;
 	state.xy=mod(state.xy,rez);
-	state_out=vec4(state.xyz,step_size);
+	state_out=vec4(state.xyz,is_moving);
 
 }
 ]==]
@@ -383,10 +434,14 @@ function do_agent_logic_fbk(  )
 	agent_logic_shader_fbk:use()
 
 	local txt_in=texture_particles:get_cur()
-    --???:use(0) --wave texture goes here
     txt_in.t:use(0)
+
+    local waves_tex=texture_buffers:get_cur().t
+    waves_tex:use(1)
     agent_logic_shader_fbk:set_i("static_layer",0)
+    agent_logic_shader_fbk:set_i("wave_layer",1)
 	agent_logic_shader_fbk:set("rez",map_w,map_h)
+	agent_logic_shader_fbk:set("particle_step_size",config.particle_step)
 	agent_logic_shader_fbk:raster_discard(true)
 	--setup feedback buffer
 	local ao=agent_buffers:get_other()
@@ -450,8 +505,10 @@ void main(){
 	float lv=texture(values,normed).x;
 	if(lv>0.5)
 		color=vec4(lv,0,0,1);
-	else
+	else if(lv>0)
 		color=vec4(lv,lv,lv,1);
+	else
+		color=vec4(0);
 }
 ]==]
 
@@ -470,7 +527,7 @@ void main(){
 	color=vec4(lv,lv,lv,1);
 }
 ]==]
-draw_shader=shader_make[==[
+draw_waves_shader=shader_make[==[
 out vec4 color;
 in vec3 pos;
 uniform sampler2D values;
@@ -516,11 +573,13 @@ void main(){
 			color=vec4(0,0,lv,1);
 		}
 #else
-	float lv=f(abs(texture(values,normed).x+add))*mult;
+	float lv=f(texture(values,normed).x+add)*mult;
 	//float lv=f(abs(log(texture(values,normed).x+1)+add))*mult;
 	//lv=pow(1-lv,gamma);
+	lv=clamp(lv,0,1);
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
+
 	/* quantize
 	float q=7;
 	lv=clamp(floor(lv*q)/q,0,1);
@@ -540,7 +599,7 @@ void main(){
 	}
 	//*/
 	
-	///* continuous color
+	/* continuous color
 	if(lv>0.5)
 	{
 		color.xyz=mix(mid_color,col_top,(lv-0.5)*2);
@@ -550,7 +609,7 @@ void main(){
 		color.xyz=mix(col_back,mid_color,lv*2);
 	}
 	//*/
-
+	color.xyz=vec3(lv);
 #endif
 }
 ]==]
@@ -559,6 +618,7 @@ out vec4 color;
 in vec3 pos;
 uniform sampler2D values_cur;
 uniform sampler2D values_old;
+uniform sampler2D static_layer;
 uniform float init;
 uniform float dt;
 uniform float c_const;
@@ -582,7 +642,7 @@ float func(vec2 pos)
 	//	return cos(time/freq)+cos(time/(2*freq/3))+cos(time/(3*freq/2));
 	//vec2 pos_off=vec2(cos(time*0.001)*0.5,sin(time*0.001)*0.5);
 	//if(sh_ring(pos,1.2,1.1,0.001)>0)
-	float max_time=10;
+	float max_time=50;
 	float min_freq=1;
 	float max_freq=5;
 	float ang=atan(pos.y,pos.x);
@@ -590,8 +650,8 @@ float func(vec2 pos)
 	float fr=freq;
 	float fr2=freq2;
 	//fr*=mix(min_freq,max_freq,time/max_time);
-	float max_a=4;
-	float r=0.08;
+	float max_a=3;
+	float r=0.5;
 	#if 0
 		//if(time<max_time)
 			//if(pos.x<-0.35)
@@ -600,7 +660,7 @@ float func(vec2 pos)
 	#endif
 	#if 0
 		//if(time<max_time)
-		//if(pos.x<-0.35)
+		if(pos.x<-0.9)
 			return (
 		ab_vec.x*sin(time*fr*M_PI/1000
 		//+pos.x*M_PI*2*nm_vec.x
@@ -612,19 +672,19 @@ float func(vec2 pos)
 		)*cos(pos.y*M_PI*nm_vec.y)
 		);
 	#endif
-	#if 0
+	#if 1
 	for(float a=0;a<max_a;a++)
 	{
 		float ang=(a/max_a)*M_PI*2;
 
 		vec2 dv=vec2(cos(ang)*r,sin(ang)*r);
-		if(length(pos+dv)<0.005 && time<max_time)
+		if(length(pos+dv)<0.005)
 		//if(time<max_time)
 			return (
 			sin(time*fr*M_PI/1000)
 			+sin(time*fr*M_PI/1000*1.618)
 			/*+sin(time*freq*3*M_PI/1000)*/
-										)*0.00005;
+										);
 	}
 	#endif
 	#if 0
@@ -641,7 +701,7 @@ float func(vec2 pos)
 		)*0.00005;
 	#endif
 
-	#if 1
+	#if 0
 
 
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.65;
@@ -654,8 +714,9 @@ float func(vec2 pos)
 
 	#endif
 	#if 0
-	if(length(pos+vec2(0,0.5))<0.005)
-		return sin(time*freq*7.13*M_PI/1000)*0.0005;
+	//if(time<max_time)
+	if(length(pos+vec2(0.75,0.8))<0.005)
+		return sin(time*fr*M_PI/1000);
 	#endif
 	//return 0.1;//0.0001*sin(time/1000)/(1+length(pos));
 	return 0;
@@ -682,9 +743,15 @@ float calc_new_value(vec2 pos)
 	float dcsqry=dcsqr;
 #if 0
 	float dec=dot(pos,pos)*decay;//abs(hash(pos*100))*decay;
+#elif 0
+	float dec=0.2;
+	float sh_v=texture(static_layer,normed).x;
+	if(sh_v<0.9)
+		dec=0;
 #else
 	float dec=decay;
 #endif
+
 	float ret=(0.5*dec*dt-1)*texture(values_old,normed).x+
 		2*DX(0,0)+
 		dcsqrx*(DX(1,0)-2*DX(0,0)+DX(-1,0))+
@@ -727,13 +794,22 @@ float boundary_condition_init(vec2 pos,vec2 dir)
 
 void main(){
 	float v=0;
-	float sh_v=1;
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+#if 1
+	float sh_v=texture(static_layer,normed).x;
+#else
+	float sh_v=0;
+#endif
 
-	if(init==1)
-		v=calc_init_value(pos.xy);
+	if(sh_v<0.9)
+	{
+		if(init==1)
+			v=calc_init_value(pos.xy);
+		else
+			v=calc_new_value(pos.xy);
+	}
 	else
-		v=calc_new_value(pos.xy);
-
+		v=0;
 	color=vec4(v,0,0,1);
 }
 ]==]
@@ -813,19 +889,25 @@ function gui()
 	if imgui.Button("Agentswarm") then
     	for i=0,agent_count-1 do
 
-    		--local a = math.random() * 2 * math.pi
-			--local r = win_w/8 * math.sqrt(math.random())
-			--local x = r * math.cos(a)
-			--local y = r * math.sin(a)
-			local w=0
-			if i~=0 then
-				w=1
-			end
-			agent_data:set(i,0,
-    			{math.random()*map_w,
-    			 math.random()*map_h,
+
+			
+			if i<1 then
+	    		local a = math.random() * 2 * math.pi
+				local r = win_w/32 * math.sqrt(math.random())
+				local x = r * math.cos(a)+map_w/2
+				local y = r * math.sin(a)+map_h/2
+				agent_data:set(i,0,
+    			{x,
+    			 y,
     			 0,--math.random() * 2 * math.pi,
-    			 w})
+    			 0})
+			else
+				agent_data:set(i,0,
+	    			{math.random()*map_w,
+	    			 math.random()*map_h,
+	    			 0,--math.random() * 2 * math.pi,
+	    			 1})
+			end
     	end
 
     	agents_togpu()
@@ -855,10 +937,12 @@ function waves_solve(  )
 
 	solver_shader:use()
 	texture_buffers:get_old().t:use(0)
-	texture_buffers:get_cur().t:use(0)
+	texture_buffers:get_cur().t:use(1)
 	solver_shader:set_i("values_old",0)
 	solver_shader:set_i("values_cur",1)
 
+	texture_particles:get_cur().t:use(2)
+	solver_shader:set_i("static_layer",2)
 	if current_time==0 then
 		solver_shader:set("init",1);
 	else
@@ -879,6 +963,7 @@ function waves_solve(  )
 	end
 	solver_shader:draw_quad()
 	__render_to_window()
+	texture_buffers:advance()
 end
 
 function save_img( id )
@@ -899,7 +984,7 @@ end
 
 function calc_range_value( tex )
 	make_io_buffer()
-	io_buffer:read_texture(tex.t)
+	io_buffer:read_texture(tex)
 	local m1=math.huge;
 	local m2=-math.huge;
 	for x=0,io_buffer.w-1 do
@@ -914,12 +999,51 @@ end
 
 function draw_texture( id )
 	__render_to_window()
+	
+	if config.draw then
+		draw_waves_shader:use()
+		draw_waves_shader:blend_default()
+		local trg_tex=texture_buffers:get_cur().t
+		trg_tex:use(0,1)
+		local minv,maxv
+		if single_shot_value==true then
+			minv,maxv=calc_range_value(trg_tex)
+			single_shot_value={minv,maxv}
+		elseif type(single_shot_value)=="table" then
+			minv,maxv=single_shot_value[1],single_shot_value[2]
+		else
+			minv,maxv=calc_range_value(trg_tex)
+		end
+		draw_waves_shader:set_i("values",0)
+		draw_waves_shader:set("v_gamma",config.gamma)
+		draw_waves_shader:set("v_gain",config.gain)
+		draw_waves_shader:set("mid_color",config.color[1],config.color[2],config.color[3])
+		-- [[
+		draw_waves_shader:set("add",0)
+		draw_waves_shader:set("mult",1/(math.max(math.abs(maxv),math.abs(minv))))
+		--]]
+		--[[
+		draw_waves_shader:set("add",-minv)
+		draw_waves_shader:set("mult",1/(maxv-minv))
+		--]]
+		--[[
+		draw_waves_shader:set("add",-math.log(minv+1))
+		draw_waves_shader:set("mult",1/(math.log(maxv+1)-math.log(minv+1)))
+		--]]
+		--[[
+		draw_waves_shader:set("add",0)
+		draw_waves_shader:set("mult",1/math.log(maxv+1))
+		--]]
+		draw_waves_shader:draw_quad()
+	end
+	-- [[
 	simple_shader:use()
+	simple_shader:blend_add()
 	texture_particles:get_cur().t:use(0)
+	--texture_buffers:get_cur().t:use(0)
 	simple_shader:set_i("values",0)
 	simple_shader:draw_quad()
-	--figure out what to draw
-	--ideally waves AND particles?
+	--]]
 	if need_save or id then
 		save_img(id)
 		need_save=nil
@@ -935,11 +1059,15 @@ function update_real(  )
 		draw_texture()
 	else
 		agents_step_fbk()
+		waves_solve()
 		draw_texture()
 		current_time=current_time+config.dt
+		--[[
+		
 		current_particle_tick=current_particle_tick+1
 		if tick_refill<current_particle_tick then
 			current_particle_tick=0
 		end
+		]]
 	end
 end
