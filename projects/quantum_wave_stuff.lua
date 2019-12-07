@@ -44,7 +44,7 @@ function update_size(  )
 end
 update_size()
 
-local agent_count=300000
+local agent_count=100000
 --------------------- buffer setup / size update
 if agent_data==nil or agent_data.w~=agent_count then
 	agent_data=make_flt_buffer(agent_count,1)
@@ -387,10 +387,10 @@ void main(){
 	vec2 g=wave_grad(normed_pos);
 	float w_value=texture(wave_layer,normed_pos).r;
 	float w_str=length(g);
-	if (w_str>0.5 && w_value>0)
+	if (w_str>0.5)
 	{
 		head=atan(-g.y,-g.x);
-		float step_size=particle_step_size;//50000*length(g);
+		float step_size=particle_step_size*w_str/1000;//50000*length(g);
 
 		step_size=clamp(is_moving*step_size,0,1);
 
@@ -650,7 +650,7 @@ float func(vec2 pos)
 	float fr=freq;
 	float fr2=freq2;
 	//fr*=mix(min_freq,max_freq,time/max_time);
-	float max_a=3;
+	float max_a=5;
 	float r=0.5;
 	#if 0
 		//if(time<max_time)
@@ -672,7 +672,7 @@ float func(vec2 pos)
 		)*cos(pos.y*M_PI*nm_vec.y)
 		);
 	#endif
-	#if 1
+	#if 0
 	for(float a=0;a<max_a;a++)
 	{
 		float ang=(a/max_a)*M_PI*2;
@@ -701,11 +701,11 @@ float func(vec2 pos)
 		)*0.00005;
 	#endif
 
-	#if 0
+	#if 1
 
 
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.65;
-	if(time<max_time)
+	//if(time<max_time)
 	if(abs(length(pos)-0.7)<0.005)
 		return sin(time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
 	//if(length(pos+vec2(0,0.5)+p)<0.005)
@@ -791,12 +791,16 @@ float boundary_condition_init(vec2 pos,vec2 dir)
 	//simples condition (i.e. bounce)
 	return 0;
 }
-
+float sdCircle( vec2 p, float r )
+{
+  return length(p) - r;
+}
 void main(){
 	float v=0;
 	vec2 normed=(pos.xy+vec2(1,1))/2;
+
 #if 1
-	float sh_v=texture(static_layer,normed).x;
+	float sh_v=texture(static_layer,normed).x+(1-step(sdCircle(pos.xy,0.9),0));
 #else
 	float sh_v=0;
 #endif
