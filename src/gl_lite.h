@@ -161,6 +161,7 @@ typedef ptrdiff_t GLsizeiptr;
     GLE(void,      EndTransformFeedback,	void)\
     GLE(void,      GetBufferSubData,        GLenum target, GLintptr offset, GLsizeiptr size,void * data )\
     GLE(void,      GetNamedBufferSubData,   GLuint buffer, GLintptr offset, GLsizeiptr size,void * data )\
+    GLE(void,      GetnTexImage,            GLenum traget, GLint level,GLenum format,GLenum type,GLsizei bufsize, void* data)\
     /* end */
 //GLE(void, DeleteTextures, GLsizei count, const GLuint * textures)
 //GLE(void, GetTexImage, GLenum target, GLint level, GLenum format, GLenum type, GLvoid * img)
@@ -170,7 +171,7 @@ GLLITE_GL_LIST_WIN32
 #undef GLE
 
 bool gl_lite_init();
-
+#define GL_TRAP if (auto err = glGetError() ) { printf("GlError:%d (%x)\n", err,err); __debugbreak(); }
 #endif //GL_LITE_H
 
 // =============================================================================

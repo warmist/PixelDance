@@ -71,9 +71,7 @@ static int get_texture_data(lua_State* L)
 	auto s = check(L, 1);
 
 	void* data = const_cast<void*>(lua_topointer(L, 2));
-	auto w = luaL_checkint(L, 3);
-	auto h = luaL_checkint(L, 4);
-	auto format = luaL_optint(L, 5, 0);
+	auto format = luaL_optint(L, 3, 0);
 
 	auto f = formats[format];
 	glGetTexImage(GL_TEXTURE_2D, 0, f.format, f.type, data);

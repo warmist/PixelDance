@@ -54,7 +54,7 @@ function make_buffer( typename,type_id,default_pixel )
 			tex:set(t.d,t.w,t.h,t.type)
 		end
 		img.read_texture=function(t, tex )
-			tex:read(t.d,t.w,t.h,t.type)
+			tex:read(t.d,t.type)
 		end
 		return img
 	end
@@ -364,3 +364,44 @@ GL_2_BYTES=			0x1407
 GL_3_BYTES=			0x1408
 GL_4_BYTES=			0x1409
 GL_DOUBLE=			0x140A
+--------------------------------------------
+
+multi_texture=class(
+function(mb,w,h,buf_count,texture_type)
+	mb.count=buf_count
+	mb.type=texture_type
+	mb.current=1
+	mb:update_size(w,h)
+end
+)
+function multi_texture:update_size( w,h )
+	self.textures=self.textures or {}
+ 	if self.w~=w or self.h~=h then
+ 		self.w=w
+ 		self.h=h
+ 		for i=1,self.count do
+ 			local t=textures:Make()
+ 			t:use(0,1)
+ 			t:set(w,h,self.type)
+ 			self.textures[i]=t
+ 		end
+ 	end
+end
+function multi_texture:advance(  )
+	self.current=self.current+1
+	if self.current>self.count then
+		self.current=1
+	end
+end
+function multi_texture:get(offset)
+	offset =offset or 0
+	local id=self.current+offset
+	id=((id-1) % self.count)+1
+	return self.textures[id]
+end
+function multi_texture:get_next()
+	return self:get(1)
+end
+function multi_texture:get_prev()
+	return self:get(self.count-1)
+end

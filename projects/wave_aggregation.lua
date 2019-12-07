@@ -1,6 +1,5 @@
---basically waves.lua but there is chance for waves to collapse into a particle
---also limitation maybe only if it can "stick"
---also maybe DLA but instead of diffusion waves push particles around
+--basically waves.lua but
+--DLA: instead of diffusion waves push particles around
 --[[
 	TODO:
 		* refill particles everyonce a while
@@ -10,7 +9,7 @@ require "common"
 
 local size_mult
 local oversample=1
-local oversample_waves=1
+local oversample_waves=4
 local win_w, win_h
 local map_w, map_h
 local wave_map_w, wave_map_h
@@ -36,8 +35,8 @@ config=make_config({
 },config)
 
 function update_size(  )
-	win_w=1024
-	win_h=1024--math.floor(win_w*size_mult*(1/math.sqrt(2)))
+	win_w=1280
+	win_h=1280--math.floor(win_w*size_mult*(1/math.sqrt(2)))
 	aspect_ratio=win_w/win_h
 	__set_window_size(win_w,win_h)
 	map_w=math.floor(win_w*oversample)
@@ -47,7 +46,7 @@ function update_size(  )
 end
 update_size()
 
-local agent_count=map_w*map_h
+local agent_count=500000
 --------------------- buffer setup / size update
 if agent_data==nil or agent_data.w~=agent_count then
 	agent_data=make_flt_buffer(agent_count,1)
@@ -347,14 +346,10 @@ uniform vec2 rez;
 uniform float ag_wave_influence;
 uniform float time;
 uniform float particle_step_size;
-uniform float wave_max;
 #define M_PI 3.1415926535897932384626433832795
 
-float random (vec2 st) {
-    return fract(sin(dot(st.xy,
-                         vec2(12.9898,78.233)))*
-        43758.5453123);
-}
+float rand(float n){return fract(sin(n) * 43758.5453123);}
+
 vec2 wave_grad(vec2 pos)
 {
 	vec2 grad;
@@ -369,16 +364,61 @@ void main(){
 	vec3 state=position.xyz;
 	float is_moving=position.w; //w==0 means frozen
 	float head=state.z;
-
+	//random walk
+#if 0
+	float step_size=clamp(is_moving,0,1);
+	if(rand(state.x*77.54f+487.04f+time*77.1674f+state.y*664.0f)>0.9)
+	{
+		head+=(rand(state.x*12.54f+884.04f+time*61.164f+state.y*888.0f)-0.5)*M_PI/4;
+	}
+	vec2 trg=state.xy+vec2(cos(head),sin(head))*step_size;
+	//collision logic
+	vec2 normed_trg=trg.xy/rez;
+	float v=texture(static_layer,normed_trg).r;
+	if(v>0.9)
+	{
+		is_moving=0;
+		//state.xy=trg;
+	}
+	else
+	{
+		state.xy=trg;
+	}
+#else
 	vec2 normed_pos=state.xy/rez;
+	vec2 g=wave_grad(normed_pos);
 	float w_value=texture(wave_layer,normed_pos).r;
+	float w_str=length(g);
+	if (w_str>0.5)
+	{
+		head=atan(-g.y,-g.x);
+		float step_size=particle_step_size*w_str/1000;//50000*length(g);
+
+		step_size=clamp(is_moving*step_size,0,1);
+
+		vec2 trg=state.xy+vec2(cos(head),sin(head))*step_size;
+		vec2 normed_trg=trg.xy/rez;
+		float v=texture(static_layer,normed_trg).r;
+		if(v>0.9) //stop if hitting aggregated particles
+		{
+			is_moving=0;
+			//state.xy=trg;
+		}
+		else if(v>0) //collide with other moving particles
+		{
+
+		}
+		else
+		{
+			state.xy=trg;
+		}
+	}
+#endif
 	//float dx=rand(state.x*890.2+state.y*77.1f+time*12.0)*2-1;
 	//float dy=rand(state.x*4870.2+state.y*741.1f+time*77.0)*2-1;
 	//state.xy+=vec2(dx,dy);
-	float chance=abs(texture(wave_layer,normed_pos).r)/wave_max;
-	if(random(state.xy+vec2(0.1,0.2)*time*77.0)<chance*10)
-		is_moving=0;
-	state.z=0;
+
+	state.z=head;
 	state.xy=mod(state.xy,rez);
 	state_out=vec4(state.xyz,is_moving);
 
@@ -400,11 +440,8 @@ function do_agent_logic_fbk(  )
 
     local waves_tex=texture_buffers:get_cur().t
     waves_tex:use(1)
-	local m=calc_abs_sum(waves_tex)
-	print(m)
     agent_logic_shader_fbk:set_i("static_layer",0)
     agent_logic_shader_fbk:set_i("wave_layer",1)
-    agent_logic_shader_fbk:set("wave_max",m)
 	agent_logic_shader_fbk:set("rez",map_w,map_h)
 	agent_logic_shader_fbk:set("particle_step_size",config.particle_step)
 	agent_logic_shader_fbk:raster_discard(true)
@@ -421,7 +458,7 @@ function do_agent_logic_fbk(  )
 	-- cleanup
 	agent_logic_shader_fbk:raster_discard(false)
 
-	--__read_feedback(agent_data.d,agent_count*4*4)
+	--__read_feedback(agent_data.d,agent_count*agent_count*4*4)
 	--print("ag:",agent_data:get(0,0).r)
 
 	agent_buffers:flip()
@@ -458,79 +495,8 @@ function agents_step_fbk(  )
 
 end
 
---[===[ DOES NOT WORK
-reduce_shader=shader_make[==[
-out vec4 color;
-in vec3 pos;
-uniform sampler2D values;
-void main(){
-	vec2 normed=(pos.xy+vec2(1,1))/2;
 
-    float v = textureOffset(values,normed,ivec2(0,0)).r;
-    v=abs(v);
-    float test = textureOffset(values, normed,ivec2(0, 1)).r;
-    test=abs(test);
-    if(test < v)
-            v = test;
-    test = textureOffset(values, normed, ivec2(1, 0)).r;
-    test=abs(test);
-    if(test < v)
-            v = test;
-    test = textureOffset(values, normed, ivec2(1, 1)).r;
-    test=abs(test);
-    if(test < v)
-            v = test;
 
-    color = vec4(v,0,0,0);
-}
-]==]
---max: if(test>v) v=test;
---min: if(test<v) v=test;
---sum: v+=test;
---sumabs: v+=abs(test); (init: v=abs(v))
---avg: v+=test/4;
-function reduce( txt_in ,w,h)
-	local num=math.floor(math.log(w)/math.log(2))
-	num=math.max(num,math.floor(math.log(h)/math.log(2)))
-
-	--setup output texture
-	red_buf=red_buf or multi_texture(math.floor(w/2),math.floor(h/2),2,2)
-	red_buf:update_size(math.floor(w/2),math.floor(h/2))
-	reduce_shader:use()
-	reduce_shader:blend_default()
-	for i=1,num do
-		w=math.floor(w/2)
-		h=math.floor(h/2)
-	--init
-		if i==1 then
-			txt_in:use(0)
-		else
-			red_buf:get():use(0)
-		end
-		reduce_shader:set_i("values",0)
-		--reduce_shader:set_i("rez",w,h)
-		red_buf:get_next():use(1)
-		if not red_buf:get_next():render_to(w,h) then
-			error("failed to set framebuffer up")
-		end
-		reduce_shader:draw_quad()
-
-	--flip output
-		red_buf:advance()
-	end
-	--read_output
-	__render_to_window()
-	red_buf_out=red_buf_out or make_float_buffer(red_buf.w,red_buf.h)
-	red_buf:get_prev():use(0)
-	red_buf_out:read_texture(red_buf:get_prev())
-	local value=red_buf_out:get(0,0)
-	print(value)
-	--restore state
-	reduce_shader:blend_default()
-	
-	return value
-end
-]===]
 simple_shader=shader_make[==[
 out vec4 color;
 in vec3 pos;
@@ -737,7 +703,7 @@ float func(vec2 pos)
 		)*0.00005;
 	#endif
 
-	#if 0
+	#if 1
 
 
 	
@@ -749,10 +715,10 @@ float func(vec2 pos)
 
 
 	#endif
-	#if 1
-	vec2 p=vec2(0.2,0.4);
-	//vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.65;
-	if(time<max_time)
+	#if 0
+	//vec2 p=vec2(0.2,0.4);
+	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.65;
+	//if(time<max_time)
 	if(length(pos+p)<0.005)
 		return sin(time*fr*M_PI/1000);
 	#endif
@@ -932,11 +898,24 @@ function gui()
     	for i=0,agent_count-1 do
 
 
-			agent_data:set(i,0,
-	    			{i%map_w,
-	    			 math.floor(i/map_w),
+			
+			if i<1 then
+	    		local a = math.random() * 2 * math.pi
+				local r = win_w/4 * math.sqrt(math.random())
+				local x = r * math.cos(a)+map_w/2
+				local y = r * math.sin(a)+map_h/2
+				agent_data:set(i,0,
+    			{x,
+    			 y,
+    			 0,--math.random() * 2 * math.pi,
+    			 0})
+			else
+				agent_data:set(i,0,
+	    			{math.random()*map_w,
+	    			 math.random()*map_h,
 	    			 0,--math.random() * 2 * math.pi,
 	    			 1})
+			end
     	end
 
     	agents_togpu()
@@ -998,19 +977,7 @@ function save_img( id )
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 	end
 end
-function calc_abs_sum( tex )
-	make_io_buffer()
-	io_buffer:read_texture(tex)
-	local m1=0;
 
-	for x=0,io_buffer.w-1 do
-		for y=0,io_buffer.h-1 do
-			local v=io_buffer:get(x,y)
-			m1=m1+math.abs(v)
-		end
-	end
-	return m1
-end
 function calc_range_value( tex )
 	make_io_buffer()
 	io_buffer:read_texture(tex)
@@ -1025,17 +992,16 @@ function calc_range_value( tex )
 	end
 	return m1,m2
 end
+
 function draw_texture( id )
 	__render_to_window()
 	
 	if config.draw then
-		local minv,maxv
-
 		draw_waves_shader:use()
 		draw_waves_shader:blend_default()
 		local trg_tex=texture_buffers:get_cur().t
 		trg_tex:use(0,1)
-
+		local minv,maxv
 		if single_shot_value==true then
 			minv,maxv=calc_range_value(trg_tex)
 			single_shot_value={minv,maxv}
@@ -1044,7 +1010,6 @@ function draw_texture( id )
 		else
 			minv,maxv=calc_range_value(trg_tex)
 		end
-
 		draw_waves_shader:set_i("values",0)
 		draw_waves_shader:set("v_gamma",1)--config.gamma)
 		draw_waves_shader:set("v_gain",1)--config.gain)
