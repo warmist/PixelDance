@@ -7,7 +7,7 @@ require "common"
 
 --]]
 local size_mult
-local oversample=1
+local oversample=2
 local win_w
 local win_h
 local aspect_ratio
@@ -458,6 +458,20 @@ float ankh_sdf(in vec2 st)
 
 	return step(v,0);//max(max(ret,h1),max(d,h2));
 }
+float damaged_circle(in vec2 st)
+{
+	float ret=sdCircle(st,0.8);
+	ret=opSubtraction(sdCircle(st+vec2(0.55,0),0.15),ret);
+	ret=opSubtraction(sdCircle(st+vec2(-0.55,0),0.15),ret);
+	ret=opSubtraction(sdCircle(st+vec2(0,0.55),0.15),ret);
+	ret=opSubtraction(sdCircle(st+vec2(0,-0.55),0.15),ret);
+
+	ret=opSubtraction(sdCircle(st+vec2(0.2,0.2),0.05),ret);
+	ret=opSubtraction(sdCircle(st+vec2(-0.2,-0.2),0.05),ret);
+	ret=opSubtraction(sdCircle(st+vec2(-0.2,0.2),0.05),ret);
+	ret=opSubtraction(sdCircle(st+vec2(0.2,-0.2),0.05),ret);
+	return step(ret,0);
+}
 float petals(in vec2 st, float fw)
 {
 	float ret=0;
@@ -509,10 +523,10 @@ float func(vec2 pos)
 	float max_a=4;
 	float r=0.08;
 	#if 0
-		//if(time<max_time)
+		if(time<max_time)
 			//if(pos.x<-0.35)
 				//return (hash(time*freq2)*hash(pos*freq))/2;
-				return n4rand(pos);
+				return n4rand(pos*fr);
 	#endif
 	#if 0
 		//if(time<max_time)
@@ -534,13 +548,12 @@ float func(vec2 pos)
 		float ang=(a/max_a)*M_PI*2;
 
 		vec2 dv=vec2(cos(ang)*r,sin(ang)*r);
-		if(length(pos+dv)<0.005 && time<max_time)
+		if(length(pos+dv)<0.005)
 		//if(time<max_time)
 			return (
-			sin(time*fr*M_PI/1000)
-			+sin(time*fr*M_PI/1000*1.618)
-			/*+sin(time*freq*3*M_PI/1000)*/
-										)*0.00005;
+			ab_vec.x*sin(time*fr*M_PI/1000)
+			+ab_vec.y*sin(time*fr2*M_PI/1000)
+										);
 	}
 	#endif
 	#if 0
@@ -563,15 +576,18 @@ float func(vec2 pos)
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.65;
 	//if(time<max_time)
 	if(abs(length(pos)-0.7)<0.005)
-		return sin(time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
+		return ab_vec.x*sin(time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y)+
+			   ab_vec.y*sin(time*fr2*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
 	//if(length(pos+vec2(0,0.5)+p)<0.005)
 	//	return sin(time*fr2*M_PI/1000);
 
 
 	#endif
 	#if 0
-	if(length(pos+vec2(0,0.5))<0.005)
-		return sin(time*freq*7.13*M_PI/1000)*0.0005;
+	if(  length(pos+vec2(0.1,0.2))<0.005
+	  || length(pos+vec2(-0.1,0.2))<0.005)
+	//if(time<max_time)
+		return sin(time*freq*M_PI/1000);
 	#endif
 	//return 0.1;//0.0001*sin(time/1000)/(1+length(pos));
 	return 0;
@@ -771,6 +787,7 @@ void main(){
 	float w=0.005;
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
 	//float sh_v=sh_circle(pos.xy,max_d,w);
+	float sh_v=damaged_circle(pos.xy);
 	//float sh_v=sh_wavy(pos.xy,max_d);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=leaf(pos.xy,w);
@@ -780,7 +797,7 @@ void main(){
 	//float sh_v=sh_jaws(pos.xy,w);
 	//float sh_v=sh_polyhedron(pos.xy*vec2(0.2,1),4,0.2,0,w);
 	//float sh_v=ankh(pos.xy,w);
-	float sh_v=radial_shape(pos.xy);
+	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
 
 	//vec2 pm=mod(pos.xy+0.5*mm,mm)-0.5*mm;
@@ -1044,7 +1061,7 @@ function draw_texture( id )
 		need_save=nil
 	end
 end
-local frame_count=10000
+local frame_count=600
 local tick_skip=9
 
 --480/100 452
@@ -1052,8 +1069,8 @@ local tick_skip=9
 --1000/1  877
 --1000/3  322
 --1000/9  620
-local tick_count=5000
-local tick_wait=tick_count*0.75
+local tick_count=10000
+local tick_wait=1--tick_count*0.75
 
 
 current_frame=current_frame or 0
@@ -1075,7 +1092,7 @@ function animate_step(  )
 
 	local start_frq2=1
 	local end_frq2=0
-	config.freq=t*(end_frq-start_frq)+start_frq--ncos(t)*(end_frq-start_frq)+start_frq
+	--config.freq=t*(end_frq-start_frq)+start_frq--ncos(t)*(end_frq-start_frq)+start_frq
 	--config.freq2=--nsin(t)*(end_frq2-start_frq2)+start_frq2
 	current_frame=current_frame+1
 	print(config.freq,config.freq2)
@@ -1104,7 +1121,8 @@ function update_real(  )
 				draw_texture(current_frame)
 
 				current_tick=0
-				reset_state()
+				--reset_state()
+				clear_sand()
 			elseif current_tick>=tick_wait then
 				__clear()
 				draw_texture()
@@ -1126,6 +1144,8 @@ function update_real(  )
 				draw_texture()
 			end
 		else
+			current_tick=0
+			current_frame=0
 			__clear()
 			draw_texture()
 		end

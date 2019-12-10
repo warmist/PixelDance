@@ -56,6 +56,22 @@ function make_buffer( typename,type_id,default_pixel )
 		img.read_texture=function(t, tex )
 			tex:read(t.d,t.type)
 		end
+		--some matrix functions... for fun?
+		img.tostring=function ( t )
+			return string.format("<arr:%s (%d x %d)>",typename,t.h,t.w)
+		end
+		img.tostring_full=function (t)
+			local ret=string.format("<arr:%s (%d x %d)>\n",typename,t.h,t.w)
+
+			for y=0,t.h-1 do
+				local l=" "
+				for x=0,t.w-1 do
+					l=l..string.format("%g ",t:get(x,y))
+				end
+				ret=ret..l.."\n"
+			end
+			return ret
+		end
 		return img
 	end
 end
@@ -65,6 +81,21 @@ make_flt_buffer= make_buffer("float_pixel",1,{0,0,0,1})
 make_float_buffer=make_buffer("float",2,0)
 make_flt_half_buffer=make_buffer("float_half_pixel",3,{0,0})
 make_char_buffer=make_buffer("uint8_t",4,0)
+
+make_matrix=make_float_buffer
+function make_ident_matrix( w,h )
+	local ret=make_float_buffer(w,h)
+	for x=0,w-1 do
+		for y=0,h-1 do
+			if x==y then
+				ret:set(x,y,1)
+			else
+				ret:set(x,y,0)
+			end
+		end
+	end
+	return ret
+end
 -------------GUI
 
 function make_config(tbl,defaults)

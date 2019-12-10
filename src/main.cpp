@@ -20,6 +20,7 @@
 #include "shaders.h"
 #include "textures.hpp"
 #include "buffer_data.hpp"
+#include "matrix.h"
 #include <unordered_map>
 #ifndef NO_EMBEDS
 #include "asset_cp437_12x12.hpp"
@@ -312,6 +313,7 @@ struct project {
 		lua_open_textures(L);
         lua_open_buffer_data(L);
 		lua_open_random(L);
+        lua_open_matrix(L);
 #ifdef WRAP_CPP_EXCEPTIONS
 		lua_pushlightuserdata(L, (void *)wrap_exceptions);
 		luaJIT_setmode(L, -1, LUAJIT_MODE_WRAPCFUNC | LUAJIT_MODE_ON);
