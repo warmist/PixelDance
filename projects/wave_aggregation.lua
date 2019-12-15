@@ -199,7 +199,7 @@ uniform float trail_amount;
 in float step_size;
 void main(){
 
-	color=vec4(1-step_size/2,0,0,1);
+	color=vec4(step_size,0,0,1);
 }
 ]==])
 function add_trails_fbk(  )
@@ -362,8 +362,8 @@ vec2 wave_grad(vec2 pos)
 void main(){
 
 	vec3 state=position.xyz;
-	float is_moving=position.w; //w==0 means frozen
-	float head=state.z;
+	float is_moving=position.w; //w<0 means frozen
+	//float head=state.z;
 	//random walk
 #if 0
 	float step_size=clamp(is_moving,0,1);
@@ -391,17 +391,19 @@ void main(){
 	float w_str=length(g);
 	if (w_str>0.5)
 	{
-		head=atan(-g.y,-g.x);
-		float step_size=particle_step_size*w_str/1000;//50000*length(g);
-
-		step_size=clamp(is_moving*step_size,0,1);
+		float head=atan(-g.y,-g.x);
+		float step_size=particle_step_size;
+		step_size*=w_str/1000;//50000*length(g);
+		if(is_moving<0)
+			step_size=0;
+		step_size=clamp(step_size,0,1);
 
 		vec2 trg=state.xy+vec2(cos(head),sin(head))*step_size;
 		vec2 normed_trg=trg.xy/rez;
 		float v=texture(static_layer,normed_trg).r;
-		if(v>0.9) //stop if hitting aggregated particles
+		if(v<0) //stop if hitting aggregated particles
 		{
-			is_moving=0;
+			is_moving=-abs(is_moving);
 			//state.xy=trg;
 		}
 		else if(v>0) //collide with other moving particles
@@ -418,7 +420,7 @@ void main(){
 	//float dy=rand(state.x*4870.2+state.y*741.1f+time*77.0)*2-1;
 	//state.xy+=vec2(dx,dy);
 
-	state.z=head;
+
 	state.xy=mod(state.xy,rez);
 	state_out=vec4(state.xyz,is_moving);
 
@@ -502,11 +504,19 @@ out vec4 color;
 in vec3 pos;
 uniform sampler2D values;
 uniform float draw_moving;
+vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
+{
+    return a + b*cos( 6.28318*(c*t+d) );
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float lv=texture(values,normed).x;
-	if(lv>0.5)
-		color=vec4(lv,0,0,1);
+	if(lv<0)
+	{
+		vec3 c=palette(-lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),
+			vec3(3,2,1),vec3(0.5,1,1.5));
+		color=vec4(c,1);
+	}
 	else if(lv>0 && draw_moving>=1)
 		color=vec4(lv,lv,lv,1);
 	else
@@ -674,7 +684,7 @@ float func(vec2 pos)
 		)*cos(pos.y*M_PI*nm_vec.y)
 		);
 	#endif
-	#if 0
+	#if 1
 	for(float a=0;a<max_a;a++)
 	{
 		float ang=(a/max_a)*M_PI*2;
@@ -683,9 +693,8 @@ float func(vec2 pos)
 		if(length(pos+dv)<0.005)
 		//if(time<max_time)
 			return (
-			sin(time*fr*M_PI/1000)
-			+sin(time*fr*M_PI/1000*1.618)
-			/*+sin(time*freq*3*M_PI/1000)*/
+			ab_vec.x*sin(time*fr*M_PI/1000)+
+			ab_vec.y*sin(time*fr2*M_PI/1000)
 										);
 	}
 	#endif
@@ -703,13 +712,13 @@ float func(vec2 pos)
 		)*0.00005;
 	#endif
 
-	#if 1
+	#if 0
 
 
 	
 	//if(time<max_time)
-	if(abs(length(pos)-0.2)<0.005)
-		return sin(time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
+	if(abs(length(pos*vec2(0.8,1))-0.2)<0.005)
+		return ab_vec.x*sin(time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
 	//if(length(pos+vec2(0,0.5)+p)<0.005)
 	//	return sin(time*fr2*M_PI/1000);
 
@@ -804,12 +813,13 @@ void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 
 #if 1
-	float sh_v=texture(static_layer,normed).x+(1-step(sdCircle(pos.xy,0.9),0));
+	float sh_v=step(sdCircle(pos.xy,0.9),0);
+	float particle=texture(static_layer,normed).x;
 #else
 	float sh_v=0;
 #endif
 
-	if(sh_v<0.9)
+	if(sh_v>0 && particle>=0)
 	{
 		if(init==1)
 			v=calc_init_value(pos.xy);
@@ -901,20 +911,24 @@ function gui()
 			
 			if i<1 then
 	    		local a = math.random() * 2 * math.pi
-				local r = win_w/4 * math.sqrt(math.random())
+				local r = win_w/4 * math.sqrt(math.random())+win_w/6
 				local x = r * math.cos(a)+map_w/2
 				local y = r * math.sin(a)+map_h/2
 				agent_data:set(i,0,
     			{x,
     			 y,
     			 0,--math.random() * 2 * math.pi,
-    			 0})
+    			 -100})
 			else
+				local a = math.random() * 2 * math.pi
+				local r = win_w/2 * math.sqrt(math.random())
+				local x = r * math.cos(a)+map_w/2
+				local y = r * math.sin(a)+map_h/2
 				agent_data:set(i,0,
-	    			{math.random()*map_w,
-	    			 math.random()*map_h,
+	    			{x,
+	    			 y,
 	    			 0,--math.random() * 2 * math.pi,
-	    			 1})
+	    			 r/(win_w/2)})
 			end
     	end
 

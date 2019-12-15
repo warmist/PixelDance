@@ -466,10 +466,10 @@ float damaged_circle(in vec2 st)
 	ret=opSubtraction(sdCircle(st+vec2(0,0.55),0.15),ret);
 	ret=opSubtraction(sdCircle(st+vec2(0,-0.55),0.15),ret);
 
-	ret=opSubtraction(sdCircle(st+vec2(0.2,0.2),0.05),ret);
-	ret=opSubtraction(sdCircle(st+vec2(-0.2,-0.2),0.05),ret);
-	ret=opSubtraction(sdCircle(st+vec2(-0.2,0.2),0.05),ret);
-	ret=opSubtraction(sdCircle(st+vec2(0.2,-0.2),0.05),ret);
+	ret=opSubtraction(sdCircle(st+vec2(0.55,0.55),0.05),ret);
+	ret=opSubtraction(sdCircle(st+vec2(-0.55,-0.55),0.05),ret);
+	ret=opSubtraction(sdCircle(st+vec2(-0.55,0.55),0.05),ret);
+	ret=opSubtraction(sdCircle(st+vec2(0.55,-0.55),0.05),ret);
 	return step(ret,0);
 }
 float petals(in vec2 st, float fw)
@@ -489,6 +489,23 @@ float petals(in vec2 st, float fw)
 		ret=max(sh_polyhedron(v2,6,0.1,0,0),ret);
 	}
 	return ret;
+}
+float slit_experiment(in vec2 st, float fw)
+{
+	float w=0.05;
+	float l=0.05;
+	float w_in=0.05;
+	float ret=0;
+	float s=sdBox(st,vec2(0.5,0.5));
+	#if 1 //twoslits
+	s=opSubtraction(sdBox(st+vec2(0,0.5+w+w_in),vec2(l,0.5)),s);
+	s=opSubtraction(sdBox(st-vec2(0,0.5+w+w_in),vec2(l,0.5)),s);
+	s=opSubtraction(sdBox(st,vec2(l,w_in)),s);
+	#else //oneslit
+	s=opSubtraction(sdBox(st+vec2(0,0.5+w/2),vec2(l,0.5)),s);
+	s=opSubtraction(sdBox(st-vec2(0,0.5+w/2),vec2(l,0.5)),s);
+	#endif
+	return step(s,0);
 }
 float radial_shape(in vec2 st)
 {
@@ -570,22 +587,23 @@ float func(vec2 pos)
 		)*0.00005;
 	#endif
 
-	#if 1
+	#if 0
 
 
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.65;
 	//if(time<max_time)
-	if(abs(length(pos)-0.7)<0.005)
-		return ab_vec.x*sin(time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y)+
-			   ab_vec.y*sin(time*fr2*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
+	if(abs(length(pos)-0.5)<0.005)
+		return ab_vec.x*sin(-time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y)+
+			   ab_vec.y*sin(-time*fr2*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
 	//if(length(pos+vec2(0,0.5)+p)<0.005)
 	//	return sin(time*fr2*M_PI/1000);
 
 
 	#endif
-	#if 0
-	if(  length(pos+vec2(0.1,0.2))<0.005
-	  || length(pos+vec2(-0.1,0.2))<0.005)
+	#if 1
+	if(  length(pos+vec2(-0.3,0))<0.005
+	  //|| length(pos+vec2(-0.1,0.2))<0.005
+	  )
 	//if(time<max_time)
 		return sin(time*freq*M_PI/1000);
 	#endif
@@ -638,7 +656,7 @@ float calc_new_value(vec2 pos)
 #endif
 	float dcsqrx=dcsqr;
 	float dcsqry=dcsqr;
-#if 0
+#if 1
 	float dec=dot(pos,pos)*decay;//abs(hash(pos*100))*decay;
 #else
 	float dec=decay;
@@ -779,7 +797,6 @@ float boundary_condition_init(vec2 pos,vec2 dir)
 	return 0;
 #endif
 }
-
 #define DRAW_FORM 0
 void main(){
 	float v=0;
@@ -787,11 +804,12 @@ void main(){
 	float w=0.005;
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
 	//float sh_v=sh_circle(pos.xy,max_d,w);
-	float sh_v=damaged_circle(pos.xy);
+	//float sh_v=damaged_circle(pos.xy);
 	//float sh_v=sh_wavy(pos.xy,max_d);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=leaf(pos.xy,w);
 	//float sh_v=chalice(pos.xy,w);
+	float sh_v=slit_experiment(pos.xy,w);
 	//float sh_v=flower(pos.xy,w);
 	//float sh_v=balance(pos.xy,w);
 	//float sh_v=sh_jaws(pos.xy,w);

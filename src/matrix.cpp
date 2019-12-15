@@ -3,14 +3,40 @@
 #include "lua.hpp"
 #include "lualib.h"
 #include "lauxlib.h"
+
+#include <vector>
 struct mini_mat
 {
     int w, h;
     float* data;
-
+    bool owned = false;
+    mini_mat() {}
+    mini_mat(int w, int h) :w(w), h(h), data(new float[w*h]), owned(true) {}
+    mini_mat(int w, int h,float *data) :w(w), h(h), data(data), owned(false) {}
+    ~mini_mat()
+    {
+        if (owned)
+            delete[] data;
+    }
     float& operator()(int x, int y) {
         //maybe check bounds?
         return data[x + y * w];
+    }
+    const float& operator()(int x, int y) const {
+        //maybe check bounds?
+        return data[x + y * w];
+    }
+    void mult(const mini_mat& m2, mini_mat& m3)
+    {
+        auto& m1 = (*this);
+        for (int x = 0; x < m2.w; ++x)
+            for (int y = 0; y < m1.h; ++y)
+            {
+                float& f = m3(x, y);
+                f = 0;
+                for (int k = 0; k < m1.w; ++k)
+                    f += m1(k, y)*m2(x, k);
+            }
     }
 };
 static mini_mat check(lua_State* L, int id,int force_w=0,int force_h=0) {
@@ -44,7 +70,7 @@ static mini_mat check(lua_State* L, int id,int force_w=0,int force_h=0) {
         luaL_error(L, "bad argument %d, expected table with '.type==2' (i.e. only float mat)", id);
 
     lua_pop(L, 1);
-    return mini_mat{ w,h,mat };
+    return mini_mat{ w,h,mat};
 }
 //all of this is not "creating" new matrixes, so needs output too
 static int mult_lua_matrix(lua_State* L)
@@ -66,14 +92,7 @@ static int mult_lua_matrix(lua_State* L)
     auto m3 = check(L, 3, m2.w, m1.h);
     //matrix multiplication
 
-    for(int x=0;x<m2.w;++x)
-        for (int y = 0; y < m1.h; ++y)
-        {
-            float& f = m3(x, y);
-            f = 0;
-            for (int k = 0; k < m1.w; ++k)
-                f += m1(k, y)*m2(x, k);
-        }
+    m1.mult(m2, m3);
     return 0;
 }
 static int transpose_lua_matrix(lua_State* L)
@@ -88,8 +107,11 @@ static int transpose_lua_matrix(lua_State* L)
         }
     return 0;
 }
+std::vector<float> scratch;
 static int solve_qr_lua_matrix(lua_State* L)
 {
+    auto A = check(L, 1);
+    auto B = check(L, 2, 1, A.h);
     //Ax=B => A=QR
     //then https://en.wikipedia.org/wiki/QR_decomposition#Using_for_solution_to_linear_inverse_problems
     //and done...

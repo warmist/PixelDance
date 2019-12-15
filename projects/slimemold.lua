@@ -83,7 +83,7 @@ config=make_config({
     {"color_turn_around",{0.99,0.99,0.991,1},type="color"},
     --system
     {"decay",0.995181,type="floatsci",min=0.99,max=1},
-    {"diffuse",0.5,type="float"},
+    --{"diffuse",0.5,type="float"},
     --agent
     {"ag_sensor_distance",4,type="float",min=0.1,max=10},
     --{"ag_sensor_size",1,type="int",min=1,max=3},
@@ -539,7 +539,7 @@ function diffuse_and_decay(  )
     --tex_pixel.t:set(size[1]*oversample,size[2]*oversample,3)
     decay_diffuse_shader:set_i("tex_main",0)
     decay_diffuse_shader:set("decay",config.decay)
-    decay_diffuse_shader:set("diffuse",config.diffuse)
+    decay_diffuse_shader:set("diffuse",0.5)
     if not tex_pixel_alt:render_to(signal_buf.w,signal_buf.h) then
 		error("failed to set framebuffer up")
 	end
