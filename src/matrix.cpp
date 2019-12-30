@@ -112,7 +112,13 @@ static int solve_qr_lua_matrix(lua_State* L)
 {
     auto A = check(L, 1);
     auto B = check(L, 2, 1, A.h);
+    auto X = check(L, 3, A.w, 1);//out x vector
     //Ax=B => A=QR
+    mini_mat Acp(A.w, A.h);
+    for (int x = 0; x < A.w; ++x)
+        for (int y = 0; y < A.h; ++y)
+            Acp(x, y) = A(x, y);
+
     //then https://en.wikipedia.org/wiki/QR_decomposition#Using_for_solution_to_linear_inverse_problems
     //and done...
     return 0;

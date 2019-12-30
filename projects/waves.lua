@@ -19,7 +19,7 @@ function update_size(  )
 end
 --update_size()
 
-local size=STATE.size
+
 function count_lines( s )
 	local n=0
 	for i in s:gmatch("\n") do n=n+1 end
@@ -31,7 +31,7 @@ function shader_make( s_in )
 	s=s..s_in
 	return shaders.Make(s)
 end
-
+local size=STATE.size
 img_buf=make_image_buffer(size[1],size[2])
 
 function resize( w,h )
@@ -492,9 +492,9 @@ float petals(in vec2 st, float fw)
 }
 float slit_experiment(in vec2 st, float fw)
 {
-	float w=0.05;
-	float l=0.05;
-	float w_in=0.05;
+	float w=0.02;
+	float l=0.005;
+	float w_in=0.025;
 	float ret=0;
 	float s=sdBox(st,vec2(0.5,0.5));
 	#if 1 //twoslits
@@ -505,7 +505,7 @@ float slit_experiment(in vec2 st, float fw)
 	s=opSubtraction(sdBox(st+vec2(0,0.5+w/2),vec2(l,0.5)),s);
 	s=opSubtraction(sdBox(st-vec2(0,0.5+w/2),vec2(l,0.5)),s);
 	#endif
-	return step(s,0);
+	return s;
 }
 float radial_shape(in vec2 st)
 {
@@ -605,7 +605,7 @@ float func(vec2 pos)
 	  //|| length(pos+vec2(-0.1,0.2))<0.005
 	  )
 	//if(time<max_time)
-		return sin(time*freq*M_PI/1000);
+		return ab_vec.x*sin(time*freq*M_PI/1000);
 	#endif
 	//return 0.1;//0.0001*sin(time/1000)/(1+length(pos));
 	return 0;
@@ -654,12 +654,18 @@ float calc_new_value(vec2 pos)
 	vec2 p2=pos+vec2(0,-0.3);
 	dcsqr*=(dot(p2,p2)+0.05);
 #endif
-	float dcsqrx=dcsqr;
-	float dcsqry=dcsqr;
-#if 1
+	vec2 dtex=1/tex_size;
+	float dcsqrx=dcsqr/(dtex.x*dtex.x);
+	float dcsqry=dcsqr/(dtex.y*dtex.y);
+#if 0
 	float dec=dot(pos,pos)*decay;//abs(hash(pos*100))*decay;
 #else
 	float dec=decay;
+
+	/*float dec=0;
+	float d=max(abs(pos.x),abs(pos.y));
+	if(d>0.5)
+		dec=d-0.5;*/
 #endif
 	float ret=(0.5*dec*dt-1)*texture(values_old,normed).x+
 		2*DX(0,0)+
@@ -679,11 +685,11 @@ float calc_init_value(vec2 pos)
 	float dcsqry=dt*dt*c_const*c_const/(dtex.y*dtex.y);
 
 	float ret=
-		2*IDX(0,0)+
+		IDX(0,0)+
 		dt*func_init_speed(pos)+
 		0.5*dcsqrx*(IDX(1,0)-2*IDX(0,0)+IDX(-1,0))+
 		0.5*dcsqry*(IDX(0,1)-2*IDX(0,0)+IDX(0,-1))+
-		dt*dt*func(pos);
+		0.5*dt*dt*func(pos);
 
 	return ret;
 }
@@ -827,8 +833,11 @@ void main(){
 	//float sh_v=1;
 #if DRAW_FORM
 	v=sh_v;
+	//vec2 dv=vec2(dFdx(sh_v),dFdy(sh_v));
+	//normalize(dv);
+	v=1-smoothstep(-w,w,v);
 #else
-	if(sh_v>1-w)
+	if(sh_v<0)
 	{
 
 		if(init==1)
@@ -954,7 +963,7 @@ function waves_solve(  )
 		solver_shader:set("init",0);
 	end
 	solver_shader:set("dt",config.dt);
-	solver_shader:set("c_const",0.1);
+	solver_shader:set("c_const",0.0001);
 	solver_shader:set("time",current_time);
 	solver_shader:set("decay",config.decay);
 	solver_shader:set("freq",config.freq)
