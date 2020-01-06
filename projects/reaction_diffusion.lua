@@ -21,6 +21,11 @@ local size=STATE.size
 img_buf=img_buf or make_image_buffer(size[1],size[2])
 react_buffer=react_buffer or multi_texture(size[1],size[2],2,1)
 io_buffer=io_buffer or make_flt_buffer(size[1],size[2])
+
+
+thingy_string=thingy_string or "-c.x*c.y*c.y,0,0,+c.x*c.y*c.y"
+feed_kill_string=feed_kill_string or "feed_rate*(1-c.x),-(kill_rate+feed_rate)*c.y,feed_rate*(1-c.z),-(kill_rate+feed_rate)*c.w"
+
 function resize( w,h )
 	img_buf=make_image_buffer(w,h)
 	size=STATE.size
@@ -42,7 +47,12 @@ function shader_make( s_in )
 end
 
 
-local react_diffuse=shader_make[==[
+local react_diffuse
+function update_diffuse(  )
+react_diffuse=shaders.Make(string.format([==[
+#version 330
+#line 49
+
 out vec4 color;
 in vec3 pos;
 
@@ -67,7 +77,7 @@ vec4 laplace(vec2 pos) //with laplacian kernel (cnt -1,near .2,diag 0.05)
 	ret+=textureOffset(tex_main,pos,ivec2(0,0))*(-1);
 	return ret;
 }
-//#define MAPPING
+#define MAPPING
 vec2 gray_scott(vec4 cnt,vec2 normed)
 {
 	/*
@@ -76,8 +86,8 @@ vec2 gray_scott(vec4 cnt,vec2 normed)
 	float kill_rate=kill_feed.x;
 	float feed_rate=kill_feed.y;
 #ifdef MAPPING
-	kill_rate=mix(0.045,0.07,normed.x);
-	feed_rate=mix(0.01,.1,normed.y);
+	kill_rate=mix(0.0,0.07,normed.x);
+	feed_rate=mix(0.0,.2,normed.y);
 #endif
 	float abb=cnt.x*cnt.y*cnt.y;
 	return vec2(-abb,abb)+vec2(feed_rate*(1-cnt.x),-(kill_rate+feed_rate)*cnt.y);
@@ -152,19 +162,13 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 	float kill_rate=kill_feed.x;
 	float feed_rate=kill_feed.y;
 #ifdef MAPPING
-	vec2 kc=vec2(0.05,0.1);
-	vec2 kcs=vec2(0.05,0.1);
+	vec2 kc=vec2(0.5,0.5);
+	vec2 kcs=vec2(0.5,0.5);
 	kill_rate=mix(kc.x-kcs.x,kc.x+kcs.x,normed.x);
 	feed_rate=mix(kc.y-kcs.y,kc.y+kcs.y,normed.y);
 #endif
-	vec4 values=vec4(c.x*c.w*c.w,c.y*c.z,c.z*c.w*c.w,c.w*c.x);
-
-	return vec4(
-		-values.x-values.z,
-		values.y+values.w,
-		-values.z-values.w,
-		+values.x+values.y)+
-		vec4(feed_rate*(1-c.x),-(kill_rate+feed_rate)*c.y,feed_rate*(1-c.z),-(kill_rate+feed_rate)*c.w);
+	return vec4(%s)+
+		vec4(%s);
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -182,7 +186,9 @@ void main(){
 
 	color=ret;
 }
-]==]
+]==],thingy_string,feed_kill_string))
+end
+update_diffuse()
 local draw_shader = shader_make[==[
 out vec4 color;
 in vec3 pos;
@@ -222,8 +228,74 @@ void main(){
 	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1,1.0,2),vec3(0.75,0.5,0.5)),1);
 }
 ]==]
+
+
+local terminal_symbols={["c.x"]=10,["c.y"]=10,["c.z"]=10,["c.w"]=10,["1.0"]=0.1,["0.0"]=0.1}
+local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=5,["(R)*(R)"]=25,["(R)-(R)"]=10,["(R)+(R)"]=10}
+
+
+function normalize( tbl )
+	local sum=0
+	for i,v in pairs(tbl) do
+		sum=sum+v
+	end
+	for i,v in pairs(tbl) do
+		tbl[i]=tbl[i]/sum
+	end
+end
+
+normalize(terminal_symbols)
+normalize(normal_symbols)
+
+function rand_weighted(tbl)
+	local r=math.random()
+	local sum=0
+	for i,v in pairs(tbl) do
+		sum=sum+v
+		if sum>= r then
+			return i
+		end
+	end
+end
+function replace_random( s,substr,rep )
+	local num_match=0
+	local function count(  )
+		num_match=num_match+1
+		return false
+	end
+	string.gsub(s,substr,count)
+	num_rep=math.random(0,num_match-1)
+	function rep_one(  )
+		if num_rep==0 then
+			num_rep=num_rep-1
+			return rep()
+		else
+			num_rep=num_rep-1
+			return false
+		end
+	end
+	local ret=string.gsub(s,substr,rep_one)
+	return ret
+end
+function random_math( steps,seed )
+	local cur_string=seed or "R,R,R,R"
+
+	function M(  )
+		return rand_weighted(normal_symbols)
+	end
+	function MT(  )
+		return rand_weighted(terminal_symbols)
+	end
+
+	for i=1,steps do
+		cur_string=replace_random(cur_string,"R",M)
+	end
+	cur_string=string.gsub(cur_string,"R",MT)
+	return cur_string
+end
+
 function sim_tick(  )
-	local dt=0.5
+	local dt=0.25
 	react_diffuse:use()
 	react_diffuse:blend_default()
 	react_diffuse:set("diffusion",config.diff_a,config.diff_b,config.diff_c,config.diff_d)
@@ -294,6 +366,13 @@ function gui(  )
 	if imgui.Button("ResetRand") then
 		reset_buffers(true)
 	end
+	imgui.SameLine()
+	if imgui.Button("RandMath") then
+		thingy_string=random_math(16)
+		update_diffuse()
+		print(thingy_string)
+		reset_buffers(true)
+	end
 	if imgui.Button("Save image") then
 		need_save=true
 	end
@@ -344,12 +423,12 @@ function update( )
 	end
 	local c,x,y= is_mouse_down()
 	if c then
-		local scale_x=0.05*2
-		local scale_y=0.1*2
+		local scale_x=0.5*2
+		local scale_y=0.5*2
 		local xx=(x/size[1])*scale_x
 		local yy=(1-y/size[2])*scale_y
 		print(xx,yy)
-		config.kill_rate=xx
-		config.feed_rate=yy
+		config.kill=xx
+		config.feed=yy
 	end
 end
