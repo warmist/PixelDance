@@ -2042,15 +2042,17 @@ function update_real(  )
 		--mouse to screen
 		x=(x/size[1]-0.5)*2
 		y=(-y/size[2]+0.5)*2
-		--screen to world
-		x=(x-cx)/scale
-		y=(y-cy)/(scale*aspect_ratio)
+		if x>-1 and x<1 and
+		   y>-1 and y<1 then
+			--screen to world
+			x=(x-cx)/scale
+			y=(y-cy)/(scale*aspect_ratio)
 
-		print(x,y)
-		--now set that world pos so that screen center is on it
-		config.cx=(-x)*scale
-		config.cy=(-y)*(scale*aspect_ratio)
-		need_clear=true
+			--now set that world pos so that screen center is on it
+			config.cx=(-x)*scale
+			config.cy=(-y)*(scale*aspect_ratio)
+			need_clear=true
+		end
 	end
 	if __mouse.wheel~=0 then
 		local pfact=math.exp(__mouse.wheel/10)
