@@ -12,6 +12,7 @@ config=make_config({
 	{"diff_d",0.125,type="float",min=0,max=1},
 	{"kill",0.062,type="float",min=0,max=1},
 	{"feed",0.055,type="float",min=0,max=1},
+	{"region_size",0.5,type="float",min=0.01,max=1},
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"gain",1,type="float",min=-5,max=5},
 	{"draw_comp",0,type="int",min=0,max=3},
@@ -22,7 +23,7 @@ img_buf=img_buf or make_image_buffer(size[1],size[2])
 react_buffer=react_buffer or multi_texture(size[1],size[2],2,1)
 io_buffer=io_buffer or make_flt_buffer(size[1],size[2])
 
-
+map_region=map_region or {-1,0,0,0}
 thingy_string=thingy_string or "-c.x*c.y*c.y,0,0,+c.x*c.y*c.y"
 
 --feed_kill_string=feed_kill_string or "feed_rate*(1-c.x),-(kill_rate)*c.y,-(kill_rate)*(c.z),-(kill_rate)*c.w"
@@ -63,6 +64,8 @@ uniform vec2 kill_feed;
 
 uniform sampler2D tex_main;
 uniform float dt;
+
+uniform vec4 map_region;
 vec4 laplace(vec2 pos) //with laplacian kernel (cnt -1,near .2,diag 0.05)
 {
 	vec4 ret=vec4(0);
@@ -88,8 +91,8 @@ vec2 gray_scott(vec4 cnt,vec2 normed)
 	float kill_rate=kill_feed.x;
 	float feed_rate=kill_feed.y;
 #ifdef MAPPING
-	kill_rate=mix(0.0,0.07,normed.x);
-	feed_rate=mix(0.0,.2,normed.y);
+	kill_rate=mix(0.0,0.08,normed.x);
+	feed_rate=mix(0.0,0.2,normed.y);
 #endif
 	float abb=cnt.x*cnt.y*cnt.y;
 	return vec2(-abb,abb)+vec2(feed_rate*(1-cnt.x),-(kill_rate+feed_rate)*cnt.y);
@@ -164,10 +167,11 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 	float kill_rate=kill_feed.x;
 	float feed_rate=kill_feed.y;
 #ifdef MAPPING
-	vec2 kc=vec2(0.5,0.5);
-	vec2 kcs=vec2(0.5,0.5);
-	kill_rate=mix(kc.x-kcs.x,kc.x+kcs.x,normed.x);
-	feed_rate=mix(kc.y-kcs.y,kc.y+kcs.y,normed.y);
+	if (map_region.x>=0)
+	{
+		kill_rate=mix(map_region.x,map_region.y,normed.x);
+		feed_rate=mix(map_region.z,map_region.w,normed.y);
+	}
 #endif
 	return vec4(%s)+
 		vec4(%s);
@@ -226,8 +230,15 @@ void main(){
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
 
-	color=vec4(lv,lv,lv,1);
-	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.25,0.25),vec3(1,1.5,2),vec3(0.75,0.5,0.5)),1);
+	//color=vec4(lv,lv,lv,1);
+	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.25,0.25,0.25),vec3(2,0.5,0.5),vec3(1.5,0.25,0.25)),1);
+	///* accent
+	float accent_const=0.9;
+	if(lv<accent_const)
+		color=vec4(vec3(1)*(lv/accent_const),1);
+	else
+		color=mix(vec4(1),vec4(0.6,0,0,1),(lv-accent_const)/(1-accent_const));
+	//*/
 }
 ]==]
 
@@ -318,6 +329,34 @@ function random_math_balanced( steps,seed )
 	end
 	return ret
 end
+function random_math_transfers( steps,seed,count_transfers )
+	count_transfers=count_transfers or 3
+	function M(  )
+		return rand_weighted(normal_symbols)
+	end
+	function MT(  )
+		return rand_weighted(terminal_symbols)
+	end
+	local ret={"0","0","0","0"}
+	for i=1,count_transfers do
+		local cur_string=seed or "R"
+
+		for i=1,steps do
+			cur_string=replace_random(cur_string,"R",M)
+		end
+		cur_string=string.gsub(cur_string,"R",MT)
+		local remove=math.random(1,4)
+		local add=math.random(1,4)
+		while add==remove do
+			add=math.random(1,4)
+		end
+		ret[remove]=ret[remove].."-"..cur_string
+		ret[add]=ret[add].."+"..cur_string
+
+	end
+	local rstr=table.concat(ret,",")
+	return rstr
+end
 function sim_tick(  )
 	local dt=0.25
 	react_diffuse:use()
@@ -325,7 +364,7 @@ function sim_tick(  )
 	react_diffuse:set("diffusion",config.diff_a,config.diff_b,config.diff_c,config.diff_d)
 	react_diffuse:set("kill_feed",config.kill,config.feed)
 	react_diffuse:set("dt",dt)
-
+	react_diffuse:set("map_region",map_region[1],map_region[2],map_region[3],map_region[4])
 	local cur_buff=react_buffer:get()
 	local do_clamp
 	if config.clamp_edges then
@@ -466,8 +505,10 @@ function eval_thingy_string()
 			,thingy_string,
 			-- -vmin[1],-vmin[2],-vmin[3],-vmin[4],
 			0,0,0,0,
-			--MAX_DIFF_VALUE/(vmax[1]-vmin[1]),MAX_DIFF_VALUE/(vmax[2]-vmin[2]),MAX_DIFF_VALUE/(vmax[3]-vmin[3]),-MAX_DIFF_VALUE/(vmax[4]-vmin[4]))
-			MAX_DIFF_VALUE/itg[1],MAX_DIFF_VALUE/itg[2],MAX_DIFF_VALUE/itg[3],-MAX_DIFF_VALUE/itg[4])
+			--MAX_DIFF_VALUE/math.abs(vmax[1]-vmin[1]),MAX_DIFF_VALUE/math.abs(vmax[2]-vmin[2]),MAX_DIFF_VALUE/math.abs(vmax[3]-vmin[3]),-MAX_DIFF_VALUE/math.abs(vmax[4]-vmin[4]))
+			MAX_DIFF_VALUE/itg[1],MAX_DIFF_VALUE/itg[2],MAX_DIFF_VALUE/itg[3],-MAX_DIFF_VALUE/itg[4]
+			--1,1,1,1
+			)
 		print(thingy_string)
 	else
 		print("ERR:",vmin)
@@ -485,11 +526,19 @@ function gui(  )
 	end
 	imgui.SameLine()
 	if imgui.Button("RandMath") then
-		thingy_string=random_math_balanced(4)
+		thingy_string=random_math_transfers(2,nil,3)
+		print(thingy_string)
 		eval_thingy_string()
 		update_diffuse()
-		print(thingy_string)
 		reset_buffers(true)
+	end
+	imgui.SameLine()
+	if imgui.Button("NotMapping") then
+		map_region={-1,0,0,0}
+	end
+	imgui.SameLine()
+	if imgui.Button("FullMap") then
+		map_region={0,1,0,1}
 	end
 	if imgui.Button("Save image") then
 		need_save=true
@@ -543,12 +592,29 @@ function update( )
 	end
 	local c,x,y= is_mouse_down()
 	if c then
-		local scale_x=0.5*2
-		local scale_y=0.5*2
-		local xx=(x/size[1])*scale_x
-		local yy=(1-y/size[2])*scale_y
+
+		local scale_x
+		local scale_y
+		local offset_x=map_region[1]
+		local offset_y=map_region[3]
+		if map_region[1]>=0 then
+			scale_x=map_region[2]-map_region[1]
+			scale_y=map_region[4]-map_region[3]
+		else
+			scale_x=1
+			scale_y=1
+			offset_x=0
+			offset_y=0
+		end
+		local xx=(x/size[1])*scale_x+offset_x
+		local yy=(1-y/size[2])*scale_y+offset_y
 		print(xx,",",yy)
 		config.kill=xx
 		config.feed=yy
+		local low_x=math.max(0,xx-config.region_size)
+		local low_y=math.max(0,yy-config.region_size)
+		local high_x=math.min(1,xx+config.region_size)
+		local high_y=math.min(1,yy+config.region_size)
+		map_region={low_x,high_x,low_y,high_y}
 	end
 end
