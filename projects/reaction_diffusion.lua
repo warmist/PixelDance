@@ -24,7 +24,9 @@ io_buffer=io_buffer or make_flt_buffer(size[1],size[2])
 
 
 thingy_string=thingy_string or "-c.x*c.y*c.y,0,0,+c.x*c.y*c.y"
-feed_kill_string=feed_kill_string or "feed_rate*(1-c.x),-(kill_rate+feed_rate)*c.y,feed_rate*(1-c.z),-(kill_rate+feed_rate)*c.w"
+
+--feed_kill_string=feed_kill_string or "feed_rate*(1-c.x),-(kill_rate)*c.y,-(kill_rate)*(c.z),-(kill_rate)*c.w"
+feed_kill_string="-kill_rate*(c.x),-(kill_rate)*c.y,-(kill_rate)*(c.z),(feed_rate)*(1-c.w)"
 
 function resize( w,h )
 	img_buf=make_image_buffer(w,h)
@@ -225,13 +227,13 @@ void main(){
 	lv=pow(lv,v_gamma);
 
 	color=vec4(lv,lv,lv,1);
-	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1,1.0,2),vec3(0.75,0.5,0.5)),1);
+	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.25,0.25),vec3(1,1.5,2),vec3(0.75,0.5,0.5)),1);
 }
 ]==]
 
 
 local terminal_symbols={["c.x"]=10,["c.y"]=10,["c.z"]=10,["c.w"]=10,["1.0"]=0.1,["0.0"]=0.1}
-local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=5,["(R)*(R)"]=25,["(R)-(R)"]=10,["(R)+(R)"]=10}
+local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R+1.0)"]=1,["(R)/(R+1)"]=5,["(R)*(R)"]=25,["(R)-(R)"]=10,["(R)+(R)"]=10}
 
 
 function normalize( tbl )
@@ -293,7 +295,29 @@ function random_math( steps,seed )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
+function random_math_balanced( steps,seed )
+	function M(  )
+		return rand_weighted(normal_symbols)
+	end
+	function MT(  )
+		return rand_weighted(terminal_symbols)
+	end
+	local ret=""
+	for i=1,4 do
+		local cur_string=seed or "R"
 
+		for i=1,steps do
+			cur_string=replace_random(cur_string,"R",M)
+		end
+		cur_string=string.gsub(cur_string,"R",MT)
+		if i==1 then
+			ret=cur_string
+		else
+			ret=ret..","..cur_string
+		end
+	end
+	return ret
+end
 function sim_tick(  )
 	local dt=0.25
 	react_diffuse:use()
@@ -356,6 +380,99 @@ function reset_buffers(rnd  )
 	buf:use(0)
 	b:write_texture(buf)
 end
+function is_inf( v )
+	if v==math.huge or v==-math.huge then
+		return true
+	end
+	return false
+end
+function clip_maxmin( tbl1,tbl2,id )
+	if is_inf(tbl1[id]) or is_inf(tbl2[id]) then
+		print("clip",id)
+		tbl1[id]=0
+		tbl2[id]=1
+	elseif math.abs(tbl1[id]-tbl2[id])<0.0001 then
+		tbl1[id]=0
+		tbl2[id]=1
+	end
+end
+function eval_thingy_string()
+	local MAX_DIFF_VALUE=1
+	local env={
+		max=math.max,
+		min=math.min,
+		mod=math.mod,
+		--fract=??
+		floor=math.floor,
+		abs=math.abs,
+		sqrt=math.sqrt,
+		exp=math.exp,
+		atan=math.atan,
+		acos=math.acos,
+		asin=math.asin,
+		tan=math.tan,
+		sin=math.sin,
+		cos=math.cos,
+		log=math.log,
+		math=math,
+	}
+	local f=load(string.format(
+		[==[
+		local inf=math.huge
+		local val_min={inf,inf,inf,inf}
+		local val_max={-inf,-inf,-inf,-inf}
+		local itg={0,0,0,0}
+			for x=0,1,0.1 do
+				for y=0,1,0.1 do
+					for z=0,1,0.1 do
+						for w=0,1,0.1 do
+							local c={x=x,y=y,z=z,w=w}
+							local tx,ty,tz,tw=%s
+							if tx>val_max[1] then val_max[1]=tx end
+							if ty>val_max[2] then val_max[2]=ty end
+							if tz>val_max[3] then val_max[3]=tz end
+							if tw>val_max[4] then val_max[4]=tw end
+
+							if tx<val_min[1] then val_min[1]=tx end
+							if ty<val_min[2] then val_min[2]=ty end
+							if tz<val_min[3] then val_min[3]=tz end
+							if tw<val_min[4] then val_min[4]=tw end
+							itg[1]=itg[1]+tx*0.1*0.1*0.1
+							itg[2]=itg[2]+ty*0.1*0.1*0.1
+							itg[3]=itg[3]+tz*0.1*0.1*0.1
+							itg[4]=itg[4]+tw*0.1*0.1*0.1
+						end
+					end
+				end
+			end
+			return val_min,val_max,itg
+		]==],thingy_string),"thingy","t",env)
+	local ret,vmin,vmax,itg=pcall(f)
+	if ret then
+
+		print("Min:",vmin[1],vmin[2],vmin[3],vmin[4])
+		print("Max:",vmax[1],vmax[2],vmax[3],vmax[4])
+		print("Integral:",itg[1],itg[2],itg[3],itg[4])
+		clip_maxmin(vmin,vmax,1)
+		clip_maxmin(vmin,vmax,2)
+		clip_maxmin(vmin,vmax,3)
+		clip_maxmin(vmin,vmax,4)
+		for i=1,4 do
+			if itg[i]==0 then itg[i]=1 end
+			if math.abs(itg[i])==math.huge then itg[i]=1 end
+			if itg[i]~=itg[i] then itg[i]=1 end
+		end
+		thingy_string=string.format("(vec4(%s)+vec4(%g,%g,%g,%g))*vec4(%g,%g,%g,%g)"
+			,thingy_string,
+			-- -vmin[1],-vmin[2],-vmin[3],-vmin[4],
+			0,0,0,0,
+			--MAX_DIFF_VALUE/(vmax[1]-vmin[1]),MAX_DIFF_VALUE/(vmax[2]-vmin[2]),MAX_DIFF_VALUE/(vmax[3]-vmin[3]),-MAX_DIFF_VALUE/(vmax[4]-vmin[4]))
+			MAX_DIFF_VALUE/itg[1],MAX_DIFF_VALUE/itg[2],MAX_DIFF_VALUE/itg[3],-MAX_DIFF_VALUE/itg[4])
+		print(thingy_string)
+	else
+		print("ERR:",vmin)
+	end
+end
 function gui(  )
 	imgui.Begin("GrayScott")
 	draw_config(config)
@@ -368,7 +485,8 @@ function gui(  )
 	end
 	imgui.SameLine()
 	if imgui.Button("RandMath") then
-		thingy_string=random_math(16)
+		thingy_string=random_math_balanced(4)
+		eval_thingy_string()
 		update_diffuse()
 		print(thingy_string)
 		reset_buffers(true)
@@ -427,7 +545,7 @@ function update( )
 		local scale_y=0.5*2
 		local xx=(x/size[1])*scale_x
 		local yy=(1-y/size[2])*scale_y
-		print(xx,yy)
+		print(xx,",",yy)
 		config.kill=xx
 		config.feed=yy
 	end
