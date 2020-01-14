@@ -504,6 +504,8 @@ function save_img( id )
 			config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
 		end
 	end
+	config_serial=config_serial.."\n"..thingy_string
+	config_serial=config_serial.."\n"..feed_kill_string
 	img_buf:read_frame()
 	if id then
 		img_buf:save(string.format("video/saved (%d).png",id),config_serial)
