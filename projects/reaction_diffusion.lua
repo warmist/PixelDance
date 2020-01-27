@@ -16,8 +16,9 @@ config=make_config({
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"gain",1,type="float",min=-5,max=5},
 	{"draw_comp",0,type="int",min=0,max=3},
+	{"animate",false,type="boolean"},
 },config)
-
+__set_window_size(640,640)
 local size=STATE.size
 img_buf=img_buf or make_image_buffer(size[1],size[2])
 react_buffer=react_buffer or multi_texture(size[1],size[2],2,1)
@@ -27,7 +28,7 @@ map_region=map_region or {-1,0,0,0}
 thingy_string=thingy_string or "-c.x*c.y*c.y,0,0,+c.x*c.y*c.y"
 
 --feed_kill_string=feed_kill_string or "feed_rate*(1-c.x),-(kill_rate)*c.y,-(kill_rate)*(c.z),-(kill_rate)*c.w"
-feed_kill_string="-kill_rate*(c.x),-(kill_rate)*c.y,-(kill_rate)*(c.z),(feed_rate)*(1-c.w)"
+feed_kill_string="-kill_rate*(c.x),(-kill_rate/4)*(c.y),(feed_rate/4)*(1-c.z),(feed_rate)*(1-c.w)"
 
 function resize( w,h )
 	img_buf=make_image_buffer(w,h)
@@ -231,8 +232,8 @@ void main(){
 	lv=pow(lv,v_gamma);
 
 	//color=vec4(lv,lv,lv,1);
-	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.25,0.25,0.25),vec3(2,0.5,0.5),vec3(1.5,0.25,0.25)),1);
-	///* accent
+	color=vec4(palette(lv,vec3(0.25),vec3(0.5),vec3(2,1,1),vec3(1,1,1)),1);
+	/* accent
 	float accent_const=0.9;
 	if(lv<accent_const)
 		color=vec4(vec3(1)*(lv/accent_const),1);
@@ -401,7 +402,7 @@ function reset_buffers(rnd  )
 	if not rnd then
 		local cx=math.floor(b.w/2)
 		local cy=math.floor(b.h/2)
-		local s=5
+		local s=math.random(30,50)
 
 		for x=cx-s,cx+s do
 			for y=cy-s,cy+s do
@@ -436,12 +437,15 @@ function clip_maxmin( tbl1,tbl2,id )
 	end
 end
 function eval_thingy_string()
-	local MAX_DIFF_VALUE=1
+	local MAX_DIFF_VALUE=0.25
 	local env={
 		max=math.max,
 		min=math.min,
-		mod=math.mod,
-		--fract=??
+		mod=math.fmod,
+		fract=function ( x )
+			local r1,r2=math.modf(x)
+			return r2
+		end,
 		floor=math.floor,
 		abs=math.abs,
 		sqrt=math.sqrt,
@@ -460,11 +464,12 @@ function eval_thingy_string()
 		local inf=math.huge
 		local val_min={inf,inf,inf,inf}
 		local val_max={-inf,-inf,-inf,-inf}
+		local step_size=0.05
 		local itg={0,0,0,0}
-			for x=0,1,0.1 do
-				for y=0,1,0.1 do
-					for z=0,1,0.1 do
-						for w=0,1,0.1 do
+			for x=0,1,step_size do
+				for y=0,1,step_size do
+					for z=0,1,step_size do
+						for w=0,1,step_size do
 							local c={x=x,y=y,z=z,w=w}
 							local tx,ty,tz,tw=%s
 							if tx>val_max[1] then val_max[1]=tx end
@@ -476,10 +481,10 @@ function eval_thingy_string()
 							if ty<val_min[2] then val_min[2]=ty end
 							if tz<val_min[3] then val_min[3]=tz end
 							if tw<val_min[4] then val_min[4]=tw end
-							itg[1]=itg[1]+tx*0.1*0.1*0.1
-							itg[2]=itg[2]+ty*0.1*0.1*0.1
-							itg[3]=itg[3]+tz*0.1*0.1*0.1
-							itg[4]=itg[4]+tw*0.1*0.1*0.1
+							itg[1]=itg[1]+tx*step_size*step_size*step_size
+							itg[2]=itg[2]+ty*step_size*step_size*step_size
+							itg[3]=itg[3]+tz*step_size*step_size*step_size
+							itg[4]=itg[4]+tw*step_size*step_size*step_size
 						end
 					end
 				end
@@ -492,21 +497,22 @@ function eval_thingy_string()
 		print("Min:",vmin[1],vmin[2],vmin[3],vmin[4])
 		print("Max:",vmax[1],vmax[2],vmax[3],vmax[4])
 		print("Integral:",itg[1],itg[2],itg[3],itg[4])
-		clip_maxmin(vmin,vmax,1)
-		clip_maxmin(vmin,vmax,2)
-		clip_maxmin(vmin,vmax,3)
-		clip_maxmin(vmin,vmax,4)
+		local swing={}
 		for i=1,4 do
+			clip_maxmin(vmin,vmax,i)
 			if itg[i]==0 then itg[i]=1 end
 			if math.abs(itg[i])==math.huge then itg[i]=1 end
 			if itg[i]~=itg[i] then itg[i]=1 end
+
+			swing[i]=vmax[i]-vmin[i]
+			--swing[i]=math.abs(vmax[i]-vmin[i])
 		end
 		thingy_string=string.format("(vec4(%s)+vec4(%g,%g,%g,%g))*vec4(%g,%g,%g,%g)"
 			,thingy_string,
-			-- -vmin[1],-vmin[2],-vmin[3],-vmin[4],
-			0,0,0,0,
-			--MAX_DIFF_VALUE/math.abs(vmax[1]-vmin[1]),MAX_DIFF_VALUE/math.abs(vmax[2]-vmin[2]),MAX_DIFF_VALUE/math.abs(vmax[3]-vmin[3]),-MAX_DIFF_VALUE/math.abs(vmax[4]-vmin[4]))
-			MAX_DIFF_VALUE/itg[1],MAX_DIFF_VALUE/itg[2],MAX_DIFF_VALUE/itg[3],-MAX_DIFF_VALUE/itg[4]
+			-vmin[1],-vmin[2],-vmin[3],-vmin[4],
+			--itg[1],-itg[2],-itg[3],-itg[4],
+			MAX_DIFF_VALUE/swing[1],MAX_DIFF_VALUE/swing[2],-MAX_DIFF_VALUE/swing[3],-MAX_DIFF_VALUE/swing[4]
+			--MAX_DIFF_VALUE/itg[1],MAX_DIFF_VALUE/itg[2],-MAX_DIFF_VALUE/itg[3],-MAX_DIFF_VALUE/itg[4]
 			--1,1,1,1
 			)
 		print(thingy_string)
@@ -514,6 +520,11 @@ function eval_thingy_string()
 		print("ERR:",vmin)
 	end
 end
+anim_state={
+	current_frame=0,
+	frame_skip=10,
+	max_frame=12000,
+	}
 function gui(  )
 	imgui.Begin("GrayScott")
 	draw_config(config)
@@ -526,7 +537,7 @@ function gui(  )
 	end
 	imgui.SameLine()
 	if imgui.Button("RandMath") then
-		thingy_string=random_math_transfers(2,nil,3)
+		thingy_string=random_math_balanced(250)
 		print(thingy_string)
 		eval_thingy_string()
 		update_diffuse()
@@ -543,6 +554,10 @@ function gui(  )
 	if imgui.Button("Save image") then
 		need_save=true
 	end
+	if imgui.Button("Start animate") then
+		anim_state.current_frame=0
+		config.animate=true
+	end
 	imgui.End()
 end
 function save_img( id )
@@ -553,8 +568,8 @@ function save_img( id )
 			config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
 		end
 	end
-	config_serial=config_serial.."\n"..thingy_string
-	config_serial=config_serial.."\n"..feed_kill_string
+	config_serial=config_serial.."\n"..string.format("thingy_string=%q",thingy_string)
+	config_serial=config_serial.."\n"..string.format("feed_kill_string=%q",feed_kill_string)
 	img_buf:read_frame()
 	if id then
 		img_buf:save(string.format("video/saved (%d).png",id),config_serial)
@@ -562,7 +577,7 @@ function save_img( id )
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 	end
 end
-function draw_texture(  )
+function draw_texture( id )
 	draw_shader:use()
 	local buf=react_buffer:get()
 	buf:use(0,0,0)
@@ -588,7 +603,17 @@ function update( )
 		draw_texture()
 	else
 		sim_tick()
-		draw_texture()
+		local save_id
+		if config.animate then
+			anim_state.current_frame=anim_state.current_frame+1
+			if anim_state.current_frame>anim_state.max_frame then
+				config.animate=false
+			end
+			if anim_state.current_frame % anim_state.frame_skip ==0 then
+				save_id=anim_state.current_frame/anim_state.frame_skip
+			end
+		end
+		draw_texture(save_id)
 	end
 	local c,x,y= is_mouse_down()
 	if c then

@@ -162,29 +162,31 @@ void main(){
 	float q=7;
 	lv=clamp(floor(lv*q)/q,0,1);
 	//*/
-	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(0.5,2.0,1.5),vec3(0.1,0.4,0.4)),1);
+	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,2.0,2.0),vec3(3.0,2.0,1.0)),1);
 	color.a=1;
 	vec3 col_back=vec3(0);
 	vec3 col_top=vec3(1);
-	/* color with a down to dark break
+	float break_pos=0.5;
+	float break_inv=1/break_pos;
+	///* color with a down to dark break
 	
-	if(lv>0.5)
-		color.xyz=mix(col_back,col_top,(lv-0.5)*2);
+	if(lv>break_pos)
+		color.xyz=mix(col_back,col_top,(lv-break_pos)/(1-break_pos));
 	else
 	{
-		float nv=sin(lv*2*M_PI);
+		float nv=sin(lv*break_inv*M_PI);
 		color.xyz=mix(col_back,mid_color,nv);
 	}
 	//*/
 	
-	///* continuous color
-	if(lv>0.5)
+	/* continuous color
+	if(lv>break_pos)
 	{
-		color.xyz=mix(mid_color,col_top,(lv-0.5)*2);
+		color.xyz=mix(mid_color,col_top,(lv-break_pos)/(1-break_pos));
 	}
 	else
 	{
-		color.xyz=mix(col_back,mid_color,lv*2);
+		color.xyz=mix(col_back,mid_color,lv*break_inv);
 	}
 	//*/
 
@@ -511,7 +513,8 @@ float radial_shape(in vec2 st)
 {
 	float a=atan(st.y,st.x);
 	float r=length(st)*1.5;
-	return step(r/(sin(a*3)+1.1)+cos(a*9+sin(r*r)*M_PI*4)/16-0.5,0);
+	float ret=((sin(a*4+r*8))*cos(r*6)+0.1+smoothstep(0.15,0.05,r))*step(r,1.2);
+	return step(ret,0);
 }
 float grid(in vec2 st,float fw)
 {
@@ -529,7 +532,7 @@ float func(vec2 pos)
 	//	return cos(time/freq)+cos(time/(2*freq/3))+cos(time/(3*freq/2));
 	//vec2 pos_off=vec2(cos(time*0.001)*0.5,sin(time*0.001)*0.5);
 	//if(sh_ring(pos,1.2,1.1,0.001)>0)
-	float max_time=500;
+	float max_time=5000;
 	float min_freq=1;
 	float max_freq=5;
 	float ang=atan(pos.y,pos.x);
@@ -590,9 +593,9 @@ float func(vec2 pos)
 	#if 0
 
 
-	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.65;
+	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.3;
 	//if(time<max_time)
-	if(abs(length(pos)-0.5)<0.005)
+	//if(abs(length(pos)-0.2)<0.005)
 		return ab_vec.x*sin(-time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y)+
 			   ab_vec.y*sin(-time*fr2*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
 	//if(length(pos+vec2(0,0.5)+p)<0.005)
@@ -601,7 +604,7 @@ float func(vec2 pos)
 
 	#endif
 	#if 1
-	if(  length(pos+vec2(-0.3,0))<0.005
+	if(  length(pos)<0.005
 	  //|| length(pos+vec2(-0.1,0.2))<0.005
 	  )
 	//if(time<max_time)
@@ -810,18 +813,18 @@ void main(){
 	float w=0.005;
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
 	//float sh_v=sh_circle(pos.xy,max_d,w);
-	//float sh_v=damaged_circle(pos.xy);
+	//float sh_v=1-damaged_circle(pos.xy);
 	//float sh_v=sh_wavy(pos.xy,max_d);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=leaf(pos.xy,w);
-	//float sh_v=chalice(pos.xy,w);
-	float sh_v=slit_experiment(pos.xy,w);
+	//float sh_v=1-chalice(pos.xy,w);
+	//float sh_v=slit_experiment(pos.xy,w);
 	//float sh_v=flower(pos.xy,w);
 	//float sh_v=balance(pos.xy,w);
 	//float sh_v=sh_jaws(pos.xy,w);
 	//float sh_v=sh_polyhedron(pos.xy*vec2(0.2,1),4,0.2,0,w);
 	//float sh_v=ankh(pos.xy,w);
-	//float sh_v=radial_shape(pos.xy);
+	float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
 
 	//vec2 pm=mod(pos.xy+0.5*mm,mm)-0.5*mm;
@@ -831,13 +834,14 @@ void main(){
 	//float sh_v=petals(pos.xy,w);
 	//float sh_v=grid(pos.xy,w);
 	//float sh_v=1;
+	//sh_v=1-sh_v;
 #if DRAW_FORM
 	v=sh_v;
 	//vec2 dv=vec2(dFdx(sh_v),dFdy(sh_v));
 	//normalize(dv);
 	v=1-smoothstep(-w,w,v);
 #else
-	if(sh_v<0)
+	if(sh_v<=0)
 	{
 
 		if(init==1)

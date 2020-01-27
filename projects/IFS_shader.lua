@@ -74,6 +74,8 @@ config=make_config({
 	{"min_value",0,type="float",min=0,max=20},
 	{"gen_radius",2,type="float",min=0,max=10},
 	{"animation",0,type="float",min=0,max=1},
+	{"gamma",1,type="float",min=0.01,max=5},
+	{"gain",1,type="float",min=-5,max=5},
 },config)
 
 
@@ -90,6 +92,8 @@ uniform vec2 min_max;
 uniform sampler2D tex_main;
 uniform sampler2D tex_palette;
 uniform int auto_scale_color;
+uniform float v_gamma;
+uniform float v_gain;
 #define M_PI   3.14159265358979323846264338327950288
 
 float rand(vec2 n) { 
@@ -229,6 +233,11 @@ float mask(vec2 pos)
 	ret=clamp(1-ret,min_value,1);
 	return 1;
 }
+float gain(float x, float k)
+{
+    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
+    return (x<0.5)?a:1.0-a;
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float nv=texture(tex_main,normed).x;
@@ -256,7 +265,8 @@ void main(){
 	//nv=pow(nv,1/pw);
 
 	float l=mask(pos.xy);
-
+	nv=gain(nv,v_gain);
+	nv=pow(nv,v_gamma);
 
 	//color = mix_palette2(lnv*l)*nv;
 	color = mix_palette2(nv*l);//*lnv;
@@ -289,6 +299,8 @@ function draw_visits(  )
 	set_shader_palette(log_shader)
 	log_shader:set("min_max",lmin,lmax)
 	log_shader:set_i("tex_main",0)
+	log_shader:set("v_gamma",config.gamma)
+	log_shader:set("v_gain",config.gain)
 	local auto_scale=0
 	if config.auto_scale_color then auto_scale=1 end
 	log_shader:set_i("auto_scale_color",auto_scale)
