@@ -28,7 +28,7 @@ map_region=map_region or {-1,0,0,0}
 thingy_string=thingy_string or "-c.x*c.y*c.y,0,0,+c.x*c.y*c.y"
 
 --feed_kill_string=feed_kill_string or "feed_rate*(1-c.x),-(kill_rate)*c.y,-(kill_rate)*(c.z),-(kill_rate)*c.w"
-feed_kill_string="-kill_rate*(c.x),(-kill_rate/4)*(c.y),(feed_rate/4)*(1-c.z),(feed_rate)*(1-c.w)"
+feed_kill_string="-kill_rate,-kill_rate,-kill_rate,feed_rate"
 
 function resize( w,h )
 	img_buf=make_image_buffer(w,h)
@@ -231,8 +231,8 @@ void main(){
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
 
-	//color=vec4(lv,lv,lv,1);
-	color=vec4(palette(lv,vec3(0.25),vec3(0.5),vec3(2,1,1),vec3(1,1,1)),1);
+	color=vec4(lv,lv,lv,1);
+	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.25,0.25,0.25),vec3(2,0.5,0.5),vec3(1.5,0.25,0.25)),1);
 	/* accent
 	float accent_const=0.9;
 	if(lv<accent_const)
@@ -245,7 +245,7 @@ void main(){
 
 
 local terminal_symbols={["c.x"]=10,["c.y"]=10,["c.z"]=10,["c.w"]=10,["1.0"]=0.1,["0.0"]=0.1}
-local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R+1.0)"]=1,["(R)/(R+1)"]=5,["(R)*(R)"]=25,["(R)-(R)"]=10,["(R)+(R)"]=10}
+local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R+1.0)"]=1,["(R)/(R+1)"]=5,["(R)*(R)"]=5,["(R)-(R)"]=5,["(R)+(R)"]=5}
 
 
 function normalize( tbl )
@@ -387,6 +387,7 @@ function sim_tick(  )
 	__render_to_window()
 	react_buffer:advance()
 end
+init_size=1
 function reset_buffers(rnd  )
 	local b=io_buffer
 	for x=0,b.w-1 do
@@ -402,11 +403,15 @@ function reset_buffers(rnd  )
 	if not rnd then
 		local cx=math.floor(b.w/2)
 		local cy=math.floor(b.h/2)
-		local s=math.random(30,50)
-
+		local s=math.random(1,200)
+		local v = {math.random(),math.random(),math.random(),math.random()}
 		for x=cx-s,cx+s do
 			for y=cy-s,cy+s do
-				b:set(x,y,{0.5,.25,0.5,0.5})
+				local dx=x-cx
+				local dy=y-cy
+				--if math.sqrt(dx*dx+dy*dy)<s then
+					b:set(x,y,v)
+				--end
 			end
 		end
 	end
@@ -441,10 +446,9 @@ function eval_thingy_string()
 	local env={
 		max=math.max,
 		min=math.min,
-		mod=math.fmod,
+		mod=math.modf,
 		fract=function ( x )
-			local r1,r2=math.modf(x)
-			return r2
+			return select(2,math.modf(x))
 		end,
 		floor=math.floor,
 		abs=math.abs,
@@ -520,6 +524,7 @@ function eval_thingy_string()
 		print("ERR:",vmin)
 	end
 end
+
 anim_state={
 	current_frame=0,
 	frame_skip=10,
@@ -537,7 +542,7 @@ function gui(  )
 	end
 	imgui.SameLine()
 	if imgui.Button("RandMath") then
-		thingy_string=random_math_balanced(250)
+		thingy_string=random_math_balanced(30)
 		print(thingy_string)
 		eval_thingy_string()
 		update_diffuse()
@@ -588,6 +593,9 @@ function draw_texture( id )
 	draw_shader:draw_quad()
 	if need_save or id then
 		save_img(id)
+		if need_save=="r" then
+			reset_buffers()
+		end
 		need_save=nil
 	end
 end
@@ -641,5 +649,7 @@ function update( )
 		local high_x=math.min(1,xx+config.region_size)
 		local high_y=math.min(1,yy+config.region_size)
 		map_region={low_x,high_x,low_y,high_y}
+		reset_buffers(true)
+		config.region_size=config.region_size/2
 	end
 end

@@ -31,7 +31,7 @@ config=make_config({
 	{"diffuse_steps",1,min=0,max=10,type="int"},
 	--{"cryst_pow",1,min=0.0001,max=5,type="float"},
 	--{"diffuse",0.5,type="float"},
-	{"decay",0.99,type="float"},
+	{"decay",0.01,type="floatsci",min=0,max=1,power=10},
 	{"add_mat",0.5,type="float"},
 	{"simulate",true,type="boolean"},
 },config)
@@ -102,7 +102,7 @@ function diffuse_and_decay( tex,tex_out,w,h,diffuse,decay,steps,mask )
 	for i=1,steps do
 	    tex:use(0)
 	    decay_diffuse_shader:set_i("tex_main",0)
-	    decay_diffuse_shader:set("decay",decay)
+	    decay_diffuse_shader:set("decay",1-decay)
 	    decay_diffuse_shader:set("diffuse",diffuse)
 	    if not tex_out:render_to(w,h) then
 			error("failed to set framebuffer up")
@@ -180,7 +180,7 @@ end
 function crystal_step()
 	material:read_texture(mat_tex1)
 	local crystal_chances={
-		[0]=0, --0
+		[0]=0.0000001, --0
 		0.001,--1
 		1,
 		0.01,
