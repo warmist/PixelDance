@@ -664,9 +664,10 @@ local normal_symbols_complex={
 ["c_ln(R)"]=0.1,["c_exp(R)"]=0.01,
 ["c_acos(R)"]=0.1,["c_asin(R)"]=0.1,["c_atan(R)"]=0.1,
 ["c_tan(R)"]=1,["c_sin(R)"]=1,["c_cos(R)"]=1,
-["c_div(R,R)"]=2,["c_inv(R)"]=1,["c_conj(R)"]=1,
+["c_conj(R)"]=1,
 --]=]
-["c_mul(R,R)"]=4,
+["c_div(R,R)"]=4,["c_inv(R)"]=1,
+["c_mul(R,R)"]=1,
 ["(R)-(R)"]=6,["(R)+(R)"]=6}
 
 function normalize( tbl )
@@ -834,14 +835,14 @@ end
 animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
-	--str_cmplx=random_math_complex(rand_complexity)
+	str_cmplx=random_math_complex(rand_complexity)
 	local pts={}
 	local num_roots=7
 	for i=1,num_roots do
 		local angle=((i-1)/num_roots)*math.pi*2
 		table.insert(pts,{math.cos(angle)*config.move_dist,math.sin(angle)*config.move_dist})
 	end
-	str_cmplx=random_math_complex_pts(rand_complexity,pts)
+	--str_cmplx=random_math_complex_pts(rand_complexity,pts)
 	--[=[ http://www.fractalsciencekit.com/topics/mobius.htm maybe?
 	--str_cmplx="c_div(c_mul(params.xy,s)+vec2(-0.1,0.2),c_mul(vec2(0.2,0.1),s)+params.zw)"
 	str_cmplx=random_math_complex(rand_complexity,"c_div(c_mul(R,s)+R,c_mul(R,s)+R)")
@@ -1153,6 +1154,7 @@ string.format([==[
 #version 330
 #line 1092
 #define ESCAPE_MODE %s
+//Next three are "generalized complex numbers" with p=-1, p=0 and p=1
 #define COMPLEX_NUMBERS
 //#define DUAL_NUMBERS //aka boring numbers :<
 //#define HYPERBOLIC_NUMBERS //aka split-complex
@@ -1429,7 +1431,14 @@ vec2 c_mul(vec2 z, vec2 w) {
     return vec2(z.x * w.x - z.y * w.y,
                 z.x * w.y - z.y * w.x);
 }
-
+vec2 c_inv(vec2 z)
+{
+	float v=1/(z.x*z.x-z.y*z.y);
+	return vec2(z.x,z.y)*v;
+}
+vec2 c_div(vec2 z,vec2 w){
+	return c_mul(z,c_inv(w));
+}
 #endif
 
 #ifdef STRANGE_NUMBERS2
