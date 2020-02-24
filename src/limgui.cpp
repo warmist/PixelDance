@@ -132,6 +132,25 @@ static int l_color_edit4(lua_State* L)
 }
 /*
 IMGUI_API void          PlotLines(const char* label, const float* values, int values_count, int values_offset = 0, const char* overlay_text = NULL, float scale_min = FLT_MAX, float scale_max = FLT_MAX, ImVec2 graph_size = ImVec2(0,0), size_t stride = sizeof(float));
+*/
+static int l_plot_lines(lua_State* L)
+{
+    const char *label=luaL_checkstring(L,1);
+    float *values=nullptr;
+    int values_count=0;
+    if ((lua_type(L, 2) == 10) /*cdata*/ || (lua_type(L, 2) == LUA_TLIGHTUSERDATA))
+    {
+        values = (float*)lua_topointer(L, 2);
+        values_count = luaL_checkinteger(L,3);
+    }
+    else
+    {
+        luaL_error(L, "Invalid values");
+    }
+    ImGui::PlotLines(label,values, values_count,0,0,FLT_MAX,FLT_MAX,ImVec2(0,80));
+    return 0;
+}
+/*
 IMGUI_API void          PlotLines(const char* label, float (*values_getter)(void* data, int idx), void* data, int values_count, int values_offset = 0, const char* overlay_text = NULL, float scale_min = FLT_MAX, float scale_max = FLT_MAX, ImVec2 graph_size = ImVec2(0,0));
 IMGUI_API void          PlotHistogram(const char* label, const float* values, int values_count, int values_offset = 0, const char* overlay_text = NULL, float scale_min = FLT_MAX, float scale_max = FLT_MAX, ImVec2 graph_size = ImVec2(0,0), size_t stride = sizeof(float));
 IMGUI_API void          PlotHistogram(const char* label, float (*values_getter)(void* data, int idx), void* data, int values_count, int values_offset = 0, const char* overlay_text = NULL, float scale_min = FLT_MAX, float scale_max = FLT_MAX, ImVec2 graph_size = ImVec2(0,0));
@@ -404,6 +423,7 @@ static const luaL_Reg lua_imgui[] = {
     { "SliderFloat", l_slider_float },
     { "SliderAngle", l_slider_angle },
     { "SliderInt", l_slider_int },
+    { "PlotLines", l_plot_lines },
     { "InputText",l_input_text },
     { "ListBox", l_listbox },
 	{ "Combo", l_combo },

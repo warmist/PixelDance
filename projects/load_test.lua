@@ -1,8 +1,10 @@
 
 require "common"
+local luv=require "colors_luv"
 local size=STATE.size
-local knock_buf=load_png("knock.png")
+local image_buf=load_png("glazed3.png")
 
+measures=make_float_buffer(800,1)
 
 config=make_config({
 	{"cutoff",0,type="float"},
@@ -23,8 +25,8 @@ void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec4 c=texture(tex_main,normed*vec2(1,-1));
 	float v=c.r*0.2126+0.7152*c.g+0.0722*c.b;
-	v=step(v,cutoff);
-	color = vec4(v,v,v,1);//vec4(0.2,0,0,1);
+	//v=step(v,cutoff);
+	color = c;//vec4(v,v,v,1);//vec4(0.2,0,0,1);
 }
 ]]
 local df_shader = shaders.Make[[
@@ -155,12 +157,12 @@ function dist_field_to_gradient(buf)
 		grad_field=make_flt_half_buffer(w,h)
 	end
 	for x=0,w-1 do
-		grad_field:set(x,0,buf:get(x,0))
-		grad_field:set(x,h-1,buf:get(x,h-1))
+		grad_field:set(x,0,{buf:get(x,0),0})
+		grad_field:set(x,h-1,{buf:get(x,h-1),0})
 	end
 	for y=0,h-1 do
-		grad_field:set(0,y,buf:get(0,y))
-		grad_field:set(w-1,y,buf:get(w-1,y))
+		grad_field:set(0,y,{buf:get(0,y),0})
+		grad_field:set(w-1,y,{buf:get(w-1,y),0})
 	end
 	for x=1,w-2 do
 		for y=1,h-2 do
@@ -170,6 +172,41 @@ function dist_field_to_gradient(buf)
 			grad_field:set(x,y,{dx,dy})
 		end
 	end
+end
+function update_measures( buf )
+	local channel=2
+	for i=0,measures.w-1 do
+		measures:set(i,0,0)
+	end
+	local skip_x=math.floor(buf.w*0.2)
+	local end_x=math.floor(buf.w*0.8)
+	local sy=math.floor(buf.h/2)
+	local ey=math.floor(buf.h-1)
+	for x=skip_x,end_x do
+		for y=sy,ey do
+			local c=buf:get(x,y)
+			local hs=luv.rgb_to_hsluv({c.r/255,c.g/255,c.b/255})
+			local v=hs[channel]--0.2126*c.r/255+0.7152*c.g/255+0.0722*c.b/255;
+			--local mx=math.floor(((y-sy)/(ey-sy))*measures.w)
+			local mx=y
+			measures:set(mx,0,measures:get(mx,0)+v)
+			--measures:set(y,0,measures:get(y,0)+v)
+		end
+		for y=sy,0,-1 do
+			local c=buf:get(x,y)
+			local hs=luv.rgb_to_hsluv({c.r/255,c.g/255,c.b/255})
+			local v=hs[channel]--0.2126*c.r/255+0.7152*c.g/255+0.0722*c.b/255;
+
+			local mx=buf.h-y-1
+			measures:set(mx,0,measures:get(mx,0)+v)
+		end
+	end
+	local f=io.open("out.txt","w")
+	for i=0,measures.w-1 do
+		measures:set(i,0,measures:get(i,0)/(2*(end_x-skip_x)))
+		f:write(string.format("%d %g\n",i,measures:get(i,0)))
+	end
+	f:close()
 end
 function gradient_to_dist_field( buf )
 	local w=buf.w
@@ -200,10 +237,13 @@ function update(  )
 	imgui.Begin("Image")
 	draw_config(config)
 	if imgui.Button("Calc df") then
-		calc_distance_field(knock_buf,config.cutoff)
-		dist_field_to_gradient(dist_field)
-		config.show_df=true
+		--calc_distance_field(knock_buf,config.cutoff)
+		--dist_field_to_gradient(dist_field)
+		--config.show_df=true
+		update_measures(image_buf)
+		print(image_buf.w)
 	end
+	imgui.PlotLines("Lines",measures.d,measures.w)
 	imgui.End()
 
 	
@@ -223,7 +263,7 @@ function update(  )
 	else
 		main_shader:use()
 		con_tex:use(0)
-		knock_buf:write_texture(con_tex)
+		image_buf:write_texture(con_tex)
 		main_shader:set_i("tex_main",0)
 		main_shader:set("cutoff",config.cutoff)
 		main_shader:draw_quad()
