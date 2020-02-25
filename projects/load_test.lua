@@ -2,10 +2,10 @@
 require "common"
 local luv=require "colors_luv"
 local size=STATE.size
-local image_buf=load_png("glazed3.png")
+local image_buf=load_png("glazed1.png")
 
-measures=make_float_buffer(800,1)
-
+measures=make_float_buffer(800,3)
+palette=palette or make_flt_buffer(255,1)
 config=make_config({
 	{"cutoff",0,type="float"},
 	{"level",0.2,type="float",min=0,max=10},
@@ -35,16 +35,31 @@ local df_shader = shaders.Make[[
 out vec4 color;
 in vec3 pos;
 uniform float level;
-
-uniform sampler2D tex_main;
+uniform sampler2D tex_colors;
+float sdRect(vec2 p, vec2 sz) {  
+  vec2 d = abs(p) - sz;
+  float outside = length(max(d, 0.));
+  float inside = min(max(d.x, d.y), 0.);
+  return outside + inside;
+}
+float sdBox( in vec2 p, in vec2 b )
+{
+    vec2 d = abs(p)-b;
+    return length(max(d,0.0)) + min(max(d.x,d.y),0.0);
+}
+float opRoundBox( in vec2 p,in vec2 b, in float r )
+{
+  return sdBox(p,b) - r;
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	vec4 c=texture(tex_main,normed*vec2(1,-1));
+	float v=opRoundBox(pos.xy,vec2(0.89,0.89),0.1);
+	//v=texture(tex_colors,vec2(abs(v),0)).r;
 
 	//float v=clamp(c.r,0,1);
-	float v=sqrt(c.r)/level;
-	v=smoothstep(0,v,1.5)-smoothstep(0,v,0.5);
-	color = vec4(v,v,v,1);//vec4(0.2,0,0,1);
+	//float v=sqrt(c.r)/level;
+	//v=smoothstep(0,v,1.5)-smoothstep(0,v,0.5);
+	color = vec4(texture(tex_colors,vec2(v,0)).rgb,1);//vec4(0.2,0,0,1);
 }
 ]]
 local grad_shader = shaders.Make[[
@@ -174,9 +189,11 @@ function dist_field_to_gradient(buf)
 	end
 end
 function update_measures( buf )
-	local channel=2
+
 	for i=0,measures.w-1 do
 		measures:set(i,0,0)
+		measures:set(i,1,0)
+		measures:set(i,2,0)
 	end
 	local skip_x=math.floor(buf.w*0.2)
 	local end_x=math.floor(buf.w*0.8)
@@ -186,27 +203,33 @@ function update_measures( buf )
 		for y=sy,ey do
 			local c=buf:get(x,y)
 			local hs=luv.rgb_to_hsluv({c.r/255,c.g/255,c.b/255})
-			local v=hs[channel]--0.2126*c.r/255+0.7152*c.g/255+0.0722*c.b/255;
+			--local v=hs[channel]--0.2126*c.r/255+0.7152*c.g/255+0.0722*c.b/255;
 			--local mx=math.floor(((y-sy)/(ey-sy))*measures.w)
-			local mx=y
-			measures:set(mx,0,measures:get(mx,0)+v)
+			local mx=y-sy
+			measures:set(mx,0,measures:get(mx,0)+hs[1])
+			measures:set(mx,1,measures:get(mx,1)+hs[2])
+			measures:set(mx,2,measures:get(mx,2)+hs[3])
 			--measures:set(y,0,measures:get(y,0)+v)
 		end
 		for y=sy,0,-1 do
 			local c=buf:get(x,y)
 			local hs=luv.rgb_to_hsluv({c.r/255,c.g/255,c.b/255})
-			local v=hs[channel]--0.2126*c.r/255+0.7152*c.g/255+0.0722*c.b/255;
+			--local v=hs[channel]--0.2126*c.r/255+0.7152*c.g/255+0.0722*c.b/255;
 
-			local mx=buf.h-y-1
-			measures:set(mx,0,measures:get(mx,0)+v)
+			local mx=buf.h-y-1-sy
+			measures:set(mx,0,measures:get(mx,0)+hs[1])
+			measures:set(mx,1,measures:get(mx,1)+hs[2])
+			measures:set(mx,2,measures:get(mx,2)+hs[3])
 		end
 	end
-	local f=io.open("out.txt","w")
+	--local f=io.open("out.txt","w")
 	for i=0,measures.w-1 do
 		measures:set(i,0,measures:get(i,0)/(2*(end_x-skip_x)))
-		f:write(string.format("%d %g\n",i,measures:get(i,0)))
+		measures:set(i,1,measures:get(i,1)/(2*(end_x-skip_x)))
+		measures:set(i,2,measures:get(i,2)/(2*(end_x-skip_x)))
+		--f:write(string.format("%g %g\n",i/(measures.w/2),measures:get(i,0)))
 	end
-	f:close()
+	--f:close()
 end
 function gradient_to_dist_field( buf )
 	local w=buf.w
@@ -231,6 +254,30 @@ function gradient_to_dist_field( buf )
 		end
 	end
 end
+function update_palette(  )
+	local hue=266
+	local saturation=95 --todo last 20%
+	local w=image_buf.h/2
+	local hue_offset=math.random()*360
+	for i=0,palette.w-1 do
+		local t=i/palette.w
+		--[[local value=1.7587866546286683e+001
+		value=value+t*(-5.7511430108883317e+001)
+		value=value+t*t*(7.4817786901113925e+002)
+ 		value=value+t*t*t*(-3.5907720823165500e+003)
+ 		value=value+t*t*t*t*( 7.9331817532889863e+003)
+ 		value=value+t*t*t*t*t*(-8.4218130887748921e+003)
+ 		value=value+t*t*t*t*t*t*(3.4766684510664145e+003)]]
+
+ 		local hue=measures:get(math.floor(t*w),0)+hue_offset
+ 		local saturation=measures:get(math.floor(t*w),1)
+ 		local value=measures:get(math.floor(t*w),2)
+ 		--print(i,value)
+ 		local col=luv.hsluv_to_rgb({hue,saturation,value})
+ 		print(col[3])
+		palette:set(i,0,col)
+	end
+end
 function update(  )
 	__no_redraw()
 	__clear()
@@ -241,18 +288,19 @@ function update(  )
 		--dist_field_to_gradient(dist_field)
 		--config.show_df=true
 		update_measures(image_buf)
-		print(image_buf.w)
+		--print(image_buf.w)
+		update_palette()
 	end
-	imgui.PlotLines("Lines",measures.d,measures.w)
+	imgui.PlotLines("Lines",measures.d,measures.w*3)
 	imgui.End()
 
 	
 	if config.show_df then
 		df_shader:use()
 		df_tex:use(0)
-		dist_field:write_texture(df_tex)
-		df_shader:set_i("tex_main",0)
-		df_shader:set("level",config.level)
+		palette:write_texture(df_tex)
+		df_shader:set_i("tex_colors",0)
+		--df_shader:set("level",config.level)
 		df_shader:draw_quad()
 	elseif config.show_grad then
 		grad_shader:use()
