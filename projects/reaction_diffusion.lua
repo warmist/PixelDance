@@ -18,7 +18,7 @@ config=make_config({
 	{"draw_comp",0,type="int",min=0,max=3},
 	{"animate",false,type="boolean"},
 },config)
-__set_window_size(640,640)
+__set_window_size(1080,1080)
 local size=STATE.size
 img_buf=img_buf or make_image_buffer(size[1],size[2])
 react_buffer=react_buffer or multi_texture(size[1],size[2],2,1)
@@ -231,14 +231,14 @@ void main(){
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
 
-	color=vec4(lv,lv,lv,1);
+	//color=vec4(lv,lv,lv,1);
 	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.25,0.25,0.25),vec3(2,0.5,0.5),vec3(1.5,0.25,0.25)),1);
-	/* accent
+	///* accent
 	float accent_const=0.9;
 	if(lv<accent_const)
 		color=vec4(vec3(1)*(lv/accent_const),1);
 	else
-		color=mix(vec4(1),vec4(0.6,0,0,1),(lv-accent_const)/(1-accent_const));
+		color=mix(vec4(1),vec4(0.05,0.1,0.3,1),(lv-accent_const)/(1-accent_const));
 	//*/
 }
 ]==]
@@ -328,6 +328,17 @@ function random_math_balanced( steps,seed )
 			ret=ret..","..cur_string
 		end
 	end
+	return ret
+end
+function random_math_poly(  )
+	local rf=function (  )
+		return math.random()*2-1
+	end
+	local ret=string.format("dot(c,vec4(%g,%g,%g,%g)),dot(c,vec4(%g,%g,%g,%g)),dot(c,vec4(%g,%g,%g,%g)),dot(c,vec4(%g,%g,%g,%g))",
+			rf(),rf(),rf(),rf(),
+			rf(),rf(),rf(),rf(),
+			rf(),rf(),rf(),rf(),
+			rf(),rf(),rf(),rf())
 	return ret
 end
 function random_math_transfers( steps,seed,count_transfers )
@@ -542,7 +553,7 @@ function gui(  )
 	end
 	imgui.SameLine()
 	if imgui.Button("RandMath") then
-		thingy_string=random_math_balanced(30)
+		thingy_string=random_math_poly(30)
 		print(thingy_string)
 		eval_thingy_string()
 		update_diffuse()

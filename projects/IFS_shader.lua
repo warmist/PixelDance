@@ -966,6 +966,10 @@ function rand_function(  )
 	--str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
 	--str_postamble=str_postamble.."s=s*vec2(exp(move_dist/(-p.x*p.x)),exp(move_dist/(-p.y*p.y)));"
 	--]]
+	--[[ invert-ination
+	str_preamble=str_preamble.."s=c_inv(s);"
+	str_postamble=str_postamble.."s=c_inv(s);"
+	--]]
 	--[[ offset
 	str_preamble=str_preamble.."s+=params.xy;"
 	--]]
@@ -1647,9 +1651,16 @@ vec2 gaussian(float mean,float var,vec2 rnd)
 }
 vec2 mapping(vec2 p)
 {
-	return p;
-	//return mod(p+vec2(1),0.8)-vec2(1);
-
+	//return p; //normal - do nothing
+	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
+	///*
+	if(length(p)<50) //modulo, but no artifacts because far away points are far away
+		return mod(p+vec2(1),2)-vec2(1);
+	else
+		return p;
+	//*/
+	//return mod(p+vec2(1),2)-vec2(1)+vec2(0.001)*log(dot(p,p)+1);
+	//return c_rem(p+vec2(1),vec2(2,0))-vec2(1);
 	/* polar
 	float angle=(2*M_PI)/3;
 	float r=length(p);

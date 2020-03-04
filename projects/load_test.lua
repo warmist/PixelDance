@@ -2,7 +2,7 @@
 require "common"
 local luv=require "colors_luv"
 local size=STATE.size
-local image_buf=load_png("glazed1.png")
+local image_buf=load_png("glazed5.png")
 
 measures=make_float_buffer(800,3)
 palette=palette or make_flt_buffer(255,1)
@@ -35,7 +35,10 @@ local df_shader = shaders.Make[[
 out vec4 color;
 in vec3 pos;
 uniform float level;
+
 uniform sampler2D tex_colors;
+uniform sampler2D tex_main;
+
 float sdRect(vec2 p, vec2 sz) {  
   vec2 d = abs(p) - sz;
   float outside = length(max(d, 0.));
@@ -53,13 +56,17 @@ float opRoundBox( in vec2 p,in vec2 b, in float r )
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	float v=opRoundBox(pos.xy,vec2(0.89,0.89),0.1);
+	float v=opRoundBox(pos.xy,vec2(0.95,0.95),0.05);
 	//v=texture(tex_colors,vec2(abs(v),0)).r;
 
 	//float v=clamp(c.r,0,1);
 	//float v=sqrt(c.r)/level;
 	//v=smoothstep(0,v,1.5)-smoothstep(0,v,0.5);
-	color = vec4(texture(tex_colors,vec2(v,0)).rgb,1);//vec4(0.2,0,0,1);
+	vec3 col=abs(texture(tex_colors,vec2(v,0)).rgb-texture(tex_main,normed).rgb);
+	col=vec3(sqrt(dot(col,col)));
+	if(v>0)
+		col=vec3(0);
+	color = vec4(col,1);//vec4(0.2,0,0,1);
 }
 ]]
 local grad_shader = shaders.Make[[
@@ -195,8 +202,8 @@ function update_measures( buf )
 		measures:set(i,1,0)
 		measures:set(i,2,0)
 	end
-	local skip_x=math.floor(buf.w*0.2)
-	local end_x=math.floor(buf.w*0.8)
+	local skip_x=math.floor(buf.w*0.1)
+	local end_x=math.floor(buf.w*0.9)
 	local sy=math.floor(buf.h/2)
 	local ey=math.floor(buf.h-1)
 	for x=skip_x,end_x do
@@ -258,7 +265,7 @@ function update_palette(  )
 	local hue=266
 	local saturation=95 --todo last 20%
 	local w=image_buf.h/2
-	local hue_offset=math.random()*360
+	local hue_offset=0--math.random()*360
 	for i=0,palette.w-1 do
 		local t=i/palette.w
 		--[[local value=1.7587866546286683e+001
@@ -299,7 +306,10 @@ function update(  )
 		df_shader:use()
 		df_tex:use(0)
 		palette:write_texture(df_tex)
+		con_tex:use(1)
+		image_buf:write_texture(con_tex)
 		df_shader:set_i("tex_colors",0)
+		df_shader:set_i("tex_main",1)
 		--df_shader:set("level",config.level)
 		df_shader:draw_quad()
 	elseif config.show_grad then
