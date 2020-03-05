@@ -473,6 +473,12 @@ function eval_thingy_string()
 		cos=math.cos,
 		log=math.log,
 		math=math,
+		dot=function ( a,b )
+			return a.x*b.x+a.y*b.y+a.z*b.z+a.w*b.w
+		end,
+		vec4=function ( x,y,z,w )
+			return {x=x,y=y,z=z,w=w}
+		end
 	}
 	local f=load(string.format(
 		[==[
