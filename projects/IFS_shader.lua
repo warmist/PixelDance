@@ -22,7 +22,7 @@ local need_clear=false
 local oversample=1
 local render_lines=false
 local complex=true
-local init_zero=true
+local init_zero=false
 local escape_fractal=false
 
 str_x=str_x or "s.x"
@@ -44,12 +44,12 @@ function make_visits_texture()
 		print("making tex")
 		visit_tex={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
 		visit_tex.t:use(0,1)
-		visit_tex.t:set(size[1]*oversample,size[2]*oversample,2)
+		visit_tex.t:set(size[1]*oversample,size[2]*oversample,3)
 	end
 end
 function make_visits_buf(  )
 	if visit_buf==nil or visit_buf.w~=size[1]*oversample or visit_buf.h~=size[2]*oversample then
-		visit_buf=make_float_buffer(size[1]*oversample,size[2]*oversample)
+		visit_buf=make_flt_half_buffer(size[1]*oversample,size[2]*oversample)
 	end
 end
 tick=tick or 0
@@ -59,7 +59,7 @@ config=make_config({
 	{"draw",true,type="boolean"},
 	{"point_size",0,type="int",min=0,max=10},
 	{"ticking",1,type="int",min=1,max=2},
-	{"size_mult",true,type="boolean"},
+	{"size_mult",false,type="boolean"},
 	{"v0",-0.211,type="float",min=-1,max=1},
 	{"v1",-0.184,type="float",min=-1,max=1},
 	{"v2",-0.184,type="float",min=-1,max=1},
@@ -138,6 +138,7 @@ vec4 mix_palette2(float value )
 {
 	if (palette_size==0)
 		return vec4(0);
+	value=mod(value,1);
 	value=clamp(value,0,1);
 	float tg=value*(float(palette_size)-1); //[0,1]-->[0,#colors]
 	float tl=floor(tg);
@@ -241,6 +242,10 @@ float gain(float x, float k)
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float nv=texture(tex_main,normed).x;
+	float nn=texture(tex_main,normed).y;
+	nn=log(abs(nn)+1);
+	nn/=1;
+	nn=clamp(nn,0,1);
 	//vec2 local_mm=local_minmax(normed);
 	//float lnv=abs(nv-dtex(normed));
 	vec2 lmm=min_max;
@@ -257,10 +262,7 @@ void main(){
 	//lnv=clamp(lnv,0,1);
 	nv=clamp(nv,0,1);
 
-	/* compress everything a bit i.e. like gamma but for palette
-	float pw=0.5;
-	nv=pow(nv,pw);
-	*/
+
 	//nv=floor(nv*10)/10; //stylistic quantization
 	//nv=pow(nv,1/pw);
 
@@ -268,8 +270,8 @@ void main(){
 	nv=gain(nv,v_gain);
 	nv=pow(nv,v_gamma);
 
-	//color = mix_palette2(lnv*l)*nv;
-	color = mix_palette2(nv*l);//*lnv;
+	//color = mix_palette2(lnv*l);
+	color = mix_palette2(nv*l+nn);//*lnv;
 	color.a=1;
 }
 ]==]
@@ -283,7 +285,7 @@ function draw_visits(  )
 	visit_buf:read_texture(visit_tex.t)
 	for x=0,visit_buf.w-1 do
 	for y=0,visit_buf.h-1 do
-		local v=visit_buf:get(x,y)
+		local v=visit_buf:get(x,y).r
 		if v>math.exp(config.min_value)-1 then --skip non-visited tiles
 			if lmax<v then lmax=v end
 			if lmin>v then lmin=v end
@@ -1703,7 +1705,7 @@ void main()
     pos.z=rez.z;//length(rez);
 #else
 	gl_Position.xy = mapping(func(position.xy,iters).xy*scale+center);
-	
+	gl_Position.z=length(mapping(position.xy*scale+center)-gl_Position.xy);
     pos=gl_Position.xyz;
 #endif
 
@@ -1738,7 +1740,8 @@ void main(){
 #if ESCAPE_MODE
 	//if(pos.z>float(it_count)/10)
 	//	discard;
-	float v=pos.z;
+	//float v=pos.z;
+	float v=0;
 	//float v=log(pos.z*exp(1)+1);
 	//float v=exp(pos.z-0.5);
 	//v=smoothstep(v,0,0.5);
@@ -1761,7 +1764,7 @@ void main(){
 	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
 	//color=vec4(a,0,0,1);
-	color=vec4(a*intensity*v,0,0,1);
+	color=vec4(a*intensity*v,pos.z,0,1);
 }
 ]==],escape_mode_str()))
 end
