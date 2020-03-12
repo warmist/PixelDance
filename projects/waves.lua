@@ -156,19 +156,20 @@ void main(){
 	float lv=f(abs(texture(values,normed).x+add))*mult;
 	//float lv=f(abs(log(texture(values,normed).x+1)+add))*mult;
 	//lv=pow(1-lv,gamma);
-	lv=gain(lv,v_gain);
-	lv=pow(lv,v_gamma);
+	//lv=gain(lv,v_gain);
+	//lv=pow(lv,v_gamma);
 	/* quantize
 	float q=7;
 	lv=clamp(floor(lv*q)/q,0,1);
 	//*/
+	color.xyz=vec3(lv);
 	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,2.0,2.0),vec3(3.0,2.0,1.0)),1);
 	color.a=1;
 	vec3 col_back=vec3(0);
 	vec3 col_top=vec3(1);
 	float break_pos=0.5;
 	float break_inv=1/break_pos;
-	///* color with a down to dark break
+	/* color with a down to dark break
 	
 	if(lv>break_pos)
 		color.xyz=mix(col_back,col_top,(lv-break_pos)/(1-break_pos));
@@ -198,6 +199,12 @@ out vec4 color;
 in vec3 pos;
 uniform sampler2D values_cur;
 uniform sampler2D values_old;
+
+uniform sampler2D input_map;
+uniform vec2 input_map_swing;
+uniform float v_gamma;
+uniform float v_gain;
+
 uniform float init;
 uniform float dt;
 uniform float c_const;
@@ -546,7 +553,7 @@ float func(vec2 pos)
 		if(time<max_time)
 			//if(pos.x<-0.35)
 				//return (hash(time*freq2)*hash(pos*freq))/2;
-				return n4rand(pos*fr);
+				return ab_vec.x*n4rand(pos*fr);
 	#endif
 	#if 0
 		//if(time<max_time)
@@ -590,7 +597,7 @@ float func(vec2 pos)
 		)*0.00005;
 	#endif
 
-	#if 0
+	#if 1
 
 
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.3;
@@ -603,7 +610,7 @@ float func(vec2 pos)
 
 
 	#endif
-	#if 1
+	#if 0
 	if(  length(pos)<0.005
 	  //|| length(pos+vec2(-0.1,0.2))<0.005
 	  )
@@ -651,7 +658,6 @@ float func_init(vec2 pos)
 float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-
 	vec2 dtex=1/tex_size;
 	float dcsqrx=c_sqr_avg.x*dt*dt/(dtex.x*dtex.x);
 	float dcsqry=c_sqr_avg.y*dt*dt/(dtex.y*dtex.y);
@@ -802,6 +808,11 @@ float boundary_condition_init(vec2 pos,vec2 dir)
 	return 0;
 #endif
 }
+float gain(float x, float k)
+{
+    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
+    return (x<0.5)?a:1.0-a;
+}
 float c_shape(vec2 pos)
 {
 	return radial_shape(pos);
@@ -811,11 +822,10 @@ void main(){
 	float v=0;
 	float max_d=2;
 	float w=0.005;
-	float sh_v=0;
 
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	float sh_v=0;
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
-	//float sh_v=sh_circle(pos.xy,max_d,w);
-	//float sh_v=length(pos.xy);
 	//float sh_v=1-damaged_circle(pos.xy);
 	//float sh_v=sh_wavy(pos.xy,max_d);
 	//float sh_v=dagger(pos.xy,w);
@@ -830,6 +840,12 @@ void main(){
 	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
 
+	float sh_v2=texture(input_map,normed).x;
+	sh_v2=(log(sh_v2+1)-input_map_swing.x)/(input_map_swing.y-input_map_swing.x);
+	sh_v2=clamp(sh_v2,0,1);
+	sh_v2=gain(sh_v2,v_gain);
+	sh_v2=pow(sh_v2,v_gamma);
+
 	//vec2 pm=mod(pos.xy+0.5*mm,mm)-0.5*mm;
 	//t_rot(pm.xy,M_PI/4);
 	//float sh_v=ankh_sdf(pos.xy*0.7);
@@ -838,6 +854,7 @@ void main(){
 	//float sh_v=grid(pos.xy,w);
 	//float sh_v=1;
 	//sh_v=1-sh_v;
+
 
 	vec2 dtex=1/tex_size;
 	float max_c=0.0001;// min(dtex.x,dtex.y)*0.8;
@@ -975,8 +992,15 @@ function waves_solve(  )
 	local id_next=(solver_iteration+2) % 3 +1
 	texture_buffers[id_old].t:use(0)
 	texture_buffers[id_cur].t:use(1)
+	visit_tex.t:use(2)
 	solver_shader:set_i("values_old",0)
 	solver_shader:set_i("values_cur",1)
+	solver_shader:set_i("input_map",2)
+
+	solver_shader:set("v_gamma",config.gamma)
+	solver_shader:set("v_gain",config.gain)
+
+	solver_shader:set("input_map_swing",visits_minmax[1],visits_minmax[2])
 	if current_time==0 then
 		solver_shader:set("init",1);
 	else

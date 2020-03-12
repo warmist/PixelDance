@@ -2,13 +2,15 @@
 require "common"
 require "colors"
 local luv=require "colors_luv"
+local bwrite = require "blobwriter"
+local bread = require "blobreader"
 local size_mult=1
 local win_w
 local win_h
 local aspect_ratio
 function update_size(  )
-	win_w=2560*size_mult
-	win_h=1440*size_mult--math.floor(win_w*size_mult*(1/math.sqrt(2)))
+	win_w=1280*size_mult
+	win_h=1280*size_mult--math.floor(win_w*size_mult*(1/math.sqrt(2)))
 	aspect_ratio=win_w/win_h
 	__set_window_size(win_w,win_h)
 end
@@ -274,6 +276,24 @@ void main(){
 }
 ]==]
 local need_save
+local need_buffer_save
+visits_minmax=visits_minmax or {}
+function buffer_save( name )
+	local b=bwrite()
+	b:u32(visit_buf.w)
+	b:u32(visit_buf.h)
+	b:f32(visits_minmax[1])
+	b:f32(visits_minmax[2])
+	for x=0,visit_buf.w-1 do
+	for y=0,visit_buf.h-1 do
+		local v=visit_buf:get(x,y)
+		b:f32(v)
+	end
+	end
+	local f=io.open(name,"wb")
+	f:write(b:tostring())
+	f:close()
+end
 function draw_visits(  )
 	local lmax=0
 	local lmin=math.huge
@@ -292,6 +312,11 @@ function draw_visits(  )
 	end
 	lmax=math.log(lmax+1)
 	lmin=math.log(lmin+1)
+	visits_minmax={lmin,lmax}
+	if need_buffer_save then
+		buffer_save(need_buffer_save)
+		need_buffer_save=nil
+	end
 	log_shader:use()
 	visit_tex.t:use(0,1)
 	--visits:write_texture(visit_tex)
@@ -1060,6 +1085,10 @@ function gui()
 	imgui.SameLine()
 	if imgui.Button("Save image") then
 		need_save=true
+	end
+	imgui.SameLine()
+	if imgui.Button("Save buffer") then
+		need_buffer_save="out.buf"
 	end
 	rand_complexity=rand_complexity or 3
 	if imgui.Button("Rand function") then
