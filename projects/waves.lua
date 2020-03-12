@@ -562,7 +562,7 @@ float func(vec2 pos)
 		)*cos(pos.y*M_PI*nm_vec.y)
 		);
 	#endif
-	#if 0
+	#if 1
 	for(float a=0;a<max_a;a++)
 	{
 		float ang=(a/max_a)*M_PI*2;
@@ -571,8 +571,8 @@ float func(vec2 pos)
 		if(length(pos+dv)<0.005)
 		//if(time<max_time)
 			return (
-			ab_vec.x*sin(time*fr*M_PI/1000)
-			+ab_vec.y*sin(time*fr2*M_PI/1000)
+			ab_vec.x*sin(time*fr*M_PI/1000+ang)
+			+ab_vec.y*sin(time*fr2*M_PI/1000+ang)
 										);
 	}
 	#endif
@@ -648,18 +648,14 @@ float func_init(vec2 pos)
 	return 0;
 }
 #define IDX(dx,dy) func_init(pos+vec2(dx,dy)*dtex)
-float calc_new_value(vec2 pos)
+float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	
-	float dcsqr=dt*dt*c_const*c_const;
-#if 0
-	vec2 p2=pos+vec2(0,-0.3);
-	dcsqr*=(dot(p2,p2)+0.05);
-#endif
+
 	vec2 dtex=1/tex_size;
-	float dcsqrx=dcsqr/(dtex.x*dtex.x);
-	float dcsqry=dcsqr/(dtex.y*dtex.y);
+	float dcsqrx=c_sqr_avg.x*dt*dt/(dtex.x*dtex.x);
+	float dcsqry=c_sqr_avg.y*dt*dt/(dtex.y*dtex.y);
+
 #if 0
 	float dec=dot(pos,pos)*decay;//abs(hash(pos*100))*decay;
 #else
@@ -678,14 +674,14 @@ float calc_new_value(vec2 pos)
 
 	return ret/(1+0.5*dec*dt);
 }
-float calc_init_value(vec2 pos)
+float calc_init_value(vec2 pos,vec2 c_sqr_avg)
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 
 	vec2 dtex=1/tex_size;
-	//float dcsqr=dt*dt*c_const*c_const;
-	float dcsqrx=dt*dt*c_const*c_const/(dtex.x*dtex.x);
-	float dcsqry=dt*dt*c_const*c_const/(dtex.y*dtex.y);
+
+	float dcsqrx=dt*dt*c_sqr_avg.x/(dtex.x*dtex.x);
+	float dcsqry=dt*dt*c_sqr_avg.y/(dtex.y*dtex.y);
 
 	float ret=
 		IDX(0,0)+
@@ -806,13 +802,20 @@ float boundary_condition_init(vec2 pos,vec2 dir)
 	return 0;
 #endif
 }
+float c_shape(vec2 pos)
+{
+	return radial_shape(pos);
+}
 #define DRAW_FORM 0
 void main(){
 	float v=0;
 	float max_d=2;
 	float w=0.005;
+	float sh_v=0;
+
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
 	//float sh_v=sh_circle(pos.xy,max_d,w);
+	//float sh_v=length(pos.xy);
 	//float sh_v=1-damaged_circle(pos.xy);
 	//float sh_v=sh_wavy(pos.xy,max_d);
 	//float sh_v=dagger(pos.xy,w);
@@ -824,7 +827,7 @@ void main(){
 	//float sh_v=sh_jaws(pos.xy,w);
 	//float sh_v=sh_polyhedron(pos.xy*vec2(0.2,1),4,0.2,0,w);
 	//float sh_v=ankh(pos.xy,w);
-	float sh_v=radial_shape(pos.xy);
+	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
 
 	//vec2 pm=mod(pos.xy+0.5*mm,mm)-0.5*mm;
@@ -835,19 +838,32 @@ void main(){
 	//float sh_v=grid(pos.xy,w);
 	//float sh_v=1;
 	//sh_v=1-sh_v;
+
+	vec2 dtex=1/tex_size;
+	float max_c=0.0001;// min(dtex.x,dtex.y)*0.8;
+	float min_c=0.00005;
+	//dt<= betta*delta_x/max(c_const)
+	vec2 sh_v2_min=vec2(radial_shape(pos.xy)*(max_c-min_c)+min_c);
+	vec2 sh_v2_max=vec2(radial_shape(pos.xy+dtex)*(max_c-min_c)+min_c);
+	sh_v2_min=clamp(sh_v2_min,min_c,max_c);
+	sh_v2_max=clamp(sh_v2_max,min_c,max_c);
+
 #if DRAW_FORM
-	v=sh_v;
+	v=(sh_v2_min.x-min_c)/(max_c-min_c);
 	//vec2 dv=vec2(dFdx(sh_v),dFdy(sh_v));
 	//normalize(dv);
-	v=1-smoothstep(-w,w,v);
+	//v=1-smoothstep(-w,w,v);
 #else
+	sh_v2_min.x*=sh_v2_min.x;
+	sh_v2_min.y*=sh_v2_min.y;
+	sh_v2_max.x*=sh_v2_max.x;
+	sh_v2_max.y*=sh_v2_max.y;
 	if(sh_v<=0)
 	{
-
 		if(init==1)
-			v=calc_init_value(pos.xy);
+			v=calc_init_value(pos.xy,0.5*(sh_v2_min+sh_v2_max));
 		else
-			v=calc_new_value(pos.xy);
+			v=calc_new_value(pos.xy,0.5*(sh_v2_min+sh_v2_max));
 	}
 	else if(sh_v>0)
 	{
