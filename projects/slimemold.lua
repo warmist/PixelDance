@@ -72,9 +72,39 @@ if agent_data==nil or agent_data.w~=agent_count then
 		agent_buffers[i]:set(agent_data.d,agent_count*4*4)
 	end
 end
+-- [[
+local bwrite = require "blobwriter"
+local bread = require "blobreader"
+function read_background_buf( fname )
+	local file = io.open(fname, 'rb')
+	local b = bread(file:read('*all'))
+	file:close()
 
-
-
+	local sx=b:u32()
+	local sy=b:u32()
+	background_buf=make_float_buffer(sx,sy)
+	background_minmax={}
+	background_minmax[1]=b:f32()
+	background_minmax[2]=b:f32()
+	for x=0,background_buf.w-1 do
+	for y=0,background_buf.h-1 do
+		local v=(math.log(b:f32()+1)-background_minmax[1])/(background_minmax[2]-background_minmax[1])
+		background_buf:set(x,y,v)
+	end
+	end
+end
+function make_background_texture()
+	if background_tex==nil then
+		print("making tex")
+		read_background_buf("out.buf")
+		background_tex={t=textures:Make(),w=background_buf.w,h=background_buf.h}
+		background_tex.t:use(0,1)
+		background_buf:write_texture(background_tex.t)
+		__unbind_buffer()
+	end
+end
+make_background_texture()
+--]]
 update_buffers()
 config=make_config({
     {"pause",false,type="bool"},
@@ -296,16 +326,23 @@ void main(){
 
     vec4 pixel=texture(tex_main,normed);
     //float v=log(pixel.x+1);
-    float v=pow(pixel.x/turn_around,3);
+    float v=pow(pixel.x/turn_around,1);
     //float v=pixel.x/turn_around;
     //float v=gain(pixel.x/turn_around,-0.8);
     //v=noise(pos.xy*rez/100);
+    ///*
+    if(v<1)
+    	color=mix(color_back,color_fore,v);
+    else
+    	color=mix(color_fore,color_turn_around,clamp((v-1)*1,0,1));
+	//*/
+    /*
     if(v<1)
     	color=mix_hsl(color_back,color_fore,v);
     else
     	color=mix_hsl(color_fore,color_turn_around,clamp((v-1)*1,0,1));
+    //*/
 
-	
     /*if(v<1)
     	color=vec4(palette(v,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,2.5,1.5),vec3(0.5,1.5,1.0)),1);
     else
@@ -324,6 +361,8 @@ layout(location = 0) in vec4 position;
 out vec4 state_out;
 
 uniform sampler2D tex_main;  //signal buffer state
+uniform sampler2D background;
+uniform vec2 background_swing;
 
 uniform vec2 rez;
 
@@ -369,25 +408,41 @@ float expStep( float x, float k, float n )
 {
     return exp( -k*pow(x,n) );
 }
+float sample_back(vec2 pos)
+{
+	//return (log(texture(background,pos).x+1)-background_swing.x)/(background_swing.y-background_swing.x);
+	return clamp(texture(background,pos).x,0,1);
+}
 void main(){
 	float step_size=ag_step_size;
 	float sensor_distance=ag_sensor_distance;
 	float sensor_angle=ag_sensor_angle;
 	float turn_size=ag_turn_angle;
+	float turn_size_neg=ag_turn_around;
 	float turn_around=ag_turn_around;
 
 
 	vec3 state=position.xyz;
-	vec2 normed_p=(state.xy/rez)*2-vec2(1,1);
+	vec2 normed_state=state.xy/rez;
+	vec2 normed_p=(normed_state)*2-vec2(1,1);
+	float tex_sample=sample_back(normed_state);//cubicPulse(0.6,0.3,abs(normed_p.x));//;
+
 	float pl=length(normed_p);
+
+	//sensor_distance*=tex_sample*0.8+0.2;
+	//sensor_distance*=state.x/rez.x;
 
 	//sensor_distance*=1-cubicPulse(0.1,0.5,abs(normed_p.x));
 	//sensor_distance=clamp(sensor_distance,2,15);
 
 	//turn_around*=noise(state.xy/100);
 	//turn_around-=cubicPulse(0.6,0.3,abs(normed_p.x));
+	//turn_around*=tex_sample+0.5;
 	//clamp(turn_around,0.2,5);
 	//figure out new heading
+	sensor_angle*=tex_sample*.95+.05;
+	//turn_size*=tex_sample*.9+0.1;
+	//turn_size_neg*=tex_sample*.9+0.1;
 
 	float head=state.z;
 	float fow=sample_heading(state.xy,head,sensor_distance);
@@ -405,7 +460,7 @@ void main(){
 	#ifdef TURNAROUND
 		if(rgt>=turn_around)
 			//step_size*=-1;
-			head+=ag_turn_avoid;
+			head+=turn_size_neg;
 		else
 	#endif
 			head+=turn_size;
@@ -416,7 +471,7 @@ void main(){
 	#ifdef TURNAROUND
 		if(lft>=turn_around)
 			//step_size*=-1;
-			head-=ag_turn_avoid;
+			head-=turn_size_neg;
 		else
 	#endif
 			head-=turn_size;
@@ -429,8 +484,8 @@ void main(){
 		//head+=(rand(position.xy*position.z*9999+state.xy*4572)-0.5)*turn_size*2;
 		//head+=M_PI;//turn_size*2;//(rand(position.xy+state.xy*4572)-0.5)*turn_size*2;
 		//step_size*=-1;
-		head+=rand(position.xy*position.z*9999+state.xy*4572)*ag_turn_avoid;
-		//head+=ag_turn_avoid;
+		head+=rand(position.xy*position.z*9999+state.xy*4572)*turn_size_neg;
+		//head+=turn_size_neg;
 
 	}
 	//step_size/=clamp(rgt/lft,0.5,2);
@@ -451,7 +506,8 @@ void main(){
 	//step_size*=(clamp(fow/turn_around,0,1))*0.95+0.05;
 	//step_size*=noise(state.xy/100);
 	//step_size*=expStep(abs(pl-0.2),1,2);
-	//step_size=clamp(step_size,0.1,100);
+	step_size*=tex_sample*0.9+0.1;
+	step_size=clamp(step_size,0.001,100);
 
 	//step in heading direction
 	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
@@ -474,7 +530,11 @@ function do_agent_logic_fbk(  )
 
     tex_pixel:use(0)
     agent_logic_shader_fbk:set_i("tex_main",0)
-
+	--if background_tex~=nil then
+	    background_tex.t:use(1)
+	    agent_logic_shader_fbk:set_i("background",1)
+	    agent_logic_shader_fbk:set("background_swing",background_minmax[1],background_minmax[2])
+	--end
 	agent_logic_shader_fbk:set("ag_sensor_distance",config.ag_sensor_distance)
 	agent_logic_shader_fbk:set("ag_sensor_angle",config.ag_sensor_angle)
 	agent_logic_shader_fbk:set("ag_turn_angle",config.ag_turn_angle)
@@ -510,6 +570,7 @@ function agents_togpu()
 
 	agent_buffers:get_current():use()
 	agent_buffers:get_current():set(agent_data.d,agent_count*4*4)
+	__unbind_buffer()
 end
 function fill_buffer(  )
 	tex_pixel:use(0)
@@ -588,9 +649,16 @@ function update()
 		end
 		signal_buf:write_texture(tex_pixel)
     end
-     imgui.SameLine()
+    imgui.SameLine()
     if imgui.Button("Agentswarm") then
     	for i=0,agent_count-1 do
+    		-- [[
+    		agent_data:set(i,0,
+    			{math.random(0,map_w-1),
+    			 math.random(0,map_h-1),
+    			 math.random()*math.pi*2,
+    			 0})
+    		--]]
     		--[[
     		local r=map_w/5+rnd(10)
     		local phi=math.random()*math.pi*2
@@ -600,7 +668,7 @@ function update()
     			 math.random()*math.pi*2,
     			 0})
     		--]]
-    		-- [[
+    		--[[
     		local a = math.random() * 2 * math.pi
 			local r = map_w/8 * math.sqrt(math.random())
 			local x = r * math.cos(a)
@@ -638,6 +706,11 @@ function update()
     	end
     	agents_togpu()
     end
+    imgui.SameLine()
+    if imgui.Button("ReloadBuffer") then
+		background_tex=nil
+		make_background_texture()
+	end
     imgui.End()
     -- [[
     if not config.pause then
