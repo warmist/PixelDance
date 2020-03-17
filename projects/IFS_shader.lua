@@ -789,6 +789,49 @@ function random_math_complex_pts(steps,pts,seed )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
+-- [[
+function factorial( n )
+	if n<=1 then return 1 end
+	return n*factorial(n-1)
+end
+function random_math_complex_series( steps,seed )
+	local cur_string="0" or seed
+	function MT(  )
+		return rand_weighted(terminal_symbols_complex)
+	end
+	--local id1=math.random(1,steps)
+	--local id2=math.random(1,steps)
+	--local comp=random_math_complex(steps)
+	for i=1,steps do
+		local comp=MT()
+		local sub_s=comp
+		for i=1,i do
+			sub_s=string.format("c_mul(%s,%s)",comp,sub_s)
+		end
+		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
+		--[[
+		if i==id1 then
+			cur_string=cur_string..string.format("+c_mul(%s,params.xy)",sub_s)
+		elseif i==id2 then
+			cur_string=cur_string..string.format("+c_mul(%s,params.zw)",sub_s)
+		else
+			cur_string=cur_string..string.format("+c_mul(%s,vec2(%.3f,%.3f))",sub_s,math.random()*2-1,math.random()*2-1)
+		end
+		--]]
+
+		-- [[
+		if i==id1 then
+			cur_string=cur_string..string.format("+%s*params.xy",sub_s)
+		elseif i==id2 then
+			cur_string=cur_string..string.format("+%s*params.zw",sub_s)
+		else
+			cur_string=cur_string..string.format("+%s*vec2(%.3f,%.3f)",sub_s,math.random()*2-1,math.random()*2-1)
+		end
+		--]]
+	end
+	return cur_string
+end
+--]]
 function random_math_centered(steps,complications,seed )
 	local cur_string=("R+%.3f"):format(math.random()*2-1) or seed
 	for i=1,steps do
@@ -861,6 +904,10 @@ animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
 	str_cmplx=random_math_complex(rand_complexity)
+	--[[ nice tri-lobed shape
+
+	str_cmplx="c_div(c_conj(p),(s)-(p))"
+	--]]
 	local pts={}
 	local num_roots=7
 	for i=1,num_roots do
@@ -979,7 +1026,8 @@ function rand_function(  )
 	str_preamble=str_preamble.."s=s-p;"
 	--]]
 	--[[ cosify
-	str_preamble=str_preamble.."s=cos(s);"
+	--str_preamble=str_preamble.."s=cos(s);"
+	str_preamble=str_preamble.."s=c_cos(s);"
 	--]]
 	--[[ tanify
 	str_preamble=str_preamble.."s=tan(s);"
@@ -991,9 +1039,9 @@ function rand_function(  )
 	--str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
 	--str_postamble=str_postamble.."s=s*vec2(exp(move_dist/(-p.x*p.x)),exp(move_dist/(-p.y*p.y)));"
 	--]]
-	--[[ invert-ination
-	str_preamble=str_preamble.."s=c_inv(s);"
-	str_postamble=str_postamble.."s=c_inv(s);"
+	-- [[ invert-ination
+	--str_preamble=str_preamble.."s=c_inv(s);"
+	--str_postamble=str_postamble.."s=c_inv(s);"
 	--]]
 	--[[ offset
 	str_preamble=str_preamble.."s+=params.xy;"
@@ -1002,6 +1050,12 @@ function rand_function(  )
 	--str_preamble=str_preamble.."s=vec2(cos(params.z)*s.x-sin(params.z)*s.y,cos(params.z)*s.y+sin(params.z)*s.x);"
 	str_preamble=str_preamble.."p=vec2(cos(params.z*M_PI*2)*p.x-sin(params.z*M_PI*2)*p.y,cos(params.z*M_PI*2)*p.y+sin(params.z*M_PI*2)*p.x);"
 
+	--]]
+	--[[ offset_complex
+	str_preamble=str_preamble.."s+=params.xy;s=c_mul(s,params.zw);"
+	--]]
+	--[[ unoffset_complex
+	str_postamble=str_postamble.."s=c_div(s,params.zw);s-=params.xy;"
 	--]]
 	--[[ rotate (p)
 	str_preamble=str_preamble.."s=vec2(cos(p.x)*s.x-sin(p.x)*s.y,cos(p.x)*s.y+sin(p.x)*s.x);"
@@ -1012,6 +1066,11 @@ function rand_function(  )
 	str_preamble=str_preamble.."vec2 os=s;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
 	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
+	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
+	--]]
+	-- [[ const-delta-like2
+	str_preamble=str_preamble.."vec2 os=s;"
+	str_postamble=str_postamble.."s=c_div(s,os);"
 	--]]
 	--[[ normed-like
 	str_preamble=str_preamble.."float l=length(s);"
@@ -1680,11 +1739,14 @@ vec2 gaussian(float mean,float var,vec2 rnd)
 }
 vec2 mapping(vec2 p)
 {
-	//return p; //normal - do nothing
+	return p; //normal - do nothing
 	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
 	///*
 	if(length(p)<50) //modulo, but no artifacts because far away points are far away
-		return mod(p+vec2(1),2)-vec2(1);
+	{
+		float size=2.005; //0.005 overdraw as it smooths the tiling when using non 1 sized points
+		return mod(p+vec2(size/2),size)-vec2(size/2);
+	}
 	else
 		return p;
 	//*/
@@ -2011,6 +2073,10 @@ function visit_iter()
 			x=x+math.cos(a2)*circle_size
 			y=y+math.sin(a2)*circle_size
 			--]]
+			if escape_fractal then
+				x=math.random()*2-1
+				y=math.random()*2-1
+			end
 			samples.d[i]={x,y}
 			--[[ for lines
 			local a2 = math.random() * 2 * math.pi
