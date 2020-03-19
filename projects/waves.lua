@@ -18,8 +18,35 @@ function update_size(  )
 	__set_window_size(win_w,win_h)
 end
 --update_size()
+local bwrite = require "blobwriter"
+local bread = require "blobreader"
+function read_visits_buf( fname )
+	local file = io.open(fname, 'rb')
+	local b = bread(file:read('*all'))
+	file:close()
 
-
+	local sx=b:u32()
+	local sy=b:u32()
+	visit_buf=make_float_buffer(sx,sy)
+	visits_minmax={}
+	visits_minmax[1]=b:f32()
+	visits_minmax[2]=b:f32()
+	for x=0,visit_buf.w-1 do
+	for y=0,visit_buf.h-1 do
+		local v=visit_buf:set(x,y,b:f32())
+	end
+	end
+end
+function make_visits_texture()
+	if visit_tex==nil then
+		print("making tex")
+		read_visits_buf("out.buf")
+		visit_tex={t=textures:Make(),w=visit_buf.w,h=visit_buf.h}
+		visit_tex.t:use(0,1)
+		visit_buf:write_texture(visit_tex.t)
+	end
+end
+make_visits_texture()
 function count_lines( s )
 	local n=0
 	for i in s:gmatch("\n") do n=n+1 end
@@ -808,16 +835,22 @@ float boundary_condition_init(vec2 pos,vec2 dir)
 	return 0;
 #endif
 }
+
 float gain(float x, float k)
 {
     float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
     return (x<0.5)?a:1.0-a;
 }
+vec4 gain(vec4 x,float k)
+{
+	return vec4(gain(x.x,k),gain(x.y,k),gain(x.z,k),gain(x.w,k));
+}
 float c_shape(vec2 pos)
 {
 	return radial_shape(pos);
 }
-#define DRAW_FORM 0
+#define TDX(dx,dy) textureOffset(input_map,normed,ivec2(dx,dy)).x
+#define DRAW_FORM 1
 void main(){
 	float v=0;
 	float max_d=2;
@@ -840,11 +873,16 @@ void main(){
 	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
 
-	float sh_v2=texture(input_map,normed).x;
-	sh_v2=(log(sh_v2+1)-input_map_swing.x)/(input_map_swing.y-input_map_swing.x);
+	vec4 sh_v2;
+	sh_v2.x=TDX(0,0);
+	sh_v2.y=TDX(0,1);
+	sh_v2.z=TDX(1,0);
+	sh_v2.w=TDX(1,1);
+
+	sh_v2=(log(sh_v2+1)-vec4(input_map_swing.x))/(input_map_swing.y-input_map_swing.x);
 	sh_v2=clamp(sh_v2,0,1);
 	sh_v2=gain(sh_v2,v_gain);
-	sh_v2=pow(sh_v2,v_gamma);
+	sh_v2=pow(sh_v2,vec4(v_gamma));
 
 	//vec2 pm=mod(pos.xy+0.5*mm,mm)-0.5*mm;
 	//t_rot(pm.xy,M_PI/4);
@@ -857,30 +895,35 @@ void main(){
 
 
 	vec2 dtex=1/tex_size;
-	float max_c=0.0001;// min(dtex.x,dtex.y)*0.8;
-	float min_c=0.00005;
+	float max_c=0.00005;// min(dtex.x,dtex.y)*0.8;
+	float min_c=0.000005;
 	//dt<= betta*delta_x/max(c_const)
-	vec2 sh_v2_min=vec2(radial_shape(pos.xy)*(max_c-min_c)+min_c);
-	vec2 sh_v2_max=vec2(radial_shape(pos.xy+dtex)*(max_c-min_c)+min_c);
-	sh_v2_min=clamp(sh_v2_min,min_c,max_c);
-	sh_v2_max=clamp(sh_v2_max,min_c,max_c);
+	sh_v2=sh_v2*(max_c-min_c)+vec4(min_c);
+	sh_v2=clamp(sh_v2,min_c,max_c);
+
+	sh_v2*=sh_v2;
+	vec2 avg_c;
+#if 1
+	avg_c.x=2/(1/sh_v2.x+1/sh_v2.z);
+	avg_c.y=2/(1/sh_v2.x+1/sh_v2.y);
+#else
+	avg_c.x=0.5*(sh_v2.x+sh_v2.z);
+	avg_c.y=0.5*(sh_v2.x+sh_v2.y);
+#endif
 
 #if DRAW_FORM
-	v=(sh_v2_min.x-min_c)/(max_c-min_c);
+	v=(avg_c.x-min_c*min_c)/(max_c-min_c);
 	//vec2 dv=vec2(dFdx(sh_v),dFdy(sh_v));
 	//normalize(dv);
 	//v=1-smoothstep(-w,w,v);
 #else
-	sh_v2_min.x*=sh_v2_min.x;
-	sh_v2_min.y*=sh_v2_min.y;
-	sh_v2_max.x*=sh_v2_max.x;
-	sh_v2_max.y*=sh_v2_max.y;
+
 	if(sh_v<=0)
 	{
 		if(init==1)
-			v=calc_init_value(pos.xy,0.5*(sh_v2_min+sh_v2_max));
+			v=calc_init_value(pos.xy,avg_c);
 		else
-			v=calc_new_value(pos.xy,0.5*(sh_v2_min+sh_v2_max));
+			v=calc_new_value(pos.xy,avg_c);
 	}
 	else if(sh_v>0)
 	{
