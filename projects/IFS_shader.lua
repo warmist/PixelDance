@@ -1737,11 +1737,18 @@ vec2 gaussian(float mean,float var,vec2 rnd)
             sqrt(-2 * var * log(rnd.x)) *
             sin(2 * 3.14159265359 * rnd.y) + mean);
 }
+vec2 pMod2(inout vec2 p,float size)
+{
+	vec2 halfsize=vec2(size*0.5);
+	vec2 c= floor((p+halfsize)/size);
+	p=mod(p+halfsize,size)-halfsize;
+	return c;
+}
 vec2 mapping(vec2 p)
 {
-	return p; //normal - do nothing
+	//return p; //normal - do nothing
 	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
-	///*
+	/*
 	if(length(p)<50) //modulo, but no artifacts because far away points are far away
 	{
 		float size=2.005; //0.005 overdraw as it smooths the tiling when using non 1 sized points
@@ -1750,6 +1757,37 @@ vec2 mapping(vec2 p)
 	else
 		return p;
 	//*/
+	//TODO: https://en.wikipedia.org/wiki/Wallpaper_group most of these would be fun...
+	if(length(p)<50) //modulo, but no artifacts because far away points are far away
+	{
+		//float size=2.005; //0.005 overdraw as it smooths the tiling when using non 1 sized points
+		float size=2;
+		vec2 r=pMod2(p,size);
+		//float index=abs(r.x)+abs(r.y);
+
+		//if(mod(index,2)!=0) //make more interesting tiling: each second tile is flipped
+		//p*=-1;
+		float index=mod(r.x,2)+mod(r.y,2)*2;
+		float rot=0;
+		if(index==1)
+			rot=1;
+		else if(index==2)
+			rot=3;
+		else if(index==3)
+			rot=2;
+		else if(index==-1)
+			rot=-1;
+		else if(index==-2)
+			rot=-3;
+		else if(index==-3)
+			rot=-2;
+
+		p=tRotate(p,rot*M_PI/2.0);
+		return p;
+		//return mod(p+vec2(size/2),size)-vec2(size/2);
+	}
+	else
+		return p;
 	//return mod(p+vec2(1),2)-vec2(1)+vec2(0.001)*log(dot(p,p)+1);
 	//return c_rem(p+vec2(1),vec2(2,0))-vec2(1);
 	/* polar
