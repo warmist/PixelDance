@@ -4,10 +4,12 @@ require "common"
 	TODO:
 		actually implement dx/dy that would help with bogus units problem
 			-maybe only aspect ratio?
-
+		* https://en.wikipedia.org/wiki/Daxophone#/media/File:DaxoTongues.jpg
+		* sound output
+		* bowstring input
 --]]
 local size_mult
-local oversample=2
+local oversample=1
 local win_w
 local win_h
 local aspect_ratio
@@ -574,7 +576,7 @@ float func(vec2 pos)
 	float fr=freq;
 	float fr2=freq2;
 	//fr*=mix(min_freq,max_freq,time/max_time);
-	float max_a=4;
+	float max_a=5;
 	float r=0.08;
 	#if 0
 		if(time<max_time)
@@ -624,7 +626,7 @@ float func(vec2 pos)
 		)*0.00005;
 	#endif
 
-	#if 1
+	#if 0
 
 
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.3;

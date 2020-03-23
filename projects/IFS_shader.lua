@@ -24,7 +24,7 @@ local need_clear=false
 local oversample=1
 local render_lines=false
 local complex=true
-local init_zero=true
+local init_zero=false
 local escape_fractal=false
 
 str_x=str_x or "s.x"
@@ -343,7 +343,7 @@ end
 palette=palette or {show=false,
 rgb_lerp=false,
 current_gen=1,
-colors_input={{0.03, 1, 0.5, 1,0},{0,0,0,1,math.floor(max_palette_size*0.5)},{0.5, 1, 0.7, 1,max_palette_size-1}}}
+colors_input={{0.01, 0.01, 0.01, 0,0},{0.25,0.25,0.25,1,math.floor(max_palette_size*0.5)},{.99, .99, .99, 1,max_palette_size-1}}}
 function update_palette_img(  )
 	if palette_img.w~=#palette.colors_input then
 		palette_img=make_flt_buffer(#palette.colors_input,1)
@@ -904,6 +904,7 @@ animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
 	str_cmplx=random_math_complex(rand_complexity)
+	--str_cmplx=random_math_complex_series(rand_complexity)
 	--[[ nice tri-lobed shape
 
 	str_cmplx="c_div(c_conj(p),(s)-(p))"
@@ -1025,7 +1026,7 @@ function rand_function(  )
 	--[[ center PRE
 	str_preamble=str_preamble.."s=s-p;"
 	--]]
-	--[[ cosify
+	-- [[ cosify
 	--str_preamble=str_preamble.."s=cos(s);"
 	str_preamble=str_preamble.."s=c_cos(s);"
 	--]]
@@ -1039,9 +1040,9 @@ function rand_function(  )
 	--str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
 	--str_postamble=str_postamble.."s=s*vec2(exp(move_dist/(-p.x*p.x)),exp(move_dist/(-p.y*p.y)));"
 	--]]
-	-- [[ invert-ination
+	--[[ invert-ination
 	--str_preamble=str_preamble.."s=c_inv(s);"
-	--str_postamble=str_postamble.."s=c_inv(s);"
+	str_postamble=str_postamble.."s=c_inv(s);"
 	--]]
 	--[[ offset
 	str_preamble=str_preamble.."s+=params.xy;"
@@ -1747,6 +1748,7 @@ vec2 pMod2(inout vec2 p,float size)
 vec2 mapping(vec2 p)
 {
 	//return p; //normal - do nothing
+	return abs(p)-vec2(1);
 	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
 	/*
 	if(length(p)<50) //modulo, but no artifacts because far away points are far away
@@ -1768,6 +1770,7 @@ vec2 mapping(vec2 p)
 		//if(mod(index,2)!=0) //make more interesting tiling: each second tile is flipped
 		//p*=-1;
 		float index=mod(r.x,2)+mod(r.y,2)*2;
+		/* code for group p4
 		float rot=0;
 		if(index==1)
 			rot=1;
@@ -1783,6 +1786,22 @@ vec2 mapping(vec2 p)
 			rot=-2;
 
 		p=tRotate(p,rot*M_PI/2.0);
+		*/
+		///*
+		if(mod(r.x,2)!=0)
+		{
+			p.x*=-1;
+			p.y+=1;
+			pMod2(p,size);
+		}
+		//*/
+		/*
+		if(mod(r.y,2)!=0)
+		{
+			p.y*=-1;
+			pMod2(p,size);
+		}
+		//*/
 		return p;
 		//return mod(p+vec2(size/2),size)-vec2(size/2);
 	}
