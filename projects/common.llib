@@ -76,6 +76,12 @@ function make_buffer( typename,type_id,default_pixel )
 	end
 end
 
+RGBA_PIX=0
+FLTA_PIX=1
+F_PIX=2
+FL_PIX=3
+U8_PIX=4
+
 make_image_buffer= make_buffer("rgba_pixel",0,{0,0,0,255})
 make_flt_buffer= make_buffer("float_pixel",1,{0,0,0,1})
 make_float_buffer=make_buffer("float",2,0)

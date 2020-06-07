@@ -1,6 +1,11 @@
 
 require "common"
 require "colors"
+--[[ idea: 
+		use a texture WxH that is a "random function from IFS"
+			each point would be a e.g. 4xfloat to a F(x,y) params 
+			- that would give would bring this closer to fractal flame?
+			]]
 local luv=require "colors_luv"
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
@@ -300,19 +305,23 @@ function draw_visits(  )
 	make_visits_texture()
 	make_visits_buf()
 	visit_tex.t:use(0,1)
-	visit_buf:read_texture(visit_tex.t)
-	for x=0,visit_buf.w-1 do
-	for y=0,visit_buf.h-1 do
-		local v=visit_buf:get(x,y)
-		if v>math.exp(config.min_value)-1 then --skip non-visited tiles
-			if lmax<v then lmax=v end
-			if lmin>v then lmin=v end
+	--if visits_minmax==nil or need_buffer_save then
+		visit_buf:read_texture(visit_tex.t)
+		for x=0,visit_buf.w-1 do
+		for y=0,visit_buf.h-1 do
+			local v=visit_buf:get(x,y)
+			if v>math.exp(config.min_value)-1 then --skip non-visited tiles
+				if lmax<v then lmax=v end
+				if lmin>v then lmin=v end
+			end
 		end
-	end
-	end
-	lmax=math.log(lmax+1)
-	lmin=math.log(lmin+1)
-	visits_minmax={lmin,lmax}
+		end
+		lmax=math.log(lmax+1)
+		lmin=math.log(lmin+1)
+		visits_minmax={lmin,lmax}
+	--end
+	--lmax=visits_minmax[1]
+	--lmin=visits_minmax[2]
 	if need_buffer_save then
 		buffer_save(need_buffer_save)
 		need_buffer_save=nil
@@ -682,7 +691,10 @@ local terminal_symbols_alt={["p.x"]=3,["p.y"]=3}
 local terminal_symbols_param={["s.x"]=10,["s.y"]=105,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=0.05}
 local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=2,["(R)*(R)"]=4,["(R)-(R)"]=6,["(R)+(R)"]=6}
 
-local terminal_symbols_complex={["s"]=3,["p"]=3,["params.xy"]=1,["params.zw"]=1,["(c_one()*normed_i)"]=0.05,["(c_i()*normed_i)"]=0.05,["c_one()"]=0.1,["c_i()"]=0.1}
+local terminal_symbols_complex={
+["s"]=3,["p"]=3,["params.xy"]=1,["params.zw"]=1,["(c_one()*normed_i)"]=0.05,["(c_i()*normed_i)"]=0.05,["c_one()"]=0.1,["c_i()"]=0.1,
+--["last_s"]=1,["normalize(s-last_s)"]=1
+}
 local normal_symbols_complex={
 -- [=[
 ["c_sqrt(R)"]=1,
@@ -825,7 +837,7 @@ function random_math_complex_series( steps,seed )
 		elseif i==id2 then
 			cur_string=cur_string..string.format("+%s*params.zw",sub_s)
 		else
-			cur_string=cur_string..string.format("+%s*vec2(%.3f,%.3f)",sub_s,math.random()*2-1,math.random()*2-1)
+			cur_string=cur_string..string.format("+%s*vec2(%.3f,%.3f)",sub_s,1+math.random()*0.25-0.125,1+math.random()*0.25-0.125)
 		end
 		--]]
 	end
@@ -904,7 +916,12 @@ animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
 	str_cmplx=random_math_complex(rand_complexity)
+	--str_cmplx=random_math_complex(rand_complexity,"c_mul(R,last_s/length(last_s)+c_one())")
 	--str_cmplx=random_math_complex_series(rand_complexity)
+	--[[
+	--str_cmplx="c_mul(c_div((c_div(s,c_cos((params.xy)-(s))))-(s),(c_div((c_conj(s))+(c_div(p,c_cos(p))),((s)-(s))+(c_atan((params.xy)-(p)))))-(c_conj(p))),c_tan(((c_div((s)+(p),(s)+(params.xy)))-((p)+(c_conj(s))))-(p)))"
+	--str_cmplx="c_conj(c_tan(((p)+(c_conj((s)-(c_conj((p)+(p))))))+((((c_inv(c_inv(s)))-(c_conj(s)))-(c_sin((c_mul(c_sin((params.zw)+(p)),p))+(s))))-(((s)+(s))+((p)+(((c_div(p,p))+(s))+(s)))))))"
+	--]]
 	--[[ nice tri-lobed shape
 
 	str_cmplx="c_div(c_conj(p),(s)-(p))"
@@ -1003,6 +1020,12 @@ function rand_function(  )
 	--[[ gravity
 	str_preamble=str_preamble.."s*=1/move_dist;"
 	--]]
+	-- [[ weight1
+	--str_postamble=str_postamble.."float ll=length(s);s/=weight1;weight1*=1/ll;"
+	--str_postamble=str_postamble.."float ll=length(s);s*=weight1;weight1=min(weight1,1/ll);"
+	str_postamble=str_postamble.."float ll=length(s);s/=weight1;weight1=max(weight1,ll);"
+	--str_postamble=str_postamble.."float ll=length(s);s/=weight1;weight1+=ll;"
+	--]]
 	--[[ rand scale/offset
 	
 	local r1=math.random()*2-1
@@ -1017,6 +1040,32 @@ function rand_function(  )
 	str_preamble=str_preamble..("s=vec2(dot(s,vec2(%.3f,%.3f)),dot(s,vec2(%.3f,%.3f)))+vec2(%3.f,%.3f);"):format(r1/l,r2/l,r3/l2,r4/l2,r5/l3,r6/l3)
 	
 	--]]
+	
+	-- [[ complex seriesize
+	local series_size=12
+	local rand_offset=1
+	local rand_size=config.move_dist
+	local input_s=""
+	for i=1,series_size do
+		local sub_s="s"
+		for i=1,i do
+			sub_s=string.format("c_mul(%s,%s)","s",sub_s)
+		end
+		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
+		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+	end
+	str_postamble=str_postamble.."s=s"..input_s..";"
+	--]]
+	-- [[ polar gravity
+	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
+	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
+	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"
+	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
+	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(p,p));s=last_s+ds*(move_dist*vv/ls);"
+	--]]
 	--[[ boost
 	str_preamble=str_preamble.."s*=move_dist;"
 	--]]
@@ -1026,7 +1075,7 @@ function rand_function(  )
 	--[[ center PRE
 	str_preamble=str_preamble.."s=s-p;"
 	--]]
-	-- [[ cosify
+	--[[ cosify
 	--str_preamble=str_preamble.."s=cos(s);"
 	str_preamble=str_preamble.."s=c_cos(s);"
 	--]]
@@ -1069,7 +1118,7 @@ function rand_function(  )
 	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
 	--]]
-	-- [[ const-delta-like2
+	--[[ const-delta-like complex
 	str_preamble=str_preamble.."vec2 os=s;"
 	str_postamble=str_postamble.."s=c_div(s,os);"
 	--]]
@@ -1559,7 +1608,9 @@ vec2 from_polar(vec2 p)
 vec3 func_actual(vec2 p,int it_count)
 {
 	vec2 s = %s;
+	vec2 last_s=s;
 	float e=1;
+	float weight1=1;
 	for(int i=0;i<it_count;i++)
 		{
 			float normed_i=float(i)/float(it_count);
@@ -1573,6 +1624,7 @@ vec3 func_actual(vec2 p,int it_count)
 				break;
 				}
 #endif
+			last_s=s;
 		}
 	return vec3(s.x,s.y,e);
 }
@@ -1747,8 +1799,8 @@ vec2 pMod2(inout vec2 p,float size)
 }
 vec2 mapping(vec2 p)
 {
-	//return p; //normal - do nothing
-	return abs(p)-vec2(1);
+	return p; //normal - do nothing
+	//return abs(p)-vec2(1);
 	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
 	/*
 	if(length(p)<50) //modulo, but no artifacts because far away points are far away
@@ -1770,7 +1822,7 @@ vec2 mapping(vec2 p)
 		//if(mod(index,2)!=0) //make more interesting tiling: each second tile is flipped
 		//p*=-1;
 		float index=mod(r.x,2)+mod(r.y,2)*2;
-		/* code for group p4
+		///* code for group p4
 		float rot=0;
 		if(index==1)
 			rot=1;
@@ -1786,22 +1838,22 @@ vec2 mapping(vec2 p)
 			rot=-2;
 
 		p=tRotate(p,rot*M_PI/2.0);
-		*/
-		///*
+		//*/
+		/*
 		if(mod(r.x,2)!=0)
 		{
 			p.x*=-1;
 			p.y+=1;
 			pMod2(p,size);
 		}
-		//*/
+		*/
 		/*
 		if(mod(r.y,2)!=0)
 		{
 			p.y*=-1;
 			pMod2(p,size);
 		}
-		//*/
+		*/
 		return p;
 		//return mod(p+vec2(size/2),size)-vec2(size/2);
 	}
