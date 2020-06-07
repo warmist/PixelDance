@@ -7,6 +7,7 @@ require "common"
 		* https://en.wikipedia.org/wiki/Daxophone#/media/File:DaxoTongues.jpg
 		* sound output
 		* bowstring input
+		* add variance display/accumulation
 --]]
 local size_mult
 local oversample=1

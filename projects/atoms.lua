@@ -1,35 +1,22 @@
---from: https://sagejenson.com/physarum
---[[
-	ideas:
-		add other types of agents
-		more interactive "world"
-			* eatible food
-			* sand-like sim?
-			* more senses (negative?)
-		mass and non-instant turning
---]]
+--inspired : https://ciphered.xyz/2020/06/01/atomic-clusters-a-molecular-particle-based-simulation/
+
 
 require 'common'
 local win_w=1280
 local win_h=1280
+--[[
+    agent is:
+        pos (2)
+        speed(2)
+        angle, angular speed, type,??(4)
 
+    fields is (i.e. signal buf)
+        color (4)
+--]]
 __set_window_size(win_w,win_h)
 local oversample=1
-local agent_count=1e7
---[[ perf:
-	oversample 2 768x768
-		ac: 3000 -> 43fps
-			no_steps ->113fps
-			no_tracks ->43fps
-		gpu: 200*200 (40k)->35 fps
-	map: 1024x1024
-		200*200 -> 180 fps
-	feedback: 
-		RTX 2060
-			33554432 ~20fps
-			1e7 ~60fps
+local agent_count=50--1e6
 
-]]
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
 is_remade=false
@@ -40,132 +27,71 @@ function update_buffers(  )
     if signal_buf==nil or signal_buf.w~=nw or signal_buf.h~=nh then
     	tex_pixel=textures:Make()
     	tex_pixel:use(0)
-        signal_buf=make_float_buffer(nw,nh)
+        signal_buf=make_flt_buffer(nw,nh)
         signal_buf:write_texture(tex_pixel)
         is_remade=true
     end
 end
-
-if agent_data==nil or agent_data.w~=agent_count then
-	agent_data=make_flt_buffer(agent_count,1)
-	agent_buffers={buffer_data.Make(),buffer_data.Make(),current=1,other=2,flip=function( t )
-		if t.current==1 then
-			t.current=2
-			t.other=1
-		else
-			t.current=1
-			t.other=2
-		end
-	end,
-	get_current=function (t)
-		return t[t.current]
-	end,
-	get_other=function ( t )
-		return t[t.other]
-	end}
+function make_double_buffer(  )
+    return {buffer_data.Make(),buffer_data.Make(),current=1,other=2,flip=function( t )
+        if t.current==1 then
+            t.current=2
+            t.other=1
+        else
+            t.current=1
+            t.other=2
+        end
+    end,
+    get_current=function (t)
+        return t[t.current]
+    end,
+    get_other=function ( t )
+        return t[t.other]
+    end}
+end
+if agent_data==nil or agent_data.count~=agent_count then
+    agent_data={count=agent_count}
+	agent_data.pos_speed=make_flt_buffer(agent_count,1)
+    agent_data.angle_type=make_flt_buffer(agent_count,1)
+    agent_buffers={}
+	agent_buffers.pos_speed=make_double_buffer()
+    agent_buffers.angle_type=make_double_buffer()
 
 	for i=0,agent_count-1 do
-			agent_data:set(i,0,{math.random()*map_w,math.random()*map_h,math.random()*math.pi*2,0})
+        local ang=math.random()*math.pi*2
+        local vx=math.cos(ang)
+        local vy=math.sin(ang)
+		agent_data.pos_speed:set(i,0,{math.random()*map_w,math.random()*map_h,vx,vy})
+        agent_data.angle_type:set(i,0,{0,0,math.random()*255,0})
 	end
 	for i=1,2 do
-		agent_buffers[i]:use()
-		agent_buffers[i]:set(agent_data.d,agent_count*4*4)
-	end
-end
--- [[
-local bwrite = require "blobwriter"
-local bread = require "blobreader"
-function read_background_buf( fname )
-	local file = io.open(fname, 'rb')
-	local b = bread(file:read('*all'))
-	file:close()
+		agent_buffers.pos_speed[i]:use()
+		agent_buffers.pos_speed[i]:set(agent_data.pos_speed.d,agent_count*4*4)
 
-	local sx=b:u32()
-	local sy=b:u32()
-	background_buf=make_float_buffer(sx,sy)
-	background_minmax={}
-	background_minmax[1]=b:f32()
-	background_minmax[2]=b:f32()
-	for x=0,background_buf.w-1 do
-	for y=0,background_buf.h-1 do
-		local v=(math.log(b:f32()+1)-background_minmax[1])/(background_minmax[2]-background_minmax[1])
-		background_buf:set(x,y,v)
+        agent_buffers.angle_type[i]:use()
+        agent_buffers.angle_type[i]:set(agent_data.angle_type.d,agent_count*4*4)
 	end
-	end
+    __unbind_buffer()
 end
-function make_background_texture()
-	if background_tex==nil then
-		print("making tex")
-		read_background_buf("out.buf")
-		background_tex={t=textures:Make(),w=background_buf.w,h=background_buf.h}
-		background_tex.t:use(0,1)
-		background_buf:write_texture(background_tex.t)
-		__unbind_buffer()
-	end
-end
-make_background_texture()
---]]
+
 update_buffers()
 config=make_config({
     {"pause",false,type="bool"},
     {"color_back",{0,0,0,1},type="color"},
     {"color_fore",{0.98,0.6,0.05,1},type="color"},
-    {"color_turn_around",{0.99,0.99,0.991,1},type="color"},
     --system
-    {"decay",0.995181,type="floatsci",min=0.99,max=1},
-    --{"diffuse",0.5,type="float"},
+    {"friction",0.995181,type="floatsci",min=0.99,max=1},
+    {"friction_angular",0.995181,type="floatsci",min=0.99,max=1},
     --agent
-    {"ag_sensor_distance",4,type="float",min=0.1,max=10},
-    --{"ag_sensor_size",1,type="int",min=1,max=3},
-    {"ag_sensor_angle",math.pi/2,type="float",min=0,max=math.pi/2},
-    {"ag_turn_angle",math.pi/8,type="float",min=-math.pi/2,max=math.pi/2},
-    {"ag_turn_avoid",-math.pi/8,type="float",min=-math.pi/2,max=math.pi/2},
-	{"ag_step_size",2.431,type="float",min=0.01,max=10},
-	{"ag_trail_amount",0.013,type="float",min=0,max=0.5},
-	{"trail_size",1,type="int",min=1,max=5},
-	{"turn_around",10,type="float",min=0,max=5},
+    {"ag_field_distance",100,type="int",min=1,max=500},
     },config)
 
-local decay_diffuse_shader=shaders.Make[==[
-#version 330
-
-out vec4 color;
-in vec3 pos;
-
-uniform float diffuse;
-uniform float decay;
-
-uniform sampler2D tex_main;
-
-float sample_around(vec2 pos)
-{
-	float ret=0;
-	ret+=textureOffset(tex_main,pos,ivec2(-1,-1)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(-1,1)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(1,-1)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(1,1)).x;
-
-	ret+=textureOffset(tex_main,pos,ivec2(0,-1)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(-1,0)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(1,0)).x;
-	ret+=textureOffset(tex_main,pos,ivec2(0,1)).x;
-	return ret/8;
-}
-void main(){
-	vec2 normed=(pos.xy+vec2(1,1))/2;
-	float r=sample_around(normed)*diffuse;
-	r+=texture(tex_main,normed).x*(1-diffuse);
-	r*=decay;
-	//r=clamp(r,0,1);
-	color=vec4(r,0,0,1);
-}
-]==]
-
-add_visit_shader=shaders.Make(
+add_fields_shader=shaders.Make(
 [==[
 #version 330
 #line 105
 layout(location = 0) in vec4 position;
+layout(location = 1) in vec4 angle_type;
 
 uniform int pix_size;
 uniform float seed;
@@ -173,6 +99,7 @@ uniform float move_dist;
 uniform vec4 params;
 uniform vec2 rez;
 
+out vec4 at;
 void main()
 {
 	vec2 normed=(position.xy/rez)*2-vec2(1,1);
@@ -180,176 +107,69 @@ void main()
 	gl_PointSize=pix_size;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
+
+    at=angle_type;
 }
 ]==],
 [==[
 #version 330
 #line 125
-
+in vec4 at;
 out vec4 color;
-//in vec3 pos;
 uniform int pix_size;
 uniform float trail_amount;
-float shape_point(vec2 pos)
+vec4 palette(float t,vec4 a,vec4 b,vec4 c,vec4 d)
 {
-	//float rr=clamp(1-txt.r,0,1);
-	//float rr = abs(pos.y*pos.y);
-	float rr=dot(pos.xy,pos.xy);
-	//float rr = pos.y-0.5;
-	//float rr = length(pos.xy)/5.0;
-	rr=clamp(rr,0,1);
-	float delta_size=(1-0.2)*rr+0.2;
-	return delta_size;
+    return a+b*cos(c+d*t*3.1459);
 }
 void main(){
-#if 0
-	float delta_size=shape_point(pos.xy);
-#else
-	float delta_size=1;
-#endif
- 	float r = 2*length(gl_PointCoord - 0.5)/(delta_size);
-	float a = 1 - smoothstep(0, 1, r);
-	float intensity=1/float(pix_size);
-	//rr=clamp((1-rr),0,1);
-	//rr*=rr;
-	//color=vec4(a,0,0,1);
-	color=vec4(a*intensity*trail_amount,0,0,1);
-	//color=vec4(1,0,0,1);
+    vec2 p = (gl_PointCoord - 0.5)*2;
+ 	float r = 1-length(p);
+    r=clamp(r,0,1);
+	color=palette(r,vec4(0.5),vec4(0.5),vec4(1.5*at.z,at.z,8*at.z,0),vec4(1,1,0,0))*r;
 }
 ]==])
-function add_trails_fbk(  )
-	add_visit_shader:use()
+function add_fields_fbk(  )
+	add_fields_shader:use()
 	tex_pixel:use(0)
-	add_visit_shader:blend_add()
-	add_visit_shader:set_i("pix_size",config.trail_size)
-	add_visit_shader:set("trail_amount",config.ag_trail_amount)
-	add_visit_shader:set("rez",map_w,map_h)
+    add_fields_shader:blend_add()
+	add_fields_shader:set_i("pix_size",config.ag_field_distance)
+	add_fields_shader:set("rez",map_w,map_h)
 	if not tex_pixel:render_to(map_w,map_h) then
 		error("failed to set framebuffer up")
 	end
+    __clear()
 	if need_clear then
-		__clear()
 		need_clear=false
 		--print("Clearing")
 	end
-	agent_buffers:get_current():use()
-	add_visit_shader:draw_points(0,agent_count,4)
+    agent_buffers.angle_type:get_current():use(1)
+    add_fields_shader:push_attribute(0,"angle_type",4)
+	agent_buffers.pos_speed:get_current():use()
+	add_fields_shader:draw_points(0,agent_count,4)
 
-	add_visit_shader:blend_default()
+	add_fields_shader:blend_default()
 	__render_to_window()
 	__unbind_buffer()
 end
 local draw_shader=shaders.Make[==[
 #version 330
-#line 209
+#line 167
 out vec4 color;
 in vec3 pos;
 
 uniform ivec2 rez;
 uniform sampler2D tex_main;
 
-uniform float turn_around;
 uniform vec4 color_back;
 uniform vec4 color_fore;
-uniform vec4 color_turn_around;
 
-float rand(vec2 n) { 
-	return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
-}
-
-float noise(vec2 p){
-	vec2 ip = floor(p);
-	vec2 u = fract(p);
-	u = u*u*(3.0-2.0*u);
-	
-	float res = mix(
-		mix(rand(ip),rand(ip+vec2(1.0,0.0)),u.x),
-		mix(rand(ip+vec2(0.0,1.0)),rand(ip+vec2(1.0,1.0)),u.x),u.y);
-	return res*res;
-}
-
-vec3 rgb2hsv(vec3 c)
-{
-    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
-    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
-    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
-
-    float d = q.x - min(q.w, q.y);
-    float e = 1.0e-10;
-    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
-}
-vec3 hsv2rgb(vec3 c)
-{
-    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-}
-float lerp_hue(float h1,float h2,float v )
-{
-	if (abs(h1-h2)>0.5){
-		//loop around lerp (i.e. modular lerp)
-			float v2=(h1-h2)*v+h1;
-			if (v2<0){
-				float a1=h2-h1;
-				float a=((1-h2)*a1)/(h1-a1);
-				float b=h2-a;
-				v2=(a)*(v)+b;
-			}
-			return v2;
-		}
-	else
-		return mix(h1,h2,v);
-}
-float gain(float x, float k)
-{
-    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
-    return (x<0.5)?a:1.0-a;
-}
-vec4 mix_hsl(vec4 c1,vec4 c2,float v)
-{
-	vec3 c1hsv=rgb2hsv(c1.xyz);
-	vec3 c2hsv=rgb2hsv(c2.xyz);
-
-	vec3 ret;
-	ret.x=lerp_hue(c1hsv.x,c2hsv.x,v);
-	ret.yz=mix(c1hsv.yz,c2hsv.yz,v);
-	float a=mix(c1.a,c2.a,v);
-	return vec4(hsv2rgb(ret.xyz),a);
-}
-vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
-{
-    return a + b*cos( 6.28318*(c*t+d) );
-}
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     //normed=normed/zoom+translate;
 
     vec4 pixel=texture(tex_main,normed);
-    //float v=log(pixel.x+1);
-    float v=pow(pixel.x/turn_around,1);
-    //float v=pixel.x/turn_around;
-    //float v=gain(pixel.x/turn_around,-0.8);
-    //v=noise(pos.xy*rez/100);
-    ///*
-    if(v<1)
-    	color=mix(color_back,color_fore,v);
-    else
-    	color=mix(color_fore,color_turn_around,clamp((v-1)*1,0,1));
-	//*/
-    /*
-    if(v<1)
-    	color=mix_hsl(color_back,color_fore,v);
-    else
-    	color=mix_hsl(color_fore,color_turn_around,clamp((v-1)*1,0,1));
-    //*/
-
-    /*if(v<1)
-    	color=vec4(palette(v,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,2.5,1.5),vec3(0.5,1.5,1.0)),1);
-    else
-    {
-    	float tv=clamp((v-1),0,1);
-    	color=vec4(palette(tv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,0.5,2.5),vec3(0.5,1.5,1.0)),1);
-    }*/
+    color=pixel;
 }
 ]==]
 local agent_logic_shader_fbk=shaders.Make(
@@ -429,18 +249,18 @@ void main(){
 
 	float pl=length(normed_p);
 
-	//sensor_distance*=tex_sample*0.8+0.2;
-	//sensor_distance*=state.x/rez.x;
+	//sensor_distance*=(1-tex_sample)*0.9+0.1;
+	//sensor_distance*=normed_state.y;
 
 	//sensor_distance*=1-cubicPulse(0.1,0.5,abs(normed_p.x));
 	//sensor_distance=clamp(sensor_distance,2,15);
 
 	//turn_around*=noise(state.xy/100);
 	//turn_around-=cubicPulse(0.6,0.3,abs(normed_p.x));
-	//turn_around*=tex_sample+0.5;
+	//turn_around*=tex_sample*0.3+0.7;
 	//clamp(turn_around,0.2,5);
 	//figure out new heading
-	sensor_angle*=tex_sample*.95+.05;
+	//sensor_angle*=(1-tex_sample)*.9+.1;
 	//turn_size*=tex_sample*.9+0.1;
 	//turn_size_neg*=tex_sample*.9+0.1;
 
@@ -491,12 +311,12 @@ void main(){
 	//step_size/=clamp(rgt/lft,0.5,2);
 
 
-	/* turn head to center somewhat (really stupid way of doing it...)
+	///* turn head to center somewhat (really stupid way of doing it...)
 	vec2 c=rez/2;
 	vec2 d_c=(c-state.xy);
 	d_c*=1/sqrt(dot(d_c,d_c));
 	vec2 nh=vec2(cos(head),sin(head));
-	float T_c=0.1;
+	float T_c=tex_sample*0.005;
 	vec2 new_h=d_c*T_c+nh*(1-T_c);
 	new_h*=1/sqrt(dot(new_h,new_h));
 	head=atan(new_h.y,new_h.x);
@@ -504,10 +324,11 @@ void main(){
 	//step_size*=1-clamp(cubicPulse(0,0.1,fow),0,1);
 	//step_size*=1-cubicPulse(0,0.4,abs(pl))*0.5;
 	//step_size*=(clamp(fow/turn_around,0,1))*0.95+0.05;
-	//step_size*=noise(state.xy/100);
+	step_size*=noise(state.xy/100);
 	//step_size*=expStep(abs(pl-0.2),1,2);
-	step_size*=tex_sample*0.9+0.1;
-	step_size=clamp(step_size,0.001,100);
+	//step_size*=tex_sample*0.5+0.5;
+    //step_size*=normed_state.x;
+	//step_size=clamp(step_size,0.001,100);
 
 	//step in heading direction
 	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
@@ -530,11 +351,11 @@ function do_agent_logic_fbk(  )
 
     tex_pixel:use(0)
     agent_logic_shader_fbk:set_i("tex_main",0)
-	--if background_tex~=nil then
+	if background_tex~=nil then
 	    background_tex.t:use(1)
 	    agent_logic_shader_fbk:set_i("background",1)
 	    agent_logic_shader_fbk:set("background_swing",background_minmax[1],background_minmax[2])
-	--end
+	end
 	agent_logic_shader_fbk:set("ag_sensor_distance",config.ag_sensor_distance)
 	agent_logic_shader_fbk:set("ag_sensor_angle",config.ag_sensor_angle)
 	agent_logic_shader_fbk:set("ag_turn_angle",config.ag_turn_angle)
@@ -561,15 +382,17 @@ end
 function agents_tocpu()
 	--tex_agent:use(0)
 	--agent_data:read_texture(tex_agent)
-	agent_buffers:get_current():use()
-	agent_buffers:get_current():get(agent_data.d,agent_count*4*4)
+	agent_buffers.pos_speed:get_current():use()
+	agent_buffers.pos_speed:get_current():get(agent_data.pos_speed.d,agent_count*4*4)
 end
 function agents_togpu()
 	--tex_agent:use(0)
 	--agent_data:write_texture(tex_agent)
 
-	agent_buffers:get_current():use()
-	agent_buffers:get_current():set(agent_data.d,agent_count*4*4)
+	agent_buffers.pos_speed:get_current():use()
+	agent_buffers.pos_speed:get_current():set(agent_data.pos_speed.d,agent_count*4*4)
+    agent_buffers.angle_type:get_current():use()
+    agent_buffers.angle_type:get_current():set(agent_data.angle_type.d,agent_count*4*4)
 	__unbind_buffer()
 end
 function fill_buffer(  )
@@ -577,39 +400,18 @@ function fill_buffer(  )
 	signal_buf:read_texture(tex_pixel)
 	for i=0,map_w-1 do
     	for j=0,map_h-1 do
-    		signal_buf:set(math.floor(i),math.floor(j),math.random()*0.1)
+    		signal_buf:set(math.floor(i),math.floor(j),{math.random(),math.random(),math.random(),math.random()})
     	end
     end
     signal_buf:write_texture(tex_pixel)
 end
 function agents_step_fbk(  )
 
-	do_agent_logic_fbk()
-	add_trails_fbk()
+	--do_agent_logic_fbk()
+	add_fields_fbk()
 
 end
-function diffuse_and_decay(  )
-	if tex_pixel_alt==nil or is_remade then
-		tex_pixel_alt=textures:Make()
-		tex_pixel_alt:use(1)
-		tex_pixel_alt:set(signal_buf.w,signal_buf.h,2)
-		is_remade=false
-	end
-	decay_diffuse_shader:use()
-    tex_pixel:use(0)
-    --tex_pixel.t:set(size[1]*oversample,size[2]*oversample,3)
-    decay_diffuse_shader:set_i("tex_main",0)
-    decay_diffuse_shader:set("decay",config.decay)
-    decay_diffuse_shader:set("diffuse",0.5)
-    if not tex_pixel_alt:render_to(signal_buf.w,signal_buf.h) then
-		error("failed to set framebuffer up")
-	end
-    decay_diffuse_shader:draw_quad()
-    __render_to_window()
-    local t=tex_pixel_alt
-    tex_pixel_alt=tex_pixel
-    tex_pixel=t
-end
+
 function save_img(  )
 	img_buf=img_buf or make_image_buffer(win_w,win_h)
 	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
@@ -629,7 +431,7 @@ function update()
     __no_redraw()
     __render_to_window()
 
-    imgui.Begin("slimemold")
+    imgui.Begin("super-atomic")
     draw_config(config)
     if imgui.Button("Save") then
         need_save=true
@@ -653,11 +455,20 @@ function update()
     if imgui.Button("Agentswarm") then
     	for i=0,agent_count-1 do
     		-- [[
-    		agent_data:set(i,0,
+            local ang=math.random()*math.pi*2
+            local vx=math.cos(ang)
+            local vy=math.sin(ang)
+    		agent_data.pos_speed:set(i,0,
     			{math.random(0,map_w-1),
     			 math.random(0,map_h-1),
-    			 math.random()*math.pi*2,
-    			 0})
+    			 vx,
+    			 vy})
+            agent_data.angle_type:set(i,0,
+                {math.random()*math.pi*2,
+                 0,
+                 math.random()*255,
+                 0})
+
     		--]]
     		--[[
     		local r=map_w/5+rnd(10)
@@ -716,7 +527,7 @@ function update()
     if not config.pause then
         --agents_step()
         agents_step_fbk()
-        diffuse_and_decay()
+        --diffuse_and_decay()
     end
     --if config.draw then
 
@@ -725,16 +536,10 @@ function update()
 
     draw_shader:set_i("tex_main",0)
     draw_shader:set_i("rez",map_w,map_h)
-    draw_shader:set("turn_around",config.turn_around)
     draw_shader:set("color_back",config.color_back[1],config.color_back[2],config.color_back[3],config.color_back[4])
     draw_shader:set("color_fore",config.color_fore[1],config.color_fore[2],config.color_fore[3],config.color_fore[4])
-    draw_shader:set("color_turn_around",config.color_turn_around[1],config.color_turn_around[2],config.color_turn_around[3],config.color_turn_around[4])
-    --draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
-    --draw_shader:set("translate",config.t_x,config.t_y)
-    --draw_shader:set("sun_color",config.color[1],config.color[2],config.color[3],config.color[4])
     draw_shader:draw_quad()
     --end
-
     if need_save then
         save_img()
         need_save=false
