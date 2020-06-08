@@ -15,7 +15,7 @@ local win_h=1280
 --]]
 __set_window_size(win_w,win_h)
 local oversample=1
-local agent_count=50--1e6
+local agent_count=5--1e6
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -99,34 +99,59 @@ uniform float move_dist;
 uniform vec4 params;
 uniform vec2 rez;
 
+
 out vec4 at;
+out vec2 pos;
+uniform float offscreen_draw;
 void main()
 {
-	vec2 normed=(position.xy/rez)*2-vec2(1,1);
+	vec2 offset;
+	if(offscreen_draw)
+	{
+		if(position.x-pix_size/2<0)
+			offset.x=rez.x;
+		if(position.x+pix_size/2>rez.x)
+			offset.x=-rez.x;
+	}
+	vec2 real_pos=position.xy+offset;
+	vec2 normed=(real_pos/rez)*2-vec2(1,1);
 	gl_Position.xy = normed;//mod(normed,vec2(1,1));
 	gl_PointSize=pix_size;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
 
     at=angle_type;
+    pos=real_pos;
 }
 ]==],
 [==[
 #version 330
 #line 125
 in vec4 at;
+in vec2 pos;
 out vec4 color;
+uniform vec2 rez;
 uniform int pix_size;
 uniform float trail_amount;
+uniform float offscreen_draw;
 vec4 palette(float t,vec4 a,vec4 b,vec4 c,vec4 d)
 {
     return a+b*cos(c+d*t*3.1459);
 }
 void main(){
-    vec2 p = (gl_PointCoord - 0.5)*2;
+	vec2 p = (gl_PointCoord - 0.5)*2;
  	float r = 1-length(p);
     r=clamp(r,0,1);
-	color=palette(r,vec4(0.5),vec4(0.5),vec4(1.5*at.z,at.z,8*at.z,0),vec4(1,1,0,0))*r;
+	if(offscreen_draw)
+	{
+	    //if(pos.x>0 || pos.y>0 || pos.x<rez.x || pos.y<rez.y)
+	    	//discard;
+	}
+	else
+	{
+		
+	}
+	color=vec4(r,0,0,0);//palette(r,vec4(0.5),vec4(0.5),vec4(1.5*at.z,at.z,8*at.z,0),vec4(1,1,0,0))*r;
 }
 ]==])
 function add_fields_fbk(  )
@@ -146,8 +171,10 @@ function add_fields_fbk(  )
     agent_buffers.angle_type:get_current():use(1)
     add_fields_shader:push_attribute(0,"angle_type",4)
 	agent_buffers.pos_speed:get_current():use()
+	--add_fields_shader:set("offscreen_draw",0)
+	--add_fields_shader:draw_points(0,agent_count,4)
+	add_fields_shader:set("offscreen_draw",1)
 	add_fields_shader:draw_points(0,agent_count,4)
-
 	add_fields_shader:blend_default()
 	__render_to_window()
 	__unbind_buffer()
@@ -163,13 +190,22 @@ uniform sampler2D tex_main;
 
 uniform vec4 color_back;
 uniform vec4 color_fore;
-
+vec2 grad_tex(vec2 pos)
+{
+	vec2 ret;
+	ret.x=textureOffset(tex_main,pos,ivec2(-1,0)).x-textureOffset(tex_main,pos,ivec2(1,0)).x;
+	ret.y=textureOffset(tex_main,pos,ivec2(0,-1)).x-textureOffset(tex_main,pos,ivec2(0,1)).x;
+	return ret;
+}
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     //normed=normed/zoom+translate;
-
+#if 1
     vec4 pixel=texture(tex_main,normed);
     color=pixel;
+#else
+	color=vec4(grad_tex(normed)*10,0,0);
+#endif
 }
 ]==]
 local agent_logic_shader_fbk=shaders.Make(
@@ -181,160 +217,43 @@ layout(location = 0) in vec4 position;
 out vec4 state_out;
 
 uniform sampler2D tex_main;  //signal buffer state
-uniform sampler2D background;
-uniform vec2 background_swing;
-
 uniform vec2 rez;
 
 //agent settings uniforms
-uniform float ag_sensor_distance;
-uniform float ag_sensor_angle;
-uniform float ag_turn_angle;
-uniform float ag_step_size;
-uniform float ag_turn_around;
-uniform float ag_turn_avoid;
-//
-//float rand(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x))));}
+float sample_around(vec2 pos)
+{
+	float ret=0;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,-1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(1,-1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(1,1)).x;
 
-#define M_PI 3.1415926535897932384626433832795
-float rand(vec2 n) { 
-	return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
+	ret+=textureOffset(tex_main,pos,ivec2(0,-1)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,0)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(1,0)).x;
+	ret+=textureOffset(tex_main,pos,ivec2(0,1)).x;
+	return ret/8;
 }
-
-float noise(vec2 p){
-	vec2 ip = floor(p);
-	vec2 u = fract(p);
-	u = u*u*(3.0-2.0*u);
-	
-	float res = mix(
-		mix(rand(ip),rand(ip+vec2(1.0,0.0)),u.x),
-		mix(rand(ip+vec2(0.0,1.0)),rand(ip+vec2(1.0,1.0)),u.x),u.y);
-	return res*res;
-}
-float sample_heading(vec2 p,float h,float dist)
+vec2 grad_tex(vec2 pos)
 {
-	p+=vec2(cos(h),sin(h))*dist;
-	return texture(tex_main,p/rez).x;
-}
-#define TURNAROUND
-float cubicPulse( float c, float w, float x )
-{
-    x = abs(x - c);
-    if( x>w ) return 0.0;
-    x /= w;
-    return 1.0 - x*x*(3.0-2.0*x);
-}
-float expStep( float x, float k, float n )
-{
-    return exp( -k*pow(x,n) );
-}
-float sample_back(vec2 pos)
-{
-	//return (log(texture(background,pos).x+1)-background_swing.x)/(background_swing.y-background_swing.x);
-	return clamp(texture(background,pos).x,0,1);
+	vec2 ret;
+	ret.x=textureOffset(tex_main,pos,ivec2(-1,0)).x-textureOffset(tex_main,pos,ivec2(1,0)).x;
+	ret.y=textureOffset(tex_main,pos,ivec2(0,-1)).x-textureOffset(tex_main,pos,ivec2(0,1)).x;
+	return ret;
 }
 void main(){
-	float step_size=ag_step_size;
-	float sensor_distance=ag_sensor_distance;
-	float sensor_angle=ag_sensor_angle;
-	float turn_size=ag_turn_angle;
-	float turn_size_neg=ag_turn_around;
-	float turn_around=ag_turn_around;
-
-
-	vec3 state=position.xyz;
-	vec2 normed_state=state.xy/rez;
-	vec2 normed_p=(normed_state)*2-vec2(1,1);
-	float tex_sample=sample_back(normed_state);//cubicPulse(0.6,0.3,abs(normed_p.x));//;
-
-	float pl=length(normed_p);
-
-	//sensor_distance*=(1-tex_sample)*0.9+0.1;
-	//sensor_distance*=normed_state.y;
-
-	//sensor_distance*=1-cubicPulse(0.1,0.5,abs(normed_p.x));
-	//sensor_distance=clamp(sensor_distance,2,15);
-
-	//turn_around*=noise(state.xy/100);
-	//turn_around-=cubicPulse(0.6,0.3,abs(normed_p.x));
-	//turn_around*=tex_sample*0.3+0.7;
-	//clamp(turn_around,0.2,5);
-	//figure out new heading
-	//sensor_angle*=(1-tex_sample)*.9+.1;
-	//turn_size*=tex_sample*.9+0.1;
-	//turn_size_neg*=tex_sample*.9+0.1;
-
-	float head=state.z;
-	float fow=sample_heading(state.xy,head,sensor_distance);
-
-	float lft=sample_heading(state.xy,head-sensor_angle,sensor_distance);
-	float rgt=sample_heading(state.xy,head+sensor_angle,sensor_distance);
-
-	if(fow<lft && fow<rgt)
+	vec4 state=position;
+	vec4 fields=texture(tex_main,state.xy);
+	vec2 p=grad_tex(state.xy/rez.xy)*10;
+	state.zw+=p;
+	float l=length(state.zw);
+	if(l>1)
 	{
-		head+=(rand(position.xy*position.z*9999+state.xy*4572)-0.5)*turn_size*2;
+		state.zw/=l;
 	}
-	else if(rgt>fow)
-	{
-		//float ov=(rgt-fow)/fow;
-	#ifdef TURNAROUND
-		if(rgt>=turn_around)
-			//step_size*=-1;
-			head+=turn_size_neg;
-		else
-	#endif
-			head+=turn_size;
-	}
-	else if(lft>fow)
-	{
-		//float ov=(lft-fow)/fow;
-	#ifdef TURNAROUND
-		if(lft>=turn_around)
-			//step_size*=-1;
-			head-=turn_size_neg;
-		else
-	#endif
-			head-=turn_size;
-	}
-	#ifdef TURNAROUND
-	else 
-	#endif
-	if(fow>turn_around)
-	{
-		//head+=(rand(position.xy*position.z*9999+state.xy*4572)-0.5)*turn_size*2;
-		//head+=M_PI;//turn_size*2;//(rand(position.xy+state.xy*4572)-0.5)*turn_size*2;
-		//step_size*=-1;
-		head+=rand(position.xy*position.z*9999+state.xy*4572)*turn_size_neg;
-		//head+=turn_size_neg;
-
-	}
-	//step_size/=clamp(rgt/lft,0.5,2);
-
-
-	///* turn head to center somewhat (really stupid way of doing it...)
-	vec2 c=rez/2;
-	vec2 d_c=(c-state.xy);
-	d_c*=1/sqrt(dot(d_c,d_c));
-	vec2 nh=vec2(cos(head),sin(head));
-	float T_c=tex_sample*0.005;
-	vec2 new_h=d_c*T_c+nh*(1-T_c);
-	new_h*=1/sqrt(dot(new_h,new_h));
-	head=atan(new_h.y,new_h.x);
-	//*/
-	//step_size*=1-clamp(cubicPulse(0,0.1,fow),0,1);
-	//step_size*=1-cubicPulse(0,0.4,abs(pl))*0.5;
-	//step_size*=(clamp(fow/turn_around,0,1))*0.95+0.05;
-	step_size*=noise(state.xy/100);
-	//step_size*=expStep(abs(pl-0.2),1,2);
-	//step_size*=tex_sample*0.5+0.5;
-    //step_size*=normed_state.x;
-	//step_size=clamp(step_size,0.001,100);
-
-	//step in heading direction
-	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
-	state.z=head;
-	state.xy=mod(state.xy,rez);
-	state_out=vec4(state.xyz,position.w);
+	state.xy+=state.zw;
+	state.xy=mod(state.xy,rez.xy);
+	state_out=state;
 
 }
 ]==]
@@ -348,35 +267,23 @@ void main()
 function do_agent_logic_fbk(  )
 
 	agent_logic_shader_fbk:use()
-
     tex_pixel:use(0)
     agent_logic_shader_fbk:set_i("tex_main",0)
-	if background_tex~=nil then
-	    background_tex.t:use(1)
-	    agent_logic_shader_fbk:set_i("background",1)
-	    agent_logic_shader_fbk:set("background_swing",background_minmax[1],background_minmax[2])
-	end
-	agent_logic_shader_fbk:set("ag_sensor_distance",config.ag_sensor_distance)
-	agent_logic_shader_fbk:set("ag_sensor_angle",config.ag_sensor_angle)
-	agent_logic_shader_fbk:set("ag_turn_angle",config.ag_turn_angle)
-	agent_logic_shader_fbk:set("ag_step_size",config.ag_step_size)
-	agent_logic_shader_fbk:set("ag_turn_around",config.turn_around)
-	agent_logic_shader_fbk:set("ag_turn_avoid",config.ag_turn_avoid)
 	agent_logic_shader_fbk:set("rez",map_w,map_h)
 
 	agent_logic_shader_fbk:raster_discard(true)
-	local ao=agent_buffers:get_other()
+	local ao=agent_buffers.pos_speed:get_other()
 	ao:use()
 	ao:bind_to_feedback()
 
-	local ac=agent_buffers:get_current()
+	local ac=agent_buffers.pos_speed:get_current()
 	ac:use()
 	agent_logic_shader_fbk:draw_points(0,agent_count,4,1)
 	__flush_gl()
 	agent_logic_shader_fbk:raster_discard(false)
 	--__read_feedback(agent_data.d,agent_count*agent_count*4*4)
 	--print(agent_data:get(0,0).r)
-	agent_buffers:flip()
+	agent_buffers.pos_speed:flip()
 	__unbind_buffer()
 end
 function agents_tocpu()
@@ -407,7 +314,7 @@ function fill_buffer(  )
 end
 function agents_step_fbk(  )
 
-	--do_agent_logic_fbk()
+	do_agent_logic_fbk()
 	add_fields_fbk()
 
 end
@@ -525,9 +432,7 @@ function update()
     imgui.End()
     -- [[
     if not config.pause then
-        --agents_step()
         agents_step_fbk()
-        --diffuse_and_decay()
     end
     --if config.draw then
 
