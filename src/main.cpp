@@ -8,6 +8,7 @@
 #include "limgui.h"
 #include "lua_buffers.h"
 #include "lua_random.h"
+#include "lua_kd.h"
 #include "stb_image.h"
 #include "stb_image_write.h"
 #define WRAP_CPP_EXCEPTIONS
@@ -314,6 +315,7 @@ struct project {
         lua_open_buffer_data(L);
 		lua_open_random(L);
         lua_open_matrix(L);
+        lua_open_kd(L);
 #ifdef WRAP_CPP_EXCEPTIONS
 		lua_pushlightuserdata(L, (void *)wrap_exceptions);
 		luaJIT_setmode(L, -1, LUAJIT_MODE_WRAPCFUNC | LUAJIT_MODE_ON);
@@ -581,6 +583,7 @@ int main(int argc, char** argv)
     while (window.isOpen()) {
         sf::Event event;
 		bool need_restart = false;
+        bool need_reload = false;
         while (window.pollEvent(event)) {
             ImGui::SFML::ProcessEvent(event);
 
@@ -604,9 +607,14 @@ int main(int argc, char** argv)
 			{
 				if (event.key.shift && event.key.control && event.key.code == sf::Keyboard::R)
 					need_restart = true;
+                if (event.key.shift && event.key.control && event.key.code == sf::Keyboard::T)
+                {
+                    need_restart = true;
+                    selected_project = -1;
+                }
 			}
         }
-		bool need_reload = false;
+		
 		
         bool project_exists=false;
 

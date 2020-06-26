@@ -51,6 +51,7 @@ set(SRCS
   src/buffer_data.cpp
   src/lua_random.cpp
   src/matrix.cpp
+  src/lua_kd.cpp
   ${IMGUI}/imgui.cpp
   ${IMGUI}/imgui_draw.cpp
   ${IMGUI}/imgui_demo.cpp
@@ -71,6 +72,8 @@ set(HDRS
   src/lua_random.h
   src/pcg_random.h
   src/matrix.h
+  src/nanoflann.hpp
+  src/lua_kd.h
   ${LUA}/lua.hpp
   ${LUA}/lualib.h
 )

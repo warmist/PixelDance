@@ -203,10 +203,10 @@ static int push_iattribute(lua_State* L)
     {
         data = lua_topointer(L, 2); //TODO: check pointer?
     }
+    const char* name = luaL_checkstring(L, 3);
     //TODO: all data==nullptr does not make sense anymore when doing bind-vao
     //if (data == nullptr)
     //    luaL_error(L, "Incorrect second argument: expected pointer to array");
-    const char* name = luaL_checkstring(L, 3);
     auto pos_idx = glGetAttribLocation(s->id, name);
     if (pos_idx == -1)
         luaL_error(L, "Attribute %s not found in shader", name);
