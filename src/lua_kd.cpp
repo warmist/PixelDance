@@ -177,7 +177,7 @@ static int dist_lookup3(lua_State* L)
 static int cleanup3(lua_State* L)
 {
     auto p = check3(L, 1);
-    delete p;
+    p->~l_kd_3d_t();
     return 0;
 }
 static int make_tree3(lua_State* L) {
@@ -284,7 +284,7 @@ static int dist_lookup2(lua_State* L)
 static int cleanup2(lua_State* L)
 {
     auto p = check2(L, 1);
-    delete p;
+    p->~l_kd_2d_t();
     return 0;
 }
 static int make_tree2(lua_State* L) {

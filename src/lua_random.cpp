@@ -68,8 +68,6 @@ static int make_random_gen(lua_State* L) {
 
 	if (luaL_newmetatable(L, "pcg_random"))
 	{
-		//lua_pushcfunction(L, del_random);
-		//lua_setfield(L, -2, "__gc");
 		lua_pushcfunction(L, pcg_seed);
 		lua_setfield(L, -2, "seed");
 
