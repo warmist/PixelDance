@@ -5,6 +5,8 @@ require "colors"
 	IDEAS:
 		* export locations to vornoi and fill it out
 		* markov style state changes (i.e. with chances for each one)
+		* apply ALL subrules
+		* apply ALL subrules in random order
 --]]
 local size_mult=1
 local size=STATE.size
@@ -88,37 +90,52 @@ void main(){
 	color=vec4(c,1)*smoothstep(l-aaf/2,l+aaf/2,fract(pos.w));
 }
 ]==])
-rules=rules or{
-	[1]={
-		is_random=false,
-		{0,0.8,1},
-		{2*math.pi/7,0.8,1},
-		{5*math.pi/7,0.8,2},
-		{4*math.pi/7,0.8,1},
-		{3*math.pi/7,0.8,2},
-		{math.pi/7,0.8,2},
-		--[[{angle_delta,radius,type,force_new},
-		{angle_delta,radius,type,force_new},
-		{angle_delta,radius,type,force_new},]]
-	},
-	[2]={
-		is_random=true,
-		{3*math.pi/6,0.4,1},
-		{4*math.pi/6,0.4,1},
-		{math.pi/6,0.4,1},
-		{5*math.pi/6,0.4,1},
-		{2*math.pi/6,0.4,1},
-		{0,0.4,2},
-		--[[{angle_delta,radius,type,force_new},
-		{angle_delta,radius,type,force_new},
-		{angle_delta,radius,type,force_new},]]
-	},
+rules=rules or {
+[1]={ is_random=false,
+{2.44346,0.271191,1},
+{-2.44346,0.774267,2},
+{2.79253,0.431851,7},
+},
+[2]={ is_random=false,
+{-1.74533,0.537546,2},
+{-2.0944,0.689558,6},
+},
+[3]={ is_random=false,
+{-0.349066,0.717698,3},
+{2.44346,0.818042,6},
+{-1.74533,0.896198,1},
+{1.0472,0.295528,7},
+},
+[4]={ is_random=false,
+{-1.39626,0.726966,6},
+{2.44346,0.9133,7},
+{0.698132,0.55345,2},
+{1.39626,0.489166,5},
+},
+[5]={ is_random=false,
+{1.0472,0.203509,7},
+{0,0.211623,5},
+{1.0472,0.550584,5},
+{1.0472,0.624713,1},
+},
+[6]={ is_random=false,
+{-1.0472,0.286695,3},
+{-0.698132,0.487075,6},
+{2.79253,0.327371,1},
+{-1.39626,0.744421,2},
+{1.0472,0.718456,5},
+},
+[7]={ is_random=false,
+{2.44346,0.602303,5},
+{0.349066,0.756157,7},
+{0.698132,0.922361,1},
+},
 }
 function make_subrule( id_self,max_state )
-	local chance_self=0.0
-	local max_rules=25
-	local chance_random=0.1
-	local c_rules=math.random(7,max_rules)
+	local chance_self=0.05
+	local max_rules=5
+	local chance_random=0
+	local c_rules=math.random(2,max_rules)
 	local ret={}
 	if math.random()<chance_random then
 		ret.is_random=true
@@ -132,7 +149,7 @@ function make_subrule( id_self,max_state )
 		end
 		local angle
 		--angle=math.random()*math.pi/2-math.pi/4
-		angle=math.random(-8,8)*rules.angle_step
+		angle=math.random(-3,3)*rules.angle_step
 		local size
 		--size=rules.sizes[id_change]
 		size=math.random()*0.8+0.2
@@ -140,18 +157,30 @@ function make_subrule( id_self,max_state )
 	end
 	return ret
 end
+function print_rules(  )
+	print("rules={")
+	for i,v in ipairs(rules) do
+		print(string.format("[%d]={ is_random=%s,",i,tostring(v.is_random or false)))
+		for ii,vv in ipairs(v) do
+			print(string.format("{%g,%g,%g},",vv[1],vv[2],vv[3]))
+		end
+		print("},")
+	end
+	print("}")
+end
 function generate_rules(  )
 	rules={}
-	local count_states=math.random(3,6)
+	local count_states=math.random(2,7)
 	rules.sizes={}
 	--rules.angle_step=math.random()*math.pi*2
-	rules.angle_step=math.pi/math.random(7,23)
+	rules.angle_step=math.pi/math.random(3,7)
 	for i=1,count_states do
 		rules.sizes[i]=math.random()*0.8+0.2
 	end
 	for i=1,count_states do
 		rules[i]=make_subrule(i,count_states)
 	end
+	print_rules()
 end
 circle_data=circle_data or {
 	heads={},
@@ -220,10 +249,11 @@ function add_circle_with_test( c, is_head )
 		return true
 	end
 end
+
 function circle_form_rule( x,y,radius,angle,r )
 	local sum_rad=(radius+r[2]*circle_size)+0.01
 	--print("radius:",sum_rad)
-	local a=angle+r[1]
+	local a=angle+r[1]--*(math.random()*0.9+0.3)
 	return {x+math.cos(a)*sum_rad,y+math.sin(a)*sum_rad,a,encode_rad(r[2]*circle_size,r[3])},r[4]
 end
 function circle_form_rule_init( x,y,angle,r )
@@ -248,24 +278,40 @@ function apply_rule( c )
 		end
 	end
 end
+function step_head( v )
+	circle_data.heads_fails[v]=(circle_data.heads_fails[v] or 0)+1
+	if not apply_rule(v) then
+		if circle_data.heads_fails[v]<5 then
+			table.insert(circle_data.heads,v)
+		end
+	else
+		--if math.random()>0.5 then
+		if circle_data.heads_fails[v]<5 then
+			table.insert(circle_data.heads,v)
+		end
+		--end
+	end
+end
 function step(  )
+	local steps_done=0
 	local old_heads=circle_data.heads
 	circle_data.heads={}
-	for i,v in ipairs(old_heads) do
-		circle_data.heads_fails[v]=(circle_data.heads_fails[v] or 0)+1
-		if not apply_rule(v) then
-			if circle_data.heads_fails[v]<5 then
-				table.insert(circle_data.heads,v)
-			end
-		else
-			--if math.random()>0.5 then
-			if circle_data.heads_fails[v]<5 then
-				table.insert(circle_data.heads,v)
-			end
-			--end
+	local is_depth_first=false
+	if not is_depth_first then
+		for i,v in ipairs(old_heads) do
+			step_head(v)
+			steps_done=steps_done+1
 		end
+	else
+		for i=1,#old_heads-1 do
+			table.insert(circle_data.heads,old_heads[i])
+		end
+		if #old_heads>0 then
+			step_head(old_heads[#old_heads])
+		end
+		steps_done=1
 	end
-	print("alive heads:",#circle_data.heads)
+	return steps_done
 end
 function save_img(  )
 	img_buf=img_buf or make_image_buffer(size[1],size[2])
@@ -290,7 +336,7 @@ function save_img_vor(  )
 	for x=0,size[1]-1 do
 		for y=0,size[2]-1 do
 
-			local nn=agent_tree:knn(1,{x,y})
+			local nn=agent_tree:knn(3,{x,y})
 			local count=0
 			for i,v in ipairs(nn) do
 				local cdata=agent_data:get(v[1],0)
@@ -299,13 +345,14 @@ function save_img_vor(  )
 				--local w=1/(1+v[2])+1
 				--local w=math.abs(math.cos(v[2]/20))+1
 				--local w=math.log(v[2]+1)+1
-				local w=1
+				--local w=1
+				local w=math.exp(-v[2]/5)
 				count=count+w
 
-				pix.r=pix.r+palette[typ].r
-				pix.g=pix.g+palette[typ].g
-				pix.b=pix.b+palette[typ].b
-				pix.a=pix.a+palette[typ].a
+				pix.r=pix.r+palette[typ].r*w
+				pix.g=pix.g+palette[typ].g*w
+				pix.b=pix.b+palette[typ].b*w
+				pix.a=pix.a+palette[typ].a*w
 			end
 			pix.r=pix.r/count
 			pix.g=pix.g/count
@@ -352,12 +399,14 @@ function restart( soft )
 
 		--[[
 
-		local dist=math.random()*0.2+0.1
+		local dist=math.random()*0.3+0.2
 		local s=math.min(size[1],size[2])
 		for i=0,max_val-1 do
-			x=size[1]/2+s*dist*math.cos(i*math.pi*2/max_val)
-			y=size[2]/2+s*dist*math.sin(i*math.pi*2/max_val)
+			local spiral=1--(i+1)/max_val
+			x=size[1]/2+s*dist*math.cos(i*math.pi*2/max_val)*spiral
+			y=size[2]/2+s*dist*math.sin(i*math.pi*2/max_val)*spiral
 			local a=angle_to_center(x,y)
+			print(x,y,a)
 			add_circle(circle_form_rule_init(x,y,a,rule[rr]),true)
 		end
 		--]]
@@ -431,12 +480,20 @@ function update(  )
     if autostep then
     	current_frame=current_frame+1
     	if current_frame>count_frames then
-    		step()
+    		local sum_steps=0
+    		while sum_steps< 200 do
+    			local s=step()
+    			if s ==0 then break end
+    			sum_steps=sum_steps+s
+    		end
     		current_frame=0
+    	end
+    	if #circle_data.heads==0 then
+    		autostep=false
     	end
     end
     if imgui.Button("Step") then
-    	for i=1,50 do
+    	for i=1,5 do
     		step()
     	end
     end
