@@ -5,7 +5,6 @@
 #include "lauxlib.h"
 
 #include "nanoflann.hpp"
-//TODO: ADD GC!!
 using namespace nanoflann;
 
 template <typename T>
@@ -175,6 +174,12 @@ static int dist_lookup3(lua_State* L)
     }
     return 1;
 }
+static int cleanup3(lua_State* L)
+{
+    auto p = check3(L, 1);
+    delete p;
+    return 0;
+}
 static int make_tree3(lua_State* L) {
     auto np = lua_newuserdata(L, sizeof(l_kd_3d_t));
     new(np) l_kd_3d_t;
@@ -193,6 +198,9 @@ static int make_tree3(lua_State* L) {
 
         lua_pushvalue(L, -1);
         lua_setfield(L, -2, "__index");
+
+        lua_pushcfunction(L, cleanup3);
+        lua_setfield(L, -2, "__gc");
     }
     lua_setmetatable(L, -2);
     return 1;
@@ -273,6 +281,12 @@ static int dist_lookup2(lua_State* L)
     }
     return 1;
 }
+static int cleanup2(lua_State* L)
+{
+    auto p = check2(L, 1);
+    delete p;
+    return 0;
+}
 static int make_tree2(lua_State* L) {
     auto np = lua_newuserdata(L, sizeof(l_kd_2d_t));
     new(np) l_kd_2d_t;
@@ -291,6 +305,9 @@ static int make_tree2(lua_State* L) {
 
         lua_pushvalue(L, -1);
         lua_setfield(L, -2, "__index");
+
+        lua_pushcfunction(L, cleanup2);
+        lua_setfield(L, -2, "__gc");
     }
     lua_setmetatable(L, -2);
     return 1;
