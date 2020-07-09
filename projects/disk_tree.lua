@@ -47,6 +47,11 @@ function resize( w,h )
 	img_buf=nil
 end
 
+config=make_config({
+	{"autostep",false,type="boolean"},
+	{"depth_first",true,type="boolean"},
+},config)
+
 draw_circles=shaders.Make(
 [==[
 #version 330
@@ -133,9 +138,9 @@ rules=rules or {
 }
 function make_subrule( id_self,max_state )
 	local chance_self=0.05
-	local max_rules=5
-	local chance_random=0
-	local c_rules=math.random(2,max_rules)
+	local max_rules=7
+	local chance_random=0.5
+	local c_rules=math.random(3,max_rules)
 	local ret={}
 	if math.random()<chance_random then
 		ret.is_random=true
@@ -173,7 +178,7 @@ function generate_rules(  )
 	local count_states=math.random(2,7)
 	rules.sizes={}
 	--rules.angle_step=math.random()*math.pi*2
-	rules.angle_step=math.pi/math.random(3,7)
+	rules.angle_step=math.pi/math.random(11,23)
 	for i=1,count_states do
 		rules.sizes[i]=math.random()*0.8+0.2
 	end
@@ -296,7 +301,7 @@ function step(  )
 	local steps_done=0
 	local old_heads=circle_data.heads
 	circle_data.heads={}
-	local is_depth_first=false
+	local is_depth_first=config.depth_first
 	if not is_depth_first then
 		for i,v in ipairs(old_heads) do
 			step_head(v)
@@ -391,7 +396,7 @@ function restart( soft )
 		local rr=math.random(1,#rule)
 
 		local max_val=math.random(4,25)
-		--[[
+		-- [[
 		x=size[1]/2
 		y=size[2]/2
 		add_circle(circle_form_rule_init(x,y,math.random()*math.pi*2,rule[rr]),true)
@@ -410,7 +415,7 @@ function restart( soft )
 			add_circle(circle_form_rule_init(x,y,a,rule[rr]),true)
 		end
 		--]]
-		-- [=[
+		--[=[
 		local x_count=math.random(4,25)
 		local y_count=x_count
 		local x_step=math.floor(size[1]/x_count)
@@ -468,16 +473,13 @@ function is_mouse_down(  )
 end
 local count_frames=1
 current_frame=0
-autostep=false
 function update(  )
     __clear()
     __no_redraw()
     __render_to_window()
     imgui.Begin("diskery")
-    if imgui.RadioButton("Autostep",autostep) then
-    	autostep=not autostep
-    end
-    if autostep then
+    draw_config(config)
+    if config.autostep then
     	current_frame=current_frame+1
     	if current_frame>count_frames then
     		local sum_steps=0
@@ -489,7 +491,7 @@ function update(  )
     		current_frame=0
     	end
     	if #circle_data.heads==0 then
-    		autostep=false
+    		config.autostep=false
     	end
     end
     if imgui.Button("Step") then
