@@ -2,8 +2,11 @@
 require "common"
 local luv=require "colors_luv"
 local size=STATE.size
-local image_buf=load_png("saved_1594631800.png")
+local image_buf=load_png("saved_1584003393.png")
 __set_window_size(image_buf.w,image_buf.h)
+function resize( w,h )
+	size=STATE.size
+end
 config=make_config({
 	--{"blur",0,type="int"}, TODO
 	{"bulge_r",0,type="float",max=0.1},
