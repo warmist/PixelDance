@@ -7,7 +7,7 @@ local image_buf=load_png("saved_1574845066.png")
 measures=make_float_buffer(800,3)
 palette=palette or make_flt_buffer(255,1)
 config=make_config({
-	{"blur",0,type="int"},
+	--{"blur",0,type="int"}, TODO
 	{"bulge_r",0,type="float",max=0.1},
 	{"bulge_g",0.014,type="float",max=0.1},
 	{"bulge_b",0.033,type="float",max=0.1},
@@ -98,7 +98,10 @@ void main(){
 	vec2 x_pos=Distort(pos.xy,barrel_power.x);
 	vec2 y_pos=Distort(pos.xy,barrel_power.y);
 	vec2 z_pos=Distort(pos.xy,barrel_power.z);
-
+	/*TODO
+		another way to do this: calculate spectrum of point, distort by it's 
+		wave length. Needs some sort of smoothing/reverse interpolation?
+	*/
 	vec3 L_out;
 	{
 		vec4 c=texture(tex_main,x_pos*vec2(1,-1));
