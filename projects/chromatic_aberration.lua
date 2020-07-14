@@ -12,6 +12,7 @@ config=make_config({
 	{"bulge_r",0,type="float",max=0.1},
 	{"bulge_g",0.014,type="float",max=0.1},
 	{"bulge_b",0.033,type="float",max=0.1},
+	--{"bulge_noise",0.033,type="float",max=0.1},
 	{"bulge_radius_offset",0,type="float",max=4},
 },config)
 
@@ -81,6 +82,43 @@ vec3 hsv2rgb(vec3 c)
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 
+float gaussian(float x, float alpha, float mu, float sigma1, float sigma2) {
+  float squareRoot = (x - mu)/(x < mu ? sigma1 : sigma2);
+  return alpha * exp( -(squareRoot * squareRoot)/2 );
+}
+
+vec3 xyzFromWavelength(float wavelength) {
+	vec3 ret;
+  ret.x = gaussian(wavelength,  1.056, 5998, 379, 310)
+         + gaussian(wavelength,  0.362, 4420, 160, 267)
+         + gaussian(wavelength, -0.065, 5011, 204, 262);
+
+  ret.y = gaussian(wavelength,  0.821, 5688, 469, 405)
+         + gaussian(wavelength,  0.286, 5309, 163, 311);
+
+  ret.z = gaussian(wavelength,  1.217, 4370, 118, 360)
+         + gaussian(wavelength,  0.681, 4590, 260, 138);
+  return ret;
+}
+
+float rand(vec2 n) { 
+	return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
+}
+
+float noise(vec2 p){
+	vec2 ip = floor(p);
+	vec2 u = fract(p);
+	u = u*u*(3.0-2.0*u);
+	
+	float res = mix(
+		mix(rand(ip),rand(ip+vec2(1.0,0.0)),u.x),
+		mix(rand(ip+vec2(0.0,1.0)),rand(ip+vec2(1.0,1.0)),u.x),u.y);
+	return res*res*2-1;
+}
+
+vec2 noise2(vec2 p){
+	return vec2(noise(p),noise(p+vec2(111,-2139)));
+}
 
 uniform sampler2D tex_main;
 uniform vec3 barrel_power;
@@ -94,14 +132,27 @@ vec2 Distort(vec2 p,float power)
     p.y = radius * sin(theta);
     return 0.5 * (p + 1.0);
 }
+uniform float barrel_noise;
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
+	#if 0 //dont like this :<
+	vec2 n1=vec2(noise2(pos.xy*8))*barrel_noise;
+	vec2 n2=vec2(noise2(pos.xy*8.1+vec2(999,77.5)))*barrel_noise;
+	vec2 n3=vec2(noise2(pos.xy*7.9+vec2(-1023,787)))*barrel_noise;
+
+	vec2 x_pos=Distort(pos.xy+n1,barrel_power.x)-n1;
+	vec2 y_pos=Distort(pos.xy+n2,barrel_power.y)-n2;
+	vec2 z_pos=Distort(pos.xy+n3,barrel_power.z)-n3;
+	#else
 	vec2 x_pos=Distort(pos.xy,barrel_power.x);
 	vec2 y_pos=Distort(pos.xy,barrel_power.y);
 	vec2 z_pos=Distort(pos.xy,barrel_power.z);
+	#endif
 	/*TODO
 		another way to do this: calculate spectrum of point, distort by it's 
 		wave length. Needs some sort of smoothing/reverse interpolation?
+		Another idea: get wavelength sort of like this: https://www.semrock.com/Data/Sites/1/semrockpdfs/whitepaper_howtocalculateluminositywavelengthandpurity.pdf
+		and then shift it somewhat
 	*/
 	vec3 L_out;
 	{
@@ -120,7 +171,8 @@ void main(){
 		L_out.z=Lc.z;
 	}
 	vec3 Rc=xyz2rgb(L_out);
-
+	//color = vec4(xyz2rgb(xyzFromWavelength(mix(3800,7400,normed.x))*85),1);
+	//color.xyz=pow(color.xyz,vec3(2.2));
 	color = vec4(Rc,1);//vec4(v,v,v,1);//vec4(0.2,0,0,1);
 }
 ]]
@@ -145,6 +197,7 @@ function update(  )
 	main_shader:set_i("tex_main",0)
 	main_shader:set("barrel_power",config.bulge_r+1,config.bulge_g+1,config.bulge_b+1);
 	main_shader:set("barrel_offset",config.bulge_radius_offset)
+	--main_shader:set("barrel_noise",config.bulge_noise)
 	main_shader:draw_quad()
 	imgui.Begin("Image")
 	if imgui.Button("save") then
