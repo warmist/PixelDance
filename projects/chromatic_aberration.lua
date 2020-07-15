@@ -153,6 +153,8 @@ void main(){
 		wave length. Needs some sort of smoothing/reverse interpolation?
 		Another idea: get wavelength sort of like this: https://www.semrock.com/Data/Sites/1/semrockpdfs/whitepaper_howtocalculateluminositywavelengthandpurity.pdf
 		and then shift it somewhat
+		Another idea: calculate something like a lightsource (i.e. spectrum) is 
+		falling down and image is distorting it by it's VALUE.
 	*/
 	vec3 L_out;
 	{
