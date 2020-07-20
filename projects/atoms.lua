@@ -106,12 +106,17 @@ uniform float offscreen_draw;
 void main()
 {
 	vec2 offset;
-	if(offscreen_draw)
+	if(offscreen_draw!=0.0)
 	{
 		if(position.x-pix_size/2<0)
 			offset.x=rez.x;
 		if(position.x+pix_size/2>rez.x)
 			offset.x=-rez.x;
+
+        if(position.y-pix_size/2<0)
+            offset.y=rez.y;
+        if(position.y+pix_size/2>rez.y)
+            offset.y=-rez.y;
 	}
 	vec2 real_pos=position.xy+offset;
 	vec2 normed=(real_pos/rez)*2-vec2(1,1);
@@ -138,20 +143,45 @@ vec4 palette(float t,vec4 a,vec4 b,vec4 c,vec4 d)
 {
     return a+b*cos(c+d*t*3.1459);
 }
+#define M_PI 3.14159
 void main(){
+    //center
 	vec2 p = (gl_PointCoord - 0.5)*2;
- 	float r = 1-length(p);
+ 	float r = length(p)*(-1.25)+1.25;
     r=clamp(r,0,1);
-	if(offscreen_draw)
+	if(offscreen_draw!=0.0)
 	{
-	    //if(pos.x>0 || pos.y>0 || pos.x<rez.x || pos.y<rez.y)
-	    	//discard;
+	    if(pos.x>0 && pos.y>0 && pos.x<rez.x && pos.y<rez.y)
+	    	discard;
 	}
 	else
 	{
-		
+
 	}
-	color=vec4(r,0,0,0);//palette(r,vec4(0.5),vec4(0.5),vec4(1.5*at.z,at.z,8*at.z,0),vec4(1,1,0,0))*r;
+    //p1
+    float mult=0;
+    if(at.z>128)
+        mult=-1;
+    else if(at.z<64)
+        mult=1;
+
+    vec2 p1=p+vec2(cos(at.x),sin(at.x))*0.5;
+    float r2=1-length(p1)*length(p1)*4;
+    r2=clamp(r2,0,1);
+    r2*=mult;
+
+    //p2
+    float mult2=0;
+    if(at.z>192)
+        mult2=-1;
+    else if(at.z<32)
+        mult2=1;
+
+    vec2 p2=p+vec2(cos(at.x+M_PI),sin(at.x+M_PI))*0.5;
+    float r3=1-length(p2)*length(p2)*4;
+    r3=clamp(r3,0,1);
+    r3*=mult2;
+	color=vec4(r*r,r3,r2,0);//palette(r,vec4(0.5),vec4(0.5),vec4(1.5*at.z,at.z,8*at.z,0),vec4(1,1,0,0))*r;
 }
 ]==])
 function add_fields_fbk(  )
@@ -168,13 +198,20 @@ function add_fields_fbk(  )
 		need_clear=false
 		--print("Clearing")
 	end
-    agent_buffers.angle_type:get_current():use(1)
+    if true then
+        agent_buffers.angle_type:get_current():use()
+        add_fields_shader:push_attribute(0,"angle_type",4)
+    	agent_buffers.pos_speed:get_current():use()
+    	add_fields_shader:set("offscreen_draw",0)
+    	add_fields_shader:draw_points(0,agent_count,4)
+    end
+
+    agent_buffers.angle_type:get_current():use()
     add_fields_shader:push_attribute(0,"angle_type",4)
-	agent_buffers.pos_speed:get_current():use()
-	--add_fields_shader:set("offscreen_draw",0)
-	--add_fields_shader:draw_points(0,agent_count,4)
+    agent_buffers.pos_speed:get_current():use()
 	add_fields_shader:set("offscreen_draw",1)
 	add_fields_shader:draw_points(0,agent_count,4)
+
 	add_fields_shader:blend_default()
 	__render_to_window()
 	__unbind_buffer()
@@ -192,10 +229,11 @@ uniform vec4 color_back;
 uniform vec4 color_fore;
 vec2 grad_tex(vec2 pos)
 {
-	vec2 ret;
-	ret.x=textureOffset(tex_main,pos,ivec2(-1,0)).x-textureOffset(tex_main,pos,ivec2(1,0)).x;
-	ret.y=textureOffset(tex_main,pos,ivec2(0,-1)).x-textureOffset(tex_main,pos,ivec2(0,1)).x;
-	return ret;
+    vec2 ret;
+    float v=textureOffset(tex_main,pos,ivec2(0,0)).x;
+    ret.x=textureOffset(tex_main,pos,ivec2(1,0)).x-v;
+    ret.y=textureOffset(tex_main,pos,ivec2(0,1)).x-v;
+    return ret;
 }
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -204,7 +242,7 @@ void main(){
     vec4 pixel=texture(tex_main,normed);
     color=pixel;
 #else
-	color=vec4(grad_tex(normed)*10,0,0);
+	color=vec4(grad_tex(normed)*1000,0,0);
 #endif
 }
 ]==]
@@ -236,16 +274,19 @@ float sample_around(vec2 pos)
 }
 vec2 grad_tex(vec2 pos)
 {
-	vec2 ret;
-	ret.x=textureOffset(tex_main,pos,ivec2(-1,0)).x-textureOffset(tex_main,pos,ivec2(1,0)).x;
-	ret.y=textureOffset(tex_main,pos,ivec2(0,-1)).x-textureOffset(tex_main,pos,ivec2(0,1)).x;
-	return ret;
+    vec2 ret;
+    float v=textureOffset(tex_main,pos,ivec2(0,0)).x;
+    ret.x=textureOffset(tex_main,pos,ivec2(1,0)).x-v;
+    ret.y=textureOffset(tex_main,pos,ivec2(0,1)).x-v;
+    return ret;
 }
 void main(){
 	vec4 state=position;
-	vec4 fields=texture(tex_main,state.xy);
-	vec2 p=grad_tex(state.xy/rez.xy)*10;
-	state.zw+=p;
+    vec2 normed_state=(state.xy/rez);
+	vec4 fields=texture(tex_main,normed_state);
+
+	vec2 p=grad_tex(normed_state);//vec2(dFdx(fields.x),dFdy(fields.x));
+	state.zw-=p;
 	float l=length(state.zw);
 	if(l>1)
 	{
