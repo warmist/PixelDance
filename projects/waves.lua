@@ -49,7 +49,7 @@ function make_visits_texture()
 		visit_buf:write_texture(visit_tex.t)
 	end
 end
-make_visits_texture()
+--make_visits_texture()
 function count_lines( s )
 	local n=0
 	for i in s:gmatch("\n") do n=n+1 end
@@ -186,8 +186,8 @@ void main(){
 	float lv=f(abs(texture(values,normed).x+add))*mult;
 	//float lv=f(abs(log(texture(values,normed).x+1)+add))*mult;
 	//lv=pow(1-lv,gamma);
-	//lv=gain(lv,v_gain);
-	//lv=pow(lv,v_gamma);
+	lv=gain(lv,v_gain);
+	lv=pow(lv,v_gamma);
 	/* quantize
 	float q=7;
 	lv=clamp(floor(lv*q)/q,0,1);
@@ -560,7 +560,32 @@ float grid(in vec2 st,float fw)
 	float r=leaf(st,fw);
 	return r;
 }
-#define DX(dx,dy) textureOffset(values_cur,normed,ivec2(dx,dy)).x
+//#define DX(dx,dy,NOTUSED) textureOffset(values_cur,normed,ivec2(dx,dy)).x
+float DX(int dx,int dy,vec2 normed)
+{
+	vec2 dtex=1/tex_size;
+	vec2 pos=normed+vec2(dx,dy)*dtex;
+	int rot=0;
+	//p4 or p2 dont remember but tile with 4 tiles rotated
+	if(pos.x>1)
+	{
+		pos=vec2(pos.y,-pos.x);
+	}
+	else if(pos.x<0)
+	{
+		pos=vec2(pos.y,-pos.x);
+	}
+	else if(pos.y>1)
+	{
+		pos=vec2(-pos.y,pos.x);
+	}
+	else if(pos.y<0)
+	{
+		pos=vec2(-pos.y,pos.x);
+	}
+
+	return texture(values_cur,pos).x;
+}
 float hash(float n) { return fract(sin(n) * 1e4); }
 float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
 float func(vec2 pos)
@@ -614,6 +639,18 @@ float func(vec2 pos)
 	}
 	#endif
 	#if 0
+		vec2 normed=(pos.xy+vec2(1,1))/2;
+		float val=texture(input_map,normed).x;
+
+		val=(log(val+1)-input_map_swing.x)/(input_map_swing.y-input_map_swing.x);
+		/*
+		val=clamp(val,0,1);
+		val=gain(val,v_gain);
+		val=pow(val,vec4(v_gamma));
+		*/
+		return sin(time*fr*M_PI/1000+val*fr2);
+	#endif
+	#if 0
 	//if(time<max_time)
 		return (
 		ab_vec.x*sin(time*fr*M_PI/1000
@@ -632,7 +669,7 @@ float func(vec2 pos)
 
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.3;
 	//if(time<max_time)
-	//if(abs(length(pos)-0.2)<0.005)
+	if(abs(length(pos)-0.8)<0.005)
 		return ab_vec.x*sin(-time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y)+
 			   ab_vec.y*sin(-time*fr2*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
 	//if(length(pos+vec2(0,0.5)+p)<0.005)
@@ -641,7 +678,7 @@ float func(vec2 pos)
 
 	#endif
 	#if 0
-	if(  length(pos)<0.005
+	if(  length(pos+vec2(0,0.9))<0.005
 	  //|| length(pos+vec2(-0.1,0.2))<0.005
 	  )
 	//if(time<max_time)
@@ -689,8 +726,14 @@ float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec2 dtex=1/tex_size;
+#if 1
 	float dcsqrx=c_sqr_avg.x*dt*dt/(dtex.x*dtex.x);
 	float dcsqry=c_sqr_avg.y*dt*dt/(dtex.y*dtex.y);
+#else
+	float dcsqr=dt*dt*c_const*c_const;
+	float dcsqrx=dcsqr/(dtex.x*dtex.x);
+	float dcsqry=dcsqr/(dtex.y*dtex.y);
+#endif
 
 #if 0
 	float dec=dot(pos,pos)*decay;//abs(hash(pos*100))*decay;
@@ -703,9 +746,9 @@ float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 		dec=d-0.5;*/
 #endif
 	float ret=(0.5*dec*dt-1)*texture(values_old,normed).x+
-		2*DX(0,0)+
-		dcsqrx*(DX(1,0)-2*DX(0,0)+DX(-1,0))+
-		dcsqry*(DX(0,1)-2*DX(0,0)+DX(0,-1))+
+		2*DX(0,0,normed)+
+		dcsqrx*(DX(1,0,normed)-2*DX(0,0,normed)+DX(-1,0,normed))+
+		dcsqry*(DX(0,1,normed)-2*DX(0,0,normed)+DX(0,-1,normed))+
 		dt*dt*func(pos);
 
 	return ret/(1+0.5*dec*dt);
@@ -715,9 +758,13 @@ float calc_init_value(vec2 pos,vec2 c_sqr_avg)
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 
 	vec2 dtex=1/tex_size;
-
+	float dcsqr=dt*dt*c_const*c_const;
+	/*
 	float dcsqrx=dt*dt*c_sqr_avg.x/(dtex.x*dtex.x);
 	float dcsqry=dt*dt*c_sqr_avg.y/(dtex.y*dtex.y);
+	*/
+	float dcsqrx=dcsqr/(dtex.x*dtex.x);
+	float dcsqry=dcsqr/(dtex.y*dtex.y);
 
 	float ret=
 		IDX(0,0)+
@@ -853,7 +900,7 @@ float c_shape(vec2 pos)
 	return radial_shape(pos);
 }
 #define TDX(dx,dy) textureOffset(input_map,normed,ivec2(dx,dy)).x
-#define DRAW_FORM 1
+#define DRAW_FORM 0
 void main(){
 	float v=0;
 	float max_d=2;
@@ -864,9 +911,10 @@ void main(){
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
 	//float sh_v=1-damaged_circle(pos.xy);
 	//float sh_v=sh_wavy(pos.xy,max_d);
+	//float sh_v=sdCircle(pos.xy,1);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=leaf(pos.xy,w);
-	//float sh_v=1-chalice(pos.xy,w);
+	//float sh_v=chalice(pos.xy,w);
 	//float sh_v=slit_experiment(pos.xy,w);
 	//float sh_v=flower(pos.xy,w);
 	//float sh_v=balance(pos.xy,w);
@@ -875,7 +923,7 @@ void main(){
 	//float sh_v=ankh(pos.xy,w);
 	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
-
+#if 0
 	vec4 sh_v2;
 	sh_v2.x=TDX(0,0);
 	sh_v2.y=TDX(0,1);
@@ -886,7 +934,9 @@ void main(){
 	sh_v2=clamp(sh_v2,0,1);
 	sh_v2=gain(sh_v2,v_gain);
 	sh_v2=pow(sh_v2,vec4(v_gamma));
-
+#else
+	vec4 sh_v2=vec4(c_const);
+#endif
 	//vec2 pm=mod(pos.xy+0.5*mm,mm)-0.5*mm;
 	//t_rot(pm.xy,M_PI/4);
 	//float sh_v=ankh_sdf(pos.xy*0.7);
@@ -896,15 +946,15 @@ void main(){
 	//float sh_v=1;
 	//sh_v=1-sh_v;
 
-
+#if 0
 	vec2 dtex=1/tex_size;
 	float max_c=0.00005;// min(dtex.x,dtex.y)*0.8;
 	float min_c=0.000005;
 	//dt<= betta*delta_x/max(c_const)
 	sh_v2=sh_v2*(max_c-min_c)+vec4(min_c);
 	sh_v2=clamp(sh_v2,min_c,max_c);
-
-	sh_v2*=sh_v2;
+#endif
+	//sh_v2*=sh_v2;
 	vec2 avg_c;
 #if 1
 	avg_c.x=2/(1/sh_v2.x+1/sh_v2.z);
@@ -913,12 +963,13 @@ void main(){
 	avg_c.x=0.5*(sh_v2.x+sh_v2.z);
 	avg_c.y=0.5*(sh_v2.x+sh_v2.y);
 #endif
-
+	avg_c*=avg_c;
 #if DRAW_FORM
-	v=(avg_c.x-min_c*min_c)/(max_c-min_c);
+	//v=(avg_c.x-min_c*min_c)/(max_c-min_c);
+	v=sh_v;
 	//vec2 dv=vec2(dFdx(sh_v),dFdy(sh_v));
 	//normalize(dv);
-	//v=1-smoothstep(-w,w,v);
+	v=1-smoothstep(-w,w,v);
 #else
 
 	if(sh_v<=0)
@@ -1038,15 +1089,17 @@ function waves_solve(  )
 	local id_next=(solver_iteration+2) % 3 +1
 	texture_buffers[id_old].t:use(0)
 	texture_buffers[id_cur].t:use(1)
-	visit_tex.t:use(2)
+	if visit_tex then
+		visit_tex.t:use(2)
+		solver_shader:set_i("input_map",2)
+		solver_shader:set("input_map_swing",visits_minmax[1],visits_minmax[2])
+	end
 	solver_shader:set_i("values_old",0)
 	solver_shader:set_i("values_cur",1)
-	solver_shader:set_i("input_map",2)
 
 	solver_shader:set("v_gamma",config.gamma)
 	solver_shader:set("v_gain",config.gain)
 
-	solver_shader:set("input_map_swing",visits_minmax[1],visits_minmax[2])
 	if current_time==0 then
 		solver_shader:set("init",1);
 	else

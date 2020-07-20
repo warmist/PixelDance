@@ -1088,7 +1088,7 @@ function rand_function(  )
 	
 	--]]
 	
-	-- [[ complex seriesize
+	--[[ complex seriesize
 	local series_size=12
 	local rand_offset=1
 	local rand_size=config.move_dist
@@ -1103,7 +1103,7 @@ function rand_function(  )
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	-- [[ polar gravity
+	--[[ polar gravity
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
 	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"

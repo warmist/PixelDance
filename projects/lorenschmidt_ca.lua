@@ -6,12 +6,11 @@ local luv=require "colors_luv"
 local win_w=1024--2560
 local win_h=1024--1440
 __set_window_size(win_w,win_h)
-local aspect_ratio=win_w/win_h
 local size=STATE.size
 local max_palette_size=50
 
 local need_clear=false
-local oversample=0.5
+local oversample=0.25
 
 
 function resize( w,h )
@@ -45,6 +44,7 @@ tconfig=make_config({
 	{"max_output",20,type="int",min=1,max=20},
 	{"max_values",100,type="int",min=1,max=1000},
 	{"mutate_count",1,type="int",min=1,max=25},
+	{"influence",0.5,type="float",min=0,max=1},
 },tconfig)
 
 transforms=transforms or {
@@ -99,8 +99,11 @@ function transforms:randomize()
 	self.array={}
 	
 	for i=1,self:w()*self:h() do
-		--float version
-		--self.array[i]=math.random()*(self.max-self.min)+self.min
+		--[[ float version
+		local max=tconfig.max_output
+		local min=-tconfig.max_output
+		self.array[i]=math.random()*(max-min)+min
+		--]]
 		--int version
 		self.array[i]=math.random(-tconfig.max_output,tconfig.max_output)
 		--weight close to 0 more
@@ -155,10 +158,17 @@ function transforms:mutate(count)
 	for i=1,count do
 		local idx=math.random(1,#self.array)
 		local v=self.array[idx]
+		--[[
 		if math.random()>0.5 then
 			v=v+1
 		else
 			v=v-1
+		end
+		--]]
+		if math.random()>0.5 then
+			v=v+math.random(1,tconfig.max_output/4)
+		else
+			v=v-math.random(1,tconfig.max_output/4)
 		end
 		if v>tconfig.max_output then v=tconfig.max_output end
 		if v<-tconfig.max_output then v=-tconfig.max_output end
@@ -675,7 +685,17 @@ function do_clear(  )
 		end
 		end
 		visit_buf:set(0,0,tconfig.max_values)
+		--[[
 		visit_buf:set(math.floor(w/2),0,-tconfig.max_values)
+		]]
+		--[[
+		for x=0,w-1 do
+			visit_buf:set(x,0,pcg32()*tconfig.max_values*2- tconfig.max_values)
+		end
+		--]]
+		for x=0,w-1 do
+			visit_buf:set(x,0,(x/(w/2)-1)*tconfig.max_values*2)
+		end
 		visit_buf:set(w-1,0,tconfig.max_values)
 	else
 		for y=0,h-1 do
@@ -725,33 +745,56 @@ function visit_iter(  )
 		end
 
 		local c=visit_buf:get(x,y+1)
-		-- [[ ORIGINAL STRONG TASTE
+		--[[ ORIGINAL STRONG TASTE
 		local dl=math.floor(l-c)
 		local dr=math.floor(r-c)
 		--]]
 		--[[ normalized
 		local dl=math.floor((l-c)*(tconfig.max_output/(tconfig.max_values*2)))
 		local dr=math.floor((r-c)*(tconfig.max_output/(tconfig.max_values*2)))
-		--print(dl,dr)
+		
 		--]]
 		--[[ min/max
 		local dl=math.floor(math.min(r-c,l-c))
 		local dr=math.floor(math.max(r-c,l-c))
 		--]]
-		local nv=c+transforms:lookup(dl,dr)
+		--[[ multiplicative
+		function save_div( x,y )
+			if y==0 or x==0 then return 0 end
+			if x/y > 1 then return y/x end
+			return x/y
+		end
+		local dl=math.floor(save_div(l,c)*tconfig.size_left)
+		local dr=math.floor(save_div(r,c)*tconfig.size_right)
+		--]]
+		-- [[ vector
+		local dl=l-c
+		local dr=r-c
+		local len=math.sqrt(dl*dl+dr*dr)
+		if len>0 then
+			dl=math.floor((dl*tconfig.size_left)/len)
+			dr=math.floor((dr*tconfig.size_right)/len)
+		else
+			dl=0
+			dr=0
+		end
+		--]]
+		--print(dl,dr)
+		local inf=tconfig.influence
+		local nv=c*inf+transforms:lookup(dl,dr)*(1-inf)
 		nv=clip(nv)
 
 		visit_buf:set(x,y,nv)
 
 	end
+	visit_tex.t:use(0)
 	visit_buf:write_texture(visit_tex.t)
 end
 
 function update_real(  )
-	
+	__no_redraw()
+	__clear()
 	if config.draw then
-		__no_redraw()
-		__clear()
 		draw_visits()
 	end
 	if need_clear then
