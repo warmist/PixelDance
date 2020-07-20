@@ -87,7 +87,7 @@ float gaussian(float x, float alpha, float mu, float sigma1, float sigma2) {
   return alpha * exp( -(squareRoot * squareRoot)/2 );
 }
 
-
+//from https://en.wikipedia.org/wiki/CIE_1931_color_space#Color_matching_functions
 //Also better fit: http://jcgt.org/published/0002/02/01/paper.pdf
 
 vec3 xyzFromWavelength(float wavelength) {
@@ -136,6 +136,24 @@ vec2 Distort(vec2 p,float power)
     return 0.5 * (p + 1.0);
 }
 uniform float barrel_noise;
+float two_gauss(vec2 pos,float p,float c)
+{
+	return c*exp(-(pos.x*pos.x*pos.y*pos.y)/(p*p));
+}
+vec3 sample_thing(float dist,float spread)
+{
+	int max_samples=150;
+	vec3 ret=vec3(0);
+	float wsum=0;
+	for(int i=0;i<max_samples;i++)
+	{
+		float v=i/float(max_samples);
+		float w=two_gauss(vec2(dist,v-dist),spread,1);
+		ret+=w*xyzFromWavelength(mix(3800,7400,v));
+		wsum+=1;//w;
+	}
+	return ret/wsum;
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	#if 0 //dont like this :<
@@ -176,9 +194,12 @@ void main(){
 		L_out.z=Lc.z;
 	}
 	vec3 Rc=xyz2rgb(L_out);
-	//color = vec4(xyz2rgb(xyzFromWavelength(mix(3800,7400,normed.x))*85),1);
+	float v=clamp(length(pos.xy),0,1);
+	//color = vec4(xyz2rgb(xyzFromWavelength(mix(3800,7400,v))*85),1);
 	//color.xyz=pow(color.xyz,vec3(2.2));
-	color = vec4(Rc,1);//vec4(v,v,v,1);//vec4(0.2,0,0,1);
+	//color = vec4(Rc,1);//vec4(v,v,v,1);//vec4(0.2,0,0,1);
+	vec3 ss=xyz2rgb(sample_thing(v,0.05))*30;
+	color=vec4(ss,1);
 }
 ]]
 local con_tex=textures.Make()
