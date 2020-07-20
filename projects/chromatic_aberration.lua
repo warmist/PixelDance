@@ -2,7 +2,7 @@
 require "common"
 local luv=require "colors_luv"
 local size=STATE.size
-local image_buf=load_png("saved_1584003393.png")
+local image_buf=load_png("saved_1588959289.png")
 __set_window_size(image_buf.w,image_buf.h)
 function resize( w,h )
 	size=STATE.size
@@ -14,11 +14,13 @@ config=make_config({
 	{"bulge_b",0.033,type="float",max=0.1},
 	--{"bulge_noise",0.033,type="float",max=0.1},
 	{"bulge_radius_offset",0,type="float",max=4},
+	{"gamma",1,type="float",min=0.01,max=5},
+	{"gain",1,type="float",min=-5,max=5},
 },config)
 
 local main_shader=shaders.Make[[
 #version 330
-#line 16
+#line 23
 out vec4 color;
 in vec3 pos;
 
@@ -126,6 +128,13 @@ vec2 noise2(vec2 p){
 uniform sampler2D tex_main;
 uniform vec3 barrel_power;
 uniform float barrel_offset;
+uniform float v_gain;
+uniform float v_gamma;
+float gain(float x, float k)
+{
+    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
+    return (x<0.5)?a:1.0-a;
+}
 vec2 Distort(vec2 p,float power)
 {
     float theta  = atan(p.y, p.x);
@@ -142,7 +151,7 @@ float two_gauss(vec2 pos,float p,float c)
 }
 vec3 sample_thing(float dist,float spread)
 {
-	int max_samples=150;
+	int max_samples=10;
 	vec3 ret=vec3(0);
 	float wsum=0;
 	for(int i=0;i<max_samples;i++)
@@ -153,6 +162,96 @@ vec3 sample_thing(float dist,float spread)
 		wsum+=1;//w;
 	}
 	return ret/wsum;
+}
+vec4 sample_circle(vec2 pos)
+{
+	int radius=5;
+	int rad_sq=radius*radius;
+	vec4 ret=vec4(0);
+	float weight=0;
+	for(int x=0;x<radius;x++)
+	{
+		int max_y=int(sqrt(rad_sq-x*x));
+		for(int y=0;y<max_y;y++)
+		{
+			float w=1/float(x*x+y*y+1);
+			vec2 offset=vec2(x,y)/textureSize(tex_main,0);
+
+			/*ret+=textureOffset(tex_main,pos,ivec2(x,y))*w;
+			ret+=textureOffset(tex_main,pos,ivec2(-x,y))*w;
+			ret+=textureOffset(tex_main,pos,ivec2(x,-y))*w;
+			ret+=textureOffset(tex_main,pos,ivec2(-x,-y))*w;*/
+
+			ret+=texture(tex_main,pos+offset)*w;
+			ret+=texture(tex_main,pos+offset*vec2(1,-1))*w;
+			ret+=texture(tex_main,pos+offset*vec2(-1,1))*w;
+			ret+=texture(tex_main,pos+offset*vec2(-1,-1))*w;
+			weight+=4*w;
+		}
+	}
+	return ret/weight;
+}
+vec3 sample_xyz_ex(vec2 pos,float power)
+{
+	vec3 xy_t=xyzFromWavelength(mix(3800,7400,texture(tex_main,pos).x)*power);
+	return xy_t;
+}
+vec3 sample_xyz(vec2 pos,float power)
+{
+	float nv=texture(tex_main,pos).x;
+#if 0
+	nv=gain(nv,v_gain);
+	nv=pow(nv,v_gamma);
+#else
+	power=gain(power,v_gain);
+	power=pow(power,v_gamma);
+#endif
+	vec3 xy_t=xyzFromWavelength(mix(3800,7400,power)*nv);
+	return xy_t;
+}
+vec3 sample_sample(vec2 pos, float dist)
+{
+
+	vec3 nv=texture(tex_main,pos).xyz;
+
+	nv.x=gain(nv.x,v_gain);
+	nv.y=gain(nv.y,v_gain);
+	nv.z=gain(nv.z,v_gain);
+	nv=pow(nv,vec3(v_gamma));
+
+	nv=rgb2xyz(nv);
+	vec3 xy_t=sample_thing(dist,0.005)*nv;
+	return xy_t;
+}
+vec3 sample_circle_w(vec2 pos)
+{
+	int radius=10;
+	int rad_sq=radius*radius;
+	vec3 ret=vec3(0);
+	float weight=0;
+	float p=700;
+	float ep=32;
+	float eparam=ep*ep;
+	for(int x=0;x<radius;x++)
+	{
+		int max_y=int(sqrt(rad_sq-x*x));
+		for(int y=0;y<max_y;y++)
+		{
+			float dist_sq=float(x*x+y*y);
+			float dist=sqrt(dist_sq)/radius;
+			//float w=1/(dist_sq+1);
+			float w=exp(-dist_sq/eparam);
+			//float w=1;
+			vec2 offset=vec2(x,y)/textureSize(tex_main,0);
+
+			ret+=sample_sample(pos+offset,dist)*w;
+			ret+=sample_sample(pos+offset*vec2(1,-1),dist)*w;
+			ret+=sample_sample(pos+offset*vec2(-1,1),dist)*w;
+			ret+=sample_sample(pos+offset*vec2(-1,-1),dist)*w;
+			weight+=4*w;
+		}
+	}
+	return ret*p/weight;
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -193,13 +292,20 @@ void main(){
 		vec3 Lc=rgb2xyz(c.xyz);
 		L_out.z=Lc.z;
 	}
+	float nv=texture(tex_main,normed).x;
+
+	nv=gain(nv,v_gain);
+	nv=pow(nv,v_gamma);
+
+
 	vec3 Rc=xyz2rgb(L_out);
 	float v=clamp(length(pos.xy),0,1);
 	//color = vec4(xyz2rgb(xyzFromWavelength(mix(3800,7400,v))*85),1);
 	//color.xyz=pow(color.xyz,vec3(2.2));
 	//color = vec4(Rc,1);//vec4(v,v,v,1);//vec4(0.2,0,0,1);
-	vec3 ss=xyz2rgb(sample_thing(v,0.07))*20;
-	color=vec4(ss,1);
+	//vec3 ss=xyz2rgb(sample_thing(1-nv,0.05))*25;
+	vec3 rcol=xyz2rgb(sample_circle_w(normed));
+	color=vec4(rcol,1);
 }
 ]]
 local con_tex=textures.Make()
@@ -223,6 +329,8 @@ function update(  )
 	main_shader:set_i("tex_main",0)
 	main_shader:set("barrel_power",config.bulge_r+1,config.bulge_g+1,config.bulge_b+1);
 	main_shader:set("barrel_offset",config.bulge_radius_offset)
+	main_shader:set("v_gamma",config.gamma)
+	main_shader:set("v_gain",config.gain)
 	--main_shader:set("barrel_noise",config.bulge_noise)
 	main_shader:draw_quad()
 	imgui.Begin("Image")

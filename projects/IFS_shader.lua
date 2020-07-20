@@ -437,6 +437,28 @@ function new_color( h,s,l,pos )
 	r[5]=pos
 	return r
 end
+function gaussian(x,alpha, mu, sigma1,sigma2)
+  local squareRoot = (x - mu)/(sigma2)
+  if x < mu then
+  	squareRoot=(x-mu)/sigma1
+  end
+  return alpha * math.exp( -(squareRoot * squareRoot)/2 );
+end
+
+function luvFromWavelength(wavelength,sat)
+	local ret={}
+	ret[1] = gaussian(wavelength,  1.056, 5998, 379, 310)
+	     + gaussian(wavelength,  0.362, 4420, 160, 267)
+	     + gaussian(wavelength, -0.065, 5011, 204, 262);
+	ret[1]=ret[1]*sat
+	ret[2] = gaussian(wavelength,  0.821, 5688, 469, 405)
+	     + gaussian(wavelength,  0.286, 5309, 163, 311);
+	ret[2]=ret[2]*sat
+	ret[3] = gaussian(wavelength,  1.217, 4370, 118, 360)
+	     + gaussian(wavelength,  0.681, 4590, 260, 138);
+	ret[3]=ret[3]*sat
+  return hsluv.rgb_to_hsluv(luv.xyz_to_rgb(ret))
+end
 palette.generators={
 	{"random",function (ret, hue_range,sat_range,lit_range )
 		local count=math.random(2,10)
@@ -554,14 +576,39 @@ palette.generators={
 
 			table.insert(ret,new_color(h2,s2,l2,((i)/max_step)*(max_palette_size-1)))
 		end
-	end}
+	end},
+	{"rainbow",function ( ret,hue_range,sat_range,lit_range )
+		local wv_range_size=7400-3800
+		local wv1=rand_range({wv_range_size*hue_range[1],wv_range_size*hue_range[2]})+3800
+		local wv2=rand_range({wv_range_size*hue_range[1],wv_range_size*hue_range[2]})+3800
+		local s=rand_range(sat_range)
+		local l=rand_range(lit_range)
+		local steps=math.random(4,25)
+		local step_size=(wv2-wv1)/steps
+		local i=1
+		local max_sat=0
+		local max_other=0
+		for w=wv1,wv2,step_size do
+			local col=luvFromWavelength(w,s)
+			local pos=math.floor(((i-1)/(steps-1))*(max_palette_size-1))
+			local sat=col[2]/100
+			if sat>max_sat then max_sat=sat end
+			if col[3]/100>max_other then max_other=col[3]/100 end
+			table.insert(ret,new_color(col[1]/360,sat,col[3]/100,pos))
+			i=i+1
+		end
+		for i,v in ipairs(ret) do
+			v[2]=v[2]/max_sat
+			--v[3]=(v[3]/max_other)*l
+		end
+	end},
 }
 function gen_palette( )
 	local ret={}
 	palette.colors_input=ret
 	local hue_range={0,1}
 	local sat_range={0,1}
-	local lit_range={0,1}
+	local lit_range={0.5,0.5}
 
 	local h1=rand_range(hue_range)
 	local s=rand_range(sat_range)
