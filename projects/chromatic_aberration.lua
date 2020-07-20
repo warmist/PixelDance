@@ -198,7 +198,7 @@ void main(){
 	//color = vec4(xyz2rgb(xyzFromWavelength(mix(3800,7400,v))*85),1);
 	//color.xyz=pow(color.xyz,vec3(2.2));
 	//color = vec4(Rc,1);//vec4(v,v,v,1);//vec4(0.2,0,0,1);
-	vec3 ss=xyz2rgb(sample_thing(v,0.05))*30;
+	vec3 ss=xyz2rgb(sample_thing(v,0.07))*20;
 	color=vec4(ss,1);
 }
 ]]
