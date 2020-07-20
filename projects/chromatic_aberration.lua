@@ -87,6 +87,9 @@ float gaussian(float x, float alpha, float mu, float sigma1, float sigma2) {
   return alpha * exp( -(squareRoot * squareRoot)/2 );
 }
 
+
+//Also better fit: http://jcgt.org/published/0002/02/01/paper.pdf
+
 vec3 xyzFromWavelength(float wavelength) {
 	vec3 ret;
   ret.x = gaussian(wavelength,  1.056, 5998, 379, 310)
