@@ -23,7 +23,7 @@ local main_shader=shaders.Make[[
 #line 23
 out vec4 color;
 in vec3 pos;
-
+#define M_PI 3.14159265359
 vec3 rgb2xyz( vec3 c ) {
     vec3 tmp;
     tmp.x = ( c.r > 0.04045 ) ? pow( ( c.r + 0.055 ) / 1.055, 2.4 ) : c.r / 12.92;
@@ -88,7 +88,15 @@ float gaussian(float x, float alpha, float mu, float sigma1, float sigma2) {
   float squareRoot = (x - mu)/(x < mu ? sigma1 : sigma2);
   return alpha * exp( -(squareRoot * squareRoot)/2 );
 }
-
+float gaussian_conv(float x, float alpha, float mu, float sigma1, float sigma2,float mu2,float sigma3) {
+	float mu_new=mu+mu2;
+	float s1=sqrt(sigma1*sigma1+sigma3*sigma3);
+	float s2=sqrt(sigma2*sigma2+sigma3*sigma3);
+	float new_alpha=sqrt(M_PI)/(sqrt(1/(sigma1*sigma1)+1/(sigma3*sigma3)));
+	new_alpha+=sqrt(M_PI)/(sqrt(1/(sigma2*sigma2)+1/(sigma3*sigma3)));
+	new_alpha/=2;
+	return gaussian(x,new_alpha,mu_new,s1,s2);
+}
 //from https://en.wikipedia.org/wiki/CIE_1931_color_space#Color_matching_functions
 //Also better fit: http://jcgt.org/published/0002/02/01/paper.pdf
 
@@ -149,9 +157,28 @@ float two_gauss(vec2 pos,float p,float c)
 {
 	return c*exp(-(pos.x*pos.x*pos.y*pos.y)/(p*p));
 }
+
+vec3 xyz_from_thing(float d1,float spread) {
+	float d=d1;
+	float wavelength=mix(3800,7400,d);
+	//float x, float alpha, float mu, float sigma1, float sigma2
+	vec3 ret;
+	float new_spread=spread/d;
+	
+  ret.x = gaussian_conv(wavelength,  1.056, 5998, 379, 310,d,new_spread)
+         + gaussian_conv(wavelength,  0.362, 4420, 160, 267,d,new_spread)
+         + gaussian_conv(wavelength, -0.065, 5011, 204, 262,d,new_spread);
+
+  ret.y = gaussian_conv(wavelength,  0.821, 5688, 469, 405,d,new_spread)
+         + gaussian_conv(wavelength,  0.286, 5309, 163, 311,d,new_spread);
+
+  ret.z = gaussian_conv(wavelength,  1.217, 4370, 118, 360,d,new_spread)
+         + gaussian_conv(wavelength,  0.681, 4590, 260, 138,d,new_spread);
+  return ret;
+}
 vec3 sample_thing(float dist,float spread)
 {
-	int max_samples=10;
+	int max_samples=20;
 	vec3 ret=vec3(0);
 	float wsum=0;
 	for(int i=0;i<max_samples;i++)
@@ -298,14 +325,22 @@ void main(){
 	nv=pow(nv,v_gamma);
 
 
-	vec3 Rc=xyz2rgb(L_out);
+	//vec3 Rc=xyz2rgb(L_out);
 	float v=clamp(length(pos.xy),0,1);
 	//color = vec4(xyz2rgb(xyzFromWavelength(mix(3800,7400,v))*85),1);
 	//color.xyz=pow(color.xyz,vec3(2.2));
 	//color = vec4(Rc,1);//vec4(v,v,v,1);//vec4(0.2,0,0,1);
-	//vec3 ss=xyz2rgb(sample_thing(1-nv,0.05))*25;
-	vec3 rcol=xyz2rgb(sample_circle_w(normed));
-	color=vec4(rcol,1);
+	vec3 ss;
+	float spread=0.025;
+	float power=25;
+	if(pos.x>0)
+		ss=xyz2rgb(sample_thing(v,spread))*power;
+	else
+		ss=xyz2rgb(xyz_from_thing(v,spread))*power;
+	
+	color=vec4(ss,1);
+	//vec3 rcol=xyz2rgb(sample_circle_w(normed));
+	//color=vec4(rcol,1);
 }
 ]]
 local con_tex=textures.Make()
