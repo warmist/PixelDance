@@ -18,6 +18,21 @@ config=make_config({
 	{"gain",1,type="float",min=-5,max=5},
 },config)
 
+function make_visits_texture()
+	if visit_tex==nil or visit_tex.w~=size[1] or visit_tex.h~=size[2] then
+
+		visit_tex={t=textures:Make(),w=size[1],h=size[2]}
+		visit_tex.t:use(0,1)
+		visit_tex.t:set(size[1],size[2],2)
+	end
+end
+
+function make_visits_buf(  )
+	if visit_buf==nil or visit_buf.w~=size[1] or visit_buf.h~=size[2] then
+		visit_buf=make_flt_buffer(size[1],size[2])
+	end
+end
+make_visits_buf()
 local main_shader=shaders.Make[[
 #version 330
 #line 23
@@ -88,6 +103,10 @@ float gaussian(float x, float alpha, float mu, float sigma1, float sigma2) {
   float squareRoot = (x - mu)/(x < mu ? sigma1 : sigma2);
   return alpha * exp( -(squareRoot * squareRoot)/2 );
 }
+float gaussian1(float x, float alpha, float mu, float sigma) {
+  float squareRoot = (x - mu)/sigma;
+  return alpha * exp( -(squareRoot * squareRoot)/2 );
+}
 float gaussian_conv(float x, float alpha, float mu, float sigma1, float sigma2,float mu2,float sigma3) {
 	float mu_new=mu+mu2;
 	float s1=sqrt(sigma1*sigma1+sigma3*sigma3);
@@ -155,37 +174,52 @@ vec2 Distort(vec2 p,float power)
 uniform float barrel_noise;
 float two_gauss(vec2 pos,float p,float c)
 {
-	return c*exp(-(pos.x*pos.x*pos.y*pos.y)/(p*p));
+	return c*exp(-(pos.x*pos.x*pos.y*pos.y)/(p*p*2));
 }
 
 vec3 xyz_from_thing(float d1,float spread) {
 	float d=d1;
-	float wavelength=mix(3800,7400,d);
-	//float x, float alpha, float mu, float sigma1, float sigma2
+	float scale=1.1;
+	float new_spread=spread/(d*scale);
 	vec3 ret;
-	float new_spread=spread/d;
-	
-  ret.x = gaussian_conv(wavelength,  1.056, 5998, 379, 310,d,new_spread)
-         + gaussian_conv(wavelength,  0.362, 4420, 160, 267,d,new_spread)
-         + gaussian_conv(wavelength, -0.065, 5011, 204, 262,d,new_spread);
+	ret.x = gaussian_conv(d,  1.056, 0.6106, 0.10528, 0.0861,d*scale,new_spread)
+		+ gaussian_conv(d,  0.362, 0.1722, 0.04444, 0.0742,d*scale,new_spread)
+		+ gaussian_conv(d, -0.065, 0.3364, 0.05667, 0.0728,d*scale,new_spread);
 
-  ret.y = gaussian_conv(wavelength,  0.821, 5688, 469, 405,d,new_spread)
-         + gaussian_conv(wavelength,  0.286, 5309, 163, 311,d,new_spread);
+	ret.y = gaussian_conv(d,  0.821, 0.5244, 0.1303, 0.1125,d,new_spread)
+	    + gaussian_conv(d,  0.286, 0.4192, 0.0452, 0.0864,d,new_spread);
 
-  ret.z = gaussian_conv(wavelength,  1.217, 4370, 118, 360,d,new_spread)
-         + gaussian_conv(wavelength,  0.681, 4590, 260, 138,d,new_spread);
-  return ret;
+	ret.z = gaussian_conv(d,  1.217, 0.1583, 0.0328, 0.1,d,new_spread)
+	    + gaussian_conv(d,  0.681, 0.2194, 0.0722, 0.0383,d,new_spread);
+
+  	return ret;
+}
+vec3 xyz_from_normed_waves(float v_in)
+{
+	vec3 ret;
+	ret.x = gaussian(v_in,  1.056, 0.6106, 0.10528, 0.0861)
+		+ gaussian(v_in,  0.362, 0.1722, 0.04444, 0.0742)
+		+ gaussian(v_in, -0.065, 0.3364, 0.05667, 0.0728);
+
+	ret.y = gaussian(v_in,  0.821, 0.5244, 0.1303, 0.1125)
+	    + gaussian(v_in,  0.286, 0.4192, 0.0452, 0.0864);
+
+	ret.z = gaussian(v_in,  1.217, 0.1583, 0.0328, 0.1)
+	    + gaussian(v_in,  0.681, 0.2194, 0.0722, 0.0383);
+
+	return ret;
 }
 vec3 sample_thing(float dist,float spread)
 {
-	int max_samples=20;
+	//float w=two_gauss(vec2(dist,v-dist),spread,1);
+	int max_samples=40;
 	vec3 ret=vec3(0);
 	float wsum=0;
 	for(int i=0;i<max_samples;i++)
 	{
 		float v=i/float(max_samples);
-		float w=two_gauss(vec2(dist,v-dist),spread,1);
-		ret+=w*xyzFromWavelength(mix(3800,7400,v));
+		float w=gaussian1(v,1,dist,spread/dist);
+		ret+=w*xyz_from_normed_waves(v);
 		wsum+=1;//w;
 	}
 	return ret/wsum;
@@ -331,13 +365,11 @@ void main(){
 	//color.xyz=pow(color.xyz,vec3(2.2));
 	//color = vec4(Rc,1);//vec4(v,v,v,1);//vec4(0.2,0,0,1);
 	vec3 ss;
-	float spread=0.025;
-	float power=25;
-	if(pos.x>0)
-		ss=xyz2rgb(sample_thing(v,spread))*power;
-	else
-		ss=xyz2rgb(xyz_from_thing(v,spread))*power;
-	
+	float spread=barrel_offset;
+	float power=0.1;
+
+	ss=xyz2rgb(sample_thing(v,spread))*power;
+
 	color=vec4(ss,1);
 	//vec3 rcol=xyz2rgb(sample_circle_w(normed));
 	//color=vec4(rcol,1);
@@ -350,6 +382,7 @@ function save_img()
 	img_buf:read_frame()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))))
 end
+
 function update(  )
 	__no_redraw()
 	__clear()
@@ -357,20 +390,36 @@ function update(  )
 	draw_config(config)
 	imgui.End()
 
-	
+	make_visits_buf()
+	make_visits_texture()
+
 	main_shader:use()
 	con_tex:use(0,1)
+	main_shader:blend_add()
 	image_buf:write_texture(con_tex)
 	main_shader:set_i("tex_main",0)
 	main_shader:set("barrel_power",config.bulge_r+1,config.bulge_g+1,config.bulge_b+1);
 	main_shader:set("barrel_offset",config.bulge_radius_offset)
 	main_shader:set("v_gamma",config.gamma)
 	main_shader:set("v_gain",config.gain)
+	visit_tex.t:use(1)
 	--main_shader:set("barrel_noise",config.bulge_noise)
+	if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
+		error("failed to set framebuffer up")
+	end
+	if need_clear then
+		__clear()
+		need_clear=false
+	end
 	main_shader:draw_quad()
+	__render_to_window()
 	imgui.Begin("Image")
 	if imgui.Button("save") then
 		save_img()
+	end
+	imgui.SameLine()
+	if imgui.Button("clear") then
+		need_clear=true
 	end
 	imgui.End()
 	
