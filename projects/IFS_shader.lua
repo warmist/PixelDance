@@ -608,7 +608,7 @@ function gen_palette( )
 	palette.colors_input=ret
 	local hue_range={0,1}
 	local sat_range={0,1}
-	local lit_range={0.5,0.5}
+	local lit_range={0,1}
 
 	local h1=rand_range(hue_range)
 	local s=rand_range(sat_range)
@@ -1067,7 +1067,7 @@ function rand_function(  )
 	--[[ gravity
 	str_preamble=str_preamble.."s*=1/move_dist;"
 	--]]
-	-- [[ weight1
+	--[[ weight1
 	--str_postamble=str_postamble.."float ll=length(s);s/=weight1;weight1*=1/ll;"
 	--str_postamble=str_postamble.."float ll=length(s);s*=weight1;weight1=min(weight1,1/ll);"
 	str_postamble=str_postamble.."float ll=length(s);s/=weight1;weight1=max(weight1,ll);"
@@ -1089,7 +1089,7 @@ function rand_function(  )
 	--]]
 	
 	--[[ complex seriesize
-	local series_size=12
+	local series_size=7
 	local rand_offset=1
 	local rand_size=config.move_dist
 	local input_s=""
@@ -1103,7 +1103,7 @@ function rand_function(  )
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	--[[ polar gravity
+	-- [[ polar gravity
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
 	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"

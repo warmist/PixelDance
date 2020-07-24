@@ -23,6 +23,22 @@ end
 --update_size()
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
+function buffer_save(buf,min,max, name )
+	local b=bwrite()
+	b:u32(buf.w)
+	b:u32(buf.h)
+	b:f32(min)
+	b:f32(max)
+	for x=0,buf.w-1 do
+	for y=0,buf.h-1 do
+		local v=buf:get(x,y)
+		b:f32(v)
+	end
+	end
+	local f=io.open(name,"wb")
+	f:write(b:tostring())
+	f:close()
+end
 function read_visits_buf( fname )
 	local file = io.open(fname, 'rb')
 	local b = bread(file:read('*all'))
@@ -624,7 +640,7 @@ float func(vec2 pos)
 		)*cos(pos.y*M_PI*nm_vec.y)
 		);
 	#endif
-	#if 1
+	#if 0
 	for(float a=0;a<max_a;a++)
 	{
 		float ang=(a/max_a)*M_PI*2;
@@ -664,7 +680,7 @@ float func(vec2 pos)
 		)*0.00005;
 	#endif
 
-	#if 0
+	#if 1
 
 
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.3;
@@ -678,7 +694,7 @@ float func(vec2 pos)
 
 	#endif
 	#if 0
-	if(  length(pos+vec2(0,0.9))<0.005
+	if(  length(pos+vec2(0,0.00))<0.005
 	  //|| length(pos+vec2(-0.1,0.2))<0.005
 	  )
 	//if(time<max_time)
@@ -907,7 +923,7 @@ void main(){
 	float w=0.005;
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	float sh_v=0;
+	//float sh_v=0;
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
 	//float sh_v=1-damaged_circle(pos.xy);
 	//float sh_v=sh_wavy(pos.xy,max_d);
@@ -921,7 +937,7 @@ void main(){
 	//float sh_v=sh_jaws(pos.xy,w);
 	//float sh_v=sh_polyhedron(pos.xy*vec2(0.2,1),4,0.2,0,w);
 	//float sh_v=ankh(pos.xy,w);
-	//float sh_v=radial_shape(pos.xy);
+	float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
 #if 0
 	vec4 sh_v2;
@@ -1067,6 +1083,10 @@ function gui()
 	if imgui.Button("Save image") then
 		need_save=true
 	end
+	imgui.SameLine()
+	if imgui.Button("Save buffer") then
+		need_buf_save=true
+	end
 	imgui.End()
 end
 
@@ -1141,6 +1161,12 @@ function save_img( id )
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 	end
 end
+function save_tex( tex ,minv,maxv)
+	make_io_buffer()
+	io_buffer:read_texture(tex.t)
+	buffer_save(io_buffer,minv,maxv,"waves_out.buf")
+	bwrite()
+end
 function calc_range_value( tex )
 	make_io_buffer()
 	io_buffer:read_texture(tex.t)
@@ -1182,6 +1208,10 @@ function draw_texture( id )
 			trg_tex.t:use(0,1)
 			local minv,maxv
 			minv,maxv=calc_range_value(trg_tex)
+			if need_buf_save then
+				save_tex(trg_tex,minv,maxv)
+				need_buf_save=false
+			end
 			draw_shader:set_i("values",0)
 			draw_shader:set("v_gamma",config.gamma)
 			draw_shader:set("v_gain",config.gain)
@@ -1215,6 +1245,7 @@ function draw_texture( id )
 			if single_shot_value==true then
 				minv,maxv=calc_range_value(src_tex)
 				single_shot_value={minv,maxv}
+
 			elseif type(single_shot_value)=="table" then
 				minv,maxv=single_shot_value[1],single_shot_value[2]
 			else

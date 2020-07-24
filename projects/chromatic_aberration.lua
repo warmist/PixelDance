@@ -2,20 +2,60 @@
 require "common"
 local luv=require "colors_luv"
 local size=STATE.size
-local image_buf=load_png("saved_1588959289.png")
+local image_buf
+image_buf=load_png("saved_1584074540.png")
+-- [[
+local bwrite = require "blobwriter"
+local bread = require "blobreader"
+function read_hd_png_buf( fname,log_norm )
+	local file = io.open(fname, 'rb')
+	local b = bread(file:read('*all'))
+	file:close()
+
+	local sx=b:u32()
+	local sy=b:u32()
+	local background_buf=make_flt_buffer(sx,sy)
+	local background_minmax={}
+	background_minmax[1]=b:f32()
+	background_minmax[2]=b:f32()
+	for x=0,background_buf.w-1 do
+	for y=0,background_buf.h-1 do
+		if log_norm then
+			local v=(math.log(b:f32()+1)-background_minmax[1])/(background_minmax[2]-background_minmax[1])
+			background_buf:set(x,y,{v,v,v,1})
+		else
+			local v=(b:f32()-background_minmax[1])/(background_minmax[2]-background_minmax[1])
+			background_buf:set(x,y,{v,v,v,1})
+		end
+	end
+	end
+	return background_buf,background_minmax
+end
+function load_hd_png()
+	if background_tex==nil then
+		print("making tex")
+		read_background_buf("out.buf")
+		background_tex={t=textures:Make(),w=background_buf.w,h=background_buf.h}
+		background_tex.t:use(0,1)
+		background_buf:write_texture(background_tex.t)
+		__unbind_buffer()
+	end
+end
+image_buf=read_hd_png_buf("waves_out.buf",true)
+--]]
+
 __set_window_size(image_buf.w,image_buf.h)
 function resize( w,h )
 	size=STATE.size
 end
 config=make_config({
 	--{"blur",0,type="int"}, TODO
-	{"bulge_r",0,type="float",max=0.1},
-	{"bulge_g",0.014,type="float",max=0.1},
-	{"bulge_b",0.033,type="float",max=0.1},
-	--{"bulge_noise",0.033,type="float",max=0.1},
-	{"bulge_radius_offset",0,type="float",max=4},
-	{"gamma",1,type="float",min=0.01,max=5},
-	{"gain",1,type="float",min=-5,max=5},
+	{"iteration_step",0.001,type="floatsci",max=1},
+	{"bulge_r",0.2,type="float",max=0.5},
+	{"bulge_radius_offset",0,type="float",max=1},
+	{"gamma",2.2,type="float",min=0.01,max=5},
+	{"gain",0.33,type="float",min=-0.01,max=1},
+	{"exposure",50,type="float",min=0.001,max=100},
 },config)
 
 function make_visits_texture()
@@ -23,7 +63,7 @@ function make_visits_texture()
 
 		visit_tex={t=textures:Make(),w=size[1],h=size[2]}
 		visit_tex.t:use(0,1)
-		visit_tex.t:set(size[1],size[2],2)
+		visit_tex.t:set(size[1],size[2],FLTA_PIX)
 	end
 end
 
@@ -33,9 +73,12 @@ function make_visits_buf(  )
 	end
 end
 make_visits_buf()
+
+
+
 local main_shader=shaders.Make[[
 #version 330
-#line 23
+#line 39
 out vec4 color;
 in vec3 pos;
 #define M_PI 3.14159265359
@@ -153,7 +196,7 @@ vec2 noise2(vec2 p){
 }
 
 uniform sampler2D tex_main;
-uniform vec3 barrel_power;
+uniform float barrel_power;
 uniform float barrel_offset;
 uniform float v_gain;
 uniform float v_gamma;
@@ -191,6 +234,20 @@ vec3 xyz_from_thing(float d1,float spread) {
 
 	ret.z = gaussian_conv(d,  1.217, 0.1583, 0.0328, 0.1,d,new_spread)
 	    + gaussian_conv(d,  0.681, 0.2194, 0.0722, 0.0383,d,new_spread);
+
+  	return ret;
+}
+vec3 xyz_from_masked(float d,float mask,float spread) {
+	vec3 ret;
+	ret.x = gaussian_conv(d,  1.056, 0.6106, 0.10528, 0.0861,mask,spread)
+		+ gaussian_conv(d,  0.362, 0.1722, 0.04444, 0.0742,mask,spread)
+		+ gaussian_conv(d, -0.065, 0.3364, 0.05667, 0.0728,mask,spread);
+
+	ret.y = gaussian_conv(d,  0.821, 0.5244, 0.1303, 0.1125,mask,spread)
+	    + gaussian_conv(d,  0.286, 0.4192, 0.0452, 0.0864,mask,spread);
+
+	ret.z = gaussian_conv(d,  1.217, 0.1583, 0.0328, 0.1,mask,spread)
+	    + gaussian_conv(d,  0.681, 0.2194, 0.0722, 0.0383,mask,spread);
 
   	return ret;
 }
@@ -314,21 +371,32 @@ vec3 sample_circle_w(vec2 pos)
 	}
 	return ret*p/weight;
 }
+uniform float iteration;
+uniform float iteration_step;
+float black_body_spectrum(float l,float temperature )
+{
+	/*float h=6.626070040e-34; //Planck constant
+	float c=299792458; //Speed of light
+	float k=1.38064852e-23; //Boltzmann constant
+	*/
+	float const_1=5.955215e-17;//h*c*c
+	float const_2=0.0143878;//(h*c)/k
+	float top=(2*const_1);
+	float bottom=(exp((const_2)/(temperature*l))-1)*l*l*l*l*l;
+	return top/bottom;
+}
+float black_body(float iter)
+{
+	float T=6503.6;//6503.6; //D65 illiuminant
+	return black_body_spectrum(mix(380*1e-9,740*1e-9,iter),T);
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	#if 0 //dont like this :<
-	vec2 n1=vec2(noise2(pos.xy*8))*barrel_noise;
-	vec2 n2=vec2(noise2(pos.xy*8.1+vec2(999,77.5)))*barrel_noise;
-	vec2 n3=vec2(noise2(pos.xy*7.9+vec2(-1023,787)))*barrel_noise;
 
-	vec2 x_pos=Distort(pos.xy+n1,barrel_power.x)-n1;
-	vec2 y_pos=Distort(pos.xy+n2,barrel_power.y)-n2;
-	vec2 z_pos=Distort(pos.xy+n3,barrel_power.z)-n3;
-	#else
-	vec2 x_pos=Distort(pos.xy,barrel_power.x);
-	vec2 y_pos=Distort(pos.xy,barrel_power.y);
-	vec2 z_pos=Distort(pos.xy,barrel_power.z);
-	#endif
+	vec2 dist_pos=Distort(pos.xy,barrel_power*iteration+1);
+	//vec2 dist_pos=normed+vec2(barrel_power)*iteration;
+
+
 	/*TODO
 		another way to do this: calculate spectrum of point, distort by it's 
 		wave length. Needs some sort of smoothing/reverse interpolation?
@@ -337,83 +405,221 @@ void main(){
 		Another idea: calculate something like a lightsource (i.e. spectrum) is 
 		falling down and image is distorting it by it's VALUE.
 	*/
-	vec3 L_out;
-	{
-		vec4 c=texture(tex_main,x_pos*vec2(1,-1));
-		vec3 Lc=rgb2xyz(c.xyz);
-		L_out.x=Lc.x;
-	}
-	{
-		vec4 c=texture(tex_main,y_pos*vec2(1,-1));
-		vec3 Lc=rgb2xyz(c.xyz);
-		L_out.y=Lc.y;
-	}
-	{
-		vec4 c=texture(tex_main,z_pos*vec2(1,-1));
-		vec3 Lc=rgb2xyz(c.xyz);
-		L_out.z=Lc.z;
-	}
-	float nv=texture(tex_main,normed).x;
 
-	nv=gain(nv,v_gain);
-	nv=pow(nv,v_gamma);
+	float c=texture(tex_main,dist_pos*vec2(1,-1)).x;
+	vec3 nv=rgb2xyz(texture(tex_main,dist_pos*vec2(1,-1)).xyz);
 
+	//vec3 nv=texture(tex_main,dist_pos*vec2(1,-1)).xyz;
 
-	//vec3 Rc=xyz2rgb(L_out);
+	//nv=gain(nv,v_gain);
+	//nv=pow(nv,v_gamma);
+
 	float v=clamp(length(pos.xy),0,1);
 	//color = vec4(xyz2rgb(xyzFromWavelength(mix(3800,7400,v))*85),1);
 	//color.xyz=pow(color.xyz,vec3(2.2));
 	//color = vec4(Rc,1);//vec4(v,v,v,1);//vec4(0.2,0,0,1);
 	vec3 ss;
 	float spread=barrel_offset;
-	float power=0.1;
+	float power=1e-2;
 
-	ss=xyz2rgb(sample_thing(v,spread))*power;
+	//ss=xyz2rgb(sample_thing(v,spread))*power;
 
-	color=vec4(ss,1);
+	//color=vec4(ss,1);
 	//vec3 rcol=xyz2rgb(sample_circle_w(normed));
 	//color=vec4(rcol,1);
+
+	//color.x=log(black_body(normed.x))*power;
+	color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration)*nv*iteration_step;
+	//color.xyz=nv;
+	//color.xyz=vec3(1,0.1,0.1);
+	color.a=1;
+}
+]]
+local draw_shader=shaders.Make[[
+#version 330
+
+out vec4 color;
+in vec3 pos;
+
+uniform sampler2D tex_main;
+uniform float iteration_step;
+uniform vec3 min_v;
+uniform vec3 max_v;
+uniform float v_gamma;
+uniform float v_gain;
+uniform float exposure;
+uniform float avg_lum;
+vec3 xyz2rgb( vec3 c ) {
+    vec3 v =  c / 100.0 * mat3(
+        3.2406, -1.5372, -0.4986,
+        -0.9689, 1.8758, 0.0415,
+        0.0557, -0.2040, 1.0570
+    );
+    vec3 r;
+    r.x = ( v.r > 0.0031308 ) ? (( 1.055 * pow( v.r, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.r;
+    r.y = ( v.g > 0.0031308 ) ? (( 1.055 * pow( v.g, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.g;
+    r.z = ( v.b > 0.0031308 ) ? (( 1.055 * pow( v.b, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.b;
+    return r;
+}
+float gain(float x, float k)
+{
+    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
+    return (x<0.5)?a:1.0-a;
+}
+vec3 tonemapFilmic(vec3 x) {
+  vec3 X = max(vec3(0.0), x - 0.004);
+  vec3 result = (X * (6.2 * X + 0.5)) / (X * (6.2 * X + 1.7) + 0.06);
+  return pow(result, vec3(2.2));
+}
+vec3 eye_adapt_and_stuff(vec3 light)
+{
+	float lum_white = pow(10,v_gain);
+	//lum_white*=lum_white;
+
+	//tocieYxy
+	float sum=light.x+light.y+light.z;
+	float x=light.x/sum;
+	float y=light.y/sum;
+	float Y=light.y;
+
+	Y = (Y* exposure )/avg_lum;
+	if(v_gain<0)
+    	Y = Y / (1 + Y); //simple compression
+	else
+    	Y = (Y*(1 + Y / lum_white)) / (Y + 1); //allow to burn out bright areas
+
+
+    //transform back to cieXYZ
+    light.y=Y;
+    float small_x = x;
+    float small_y = y;
+    light.x = light.y*(small_x / small_y);
+    light.z = light.x / small_x - light.x - light.y;
+
+    return light;
+}
+void main()
+{
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	color=texture(tex_main,normed);
+	//color.xyz*=iteration_step;
+	//color.xyz-=min_v;
+	//color.xyz/=max(max_v.x,max(max_v.y,max_v.z));//-min_v);
+	//color.xyz/=max_v.x+max_v.y+max_v.z;
+
+
+	//nv=gain(nv,v_gain);
+	/*
+	color.xyz*=exposure;
+	color.xyz=xyz2rgb(color.xyz);
+
+	*/
+	//color.xyz=tonemapFilmic(color.xyz);
+	//color.xyz=pow(color.xyz,vec3(1/2.2));
+
+	color.xyz=eye_adapt_and_stuff(color.xyz);
+	color.xyz=xyz2rgb(color.xyz);
+
+	color.xyz=pow(color.xyz,vec3(v_gamma));
+	//color.xyz=vec3(gain(color.x,v_gain),gain(color.y,v_gain),gain(color.z,v_gain));
 }
 ]]
 local con_tex=textures.Make()
 
 function save_img()
-	img_buf=img_buf or make_image_buffer(size[1],size[2])
+	img_buf=make_image_buffer(size[1],size[2])
 	img_buf:read_frame()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))))
 end
+local iteration=0
+local need_clear=true
+function find_min_max(  )
+	visit_tex.t:use(0,1)
+	local lmin={math.huge,math.huge,math.huge}
+	local lmax={-math.huge,-math.huge,-math.huge}
 
+	visit_buf:read_texture(visit_tex.t)
+	local avg_lum=0
+	local count=0
+	for x=0,visit_buf.w-1 do
+	for y=0,visit_buf.h-1 do
+		local v=visit_buf:get(x,y)
+		if v.r<lmin[1] then lmin[1]=v.r end
+		if v.g<lmin[2] then lmin[2]=v.g end
+		if v.b<lmin[3] then lmin[3]=v.b end
+
+		if v.r>lmax[1] then lmax[1]=v.r end
+		if v.g>lmax[2] then lmax[2]=v.g end
+		if v.b>lmax[3] then lmax[3]=v.b end
+		local lum=v.g
+		avg_lum=avg_lum+math.log(0.1+lum)
+		count=count+1
+	end
+	end
+	avg_lum = math.exp(avg_lum / count);
+	print(avg_lum)
+	for i,v in ipairs(lmax) do
+		print(i,v)
+	end
+	return lmin,lmax,avg_lum
+end
+local lmin,lmax,avg_lum
 function update(  )
 	__no_redraw()
 	__clear()
 	imgui.Begin("Image")
 	draw_config(config)
-	imgui.End()
+	
 
 	make_visits_buf()
 	make_visits_texture()
-
-	main_shader:use()
-	con_tex:use(0,1)
-	main_shader:blend_add()
-	image_buf:write_texture(con_tex)
-	main_shader:set_i("tex_main",0)
-	main_shader:set("barrel_power",config.bulge_r+1,config.bulge_g+1,config.bulge_b+1);
-	main_shader:set("barrel_offset",config.bulge_radius_offset)
-	main_shader:set("v_gamma",config.gamma)
-	main_shader:set("v_gain",config.gain)
-	visit_tex.t:use(1)
-	--main_shader:set("barrel_noise",config.bulge_noise)
-	if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
-		error("failed to set framebuffer up")
-	end
 	if need_clear then
-		__clear()
-		need_clear=false
+		iteration=0
 	end
-	main_shader:draw_quad()
-	__render_to_window()
-	imgui.Begin("Image")
+	if iteration<1 then
+		main_shader:use()
+		con_tex:use(0,1)
+		main_shader:blend_add()
+		image_buf:write_texture(con_tex)
+		main_shader:set_i("tex_main",0)
+		main_shader:set("barrel_power",config.bulge_r);
+		main_shader:set("barrel_offset",config.bulge_radius_offset)
+		main_shader:set("v_gamma",config.gamma)
+		main_shader:set("v_gain",config.gain)
+		main_shader:set("iteration",iteration)
+		main_shader:set("iteration_step",config.iteration_step)
+		visit_tex.t:use(1)
+		--main_shader:set("barrel_noise",config.bulge_noise)
+		if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
+			error("failed to set framebuffer up")
+		end
+		iteration=iteration+config.iteration_step
+		if need_clear then
+			__clear()
+			need_clear=false
+		end
+		main_shader:draw_quad()
+		__render_to_window()
+		done=false
+	end
+
+	if imgui.Button("snap max") or lmin==nil or (not done and iteration>1)then
+		lmin,lmax,avg_lum=find_min_max()
+		done=true
+	end
+	draw_shader:use()
+	visit_tex.t:use(0)
+	draw_shader:set_i("tex_main",0)
+	draw_shader:set("iteration_step",config.iteration_step)
+	draw_shader:set("min_v",lmin[1],lmin[2],lmin[3])
+	draw_shader:set("max_v",lmax[1],lmax[2],lmax[3])
+	draw_shader:set("v_gamma",config.gamma)
+	draw_shader:set("v_gain",config.gain)
+	draw_shader:set("avg_lum",avg_lum)
+	draw_shader:set("exposure",config.exposure)
+	draw_shader:draw_quad()
+
+	
 	if imgui.Button("save") then
 		save_img()
 	end
