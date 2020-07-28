@@ -61,25 +61,25 @@ function make_visits_buf(  )
 end
 tick=tick or 0
 config=make_config({
-	{"only_last",true,type="boolean"},
-	{"auto_scale_color",false,type="boolean"},
+	{"only_last",false,type="boolean"},
+	{"auto_scale_color",true,type="boolean"},
 	{"draw",true,type="boolean"},
 	{"point_size",0,type="int",min=0,max=10},
 	{"ticking",1,type="int",min=1,max=2},
 	{"size_mult",true,type="boolean"},
-	{"v0",-0.211,type="float",min=-1,max=1},
-	{"v1",-0.184,type="float",min=-1,max=1},
-	{"v2",-0.184,type="float",min=-1,max=1},
-	{"v3",-0.184,type="float",min=-1,max=1},
-	{"IFS_steps",10,type="int",min=1,max=100},
-	{"move_dist",0.1,type="float",min=0.001,max=2},
+	{"v0",0,type="float",min=-1,max=1},
+	{"v1",0,type="float",min=-1,max=1},
+	{"v2",0,type="float",min=-1,max=1},
+	{"v3",0,type="float",min=-1,max=1},
+	{"IFS_steps",50,type="int",min=1,max=100},
+	{"move_dist",0.4,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
 	--[[{"rand_angle",0,type="float",min=0,max=math.pi*2},
 	{"rand_dist",0.01,type="float",min=0.00001,max=1},]]
 	{"cx",0,type="float",min=-10,max=10},
 	{"cy",0,type="float",min=-10,max=10},
 	{"min_value",0,type="float",min=0,max=20},
-	{"gen_radius",2,type="float",min=0,max=10},
+	{"gen_radius",2,type="flosat",min=0,max=10},
 	{"animation",0,type="float",min=0,max=1},
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"gain",1,type="float",min=-5,max=5},
@@ -1103,7 +1103,7 @@ function rand_function(  )
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	-- [[ polar gravity
+	--[[ polar gravity
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
 	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"
@@ -1116,7 +1116,7 @@ function rand_function(  )
 	--[[ boost
 	str_preamble=str_preamble.."s*=move_dist;"
 	--]]
-	--[[ boost less with distance
+	-- [[ boost less with distance
 	str_preamble=str_preamble.."s*=move_dist*exp(-1/dot(s,s));"
 	--]]
 	--[[ center PRE

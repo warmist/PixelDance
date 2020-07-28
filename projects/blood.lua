@@ -2,60 +2,18 @@
 require "common"
 local luv=require "colors_luv"
 local size=STATE.size
-local image_buf
-image_buf=load_png("saved_1584074540.png")
--- [[
-local bwrite = require "blobwriter"
-local bread = require "blobreader"
-function read_hd_png_buf( fname,log_norm )
-	local file = io.open(fname, 'rb')
-	local b = bread(file:read('*all'))
-	file:close()
-
-	local sx=b:u32()
-	local sy=b:u32()
-	local background_buf=make_flt_buffer(sx,sy)
-	local background_minmax={}
-	background_minmax[1]=b:f32()
-	background_minmax[2]=b:f32()
-	for x=0,background_buf.w-1 do
-	for y=0,background_buf.h-1 do
-		if log_norm then
-			local v=(math.log(b:f32()+1)-background_minmax[1])/(background_minmax[2]-background_minmax[1])
-			background_buf:set(x,y,{v,v,v,1})
-		else
-			local v=(b:f32()-background_minmax[1])/(background_minmax[2]-background_minmax[1])
-			background_buf:set(x,y,{v,v,v,1})
-		end
-	end
-	end
-	return background_buf,background_minmax
-end
-function load_hd_png()
-	if background_tex==nil then
-		print("making tex")
-		read_background_buf("out.buf")
-		background_tex={t=textures:Make(),w=background_buf.w,h=background_buf.h}
-		background_tex.t:use(0,1)
-		background_buf:write_texture(background_tex.t)
-		__unbind_buffer()
-	end
-end
-image_buf=read_hd_png_buf("out.buf",true)
---]]
-
+local image_buf=load_png("saved_1585210702.png")
 __set_window_size(image_buf.w,image_buf.h)
 function resize( w,h )
 	size=STATE.size
 end
 config=make_config({
 	--{"blur",0,type="int"}, TODO
-	{"iteration_step",0.001,type="floatsci",max=1},
-	{"bulge_r",0.2,type="float",max=0.5},
-	{"bulge_radius_offset",0,type="float",max=1},
-	{"gamma",2.2,type="float",min=0.01,max=5},
-	{"gain",0.33,type="float",min=-0.01,max=1},
-	{"exposure",50,type="float",min=0.001,max=100},
+	{"iteration_step",0.005,type="floatsci",max=1},
+	{"depth",0.1,type="floatsci",max=100},
+	{"gamma",1,type="float",min=0.01,max=5},
+	{"gain",1,type="float",min=-5,max=5},
+	{"exposure",0.01,type="floatsci",min=0,max=10,power=10},
 },config)
 
 function make_visits_texture()
@@ -73,15 +31,13 @@ function make_visits_buf(  )
 	end
 end
 make_visits_buf()
-
-
-
 local main_shader=shaders.Make[[
 #version 330
 #line 39
 out vec4 color;
 in vec3 pos;
 #define M_PI 3.14159265359
+#define M_PI5 306.019684785
 vec3 rgb2xyz( vec3 c ) {
     vec3 tmp;
     tmp.x = ( c.r > 0.04045 ) ? pow( ( c.r + 0.055 ) / 1.055, 2.4 ) : c.r / 12.92;
@@ -196,25 +152,17 @@ vec2 noise2(vec2 p){
 }
 
 uniform sampler2D tex_main;
-uniform float barrel_power;
-uniform float barrel_offset;
+uniform sampler2D blood_tex;
 uniform float v_gain;
 uniform float v_gamma;
+uniform float depth;
 float gain(float x, float k)
 {
     float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
     return (x<0.5)?a:1.0-a;
 }
-vec2 Distort(vec2 p,float power)
-{
-    float theta  = atan(p.y, p.x);
-    float radius = length(p)+barrel_offset;
-    radius = pow(radius, power)-barrel_offset;
-    p.x = radius * cos(theta);
-    p.y = radius * sin(theta);
-    return 0.5 * (p + 1.0);
-}
-uniform float barrel_noise;
+
+
 float two_gauss(vec2 pos,float p,float c)
 {
 	return c*exp(-(pos.x*pos.x*pos.y*pos.y)/(p*p*2));
@@ -266,49 +214,6 @@ vec3 xyz_from_normed_waves(float v_in)
 
 	return ret;
 }
-vec3 sample_thing(float dist,float spread)
-{
-	//float w=two_gauss(vec2(dist,v-dist),spread,1);
-	int max_samples=40;
-	vec3 ret=vec3(0);
-	float wsum=0;
-	for(int i=0;i<max_samples;i++)
-	{
-		float v=i/float(max_samples);
-		float w=gaussian1(v,1,dist,spread/dist);
-		ret+=w*xyz_from_normed_waves(v);
-		wsum+=1;//w;
-	}
-	return ret/wsum;
-}
-vec4 sample_circle(vec2 pos)
-{
-	int radius=5;
-	int rad_sq=radius*radius;
-	vec4 ret=vec4(0);
-	float weight=0;
-	for(int x=0;x<radius;x++)
-	{
-		int max_y=int(sqrt(rad_sq-x*x));
-		for(int y=0;y<max_y;y++)
-		{
-			float w=1/float(x*x+y*y+1);
-			vec2 offset=vec2(x,y)/textureSize(tex_main,0);
-
-			/*ret+=textureOffset(tex_main,pos,ivec2(x,y))*w;
-			ret+=textureOffset(tex_main,pos,ivec2(-x,y))*w;
-			ret+=textureOffset(tex_main,pos,ivec2(x,-y))*w;
-			ret+=textureOffset(tex_main,pos,ivec2(-x,-y))*w;*/
-
-			ret+=texture(tex_main,pos+offset)*w;
-			ret+=texture(tex_main,pos+offset*vec2(1,-1))*w;
-			ret+=texture(tex_main,pos+offset*vec2(-1,1))*w;
-			ret+=texture(tex_main,pos+offset*vec2(-1,-1))*w;
-			weight+=4*w;
-		}
-	}
-	return ret/weight;
-}
 vec3 sample_xyz_ex(vec2 pos,float power)
 {
 	vec3 xy_t=xyzFromWavelength(mix(3800,7400,texture(tex_main,pos).x)*power);
@@ -327,52 +232,8 @@ vec3 sample_xyz(vec2 pos,float power)
 	vec3 xy_t=xyzFromWavelength(mix(3800,7400,power)*nv);
 	return xy_t;
 }
-vec3 sample_sample(vec2 pos, float dist)
-{
 
-	vec3 nv=texture(tex_main,pos).xyz;
-
-	nv.x=gain(nv.x,v_gain);
-	nv.y=gain(nv.y,v_gain);
-	nv.z=gain(nv.z,v_gain);
-	nv=pow(nv,vec3(v_gamma));
-
-	nv=rgb2xyz(nv);
-	vec3 xy_t=sample_thing(dist,0.005)*nv;
-	return xy_t;
-}
-vec3 sample_circle_w(vec2 pos)
-{
-	int radius=10;
-	int rad_sq=radius*radius;
-	vec3 ret=vec3(0);
-	float weight=0;
-	float p=700;
-	float ep=32;
-	float eparam=ep*ep;
-	for(int x=0;x<radius;x++)
-	{
-		int max_y=int(sqrt(rad_sq-x*x));
-		for(int y=0;y<max_y;y++)
-		{
-			float dist_sq=float(x*x+y*y);
-			float dist=sqrt(dist_sq)/radius;
-			//float w=1/(dist_sq+1);
-			float w=exp(-dist_sq/eparam);
-			//float w=1;
-			vec2 offset=vec2(x,y)/textureSize(tex_main,0);
-
-			ret+=sample_sample(pos+offset,dist)*w;
-			ret+=sample_sample(pos+offset*vec2(1,-1),dist)*w;
-			ret+=sample_sample(pos+offset*vec2(-1,1),dist)*w;
-			ret+=sample_sample(pos+offset*vec2(-1,-1),dist)*w;
-			weight+=4*w;
-		}
-	}
-	return ret*p/weight;
-}
 uniform float iteration;
-uniform float iteration_step;
 float black_body_spectrum(float l,float temperature )
 {
 	/*float h=6.626070040e-34; //Planck constant
@@ -384,54 +245,63 @@ float black_body_spectrum(float l,float temperature )
 	float top=(2*const_1);
 	float bottom=(exp((const_2)/(temperature*l))-1)*l*l*l*l*l;
 	return top/bottom;
+	//return (2*h*freq*freq*freq)/(c*c)*(1/(math.exp((h*freq)/(k*temperature))-1))
 }
 float black_body(float iter)
 {
-	float T=5500;//6503.6; //D65 illiuminant
+	float T=6503.6; //D65 illiuminant
 	return black_body_spectrum(mix(380*1e-9,740*1e-9,iter),T);
 }
+float sample_blood(float molar,float depth,float wavelength_norm)
+{
+	return pow(10,-texture(blood_tex,vec2(wavelength_norm,0)).x*molar*depth);
+}
+float phase_henyey_greenstein_scatter(float angle,float str)
+{
+	float str_sq=str*str;
+	float num=1-str_sq;
+	float denum=4*M_PI*pow((1+str_sq-2*str*cos(angle)),1.5);
+	return num/denum;
+}
+float phase_reyleigh(float angle)
+{
+	float ca=cos(angle);
+	return 3*(1+ca*ca)/(16*M_PI);
+}
+float phase_reyleigh_cos(float ca)
+{
+	return 3*(1+ca*ca)/(16*M_PI);
+}
+float reyleigh_scatter_coef(float diam_scattering,float refract_scatter,float wavelength)
+{
+	float d6=diam_scattering*diam_scattering*diam_scattering*diam_scattering*diam_scattering*diam_scattering;
+	float w4=wavelength*wavelength*wavelength*wavelength;
+	float ref_sq=refract_scatter*refract_scatter;
+	float ref=(ref_sq-1)/(ref_sq+2);
+	ref*=ref;
+
+	return (2*M_PI5/3)*(d6/w4)*ref;
+}
+//TODO: mie hazy, mie murky
 void main(){
+	vec3 light_pos=vec3(0.5,0.5,0.9);
 	vec2 normed=(pos.xy+vec2(1,1))/2;
+	vec3 view_ray_hit=vec3(normed,0);
+	vec3 view_ray_dir=vec3(normed,depth);
 
-	vec2 dist_pos=Distort(pos.xy,barrel_power*iteration+1);
-	//vec2 dist_pos=normed+vec2(barrel_power)*iteration;
+	float angle_cos=normalize(light_pos-view_ray_hit).z;
 
+	float c=clamp(1-texture(tex_main,normed).x,0.01,1);
+	float depth_at_pixel=c*depth*angle_cos;
 
-	/*TODO
-		another way to do this: calculate spectrum of point, distort by it's 
-		wave length. Needs some sort of smoothing/reverse interpolation?
-		Another idea: get wavelength sort of like this: https://www.semrock.com/Data/Sites/1/semrockpdfs/whitepaper_howtocalculateluminositywavelengthandpurity.pdf
-		and then shift it somewhat
-		Another idea: calculate something like a lightsource (i.e. spectrum) is 
-		falling down and image is distorting it by it's VALUE.
-	*/
-
-	float c=texture(tex_main,dist_pos*vec2(1,-1)).x;
-	vec3 nv=rgb2xyz(texture(tex_main,dist_pos*vec2(1,-1)).xyz);
-
-	//vec3 nv=texture(tex_main,dist_pos*vec2(1,-1)).xyz;
-
-	//nv=gain(nv,v_gain);
-	//nv=pow(nv,v_gamma);
-
-	float v=clamp(length(pos.xy),0,1);
-	//color = vec4(xyz2rgb(xyzFromWavelength(mix(3800,7400,v))*85),1);
-	//color.xyz=pow(color.xyz,vec3(2.2));
-	//color = vec4(Rc,1);//vec4(v,v,v,1);//vec4(0.2,0,0,1);
-	vec3 ss;
-	float spread=barrel_offset;
-	float power=1e-2;
-
-	//ss=xyz2rgb(sample_thing(v,spread))*power;
-
-	//color=vec4(ss,1);
-	//vec3 rcol=xyz2rgb(sample_circle_w(normed));
-	//color=vec4(rcol,1);
-
-	//color.x=log(black_body(normed.x))*power;
-	color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration)*nv*iteration_step;
-	//color.xyz=nv;
-	//color.xyz=vec3(1,0.1,0.1);
+	float rcof=reyleigh_scatter_coef(10,1.2,mix(380,740,iteration))*phase_reyleigh(angle_cos);
+	vec3 light_color=xyz_from_normed_waves(iteration)*black_body(iteration);
+	color.xyz=light_color*sample_blood(0.001,depth_at_pixel,iteration)*rcof;
+	//color.xyz=vec3(sample_blood(0.001,normed.x,iteration));
+	//color.xyz=vec3(log(texture(blood_tex,vec2(normed.x,0)).x));
+	//color.xyz=vec3(rcof,0.1,0.1);
+	//color.xyz=vec3(reyleigh_scatter_coef(1000,1.3,mix(380,740,normed.x)));
+	//color.xz/=color.y;
 	color.a=1;
 }
 ]]
@@ -445,10 +315,10 @@ uniform sampler2D tex_main;
 uniform float iteration_step;
 uniform vec3 min_v;
 uniform vec3 max_v;
+uniform float avg_lum;
 uniform float v_gamma;
 uniform float v_gain;
 uniform float exposure;
-uniform float avg_lum;
 vec3 xyz2rgb( vec3 c ) {
     vec3 v =  c / 100.0 * mat3(
         3.2406, -1.5372, -0.4986,
@@ -474,7 +344,7 @@ vec3 tonemapFilmic(vec3 x) {
 vec3 eye_adapt_and_stuff(vec3 light)
 {
 	float lum_white = pow(10,v_gain);
-	//lum_white*=lum_white;
+	lum_white*=lum_white;
 
 	//tocieYxy
 	float sum=light.x+light.y+light.z;
@@ -482,7 +352,7 @@ vec3 eye_adapt_and_stuff(vec3 light)
 	float y=light.y/sum;
 	float Y=light.y;
 
-	Y = (Y* exposure )/avg_lum;
+	Y = (Y*pow(10, exposure) )/avg_lum;
 	if(v_gain<0)
     	Y = Y / (1 + Y); //simple compression
 	else
@@ -503,25 +373,25 @@ void main()
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	color=texture(tex_main,normed);
 	//color.xyz*=iteration_step;
-	//color.xyz-=min_v;
-	//color.xyz/=max(max_v.x,max(max_v.y,max_v.z));//-min_v);
+	//float min_value=min(min_v.x,min(min_v.y,min_v.z));
+	//float max_value=max(max_v.x,max(max_v.y,max_v.z));
+	//color.xyz-=vec3(min_value);
+	//color.xyz/=(max_value-min_value);//-min_v);
 	//color.xyz/=max_v.x+max_v.y+max_v.z;
 
 
 	//nv=gain(nv,v_gain);
 	/*
 	color.xyz*=exposure;
+	color.xyz=clamp(color.xyz,0,1);
 	color.xyz=xyz2rgb(color.xyz);
-
+	color.xyz=pow(color.xyz,vec3(v_gamma));
+	color.xyz=vec3(gain(color.x,v_gain),gain(color.y,v_gain),gain(color.z,v_gain));
 	*/
-	//color.xyz=tonemapFilmic(color.xyz);
-	//color.xyz=pow(color.xyz,vec3(1/2.2));
-
 	color.xyz=eye_adapt_and_stuff(color.xyz);
 	color.xyz=xyz2rgb(color.xyz);
-
-	color.xyz=pow(color.xyz,vec3(v_gamma));
-	//color.xyz=vec3(gain(color.x,v_gain),gain(color.y,v_gain),gain(color.z,v_gain));
+	//color.xyz=tonemapFilmic(color.xyz);
+	//color.xyz=pow(color.xyz,vec3(1/2.2));
 }
 ]]
 local con_tex=textures.Make()
@@ -531,8 +401,65 @@ function save_img()
 	img_buf:read_frame()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))))
 end
-local iteration=0
-local need_clear=true
+function find_ends( data,min,max )
+	local min_pos,max_pos
+	for i,v in ipairs(data) do
+		if v[1]<min then min_pos=i end
+		if v[1]<max then max_pos=i end
+	end
+	return min_pos,max_pos
+end
+function make_spectral_texture( d )
+	local min_val=380
+	local max_val=740
+
+	local num_entries=4000
+	local buffer=make_float_buffer(num_entries,1)
+
+	local texture={t=textures:Make(),w=num_entries,h=1}
+	texture.t:use(0,1)
+	
+	local sp,ep=find_ends(d,min_val,max_val)
+	print("==============",sp,ep)
+	local cur_id=sp
+	local cur_val=d[sp][1]
+	local out_id=0
+	for i=min_val,max_val,(max_val-min_val)/num_entries do
+		if cur_val<i then
+			cur_id=cur_id+1
+			cur_val=d[cur_id][1]
+		end
+		local y0=d[cur_id][2]
+		local y1=d[cur_id+1][2]
+		local next_val=d[cur_id+1][1]
+		local a_c=(y0-y1)/(cur_val-next_val)
+		local b_c=y0-a_c*cur_val
+
+		local iter_value=a_c*i+b_c
+		--print(i,iter_value)
+		buffer:set(out_id,0,iter_value)
+		out_id=out_id+1
+	end
+	buffer:write_texture(texture.t)
+	return texture
+	--texture.t:set(num_entries,1,FLTA_PIX)
+end
+function set_molar_absorbtion( fname )
+	local f=io.open (fname ,"r")
+	local data={}
+	local x,y
+	repeat
+		x=f:read("n")
+		if x==nil then break end
+		y=f:read("n")
+		--print(x,y)
+		table.insert(data,{x,y})
+	until false
+	f:close()
+
+	blood_tex=make_spectral_texture(data)
+end
+set_molar_absorbtion("hemoglob.txt")
 function find_min_max(  )
 	visit_tex.t:use(0,1)
 	local lmin={math.huge,math.huge,math.huge}
@@ -552,17 +479,15 @@ function find_min_max(  )
 		if v.g>lmax[2] then lmax[2]=v.g end
 		if v.b>lmax[3] then lmax[3]=v.b end
 		local lum=v.g
-		avg_lum=avg_lum+math.log(1+lum)
+		avg_lum=avg_lum+math.log(0.1+lum)
 		count=count+1
 	end
 	end
 	avg_lum = math.exp(avg_lum / count);
-	print(avg_lum)
-	for i,v in ipairs(lmax) do
-		print(i,v)
-	end
 	return lmin,lmax,avg_lum
 end
+iteration=iteration or 0
+need_clear=false
 local lmin,lmax,avg_lum
 function update(  )
 	__no_redraw()
@@ -578,16 +503,17 @@ function update(  )
 	end
 	if iteration<1 then
 		main_shader:use()
+
 		con_tex:use(0,1)
 		main_shader:blend_add()
 		image_buf:write_texture(con_tex)
 		main_shader:set_i("tex_main",0)
-		main_shader:set("barrel_power",config.bulge_r);
-		main_shader:set("barrel_offset",config.bulge_radius_offset)
+		blood_tex.t:use(2,1)
+		main_shader:set_i("blood_tex",2)
+		main_shader:set("depth",config.depth)
 		main_shader:set("v_gamma",config.gamma)
 		main_shader:set("v_gain",config.gain)
 		main_shader:set("iteration",iteration)
-		main_shader:set("iteration_step",config.iteration_step)
 		visit_tex.t:use(1)
 		--main_shader:set("barrel_noise",config.bulge_noise)
 		if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
@@ -603,7 +529,7 @@ function update(  )
 		done=false
 	end
 
-	if imgui.Button("snap max") or lmin==nil or (not done and iteration>1)then
+	if imgui.Button("snap max") or lmin==nil or (not done and iteration>1) then
 		lmin,lmax,avg_lum=find_min_max()
 		done=true
 	end
@@ -613,9 +539,9 @@ function update(  )
 	draw_shader:set("iteration_step",config.iteration_step)
 	draw_shader:set("min_v",lmin[1],lmin[2],lmin[3])
 	draw_shader:set("max_v",lmax[1],lmax[2],lmax[3])
+	draw_shader:set("avg_lum",avg_lum)
 	draw_shader:set("v_gamma",config.gamma)
 	draw_shader:set("v_gain",config.gain)
-	draw_shader:set("avg_lum",avg_lum)
 	draw_shader:set("exposure",config.exposure)
 	draw_shader:draw_quad()
 
