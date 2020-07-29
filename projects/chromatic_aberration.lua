@@ -58,21 +58,21 @@ config=make_config({
 	{"exposure",50,type="float",min=0.001,max=100},
 },config)
 
-function make_visits_texture()
-	if visit_tex==nil or visit_tex.w~=size[1] or visit_tex.h~=size[2] then
+function make_compute_texture()
+	if compute_tex==nil or compute_tex.w~=size[1] or compute_tex.h~=size[2] then
 
-		visit_tex={t=textures:Make(),w=size[1],h=size[2]}
-		visit_tex.t:use(0,1)
-		visit_tex.t:set(size[1],size[2],FLTA_PIX)
+		compute_tex={t=textures:Make(),w=size[1],h=size[2]}
+		compute_tex.t:use(0,1)
+		compute_tex.t:set(size[1],size[2],FLTA_PIX)
 	end
 end
 
-function make_visits_buf(  )
-	if visit_buf==nil or visit_buf.w~=size[1] or visit_buf.h~=size[2] then
-		visit_buf=make_flt_buffer(size[1],size[2])
+function make_compute_buf(  )
+	if compute_buf==nil or compute_buf.w~=size[1] or compute_buf.h~=size[2] then
+		compute_buf=make_flt_buffer(size[1],size[2])
 	end
 end
-make_visits_buf()
+make_compute_buf()
 
 
 
@@ -205,14 +205,15 @@ float gain(float x, float k)
     float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
     return (x<0.5)?a:1.0-a;
 }
-vec2 Distort(vec2 p,float power)
+vec2 Distort(vec2 p,vec2 offset,float power)
 {
-    float theta  = atan(p.y, p.x);
-    float radius = length(p)+barrel_offset;
+    float theta  = atan(p.y+offset.y, p.x+offset.x);
+    float radius = length(p+offset)+barrel_offset;
     radius = pow(radius, power)-barrel_offset;
     p.x = radius * cos(theta);
     p.y = radius * sin(theta);
-    return 0.5 * (p + 1.0);
+    p-=offset;
+    return p;
 }
 uniform float barrel_noise;
 float two_gauss(vec2 pos,float p,float c)
@@ -387,13 +388,25 @@ float black_body_spectrum(float l,float temperature )
 }
 float black_body(float iter)
 {
-	float T=5500;//6503.6; //D65 illiuminant
+	float T=6503.6;//6503.6; //D65 illiuminant
 	return black_body_spectrum(mix(380*1e-9,740*1e-9,iter),T);
 }
+vec2 tangent_distort(vec2 p,vec2 arg)
+{
+	float r=dot(p,p);
+	float xy=p.x*p.y;
+
+	return p+vec2(2*arg.x*xy+             arg.y*(r+2*p.x*p.x),
+				    arg.x*(r+2*p.y*p.y)+2*arg.y*xy            );
+}
+
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-
-	vec2 dist_pos=Distort(pos.xy,barrel_power*iteration+1);
+	vec2 offset=vec2(0,0);
+	vec2 dist_pos=pos.xy;
+	dist_pos=Distort(dist_pos,offset,barrel_power*iteration+1);
+	dist_pos=tangent_distort(dist_pos,vec2(barrel_power*iteration,0)*0.1);
+	dist_pos=(dist_pos+vec2(1))/2;
 	//vec2 dist_pos=normed+vec2(barrel_power)*iteration;
 
 
@@ -534,16 +547,16 @@ end
 local iteration=0
 local need_clear=true
 function find_min_max(  )
-	visit_tex.t:use(0,1)
+	compute_tex.t:use(0,1)
 	local lmin={math.huge,math.huge,math.huge}
 	local lmax={-math.huge,-math.huge,-math.huge}
 
-	visit_buf:read_texture(visit_tex.t)
+	compute_buf:read_texture(compute_tex.t)
 	local avg_lum=0
 	local count=0
-	for x=0,visit_buf.w-1 do
-	for y=0,visit_buf.h-1 do
-		local v=visit_buf:get(x,y)
+	for x=0,compute_buf.w-1 do
+	for y=0,compute_buf.h-1 do
+		local v=compute_buf:get(x,y)
 		if v.r<lmin[1] then lmin[1]=v.r end
 		if v.g<lmin[2] then lmin[2]=v.g end
 		if v.b<lmin[3] then lmin[3]=v.b end
@@ -571,8 +584,8 @@ function update(  )
 	draw_config(config)
 	
 
-	make_visits_buf()
-	make_visits_texture()
+	make_compute_buf()
+	make_compute_texture()
 	if need_clear then
 		iteration=0
 	end
@@ -588,9 +601,9 @@ function update(  )
 		main_shader:set("v_gain",config.gain)
 		main_shader:set("iteration",iteration)
 		main_shader:set("iteration_step",config.iteration_step)
-		visit_tex.t:use(1)
+		compute_tex.t:use(1)
 		--main_shader:set("barrel_noise",config.bulge_noise)
-		if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
+		if not compute_tex.t:render_to(compute_tex.w,compute_tex.h) then
 			error("failed to set framebuffer up")
 		end
 		iteration=iteration+config.iteration_step
@@ -608,7 +621,7 @@ function update(  )
 		done=true
 	end
 	draw_shader:use()
-	visit_tex.t:use(0)
+	compute_tex.t:use(0)
 	draw_shader:set_i("tex_main",0)
 	draw_shader:set("iteration_step",config.iteration_step)
 	draw_shader:set("min_v",lmin[1],lmin[2],lmin[3])

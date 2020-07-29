@@ -1116,7 +1116,7 @@ function rand_function(  )
 	--[[ boost
 	str_preamble=str_preamble.."s*=move_dist;"
 	--]]
-	-- [[ boost less with distance
+	--[[ boost less with distance
 	str_preamble=str_preamble.."s*=move_dist*exp(-1/dot(s,s));"
 	--]]
 	--[[ center PRE
@@ -1136,7 +1136,7 @@ function rand_function(  )
 	--str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
 	--str_postamble=str_postamble.."s=s*vec2(exp(move_dist/(-p.x*p.x)),exp(move_dist/(-p.y*p.y)));"
 	--]]
-	--[[ invert-ination
+	-- [[ invert-ination
 	--str_preamble=str_preamble.."s=c_inv(s);"
 	str_postamble=str_postamble.."s=c_inv(s);"
 	--]]
@@ -1161,8 +1161,8 @@ function rand_function(  )
 	--]]
 	--[[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
-	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
-	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
+	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
 	--]]
 	--[[ const-delta-like complex
@@ -1181,7 +1181,7 @@ function rand_function(  )
 	str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
 	str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
 	--]]
-	--[[ centered-polar
+	-- [[ centered-polar
 	str_preamble=str_preamble.."s=to_polar(s-p);"
 	str_postamble=str_postamble.."s=from_polar(s)+p;"
 	--]]

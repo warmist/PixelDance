@@ -7,6 +7,8 @@
 			* sand-like sim?
 			* more senses (negative?)
 		mass and non-instant turning
+
+        LOG space sensing/drawing. All natural things love log/exp spaces!
 --]]
 
 require 'common'
