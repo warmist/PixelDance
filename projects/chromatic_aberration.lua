@@ -3,7 +3,7 @@ require "common"
 local luv=require "colors_luv"
 local size=STATE.size
 local image_buf
-image_buf=load_png("saved_1584074540.png")
+image_buf=load_png("saved_1596204719.png")
 -- [[
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
@@ -18,17 +18,31 @@ function read_hd_png_buf( fname,log_norm )
 	local background_minmax={}
 	background_minmax[1]=b:f32()
 	background_minmax[2]=b:f32()
+
 	for x=0,background_buf.w-1 do
 	for y=0,background_buf.h-1 do
+		local v=b:f32()
+		background_buf:set(x,y,{v,v,v,1})
+	end
+	end
+
+	print("Loaded:",background_minmax[1],background_minmax[2])
+
+	for x=0,background_buf.w-1 do
+	for y=0,background_buf.h-1 do
+		local iv=background_buf:get(x,y).r
 		if log_norm then
-			local v=(math.log(b:f32()+1)-background_minmax[1])/(background_minmax[2]-background_minmax[1])
+			local min=background_minmax[1]
+			local max=background_minmax[2]
+			local v=(math.log(iv+1)-min)/(max-min)
 			background_buf:set(x,y,{v,v,v,1})
 		else
-			local v=(b:f32()-background_minmax[1])/(background_minmax[2]-background_minmax[1])
+			local v=(iv-background_minmax[1])/(background_minmax[2]-background_minmax[1])
 			background_buf:set(x,y,{v,v,v,1})
 		end
 	end
 	end
+
 	return background_buf,background_minmax
 end
 function load_hd_png()
@@ -51,7 +65,7 @@ end
 config=make_config({
 	--{"blur",0,type="int"}, TODO
 	{"iteration_step",0.001,type="floatsci",max=1},
-	{"bulge_r",0.2,type="float",max=0.5},
+	{"bulge_r",0.1,type="float",max=0.5},
 	{"bulge_radius_offset",0,type="float",max=1},
 	{"gamma",2.2,type="float",min=0.01,max=5},
 	{"gain",0.33,type="float",min=-0.01,max=1},
@@ -386,10 +400,9 @@ float black_body_spectrum(float l,float temperature )
 	float bottom=(exp((const_2)/(temperature*l))-1)*l*l*l*l*l;
 	return top/bottom;
 }
-float black_body(float iter)
+float black_body(float iter,float temp)
 {
-	float T=6503.6;//6503.6; //D65 illiuminant
-	return black_body_spectrum(mix(380*1e-9,740*1e-9,iter),T);
+	return black_body_spectrum(mix(380*1e-9,740*1e-9,iter),temp);
 }
 vec2 tangent_distort(vec2 p,vec2 arg)
 {
@@ -399,13 +412,16 @@ vec2 tangent_distort(vec2 p,vec2 arg)
 	return p+vec2(2*arg.x*xy+             arg.y*(r+2*p.x*p.x),
 				    arg.x*(r+2*p.y*p.y)+2*arg.y*xy            );
 }
-
+float easeOutQuad(float x)
+{
+	return 1 - (1 - x) * (1 - x);
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec2 offset=vec2(0,0);
 	vec2 dist_pos=pos.xy;
 	dist_pos=Distort(dist_pos,offset,barrel_power*iteration+1);
-	dist_pos=tangent_distort(dist_pos,vec2(barrel_power*iteration,0)*0.1);
+	//dist_pos=tangent_distort(dist_pos,vec2(0,barrel_power*iteration)*0.1);
 	dist_pos=(dist_pos+vec2(1))/2;
 	//vec2 dist_pos=normed+vec2(barrel_power)*iteration;
 
@@ -442,7 +458,13 @@ void main(){
 	//color=vec4(rcol,1);
 
 	//color.x=log(black_body(normed.x))*power;
-	color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration)*nv*iteration_step;
+
+	float T=5778;//Sun
+	//float T=8000;
+	//float T=6503.6; //D65 illiuminant
+
+	//color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,easeOutQuad(c)))*iteration_step;
+	color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,T)*nv*iteration_step;
 	//color.xyz=nv;
 	//color.xyz=vec3(1,0.1,0.1);
 	color.a=1;
@@ -513,7 +535,7 @@ vec3 eye_adapt_and_stuff(vec3 light)
 }
 void main()
 {
-	vec2 normed=(pos.xy+vec2(1,1))/2;
+	vec2 normed=(pos.xy*vec2(1,-1)+vec2(1,1))/2;
 	color=texture(tex_main,normed);
 	//color.xyz*=iteration_step;
 	//color.xyz-=min_v;

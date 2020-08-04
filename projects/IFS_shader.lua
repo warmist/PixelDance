@@ -14,8 +14,8 @@ local win_w
 local win_h
 local aspect_ratio
 function update_size(  )
-	win_w=1280*size_mult
-	win_h=1280*size_mult--math.floor(win_w*size_mult*(1/math.sqrt(2)))
+	win_w=2560*size_mult
+	win_h=1440*size_mult--math.floor(win_w*size_mult*(1/math.sqrt(2)))
 	aspect_ratio=win_w/win_h
 	__set_window_size(win_w,win_h)
 end
@@ -1088,10 +1088,10 @@ function rand_function(  )
 	
 	--]]
 	
-	--[[ complex seriesize
+	-- [[ complex seriesize
 	local series_size=7
-	local rand_offset=1
-	local rand_size=config.move_dist
+	local rand_offset=0.1
+	local rand_size=0.25
 	local input_s=""
 	for i=1,series_size do
 		local sub_s="s"
@@ -1103,7 +1103,7 @@ function rand_function(  )
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	--[[ polar gravity
+	-- [[ polar gravity
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
 	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"
@@ -1181,7 +1181,7 @@ function rand_function(  )
 	str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
 	str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
 	--]]
-	-- [[ centered-polar
+	--[[ centered-polar
 	str_preamble=str_preamble.."s=to_polar(s-p);"
 	str_postamble=str_postamble.."s=from_polar(s)+p;"
 	--]]
