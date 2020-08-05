@@ -5,7 +5,9 @@ require "colors"
 		use a texture WxH that is a "random function from IFS"
 			each point would be a e.g. 4xfloat to a F(x,y) params 
 			- that would give would bring this closer to fractal flame?
-			]]
+
+		- implement "real" tonemapping (instead of this log(x+1)/(lmax-lmin))
+]]
 local luv=require "colors_luv"
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
@@ -14,8 +16,8 @@ local win_w
 local win_h
 local aspect_ratio
 function update_size(  )
-	win_w=2560*size_mult
-	win_h=1440*size_mult--math.floor(win_w*size_mult*(1/math.sqrt(2)))
+	win_w=1920*size_mult
+	win_h=1200*size_mult--math.floor(win_w*size_mult*(1/math.sqrt(2)))
 	aspect_ratio=win_w/win_h
 	__set_window_size(win_w,win_h)
 end
@@ -1970,6 +1972,7 @@ in vec3 pos;
 uniform sampler2D img_tex;
 uniform int pix_size;
 uniform int it_count;
+uniform int max_iters;
 float shape_point(vec2 pos)
 {
 	//float rr=clamp(1-txt.r,0,1);
@@ -2005,10 +2008,12 @@ void main(){
 	float a = 1 - smoothstep(0, 1, r);
 	//float a=1; //uncomment this for line mode
 	float intensity=1/float(pix_size);
+	float it_normed=float(it_count)/float(max_iters);
+	float it_w=1;//exp(1)-exp(it_normed);
 	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
 	//color=vec4(a,0,0,1);
-	color=vec4(a*intensity*v,0,0,1);
+	color=vec4(a*intensity*v*it_w,0,0,1);
 }
 ]==],escape_mode_str()))
 end
