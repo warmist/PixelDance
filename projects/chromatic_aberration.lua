@@ -26,6 +26,10 @@ function read_hd_png_buf( fname,log_norm )
 	end
 	end
 
+	if log_norm_minmax then
+		background_minmax[1]=math.log(background_minmax[1]+1)
+		background_minmax[2]=math.log(background_minmax[2]+1)
+	end
 	print("Loaded:",background_minmax[1],background_minmax[2])
 
 	for x=0,background_buf.w-1 do
@@ -55,7 +59,7 @@ function load_hd_png()
 		__unbind_buffer()
 	end
 end
-image_buf=read_hd_png_buf("out.buf",true)
+image_buf=read_hd_png_buf("waves_out.buf",true,true)
 --]]
 
 __set_window_size(image_buf.w,image_buf.h)
@@ -599,6 +603,7 @@ function find_min_max(  )
 	return lmin,lmax,avg_lum
 end
 local lmin,lmax,avg_lum
+local done
 function update(  )
 	__no_redraw()
 	__clear()
