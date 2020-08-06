@@ -3,11 +3,11 @@ require "common"
 local luv=require "colors_luv"
 local size=STATE.size
 local image_buf
-image_buf=load_png("saved_1596204719.png")
+image_buf=load_png("saved_1596619752.png")
 -- [[
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
-function read_hd_png_buf( fname,log_norm )
+function read_hd_png_buf( fname,log_norm ,log_norm_minmax)
 	local file = io.open(fname, 'rb')
 	local b = bread(file:read('*all'))
 	file:close()
@@ -59,7 +59,7 @@ function load_hd_png()
 		__unbind_buffer()
 	end
 end
-image_buf=read_hd_png_buf("waves_out.buf",true,true)
+image_buf=read_hd_png_buf("out.buf",true)
 --]]
 
 __set_window_size(image_buf.w,image_buf.h)
@@ -74,6 +74,8 @@ config=make_config({
 	{"gamma",2.2,type="float",min=0.01,max=5},
 	{"gain",0.33,type="float",min=-0.01,max=1},
 	{"exposure",50,type="float",min=0.001,max=100},
+	{"temperature",5778,type="float",min=0.001,max=10000},
+	{"image_is_intensity",true,type="boolean"},
 },config)
 
 function make_compute_texture()
@@ -392,6 +394,8 @@ vec3 sample_circle_w(vec2 pos)
 }
 uniform float iteration;
 uniform float iteration_step;
+uniform float input_temp;
+uniform float do_intensity;
 float black_body_spectrum(float l,float temperature )
 {
 	/*float h=6.626070040e-34; //Planck constant
@@ -462,13 +466,16 @@ void main(){
 	//color=vec4(rcol,1);
 
 	//color.x=log(black_body(normed.x))*power;
-
-	float T=5778;//Sun
+	float T=input_temp;
+	//float T=5778;//Sun
+	//float T=4500;
 	//float T=8000;
 	//float T=6503.6; //D65 illiuminant
-
-	//color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,easeOutQuad(c)))*iteration_step;
-	color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,T)*nv*iteration_step;
+	if(do_intensity==1)
+		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,T)*nv*iteration_step;
+	else
+		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,easeOutQuad(c)))*iteration_step;
+	//
 	//color.xyz=nv;
 	//color.xyz=vec3(1,0.1,0.1);
 	color.a=1;
@@ -590,7 +597,7 @@ function find_min_max(  )
 		if v.r>lmax[1] then lmax[1]=v.r end
 		if v.g>lmax[2] then lmax[2]=v.g end
 		if v.b>lmax[3] then lmax[3]=v.b end
-		local lum=v.g
+		local lum=math.abs(v.g)
 		avg_lum=avg_lum+math.log(1+lum)
 		count=count+1
 	end
@@ -628,6 +635,12 @@ function update(  )
 		main_shader:set("v_gain",config.gain)
 		main_shader:set("iteration",iteration)
 		main_shader:set("iteration_step",config.iteration_step)
+		if config.image_is_intensity then
+			main_shader:set("do_intensity",1)
+		else
+			main_shader:set("do_intensity",0)
+		end
+		main_shader:set("input_temp",config.temperature)
 		compute_tex.t:use(1)
 		--main_shader:set("barrel_noise",config.bulge_noise)
 		if not compute_tex.t:render_to(compute_tex.w,compute_tex.h) then

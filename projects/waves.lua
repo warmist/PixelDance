@@ -147,7 +147,8 @@ uniform float mult;
 
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	float lv=abs(texture(values,normed).x*mult);
+	float lv=texture(values,normed).x*mult;
+	lv=1-exp(-lv*lv/25);
 	color=vec4(lv,lv,lv,1);
 }
 ]==]
@@ -215,7 +216,7 @@ void main(){
 	vec3 col_top=vec3(1);
 	float break_pos=0.5;
 	float break_inv=1/break_pos;
-	/* color with a down to dark break
+	///* color with a down to dark break
 	
 	if(lv>break_pos)
 		color.xyz=mix(col_back,col_top,(lv-break_pos)/(1-break_pos));
