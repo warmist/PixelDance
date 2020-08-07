@@ -1,18 +1,16 @@
-
 require "common"
 require "colors"
---[[ idea: 
-		use a texture WxH that is a "random function from IFS"
-			each point would be a e.g. 4xfloat to a F(x,y) params 
-			- that would give would bring this closer to fractal flame?
 
-		- implement "real" tonemapping (instead of this log(x+1)/(lmax-lmin))
-		- rewrite with feedback transform
-]]
 local luv=require "colors_luv"
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
 local size_mult=1
+
+--[[
+	TODO:
+		add in-shader random refill
+--]]
+
 win_w=win_w or 0
 win_h=win_h or 0
 
@@ -30,23 +28,21 @@ function update_size()
 	end
 end
 update_size()
-
 local size=STATE.size
+
 local max_palette_size=50
-local sample_count=131072
-local max_sample=1000000000 --for halton seq.
 local need_clear=false
 local oversample=1
-local render_lines=false
 local complex=true
 local init_zero=false
-local escape_fractal=false
+local sample_count=math.pow(2,22)
 
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
 
 str_cmplx=str_cmplx or "c_mul(s,s)+p"
 
+str_other_code=str_other_code or ""
 str_preamble=str_preamble or ""
 str_postamble=str_postamble or ""
 img_buf=make_image_buffer(size[1],size[2])
@@ -56,48 +52,77 @@ function resize( w,h )
 	size=STATE.size
 	print("new size:",w,h)
 end
+
+--i.e. the accumulation buffer
 function make_visits_texture()
 	if visit_tex==nil or visit_tex.w~=size[1]*oversample or visit_tex.h~=size[2]*oversample then
-		print("making tex")
 		visit_tex={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
 		visit_tex.t:use(0,1)
 		visit_tex.t:set(size[1]*oversample,size[2]*oversample,2)
-	end
-end
-function make_visits_buf(  )
-	if visit_buf==nil or visit_buf.w~=size[1]*oversample or visit_buf.h~=size[2]*oversample then
 		visit_buf=make_float_buffer(size[1]*oversample,size[2]*oversample)
 	end
 end
+-- samples i.e. random points that get transformed by IFS each step
+
+if samples_data==nil or samples_data.w~=sample_count then
+	samples_data=make_flt_buffer(sample_count,1)
+	samples={buffer_data.Make(),buffer_data.Make(),current=1,other=2,flip=function( t )
+		if t.current==1 then
+			t.current=2
+			t.other=1
+		else
+			t.current=1
+			t.other=2
+		end
+	end,
+	get_current=function (t)
+		return t[t.current]
+	end,
+	get_other=function ( t )
+		return t[t.other]
+	end}
+	-- [[
+	for i=0,sample_count-1 do
+		local x=math.random()
+		local y=math.random()
+		samples_data:set(i,0,{x,y,x,y})
+	end
+	for i=1,2 do
+		samples[i]:use()
+		samples[i]:set(samples_data.d,sample_count*4*4)
+	end
+	__unbind_buffer()
+	--]]
+end
+
 tick=tick or 0
 config=make_config({
-	{"only_last",false,type="boolean"},
 	{"auto_scale_color",true,type="boolean"},
 	{"draw",true,type="boolean"},
 	{"point_size",0,type="int",min=0,max=10},
-	{"ticking",1,type="int",min=1,max=2},
 	{"size_mult",true,type="boolean"},
+
 	{"v0",0,type="float",min=-1,max=1},
 	{"v1",0,type="float",min=-1,max=1},
 	{"v2",0,type="float",min=-1,max=1},
 	{"v3",0,type="float",min=-1,max=1},
+
 	{"IFS_steps",50,type="int",min=1,max=100},
 	{"move_dist",0.4,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
-	--[[{"rand_angle",0,type="float",min=0,max=math.pi*2},
-	{"rand_dist",0.01,type="float",min=0.00001,max=1},]]
+
 	{"cx",0,type="float",min=-10,max=10},
 	{"cy",0,type="float",min=-10,max=10},
 	{"min_value",0,type="float",min=0,max=20},
-	{"gen_radius",2,type="flosat",min=0,max=10},
-	{"animation",0,type="float",min=0,max=1},
+	{"gen_radius",2,type="float",min=0,max=10},
+
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"gain",1,type="float",min=-5,max=5},
 },config)
 
-
-local log_shader=shaders.Make[==[
+local display_shader=shaders.Make[==[
 #version 330
+#line 108
 
 out vec4 color;
 in vec3 pos;
@@ -112,36 +137,6 @@ uniform int auto_scale_color;
 uniform float v_gamma;
 uniform float v_gain;
 #define M_PI   3.14159265358979323846264338327950288
-
-float rand(vec2 n) { 
-	return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
-}
-
-float noise(vec2 p){
-	vec2 ip = floor(p);
-	vec2 u = fract(p);
-	u = u*u*(3.0-2.0*u);
-	
-	float res = mix(
-		mix(rand(ip),rand(ip+vec2(1.0,0.0)),u.x),
-		mix(rand(ip+vec2(0.0,1.0)),rand(ip+vec2(1.0,1.0)),u.x),u.y);
-	return res*res;
-}
-#define NUM_OCTAVES 5
-
-float fbm(vec2 x) {
-	float v = 0.0;
-	float a = 0.5;
-	vec2 shift = vec2(100);
-	// Rotate to reduce axial bias
-    mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.50));
-	for (int i = 0; i < NUM_OCTAVES; ++i) {
-		v += a * noise(x);
-		x = rot * x * 2.0 + shift;
-		a *= 0.5;
-	}
-	return v;
-}
 
 vec4 mix_palette(float value )
 {
@@ -165,91 +160,7 @@ vec4 mix_palette2(float value )
 	vec4 c2=palette[hidx];
 	return mix(c1,c2,t);
 }
-vec2 local_minmax(vec2 pos)
-{
-	float nv=texture(tex_main,pos).x;
-	float min=nv;
-	float max=nv;
-	float avg=0;
-	float wsum=0;
-	int look_size=15;
-	for(int i=-look_size;i<=look_size;i++)
-		for(int j=-look_size;j<=look_size;j++)
-		{
-			vec2 delta=vec2(float(i)/1024,float(j)/1024);
-			float dist=length(delta);
-			float v=texture(tex_main,pos+delta).x;
-			if(max<v)max=v;
-			if(min>v)min=v;
-			avg+=v*(1/(dist*dist+1));
-			wsum+=(1/(dist*dist+1));
-		}
-	avg/=wsum;
-	float avg_size=50;
-	//return vec2(min+avg,max-avg);
-	return vec2(log(avg/avg_size+1),log(avg*avg_size+1));
-}
-float dtex(vec2 p)
-{
-	float v1=0;
-	v1+=textureOffset(tex_main,p,ivec2(-1,0)).x;
-	v1+=textureOffset(tex_main,p,ivec2(1,0)).x;
-	v1+=textureOffset(tex_main,p,ivec2(0,1)).x;
-	v1+=textureOffset(tex_main,p,ivec2(0,-1)).x;
 
-	v1+=textureOffset(tex_main,p,ivec2(-1,-1)).x;
-	v1+=textureOffset(tex_main,p,ivec2(1,1)).x;
-	v1+=textureOffset(tex_main,p,ivec2(-1,1)).x;
-	v1+=textureOffset(tex_main,p,ivec2(1,-1)).x;
-
-	v1+=textureOffset(tex_main,p,ivec2(-2,0)).x*0.5;
-	v1+=textureOffset(tex_main,p,ivec2(2,0)).x*0.5;
-	v1+=textureOffset(tex_main,p,ivec2(0,2)).x*0.5;
-	v1+=textureOffset(tex_main,p,ivec2(0,-2)).x*0.5;
-	return v1/10;
-}
-vec2 tRotate(vec2 p, float a) {
-	float c=cos(a);
-	float s=sin(a);
-	mat2 m=mat2(c,-s,s,c);
-	return m*p;
-}
-float sdBox( in vec2 p, in vec2 b )
-{
-    vec2 d = abs(p)-b;
-    return length(max(d,vec2(0))) + min(max(d.x,d.y),0.0);
-}
-float sdEquilateralTriangle( in vec2 p )
-{
-    const float k = sqrt(3.0);
-    
-    p.x = abs(p.x) - 1.0;
-    p.y = p.y + 1.0/k;
-    if( p.x + k*p.y > 0.0 ) p = vec2( p.x - k*p.y, -k*p.x - p.y )/2.0;
-    p.x -= clamp( p.x, -2.0, 0.0 );
-    return -length(p)*sign(p.y);
-}
-float mask(vec2 pos)
-{
-	float phi=1.61803398875;
-	float box_size=0.6;
-	float blur=0.015;
-	float min_value=0.4;
-	float noise_scale=0.02;
-	float noise_freq=70;
-	pos.x*=phi;
-	pos=tRotate(pos,M_PI*3/4);
-
-	//vec2 n=vec2(fbm(pos*noise_freq),fbm(pos*noise_freq+vec2(1213,1099)));
-	//pos+=n*noise_scale;
-
-
-	float ret=sdBox(pos,vec2(box_size,box_size));
-	
-	ret=smoothstep(0.0,blur,ret);
-	ret=clamp(1-ret,min_value,1);
-	return 1;
-}
 float gain(float x, float k)
 {
     float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
@@ -258,47 +169,37 @@ float gain(float x, float k)
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float nv=texture(tex_main,normed).x;
-	//vec2 local_mm=local_minmax(normed);
-	//float lnv=abs(nv-dtex(normed));
 	vec2 lmm=min_max;
 	if(auto_scale_color==1)
 	{
-		//lnv=(log(lnv+1)-lmm.x)/(lmm.y-lmm.x);
 		nv=(log(nv+1)-lmm.x)/(lmm.y-lmm.x);
 	}
 	else
 	{
-		//lnv=log(lnv+1)/lmm.y;
 		nv=log(nv+1)/lmm.y;
 	}
-	//lnv=clamp(lnv,0,1);
 	nv=clamp(nv,0,1);
 
-	/* compress everything a bit i.e. like gamma but for palette
-	float pw=0.5;
-	nv=pow(nv,pw);
-	*/
-	//nv=floor(nv*10)/10; //stylistic quantization
-	//nv=pow(nv,1/pw);
 
-	float l=mask(pos.xy);
+	//nv=floor(nv*10)/10; //stylistic quantization
+
 	nv=gain(nv,v_gain);
 	nv=pow(nv,v_gamma);
 
-	//color = mix_palette2(lnv*l)*nv;
-	color = mix_palette2(nv*l);//*lnv;
+	color = mix_palette2(nv);;
 	color.a=1;
 }
 ]==]
+
+
 local need_save
 local need_buffer_save
-visits_minmax=visits_minmax or {}
-function buffer_save( name )
+function buffer_save( name ,min,max)
 	local b=bwrite()
 	b:u32(visit_buf.w)
 	b:u32(visit_buf.h)
-	b:f32(visits_minmax[1])
-	b:f32(visits_minmax[2])
+	b:f32(min)
+	b:f32(max)
 	for x=0,visit_buf.w-1 do
 	for y=0,visit_buf.h-1 do
 		local v=visit_buf:get(x,y)
@@ -309,54 +210,49 @@ function buffer_save( name )
 	f:write(b:tostring())
 	f:close()
 end
+
+visits_minmax=visits_minmax or {}
 function draw_visits(  )
 	local lmax=0
 	local lmin=math.huge
 	make_visits_texture()
-	make_visits_buf()
+
 	visit_tex.t:use(0,1)
-	--if visits_minmax==nil or need_buffer_save then
-		visit_buf:read_texture(visit_tex.t)
-		for x=0,visit_buf.w-1 do
-		for y=0,visit_buf.h-1 do
-			local v=visit_buf:get(x,y)
-			if v>math.exp(config.min_value)-1 then --skip non-visited tiles
-				if lmax<v then lmax=v end
-				if lmin>v then lmin=v end
-			end
+	visit_buf:read_texture(visit_tex.t)
+	for x=0,visit_buf.w-1 do
+	for y=0,visit_buf.h-1 do
+		local v=visit_buf:get(x,y)
+		if v>math.exp(config.min_value)-1 then --skip non-visited tiles
+			if lmax<v then lmax=v end
+			if lmin>v then lmin=v end
 		end
-		end
-		lmax=math.log(lmax+1)
-		lmin=math.log(lmin+1)
-		visits_minmax={lmin,lmax}
-	--end
-	--lmax=visits_minmax[1]
-	--lmin=visits_minmax[2]
+	end
+	end
+	lmax=math.log(lmax+1)
+	lmin=math.log(lmin+1)
+	visits_minmax={lmin,lmax}
+
 	if need_buffer_save then
-		buffer_save(need_buffer_save)
+		buffer_save(need_buffer_save,visits_minmax[1],visits_minmax[2])
 		need_buffer_save=nil
 	end
-	log_shader:use()
-	visit_tex.t:use(0,1)
-	--visits:write_texture(visit_tex)
 
-	set_shader_palette(log_shader)
-	log_shader:set("min_max",lmin,lmax)
-	log_shader:set_i("tex_main",0)
-	log_shader:set("v_gamma",config.gamma)
-	log_shader:set("v_gain",config.gain)
+	display_shader:use()
+	visit_tex.t:use(0,1)
+	set_shader_palette(display_shader)
+	display_shader:set("min_max",lmin,lmax)
+	display_shader:set_i("tex_main",0)
+	display_shader:set("v_gamma",config.gamma)
+	display_shader:set("v_gain",config.gain)
 	local auto_scale=0
 	if config.auto_scale_color then auto_scale=1 end
-	log_shader:set_i("auto_scale_color",auto_scale)
-	log_shader:draw_quad()
+	display_shader:set_i("auto_scale_color",auto_scale)
+	display_shader:draw_quad()
+
 	if need_save then
 		save_img()
 		need_save=nil
 	end
-end
-
-function clear_buffers(  )
-	need_clear=true
 end
 
 palette=palette or {show=false,
@@ -375,10 +271,9 @@ function lerp_hue( h1,h2,local_v )
 
 	if math.abs(h1-h2)>0.5 then
 		--loop around lerp (i.e. modular lerp)
-		
 
 		local v=(h1-h2)*local_v+h1
-		if v<0 then 
+		if v<0 then
 			local a1=h2-h1
 			local a=((1-h2)*a1)/(h1-a1)
 			local b=h2-a
@@ -447,28 +342,7 @@ function new_color( h,s,l,pos )
 	r[5]=pos
 	return r
 end
-function gaussian(x,alpha, mu, sigma1,sigma2)
-  local squareRoot = (x - mu)/(sigma2)
-  if x < mu then
-  	squareRoot=(x-mu)/sigma1
-  end
-  return alpha * math.exp( -(squareRoot * squareRoot)/2 );
-end
 
-function luvFromWavelength(wavelength,sat)
-	local ret={}
-	ret[1] = gaussian(wavelength,  1.056, 5998, 379, 310)
-	     + gaussian(wavelength,  0.362, 4420, 160, 267)
-	     + gaussian(wavelength, -0.065, 5011, 204, 262);
-	ret[1]=ret[1]*sat
-	ret[2] = gaussian(wavelength,  0.821, 5688, 469, 405)
-	     + gaussian(wavelength,  0.286, 5309, 163, 311);
-	ret[2]=ret[2]*sat
-	ret[3] = gaussian(wavelength,  1.217, 4370, 118, 360)
-	     + gaussian(wavelength,  0.681, 4590, 260, 138);
-	ret[3]=ret[3]*sat
-  return hsluv.rgb_to_hsluv(luv.xyz_to_rgb(ret))
-end
 palette.generators={
 	{"random",function (ret, hue_range,sat_range,lit_range )
 		local count=math.random(2,10)
@@ -586,32 +460,7 @@ palette.generators={
 
 			table.insert(ret,new_color(h2,s2,l2,((i)/max_step)*(max_palette_size-1)))
 		end
-	end},
-	{"rainbow",function ( ret,hue_range,sat_range,lit_range )
-		local wv_range_size=7400-3800
-		local wv1=rand_range({wv_range_size*hue_range[1],wv_range_size*hue_range[2]})+3800
-		local wv2=rand_range({wv_range_size*hue_range[1],wv_range_size*hue_range[2]})+3800
-		local s=rand_range(sat_range)
-		local l=rand_range(lit_range)
-		local steps=math.random(4,25)
-		local step_size=(wv2-wv1)/steps
-		local i=1
-		local max_sat=0
-		local max_other=0
-		for w=wv1,wv2,step_size do
-			local col=luvFromWavelength(w,s)
-			local pos=math.floor(((i-1)/(steps-1))*(max_palette_size-1))
-			local sat=col[2]/100
-			if sat>max_sat then max_sat=sat end
-			if col[3]/100>max_other then max_other=col[3]/100 end
-			table.insert(ret,new_color(col[1]/360,sat,col[3]/100,pos))
-			i=i+1
-		end
-		for i,v in ipairs(ret) do
-			v[2]=v[2]/max_sat
-			--v[3]=(v[3]/max_other)*l
-		end
-	end},
+	end}
 }
 function gen_palette( )
 	local ret={}
@@ -623,9 +472,8 @@ function gen_palette( )
 	local h1=rand_range(hue_range)
 	local s=rand_range(sat_range)
 	local l=rand_range(lit_range)
-	
+
 	palette.generators[palette.current_gen][2](ret,hue_range,sat_range,lit_range)
-	--ret[1]={1,1,1,1,0}
 end
 function print_col( c )
 	for i,v in ipairs(c) do
@@ -638,7 +486,6 @@ function color_edit_luv(key, col ,alpha)
 	local ncol=luv.hsluv_to_rgb{col[1]*360,col[2]*100,col[3]*100}
 	ncol[4]=col[4]
 
-	
 	changing,new_col=imgui.ColorEdit4(key,ncol,alpha)
 
 	local ret=luv.rgb_to_hsluv(new_col)
@@ -733,6 +580,7 @@ function save_img()
 			config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
 		end
 	end
+	config_serial=config_serial..string.format("str_other_code=%q\n",str_other_code)
 	config_serial=config_serial..string.format("str_x=%q\n",str_x)
 	config_serial=config_serial..string.format("str_y=%q\n",str_y)
 	config_serial=config_serial..string.format("str_cmplx=%q\n",str_cmplx)
@@ -743,14 +591,34 @@ function save_img()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
 
-local terminal_symbols={["s.x"]=10,["s.y"]=10,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=0.05,["1"]=0.1,["0"]=0.1}
-local terminal_symbols_alt={["p.x"]=3,["p.y"]=3}
-local terminal_symbols_param={["s.x"]=10,["s.y"]=10,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=0.05}
-local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=2,["(R)*(R)"]=4,["(R)-(R)"]=6,["(R)+(R)"]=6}
+
+local terminal_symbols={
+["s.x"]=10,["s.y"]=10,["p.x"]=3,["p.y"]=3,
+["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,
+["normed_iter"]=0.05,["1"]=0.1,["0"]=0.1
+}
+local terminal_symbols_alt={
+["p.x"]=3,["p.y"]=3
+}
+local terminal_symbols_param={
+["s.x"]=10,["s.y"]=10,
+["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,
+["normed_iter"]=0.05
+}
+local normal_symbols={
+["max(R,R)"]=0.05,["min(R,R)"]=0.05,
+["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,
+["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,
+["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,
+["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,
+["(R)/(R)"]=2,["(R)*(R)"]=4,
+["(R)-(R)"]=6,["(R)+(R)"]=6
+}
 
 local terminal_symbols_complex={
-["s"]=3,["p"]=3,["params.xy"]=1,["params.zw"]=1,["(c_one()*normed_i)"]=0.05,["(c_i()*normed_i)"]=0.05,["c_one()"]=0.1,["c_i()"]=0.1,
---["last_s"]=1,["normalize(s-last_s)"]=1
+["s"]=3,["p"]=3,
+["params.xy"]=1,["params.zw"]=1,
+["(c_one()*normed_iter)"]=0.05,["(c_i()*normed_iter)"]=0.05,["c_one()"]=0.1,["c_i()"]=0.1,
 }
 local normal_symbols_complex={
 -- [=[
@@ -762,24 +630,9 @@ local normal_symbols_complex={
 --]=]
 ["c_div(R,R)"]=4,["c_inv(R)"]=1,
 ["c_mul(R,R)"]=1,
-["(R)-(R)"]=6,["(R)+(R)"]=6}
+["(R)-(R)"]=6,["(R)+(R)"]=6
+}
 
-local terminal_symbols_FT={
-["t"]=0.5,["c"]=0.5,
-["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,
-["1.0"]=0.01,["0.0"]=0.01
-}
-local terminal_symbols_complex_FT={
-["vec2(t,0)"]=1,
-["vec2(0,t)"]=1,
-["vec2(c,0)"]=1,
-["vec2(0,c)"]=1,
-["vec2(t,c)"]=3,
-["vec2(c,t)"]=3,
-["params.xy"]=1,["params.zw"]=1,
-["c_one()"]=0.1,["c_i()"]=0.1,
-}
-local normal_symbols_FT={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=2,["(R)*(R)"]=4,["(R)-(R)"]=2,["(R)+(R)"]=2}
 function normalize( tbl )
 	local sum=0
 	for i,v in pairs(tbl) do
@@ -797,10 +650,6 @@ normalize(normal_symbols)
 
 normalize(terminal_symbols_complex)
 normalize(normal_symbols_complex)
-
-normalize(terminal_symbols_FT)
-normalize(terminal_symbols_complex_FT)
-normalize(normal_symbols_FT)
 
 function rand_weighted(tbl)
 	local r=math.random()
@@ -859,8 +708,6 @@ function make_rand_math( normal_s,terminal_s,forced_s )
 	end
 end
 random_math=make_rand_math(normal_symbols,terminal_symbols)
-random_math_FT=make_rand_math(normal_symbols_FT,terminal_symbols_FT,{"c","t"})
-random_math_complex_FT=make_rand_math(normal_symbols_complex,terminal_symbols_complex_FT,{"vec2(c,t)","params.xy","params.zw"})
 random_math_complex=make_rand_math(normal_symbols_complex,terminal_symbols_complex)
 
 
@@ -881,7 +728,7 @@ function random_math_complex_pts(steps,pts,seed )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
--- [[
+
 function factorial( n )
 	if n<=1 then return 1 end
 	return n*factorial(n-1)
@@ -923,25 +770,8 @@ function random_math_complex_series( steps,seed )
 	end
 	return cur_string
 end
-function random_math_complex_series_t( steps,seed )
-	seed=seed or "p"
-	local cur_string=seed
-	function MT(  )
-		return rand_weighted(terminal_symbols_complex)
-	end
 
-	for i=1,steps do
-		local sub_s=seed
-		for i=1,i do
-			sub_s=string.format("c_mul(%s,%s)",sub_s,seed)
-		end
-		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
 
-		cur_string=cur_string..string.format("+c_mul(%s,FT(normed_i,%g))",sub_s,(i-1)/steps)
-	end
-	return cur_string
-end
---]]
 function random_math_centered(steps,complications,seed )
 	local cur_string=("R+%.3f"):format(math.random()*2-1) or seed
 	for i=1,steps do
@@ -1016,46 +846,12 @@ function rand_function(  )
 	str_cmplx=random_math_complex(rand_complexity)
 	--str_cmplx=random_math_complex(rand_complexity,"c_mul(R,last_s/length(last_s)+c_one())")
 	--local FT=random_math_complex(rand_complexity)
-	other_code=""
-	--[=[
-	other_code=[[
-	vec2 FT(float t,float c)
-	{
-		float vv=cos(t*M_PI*2);
-		float cc=sin(t*M_PI*2);
-		return vec2(
-		vv*params.x+cc*params.y,
-		vv*params.z+cc*params.w
-		);
-	}
-	]]
-	]=]
-	--[=[
-	other_code=string.format([[
-	vec2 FT(float t,float c)
-	{
-		return vec2(
-		%s,
-		%s
-		);
-	}]],random_math_FT(rand_complexity),random_math_FT(rand_complexity))
-	--]=]
-	--[=[
-	other_code=string.format([[
-	vec2 FT(float t,float c)
-	{
-		return %s;
-	}]],random_math_complex_FT(rand_complexity))
-
-	str_cmplx=random_math_complex_series_t(4).."+"..random_math_complex_series_t(4,"s")
-	--]=]
 	--[[
 	--str_cmplx="c_mul(c_div((c_div(s,c_cos((params.xy)-(s))))-(s),(c_div((c_conj(s))+(c_div(p,c_cos(p))),((s)-(s))+(c_atan((params.xy)-(p)))))-(c_conj(p))),c_tan(((c_div((s)+(p),(s)+(params.xy)))-((p)+(c_conj(s))))-(p)))"
 	--str_cmplx="c_conj(c_tan(((p)+(c_conj((s)-(c_conj((p)+(p))))))+((((c_inv(c_inv(s)))-(c_conj(s)))-(c_sin((c_mul(c_sin((params.zw)+(p)),p))+(s))))-(((s)+(s))+((p)+(((c_div(p,p))+(s))+(s)))))))"
 	--]]
 	--[[ nice tri-lobed shape
-
-	str_cmplx="c_div(c_conj(p),(s)-(p))"
+		str_cmplx="c_div(c_conj(p),(s)-(p))"
 	--]]
 	local pts={}
 	local num_roots=7
@@ -1087,14 +883,14 @@ function rand_function(  )
 	--str_x="p.x*params.x+s.y*s.x*params.y"
 	--str_y="s.y+p.x*s.y*params.w"
 	--]]
-	--local s="((p.y)+(p.x))+((tan(tan((normed_i)/(params.w))))*(s.y))"
+	--local s="((p.y)+(p.x))+((tan(tan((normed_iter)/(params.w))))*(s.y))"
 	--str_x="sin("..s.."-s.x*s.y)"
 	--str_y="cos("..s.."-s.y*s.x)"
 	--str_x=random_math_centered(3,rand_complexity)
 	--str_y=random_math_centered(3,rand_complexity)
 	str_x=random_math(rand_complexity)
 	str_y=random_math(rand_complexity)
-	
+
 	--[[
 	local str1="p.x"
 	local str2="p.y"
@@ -1159,7 +955,7 @@ function rand_function(  )
 	--str_postamble=str_postamble.."float ll=length(s);s/=weight1;weight1+=ll;"
 	--]]
 	--[[ rand scale/offset
-	
+
 	local r1=math.random()*2-1
 	local r2=math.random()*2-1
 	local l=math.sqrt(r1*r1+r2*r2)
@@ -1170,10 +966,10 @@ function rand_function(  )
 	local r6=math.random()*2-1
 	local l3=math.sqrt(r5*r5+r6*r6)
 	str_preamble=str_preamble..("s=vec2(dot(s,vec2(%.3f,%.3f)),dot(s,vec2(%.3f,%.3f)))+vec2(%3.f,%.3f);"):format(r1/l,r2/l,r3/l2,r4/l2,r5/l3,r6/l3)
-	
+
 	--]]
-	
-	--[[ complex seriesize
+
+	-- [[ complex seriesize
 	local series_size=7
 	local rand_offset=0.1
 	local rand_size=0.25
@@ -1195,11 +991,11 @@ function rand_function(  )
 	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
-	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
-	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(p,p));s=last_s+ds*(move_dist*vv/ls);"
+	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(p,p));s=last_s+ds*(move_dist*vv/ls);"
 	--]]
 	--[[ move towards circle
-	str_postamble=str_postamble.."vec2 tow_c=s+vec2(cos(normed_i*M_PI*2),sin(normed_i*M_PI*2))*move_dist;s=(dot(tow_c,s)*tow_c/length(tow_c));"
+	str_postamble=str_postamble.."vec2 tow_c=s+vec2(cos(normed_iter*M_PI*2),sin(normed_iter*M_PI*2))*move_dist;s=(dot(tow_c,s)*tow_c/length(tow_c));"
 	--]]
 	--[[ boost
 	str_preamble=str_preamble.."s*=move_dist;"
@@ -1245,7 +1041,7 @@ function rand_function(  )
 	--[[ rotate (p)
 	--str_preamble=str_preamble.."s=vec2(cos(p.x)*s.x-sin(p.x)*s.y,cos(p.x)*s.y+sin(p.x)*s.x);"
 	--str_preamble=str_preamble.."s=vec2(cos(p.y)*s.x-sin(p.y)*s.y,cos(p.y)*s.y+sin(p.y)*s.x);"
-	str_preamble=str_preamble.."s=vec2(cos(normed_i*M_PI*2)*s.x-sin(normed_i*M_PI*2)*s.y,cos(normed_i*M_PI*2)*s.y+sin(normed_i*M_PI*2)*s.x);"
+	str_preamble=str_preamble.."s=vec2(cos(normed_iter*M_PI*2)*s.x-sin(normed_iter*M_PI*2)*s.y,cos(normed_iter*M_PI*2)*s.y+sin(normed_iter*M_PI*2)*s.x);"
 	--]]
 	--[[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
@@ -1283,7 +1079,7 @@ function rand_function(  )
 	--str_postamble=str_postamble.."s=vec2(cos(-params.z)*s.x-sin(-params.z)*s.y,cos(-params.z)*s.y+sin(-params.z)*s.x);"
 	--str_postamble=str_postamble.."s=vec2(cos(-0.7853981)*s.x-sin(-0.7853981)*s.y,cos(-0.7853981)*s.y+sin(-0.7853981)*s.x);"
 	--str_postamble=str_postamble.."p=vec2(cos(-params.z*M_PI*2)*p.x-sin(-params.z*M_PI*2)*p.y,cos(-params.z*M_PI*2)*p.y+sin(-params.z*M_PI*2)*p.x);"
-	str_postamble=str_postamble.."s=vec2(cos(-normed_i*M_PI*2)*s.x-sin(-normed_i*M_PI*2)*s.y,cos(-normed_i*M_PI*2)*s.y+sin(-normed_i*M_PI*2)*s.x);"
+	str_postamble=str_postamble.."s=vec2(cos(-normed_iter*M_PI*2)*s.x-sin(-normed_iter*M_PI*2)*s.y,cos(-normed_iter*M_PI*2)*s.y+sin(-normed_iter*M_PI*2)*s.x);"
 	--]]
 	--[[ unoffset POST
 	str_postamble=str_postamble.."s-=params.xy;"
@@ -1310,10 +1106,12 @@ function rand_function(  )
 		print(str_y)
 	end
 	print(str_postamble)
+
 	make_visit_shader(true)
 	need_clear=true
 end
 
+local cur_visit_iter=0
 function gui()
 	imgui.Begin("IFS play")
 	palette_chooser()
@@ -1326,7 +1124,7 @@ function gui()
 	update_size()
 	local s=STATE.size
 	if imgui.Button("Clear image") then
-		clear_buffers()
+		need_clear=true
 	end
 	imgui.SameLine()
 	if imgui.Button("Save image") then
@@ -1342,7 +1140,7 @@ function gui()
 	end
 	imgui.SameLine()
 
-	_,rand_complexity=imgui.SliderInt("Complexity",rand_complexity,1,8)
+	_,rand_complexity=imgui.SliderInt("Complexity",rand_complexity,1,15)
 
 	if imgui.Button("Animate") then
 		animate=true
@@ -1353,15 +1151,13 @@ function gui()
 	if imgui.Button("Update frame") then
 		update_animation_values()
 	end
+	imgui.Text(string.format("Done: %d",(cur_visit_iter/config.IFS_steps)*100))
 	imgui.End()
 end
+
 function update( )
 	gui()
 	update_real()
-end
-
-function gl_mod( x,y )
-	return x-y*math.floor(x/y)
 end
 
 function auto_clear(  )
@@ -1386,25 +1182,8 @@ function auto_clear(  )
 			break
 		end
 	end
-	if config[pos_anim].changing then
-		need_clear=true
-		update_animation_values()
-	end
-end
-function mod(a,b)
-	local r=math.fmod(a,b)
-	if r<0 then
-		return r+b
-	else
-		return r
-    end
 end
 
-
-
-
-knock_buf=knock_buf or load_png("knock.png")
-local knock_texture
 
 function make_coord_change(  )
 	if complex then
@@ -1428,45 +1207,41 @@ function escape_mode_str(  )
 	end
 end
 
+
 function make_visit_shader( force )
+
 if add_visit_shader==nil or force then
 	add_visit_shader=shaders.Make(
 string.format([==[
 #version 330
 #line 1092
+//escape_mode_str
 #define ESCAPE_MODE %s
-//Next three are "generalized complex numbers" with p=-1, p=0 and p=1
-#define COMPLEX_NUMBERS
-//#define DUAL_NUMBERS //aka boring numbers :<
-//#define HYPERBOLIC_NUMBERS //aka split-complex
-//#define STRANGE_NUMBERS1
-//#define STRANGE_NUMBERS2
-layout(location = 0) in vec3 position;
+layout(location = 0) in vec4 position;
 out vec3 pos;
+out vec4 point_out;
 
 #define M_PI 3.1415926535897932384626433832795
 
 uniform vec2 center;
 uniform vec2 scale;
-uniform int iters;
-uniform int max_iters;
 uniform int pix_size;
 uniform float seed;
 uniform float move_dist;
 uniform vec4 params;
-
+uniform float normed_iter;
 float rand1(float n){return fract(sin(n) * 43758.5453123);}
 float rand2(float n){return fract(sin(n) * 78745.6326871);}
 float cosh(float val) {
   float tmp = exp(val);
   return (tmp + 1.0 / tmp) / 2.0;
 }
- 
+
 float tanh(float val) {
   float tmp = exp(val);
   return (tmp - 1.0 / tmp) / (tmp + 1.0 / tmp);
 }
- 
+
 float sinh(float val) {
   float tmp = exp(val);
   return (tmp - 1.0 / tmp) / 2.0;
@@ -1476,12 +1251,12 @@ vec2 cosh(vec2 val) {
   vec2 tmp = exp(val);
   return(tmp + 1.0 / tmp) / 2.0;
 }
- 
+
 vec2 tanh(vec2 val) {
   vec2 tmp = exp(val);
   return (tmp - 1.0 / tmp) / (tmp + 1.0 / tmp);
 }
- 
+
 vec2 sinh(vec2 val) {
   vec2 tmp = exp(val);
   return (tmp - 1.0 / tmp) / 2.0;
@@ -1494,7 +1269,6 @@ vec2 c_conj(vec2 c) {
   return vec2(c.x, -c.y);
 }
 
-#ifdef COMPLEX_NUMBERS
 float arg(vec2 c) {
   return atan(c.y, c.x);
 }
@@ -1665,71 +1439,6 @@ vec2 c_inv(vec2 c) {
   float norm = length(c);
 	return vec2(c.x, -c.y) / (norm * norm);
 }
-#endif
-#ifdef DUAL_NUMBERS
-float arg(vec2 z)
-{
-	return z.y/z.x;
-}
-
-vec2 c_mul(vec2 v1, vec2 v2) {
-    return vec2(v1.x*v2.x,v1.x*v2.y+v2.x*v1.y);
-}
-
-vec2 c_div(vec2 v1, vec2 v2) {
-    float norm = v1.x*v1.x;
-    return vec2(v1.x*v2.x,(v1.x*v2.y-v2.x*v1.y))/norm;
-}
-vec2 c_inv(vec2 c) {
-	return vec2(c.x, -c.y) / (c.x*c.x);
-}
-vec2 c_sin(vec2 z)
-{
-	return vec2(sin(z.x),cos(z.x)*z.y);
-}
-vec2 c_cos(vec2 z)
-{
-	return vec2(cos(z.x),-sin(z.x)*z.y);
-}
-vec2 c_tan(vec2 z)
-{
-	float cx=cos(z.x);
-	return vec2(tan(z.x),-z.y/(cx*cx));
-}
-#endif
-#ifdef HYPERBOLIC_NUMBERS
-vec2 c_mul(vec2 z, vec2 w) {
-    return vec2(z.x * w.x + z.y * w.y,
-                z.x * w.y + z.y * w.x);
-}
-
-#endif
-
-
-#ifdef STRANGE_NUMBERS1
-
-vec2 c_mul(vec2 z, vec2 w) {
-    return vec2(z.x * w.x - z.y * w.y,
-                z.x * w.y - z.y * w.x);
-}
-vec2 c_inv(vec2 z)
-{
-	float v=1/(z.x*z.x-z.y*z.y);
-	return vec2(z.x,z.y)*v;
-}
-vec2 c_div(vec2 z,vec2 w){
-	return c_mul(z,c_inv(w));
-}
-#endif
-
-#ifdef STRANGE_NUMBERS2
-
-vec2 c_mul(vec2 z, vec2 w) {
-    return vec2(z.x * w.x - z.y * w.y+0.5*w.x*w.x-0.5*z.x*z.x,
-                z.x * w.y + z.y * w.x+0.5*w.y*w.y-0.5*z.y*z.y);
-}
-
-#endif
 
 vec2 cell_pos(int id,int max_id,float dist)
 {
@@ -1745,29 +1454,23 @@ vec2 from_polar(vec2 p)
 	return vec2(cos(p.y)*p.x,sin(p.y)*p.x);
 }
 
+//str_other_code
 %s
 
-vec3 func_actual(vec2 p,int it_count)
+vec3 func_actual(vec2 s,vec2 p)
 {
-	vec2 s = %s;
+	//init condition
 	vec2 last_s=s;
 	float e=1;
-	float weight1=1;
-	for(int i=0;i<it_count;i++)
-		{
-			float normed_i=float(i)/float(max_iters);
-			%s
-			%s
-			%s
+	%s
 #if ESCAPE_MODE
-			if(e>normed_i && dot(s,s)>4)
+			if(e>normed_iter && dot(s,s)>4)
 				{
-				e=normed_i;
+				e=normed_iter;
 				break;
 				}
 #endif
-			last_s=s;
-		}
+	last_s=s;
 	return vec3(s.x,s.y,e);
 }
 vec2 tRotate(vec2 p, float a) {
@@ -1782,35 +1485,36 @@ vec2 tReflect(vec2 p,float a){
 	mat2 m=mat2(c,s,s,-c);
 	return m*p;
 }
-vec3 func(vec2 p,int it_count)
+
+vec3 func(vec2 s,vec2 p)
 {
 	const float ang=(M_PI/20)*2;
 #if 1
-	return func_actual(p,it_count);
+	return func_actual(s,p);
 #endif
 #if 0
 	vec2 v=to_polar(p);
-	vec2 r=func_actual(v,it_count);
+	vec2 r=func_actual(s,v);
 	return from_polar(r);
 #endif
 #if 0
 	vec2 v=to_polar(p);
-	vec2 r=func_actual(v,it_count);
+	vec2 r=func_actual(s,v);
 	v+=r;
 	return from_polar(v);
 #endif
 #if 0
-	vec2 r=func_actual(p,it_count);
+	vec2 r=func_actual(s,p);
 	//float d=atan(r.y,r.x);
 	return (p/*+vec2(cos(d),sin(d))*/)/length(r);
 #endif
 #if 0
-	vec2 r=func_actual(p,it_count);
+	vec2 r=func_actual(s,p);
 	return (p/length(p))*length(r);
 	//return p/length(p-r);
 #endif
 #if 0
-	vec3 r=func_actual(p,it_count);
+	vec3 r=func_actual(s,p);
 	//vec2 delta=p-r;
 	//return p*exp(1/-dot(delta,delta));
 	return vec3(p*exp(1/-dot(r.xy,r.xy)),r.z);
@@ -1825,13 +1529,13 @@ vec3 func(vec2 p,int it_count)
 	float l=length(p);
 	if(l>1)
 		vp/=l;
-	vec2 r=func_actual(vp,it_count);
+	vec2 r=func_actual(s,vp);
 	return p*exp(1/-dot(r,r));
 	//return vp;
 #endif
 #if 0
 	
-	vec2 r=func_actual(p,it_count);
+	vec2 r=func_actual(s,p);
 	float lr=length(r);
 
 	r*=exp(1/-(dot(r,r)+1));
@@ -1851,7 +1555,7 @@ vec3 func(vec2 p,int it_count)
 
 	p=tRotate(p,ang*av+symetry_defect*av);
 	//p=tReflect(p,ang*av/2+symetry_defect*av);
-	vec3 r=func_actual(p,it_count);//+vec2(0,-dist_div);
+	vec3 r=func_actual(s,p);//+vec2(0,-dist_div);
 	//r=tReflect(r,ang*av/2);
 	r.xy=tRotate(r.xy,-ang*av);
 
@@ -1877,52 +1581,12 @@ vec3 func(vec2 p,int it_count)
 	p-=c*symetry_defect*av;
 	//p=tRotate(p,rotate_amount*av);
 	p=tReflect(p,rotate_amount*av/2+symetry_defect*av);
-	vec2 r=func_actual(p,it_count);//+vec2(0,-dist_div);
+	vec2 r=func_actual(s,p);//+vec2(0,-dist_div);
 	r=tReflect(r,rotate_amount*av/2);
 	//r=tRotate(r,-rotate_amount*av);
 	r+=c;
 	return r;
 #endif
-#if 0
-	const float symetry_defect=0.1;//0.01;
-	const float rotate_amount=M_PI*2;//M_PI/3;
-
-	const int cell_count=50;
-	const float cell_dist=1;
-
-	int nn=0;
-	float min_dist=9999;
-	for(int i=0;i<cell_count;i++)
-	{
-		vec2 c=cell_pos(i,cell_count,cell_dist);
-		vec2 d=c-p;
-		float dd=dot(d,d);
-		if(dd<min_dist)
-		{
-			min_dist=dd;
-			nn=i;
-		}
-	}
-
-	vec2 cell=cell_pos(nn,cell_count,cell_dist);
-
-
-	float av=nn;//abs(cell.x)+abs(cell.y);//length(av_v);
-	av/=float(cell_count);
-	const float dist_div=1;
-	vec2 c=cell;//*dist_div*(1/cell_dist);
-
-	p-=c;
-	p-=c*symetry_defect*av;
-	p=tRotate(p,rotate_amount*av);
-	//p=tReflect(p,rotate_amount*av/2+symetry_defect*av);
-	vec3 r=func_actual(p,it_count);//+vec2(0,-dist_div);
-	//r=tReflect(r,rotate_amount*av/2);
-	r.xy=tRotate(r.xy,-rotate_amount*av);
-	r.xy+=c;
-	return r;
-#endif
-
 }
 float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
 vec2 gaussian(float mean,float var,vec2 rnd)
@@ -2039,13 +1703,15 @@ void main()
 
 #if ESCAPE_MODE
 	vec2 inp_p=mapping((position.xy-center)/scale);
-    vec3 rez= func(inp_p,iters);//*scale+center;
+    vec3 rez= func(inp_p);//*scale+center;
     pos.xy=position.xy;//*scale+center;
     gl_Position.xy=position.xy;//*scale+center;
     pos.z=rez.z;//length(rez);
+    point_out.xy=position.xy;
 #else
-	gl_Position.xy = mapping(func(position.xy,iters).xy*scale+center);
-	
+	point_out.xy=func(position.xy,position.zw).xy;
+	point_out.zw=position.zw;
+	gl_Position.xy = mapping(point_out.xy*scale+center);
     pos=gl_Position.xyz;
 #endif
 
@@ -2053,8 +1719,13 @@ void main()
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
 }
-]==],escape_mode_str(),other_code or "",make_init_cond(),str_preamble,make_coord_change(),str_postamble),
-string.format([==[
+]==],
+--Args to format
+	escape_mode_str(),
+	other_code or "",
+	str_preamble.."\n"..make_coord_change().."\n"..str_postamble
+),string.format(
+[==[
 #version 330
 #line 1282
 
@@ -2064,15 +1735,10 @@ out vec4 color;
 in vec3 pos;
 uniform sampler2D img_tex;
 uniform int pix_size;
-uniform int it_count;
-uniform int max_iters;
+uniform float normed_iter;
 float shape_point(vec2 pos)
 {
-	//float rr=clamp(1-txt.r,0,1);
-	//float rr = abs(pos.y*pos.y);
 	float rr=dot(pos.xy,pos.xy);
-	//float rr = pos.y-0.5;
-	//float rr = length(pos.xy)/5.0;
 	rr=clamp(rr,0,1);
 	float delta_size=(1-0.2)*rr+0.2;
 	return delta_size;
@@ -2101,55 +1767,26 @@ void main(){
 	float a = 1 - smoothstep(0, 1, r);
 	//float a=1; //uncomment this for line mode
 	float intensity=1/float(pix_size);
-	float it_normed=float(it_count)/float(max_iters);
-	float it_w=1;//exp(it_normed);
+	float it_w=1;//exp(normed_iter);
 	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
-	//color=vec4(a,0,0,1);
-	color=vec4(a*intensity*v*it_w,0,0,1);
+	color=vec4(a,0,0,1);
+	//color=vec4(a*intensity*v*it_w,0,0,1);
 }
-]==],escape_mode_str()))
+]==],escape_mode_str()),"point_out"
+)
 end
 
 end
 
 make_visit_shader(true)
 
-if samples==nil or samples.w~=sample_count then
-	samples=make_flt_half_buffer(sample_count,1)
-end
-function math.sign(x)
-   if x<0 then
-     return -1
-   elseif x>0 then
-     return 1
-   else
-     return 0
-   end
-end
 
 visit_call_count=0
 local visit_plan={
-	--[[
-	{120,1},
-	{24,2},
-	{6,6},
-	{2,24},
-	--{1,120},
-	--]]
-	-- [[
-	{75,2},
-	{10,6},
-	{1,24},
-	--]]
-	--[[
-	{64,1},
-	{128,2},
-	{16,4},
-	{4,8},
-	{2,16},
-	--{1,32},
-	--]]
+	{30,1},
+	{10,2},
+	{1,6},
 }
 function get_visit_size( vcount )
 	local sum=0
@@ -2182,29 +1819,22 @@ function vdc( n,base )
 end
 
 local cur_sample=0
+
 function visit_iter()
 	local psize=config.point_size
 	if psize<=0 then
-		psize=get_visit_size(visit_call_count)--config.point_size
-		visit_call_count=visit_call_count+1
+		psize=get_visit_size(visit_call_count)
 	end
 	make_visits_texture()
 	make_visit_shader()
 	add_visit_shader:use()
-	if knock_texture==nil then
-		knock_texture=textures:Make()
-		knock_texture:use(0,1)
-		knock_buf:write_texture(knock_texture)
-	end
 	add_visit_shader:set("center",config.cx,config.cy)
 	add_visit_shader:set("scale",config.scale,config.scale*aspect_ratio)
 	add_visit_shader:set("params",config.v0,config.v1,config.v2,config.v3)
 	add_visit_shader:set("move_dist",config.move_dist)
 
 	visit_tex.t:use(0)
-	knock_texture:use(1)
 	add_visit_shader:blend_add()
-	add_visit_shader:set_i("max_iters",config.IFS_steps)
 	add_visit_shader:set_i("img_tex",1)
 	add_visit_shader:set_i("pix_size",psize)
 	if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
@@ -2212,19 +1842,19 @@ function visit_iter()
 	end
 	local gen_radius=config.gen_radius
 
-	for i=1,config.ticking do
-		if need_clear then
-			__clear()
-			visit_call_count=0
-			need_clear=false
-			--print("Clearing")
-		end
+	local draw_sample_count=sample_count
+	if config.draw then
+		draw_sample_count=math.min(1e6,sample_count)
+	end
 
-		local sample_count=samples.w*samples.h-1
-		local sample_count_w=math.floor(math.sqrt(sample_count))
-		
 
-		for i=0,sample_count do
+	local sample_count_w=math.floor(math.sqrt(draw_sample_count))
+	if cur_visit_iter>config.IFS_steps or need_clear then
+		visit_call_count=visit_call_count+1
+		cur_visit_iter=0
+		for i=0,draw_sample_count-1 do
+			--gaussian blob
+		 	local x,y=gaussian2(0,gen_radius,0,gen_radius)
 			--[[ exact grid
 			local x=((i%sample_count_w)/sample_count_w-0.5)*2
 			local y=(math.floor(i/sample_count_w)/sample_count_w-0.5)*2
@@ -2246,7 +1876,7 @@ function visit_iter()
 			local y=math.sqrt(-2*gen_radius*math.log(u1))*math.sin(u2)
 			--]]
 			--[[
-			local cc=i/sample_count
+			local cc=i/draw_sample_count
 			local pix_id=cc*win_w*win_h
 
 			local x=(math.floor(pix_id%win_w)/win_w)*2-1
@@ -2266,8 +1896,7 @@ function visit_iter()
 			--]]
 			--gaussian blob with moving center
 			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
-			--gaussian blob
-		 	local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			
 			--[[ n gaussian blobs
 			local count=3
 			local rad=2+gen_radius*gen_radius
@@ -2332,7 +1961,7 @@ function visit_iter()
 				x=math.random()*2-1
 				y=math.random()*2-1
 			end
-			samples.d[i]={x,y}
+			samples_data.d[i]={x,y,x,y}
 			--[[ for lines
 			local a2 = math.random() * 2 * math.pi
 			x=x+math.cos(a2)*config.move_dist
@@ -2340,27 +1969,44 @@ function visit_iter()
 			--samples.d[i+1]={x,y}
 			--]]
 		end
-
-		if config.only_last then
-			add_visit_shader:set("seed",math.random())
-			add_visit_shader:set_i("iters",config.IFS_steps)
-			if render_lines then
-				add_visit_shader:draw_lines(samples.d,samples.w*samples.h,true)
-			else
-				add_visit_shader:draw_points(samples.d,samples.w*samples.h)
-			end
-		else
-			for i=math.floor(config.IFS_steps*0.1),config.IFS_steps do
-				add_visit_shader:set("seed",math.random())
-				add_visit_shader:set_i("iters",i)
-				if render_lines then
-					add_visit_shader:draw_lines(samples.d,samples.w*samples.h,true)
-				else
-					add_visit_shader:draw_points(samples.d,samples.w*samples.h)
-				end
-			end
-		end
+		local cs=samples:get_current()
+		cs:use()
+		cs:set(samples_data.d,draw_sample_count*4*4)
 	end
+	if need_clear then
+		__clear()
+		cur_visit_iter=0
+		need_clear=false
+	end
+	
+
+	local max_iter=1
+	if not config.draw then
+		max_iter=8
+	end
+	for i=1,max_iter do
+
+		local so=samples:get_other()
+		so:use()
+		so:bind_to_feedback()
+
+		samples:get_current():use()
+
+		add_visit_shader:set("seed",math.random())
+		add_visit_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
+		if cur_visit_iter<10 and not config.draw then
+			add_visit_shader:raster_discard(true)
+		else
+			add_visit_shader:raster_discard(false)
+		end
+		add_visit_shader:draw_points(0,draw_sample_count,4,1)
+		samples:flip()
+		cur_visit_iter=cur_visit_iter+1
+	end
+	add_visit_shader:raster_discard(false)
+
+
+	__unbind_buffer()
 	add_visit_shader:blend_default()
 	__render_to_window()
 end
@@ -2397,13 +2043,13 @@ function update_real(  )
 	__no_redraw()
 	if animate then
 		tick=tick or 0
+			need_save=true
+			draw_visits()
 		tick=tick+1
 		if tick%draw_frames==0 then
 			__clear()
 			update_animation_values()
 			need_clear=true
-			need_save=true
-			draw_visits()
 			config.animation=config.animation+1/frame_count
 			if config.animation>1 then
 				animate=false
@@ -2419,6 +2065,7 @@ function update_real(  )
 	visit_iter()
 	local scale=config.scale
 	local cx,cy=config.cx,config.cy
+
 	local c,x,y= is_mouse_down()
 	if c then
 		--mouse to screen

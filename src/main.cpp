@@ -393,9 +393,8 @@ struct project {
         init_lua(path_prefix);
         reload_file();
     }
-	void set_mouse()
+    void set_mouse(const ImGuiIO& io)
 	{
-		auto& io = ImGui::GetIO();
 		lua_newtable(L);
 
 		lua_pushnumber(L, io.MousePos.x);
@@ -658,7 +657,7 @@ int main(int argc, char** argv)
         {
     		if(need_reload)
     			current_project.reload_file();
-    		current_project.set_mouse();
+    		current_project.set_mouse(io);
     		current_project.update();
         }
         else
