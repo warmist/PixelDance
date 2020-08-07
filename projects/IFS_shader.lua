@@ -7,6 +7,7 @@ require "colors"
 			- that would give would bring this closer to fractal flame?
 
 		- implement "real" tonemapping (instead of this log(x+1)/(lmax-lmin))
+		- rewrite with feedback transform
 ]]
 local luv=require "colors_luv"
 local bwrite = require "blobwriter"
@@ -737,7 +738,7 @@ end
 
 local terminal_symbols={["s.x"]=10,["s.y"]=10,["p.x"]=3,["p.y"]=3,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=0.05,["1"]=0.1,["0"]=0.1}
 local terminal_symbols_alt={["p.x"]=3,["p.y"]=3}
-local terminal_symbols_param={["s.x"]=10,["s.y"]=105,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=0.05}
+local terminal_symbols_param={["s.x"]=10,["s.y"]=10,["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,["normed_i"]=0.05}
 local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=2,["(R)*(R)"]=4,["(R)-(R)"]=6,["(R)+(R)"]=6}
 
 local terminal_symbols_complex={
@@ -756,6 +757,22 @@ local normal_symbols_complex={
 ["c_mul(R,R)"]=1,
 ["(R)-(R)"]=6,["(R)+(R)"]=6}
 
+local terminal_symbols_FT={
+["t"]=0.5,["c"]=0.5,
+["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,
+["1.0"]=0.01,["0.0"]=0.01
+}
+local terminal_symbols_complex_FT={
+["vec2(t,0)"]=1,
+["vec2(0,t)"]=1,
+["vec2(c,0)"]=1,
+["vec2(0,c)"]=1,
+["vec2(t,c)"]=3,
+["vec2(c,t)"]=3,
+["params.xy"]=1,["params.zw"]=1,
+["c_one()"]=0.1,["c_i()"]=0.1,
+}
+local normal_symbols_FT={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,["(R)/(R)"]=2,["(R)*(R)"]=4,["(R)-(R)"]=2,["(R)+(R)"]=2}
 function normalize( tbl )
 	local sum=0
 	for i,v in pairs(tbl) do
@@ -768,9 +785,16 @@ end
 normalize(terminal_symbols)
 normalize(terminal_symbols_alt)
 normalize(terminal_symbols_param)
+
 normalize(normal_symbols)
+
 normalize(terminal_symbols_complex)
 normalize(normal_symbols_complex)
+
+normalize(terminal_symbols_FT)
+normalize(terminal_symbols_complex_FT)
+normalize(normal_symbols_FT)
+
 function rand_weighted(tbl)
 	local r=math.random()
 	local sum=0
@@ -792,7 +816,11 @@ function replace_random( s,substr,rep )
 	function rep_one(  )
 		if num_rep==0 then
 			num_rep=num_rep-1
-			return rep()
+			if type(rep)=="function" then
+				return rep()
+			else
+				return rep
+			end
 		else
 			num_rep=num_rep-1
 			return false
@@ -801,38 +829,34 @@ function replace_random( s,substr,rep )
 	local ret=string.gsub(s,substr,rep_one)
 	return ret
 end
-function random_math( steps,seed )
-	local cur_string=seed or "R"
+function make_rand_math( normal_s,terminal_s,forced_s )
+	forced_s=forced_s or {}
+	return function ( steps,seed )
+		local cur_string=seed or "R"
 
-	function M(  )
-		return rand_weighted(normal_symbols)
-	end
-	function MT(  )
-		return rand_weighted(terminal_symbols)
-	end
+		function M(  )
+			return rand_weighted(normal_s)
+		end
+		function MT(  )
+			return rand_weighted(terminal_s)
+		end
 
-	for i=1,steps do
-		cur_string=replace_random(cur_string,"R",M)
+		for i=1,steps do
+			cur_string=replace_random(cur_string,"R",M)
+		end
+		for i,v in ipairs(forced_s) do
+			cur_string=replace_random(cur_string,"R",v)
+		end
+		cur_string=string.gsub(cur_string,"R",MT)
+		return cur_string
 	end
-	cur_string=string.gsub(cur_string,"R",MT)
-	return cur_string
 end
-function random_math_complex( steps,seed )
-	local cur_string=seed or "R"
+random_math=make_rand_math(normal_symbols,terminal_symbols)
+random_math_FT=make_rand_math(normal_symbols_FT,terminal_symbols_FT,{"c","t"})
+random_math_complex_FT=make_rand_math(normal_symbols_complex,terminal_symbols_complex_FT,{"vec2(c,t)","params.xy","params.zw"})
+random_math_complex=make_rand_math(normal_symbols_complex,terminal_symbols_complex)
 
-	function M(  )
-		return rand_weighted(normal_symbols_complex)
-	end
-	function MT(  )
-		return rand_weighted(terminal_symbols_complex)
-	end
 
-	for i=1,steps do
-		cur_string=replace_random(cur_string,"R",M)
-	end
-	cur_string=string.gsub(cur_string,"R",MT)
-	return cur_string
-end
 function random_math_complex_pts(steps,pts,seed )
 	local cur_string=seed or "R"
 
@@ -889,6 +913,24 @@ function random_math_complex_series( steps,seed )
 			cur_string=cur_string..string.format("+%s*vec2(%.3f,%.3f)",sub_s,1+math.random()*0.25-0.125,1+math.random()*0.25-0.125)
 		end
 		--]]
+	end
+	return cur_string
+end
+function random_math_complex_series_t( steps,seed )
+	seed=seed or "p"
+	local cur_string=seed
+	function MT(  )
+		return rand_weighted(terminal_symbols_complex)
+	end
+
+	for i=1,steps do
+		local sub_s=seed
+		for i=1,i do
+			sub_s=string.format("c_mul(%s,%s)",sub_s,seed)
+		end
+		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
+
+		cur_string=cur_string..string.format("+c_mul(%s,FT(normed_i,%g))",sub_s,(i-1)/steps)
 	end
 	return cur_string
 end
@@ -964,9 +1006,41 @@ end
 animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
-	str_cmplx=random_math_complex(rand_complexity)
+	--str_cmplx=random_math_complex(rand_complexity)
 	--str_cmplx=random_math_complex(rand_complexity,"c_mul(R,last_s/length(last_s)+c_one())")
-	--str_cmplx=random_math_complex_series(rand_complexity)
+	--local FT=random_math_complex(rand_complexity)
+	other_code=""
+	--[=[
+	other_code=[[
+	vec2 FT(float t,float c)
+	{
+		float vv=cos(t*M_PI*2);
+		float cc=sin(t*M_PI*2);
+		return vec2(
+		vv*params.x+cc*params.y,
+		vv*params.z+cc*params.w
+		);
+	}
+	]]
+	]=]
+	--[=[
+	other_code=string.format([[
+	vec2 FT(float t,float c)
+	{
+		return vec2(
+		%s,
+		%s
+		);
+	}]],random_math_FT(rand_complexity),random_math_FT(rand_complexity))
+	--]=]
+
+	other_code=string.format([[
+	vec2 FT(float t,float c)
+	{
+		return %s;
+	}]],random_math_complex_FT(rand_complexity))
+
+	str_cmplx=random_math_complex_series_t(4).."+"..random_math_complex_series_t(4,"s")
 	--[[
 	--str_cmplx="c_mul(c_div((c_div(s,c_cos((params.xy)-(s))))-(s),(c_div((c_conj(s))+(c_div(p,c_cos(p))),((s)-(s))+(c_atan((params.xy)-(p)))))-(c_conj(p))),c_tan(((c_div((s)+(p),(s)+(params.xy)))-((p)+(c_conj(s))))-(p)))"
 	--str_cmplx="c_conj(c_tan(((p)+(c_conj((s)-(c_conj((p)+(p))))))+((((c_inv(c_inv(s)))-(c_conj(s)))-(c_sin((c_mul(c_sin((params.zw)+(p)),p))+(s))))-(((s)+(s))+((p)+(((c_div(p,p))+(s))+(s)))))))"
@@ -1066,6 +1140,7 @@ function rand_function(  )
 	--str_y=random_math_fourier(2,rand_complexity).."/"..str_x
 	str_preamble=""
 	str_postamble=""
+	--str_preamble="vec2 FT="..FT..";"
 	--[[ gravity
 	str_preamble=str_preamble.."s*=1/move_dist;"
 	--]]
@@ -1090,7 +1165,7 @@ function rand_function(  )
 	
 	--]]
 	
-	-- [[ complex seriesize
+	--[[ complex seriesize
 	local series_size=7
 	local rand_offset=0.1
 	local rand_size=0.25
@@ -1105,7 +1180,7 @@ function rand_function(  )
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	-- [[ polar gravity
+	--[[ polar gravity
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
 	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"
@@ -1114,6 +1189,9 @@ function rand_function(  )
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
 	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(p,p));s=last_s+ds*(move_dist*vv/ls);"
+	--]]
+	--[[ move towards circle
+	str_postamble=str_postamble.."vec2 tow_c=s+vec2(cos(normed_i*M_PI*2),sin(normed_i*M_PI*2))*move_dist;s=(dot(tow_c,s)*tow_c/length(tow_c));"
 	--]]
 	--[[ boost
 	str_preamble=str_preamble.."s*=move_dist;"
@@ -1138,7 +1216,7 @@ function rand_function(  )
 	--str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
 	--str_postamble=str_postamble.."s=s*vec2(exp(move_dist/(-p.x*p.x)),exp(move_dist/(-p.y*p.y)));"
 	--]]
-	-- [[ invert-ination
+	--[[ invert-ination
 	--str_preamble=str_preamble.."s=c_inv(s);"
 	str_postamble=str_postamble.."s=c_inv(s);"
 	--]]
@@ -1157,9 +1235,9 @@ function rand_function(  )
 	str_postamble=str_postamble.."s=c_div(s,params.zw);s-=params.xy;"
 	--]]
 	--[[ rotate (p)
-	str_preamble=str_preamble.."s=vec2(cos(p.x)*s.x-sin(p.x)*s.y,cos(p.x)*s.y+sin(p.x)*s.x);"
+	--str_preamble=str_preamble.."s=vec2(cos(p.x)*s.x-sin(p.x)*s.y,cos(p.x)*s.y+sin(p.x)*s.x);"
 	--str_preamble=str_preamble.."s=vec2(cos(p.y)*s.x-sin(p.y)*s.y,cos(p.y)*s.y+sin(p.y)*s.x);"
-	--str_preamble=str_preamble.."s=vec2(cos(normed_i*M_PI*2)*s.x-sin(normed_i*M_PI*2)*s.y,cos(normed_i*M_PI*2)*s.y+sin(normed_i*M_PI*2)*s.x);"
+	str_preamble=str_preamble.."s=vec2(cos(normed_i*M_PI*2)*s.x-sin(normed_i*M_PI*2)*s.y,cos(normed_i*M_PI*2)*s.y+sin(normed_i*M_PI*2)*s.x);"
 	--]]
 	--[[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
@@ -1195,9 +1273,9 @@ function rand_function(  )
 	--]]
 	--[[ unrotate POST
 	--str_postamble=str_postamble.."s=vec2(cos(-params.z)*s.x-sin(-params.z)*s.y,cos(-params.z)*s.y+sin(-params.z)*s.x);"
-	str_postamble=str_postamble.."s=vec2(cos(-0.7853981)*s.x-sin(-0.7853981)*s.y,cos(-0.7853981)*s.y+sin(-0.7853981)*s.x);"
+	--str_postamble=str_postamble.."s=vec2(cos(-0.7853981)*s.x-sin(-0.7853981)*s.y,cos(-0.7853981)*s.y+sin(-0.7853981)*s.x);"
 	--str_postamble=str_postamble.."p=vec2(cos(-params.z*M_PI*2)*p.x-sin(-params.z*M_PI*2)*p.y,cos(-params.z*M_PI*2)*p.y+sin(-params.z*M_PI*2)*p.x);"
-	--str_preamble=str_preamble.."s=vec2(cos(-normed_i*M_PI*2)*s.x-sin(-normed_i*M_PI*2)*s.y,cos(-normed_i*M_PI*2)*s.y+sin(-normed_i*M_PI*2)*s.x);"
+	str_postamble=str_postamble.."s=vec2(cos(-normed_i*M_PI*2)*s.x-sin(-normed_i*M_PI*2)*s.y,cos(-normed_i*M_PI*2)*s.y+sin(-normed_i*M_PI*2)*s.x);"
 	--]]
 	--[[ unoffset POST
 	str_postamble=str_postamble.."s-=params.xy;"
@@ -1215,6 +1293,7 @@ function rand_function(  )
 	str_postamble=str_postamble.."p=tp;"
 	--]]
 	print("==============")
+	print(other_code)
 	print(str_preamble)
 	if complex then
 		print(str_cmplx)
@@ -1654,6 +1733,9 @@ vec2 from_polar(vec2 p)
 {
 	return vec2(cos(p.y)*p.x,sin(p.y)*p.x);
 }
+
+%s
+
 vec3 func_actual(vec2 p,int it_count)
 {
 	vec2 s = %s;
@@ -1662,7 +1744,7 @@ vec3 func_actual(vec2 p,int it_count)
 	float weight1=1;
 	for(int i=0;i<it_count;i++)
 		{
-			float normed_i=float(i)/float(it_count);
+			float normed_i=float(i)/float(max_iters);
 			%s
 			%s
 			%s
@@ -1960,7 +2042,7 @@ void main()
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
 }
-]==],escape_mode_str(),make_init_cond(),str_preamble,make_coord_change(),str_postamble),
+]==],escape_mode_str(),other_code or "",make_init_cond(),str_preamble,make_coord_change(),str_postamble),
 string.format([==[
 #version 330
 #line 1282
@@ -2009,7 +2091,7 @@ void main(){
 	//float a=1; //uncomment this for line mode
 	float intensity=1/float(pix_size);
 	float it_normed=float(it_count)/float(max_iters);
-	float it_w=1;//exp(1)-exp(it_normed);
+	float it_w=1;//exp(it_normed);
 	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
 	//color=vec4(a,0,0,1);
@@ -2256,7 +2338,7 @@ function visit_iter()
 				add_visit_shader:draw_points(samples.d,samples.w*samples.h)
 			end
 		else
-			for i=1,config.IFS_steps do
+			for i=math.floor(config.IFS_steps*0.1),config.IFS_steps do
 				add_visit_shader:set("seed",math.random())
 				add_visit_shader:set_i("iters",i)
 				if render_lines then
