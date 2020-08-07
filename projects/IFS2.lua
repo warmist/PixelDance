@@ -81,7 +81,8 @@ if samples_data==nil or samples_data.w~=sample_count then
 	get_other=function ( t )
 		return t[t.other]
 	end}
-	-- [[
+	need_clear=true
+	-- [[ needs to duplicate the point init logic so dont
 	for i=0,sample_count-1 do
 		local x=math.random()
 		local y=math.random()
@@ -1043,7 +1044,7 @@ function rand_function(  )
 	--str_preamble=str_preamble.."s=vec2(cos(p.y)*s.x-sin(p.y)*s.y,cos(p.y)*s.y+sin(p.y)*s.x);"
 	str_preamble=str_preamble.."s=vec2(cos(normed_iter*M_PI*2)*s.x-sin(normed_iter*M_PI*2)*s.y,cos(normed_iter*M_PI*2)*s.y+sin(normed_iter*M_PI*2)*s.x);"
 	--]]
-	--[[ const-delta-like
+	-- [[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
 	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
@@ -1780,8 +1781,54 @@ end
 end
 
 make_visit_shader(true)
+randomize_points=shaders.Make(
+[==[
+#version 330
+#define M_PI   3.14159265358979323846264338327950288
 
+in vec4 position;
+out vec4 point_out;
 
+uniform float radius;
+uniform float rand_number;
+float random(vec2 co)
+{
+    float a = 12.9898;
+    float b = 78.233;
+    float c = 43758.5453;
+    float dt= dot(co.xy ,vec2(a,b));
+    float sn= mod(dt,3.14);
+    return fract(sin(sn) * c);
+}
+vec2 random2(vec2 co)
+{
+    return vec2(random(co),random(co.yx*vec2(11.231,7.1)+vec2(2.5,-1.7)));
+}
+vec2 gaussian2 (vec2 seed,vec2 mean,vec2 var)
+{
+    return  vec2(
+    sqrt(-2 * var.x * log(seed.x)) * cos(2 * M_PI * seed.y),
+    sqrt(-2 * var.y * log(seed.x)) * sin(2 * M_PI * seed.y))+mean;
+}
+void main()
+{
+	vec2 seed=random2(position.zw+vec2(rand_number*1.2,rand_number*777));
+	//vec2 seed=vec2(rand(rand_number*999999),rand(position.x*789789+position.w*rand_number*45648978));
+	vec2 old_start=position.zw;
+	//vec2 seed=vec2(1-random(vec2(random_number,random_number)));//*2-vec2(1);
+	//vec2 g =seed;
+	vec2 g=gaussian2(seed,vec2(0),vec2(radius));
+	point_out.xy=g;
+	point_out.zw=g;
+}
+]==],
+[==[
+void main()
+{
+
+}
+]==],
+"point_out")
 visit_call_count=0
 local visit_plan={
 	{30,1},
@@ -1827,19 +1874,7 @@ function visit_iter()
 	end
 	make_visits_texture()
 	make_visit_shader()
-	add_visit_shader:use()
-	add_visit_shader:set("center",config.cx,config.cy)
-	add_visit_shader:set("scale",config.scale,config.scale*aspect_ratio)
-	add_visit_shader:set("params",config.v0,config.v1,config.v2,config.v3)
-	add_visit_shader:set("move_dist",config.move_dist)
-
-	visit_tex.t:use(0)
-	add_visit_shader:blend_add()
-	add_visit_shader:set_i("img_tex",1)
-	add_visit_shader:set_i("pix_size",psize)
-	if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
-		error("failed to set framebuffer up")
-	end
+	
 	local gen_radius=config.gen_radius
 
 	local draw_sample_count=sample_count
@@ -1852,6 +1887,7 @@ function visit_iter()
 	if cur_visit_iter>config.IFS_steps or need_clear then
 		visit_call_count=visit_call_count+1
 		cur_visit_iter=0
+		-- [===[
 		for i=0,draw_sample_count-1 do
 			--gaussian blob
 		 	local x,y=gaussian2(0,gen_radius,0,gen_radius)
@@ -1972,6 +2008,35 @@ function visit_iter()
 		local cs=samples:get_current()
 		cs:use()
 		cs:set(samples_data.d,draw_sample_count*4*4)
+		--]===]
+		--[===[
+		randomize_points:use()
+		randomize_points:set("rand_number",math.random())
+		randomize_points:set("radius",config.gen_radius)
+		local so=samples:get_other()
+		so:use()
+		so:bind_to_feedback()
+
+		samples:get_current():use()
+		randomize_points:raster_discard(true)
+		randomize_points:draw_points(0,draw_sample_count,4,1)
+		__unbind_buffer()
+		randomize_points:raster_discard(false)
+		samples:flip()
+		--]===]
+	end
+	add_visit_shader:use()
+	add_visit_shader:set("center",config.cx,config.cy)
+	add_visit_shader:set("scale",config.scale,config.scale*aspect_ratio)
+	add_visit_shader:set("params",config.v0,config.v1,config.v2,config.v3)
+	add_visit_shader:set("move_dist",config.move_dist)
+
+	visit_tex.t:use(0)
+	add_visit_shader:blend_add()
+	add_visit_shader:set_i("img_tex",1)
+	add_visit_shader:set_i("pix_size",psize)
+	if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
+		error("failed to set framebuffer up")
 	end
 	if need_clear then
 		__clear()
@@ -1995,7 +2060,7 @@ function visit_iter()
 		add_visit_shader:set("seed",math.random())
 		add_visit_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
 		if cur_visit_iter<10 and not config.draw then
-			add_visit_shader:raster_discard(true)
+			--add_visit_shader:raster_discard(true)
 		else
 			add_visit_shader:raster_discard(false)
 		end
