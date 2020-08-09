@@ -9,6 +9,8 @@ local size_mult=1
 --[[
 	TODO:
 		add in-shader random refill
+		split very changing and non-changing (s/p) parts
+		when randomizing check if moved too far or not moved at all...
 --]]
 
 win_w=win_w or 0
@@ -16,8 +18,8 @@ win_h=win_h or 0
 
 aspect_ratio=aspect_ratio or 1
 function update_size()
-	local trg_w=1920*size_mult
-	local trg_h=1200*size_mult
+	local trg_w=2560*size_mult
+	local trg_h=1440*size_mult
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
 	if win_w~=trg_w or win_h~=trg_h then
@@ -108,7 +110,8 @@ config=make_config({
 	{"v2",0,type="float",min=-1,max=1},
 	{"v3",0,type="float",min=-1,max=1},
 
-	{"IFS_steps",50,type="int",min=1,max=100},
+	{"IFS_steps",50,type="int",min=1,max=10000},
+	{"smart_reset",false,type="boolean"},
 	{"move_dist",0.4,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
 
@@ -596,7 +599,7 @@ end
 local terminal_symbols={
 ["s.x"]=10,["s.y"]=10,["p.x"]=3,["p.y"]=3,
 ["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,
-["normed_iter"]=0.05,["1"]=0.1,["0"]=0.1
+["normed_iter"]=0.05,["1.0"]=0.1,["0.0"]=0.1
 }
 local terminal_symbols_alt={
 ["p.x"]=3,["p.y"]=3
@@ -629,9 +632,9 @@ local normal_symbols_complex={
 ["c_tan(R)"]=1,["c_sin(R)"]=1,["c_cos(R)"]=1,
 ["c_conj(R)"]=1,
 --]=]
-["c_div(R,R)"]=4,["c_inv(R)"]=1,
-["c_mul(R,R)"]=1,
-["(R)-(R)"]=6,["(R)+(R)"]=6
+["c_div(R,R)"]=0.01,["c_inv(R)"]=1,
+["c_mul(R,R)"]=2,
+["(R)-(R)"]=3,["(R)+(R)"]=3
 }
 
 function normalize( tbl )
@@ -711,6 +714,8 @@ end
 random_math=make_rand_math(normal_symbols,terminal_symbols)
 random_math_complex=make_rand_math(normal_symbols_complex,terminal_symbols_complex)
 
+random_math_x=make_rand_math(normal_symbols,terminal_symbols,{"s.x","params.x","p.x"})
+random_math_y=make_rand_math(normal_symbols,terminal_symbols,{"s.y","params.y","p.y"})
 
 function random_math_complex_pts(steps,pts,seed )
 	local cur_string=seed or "R"
@@ -845,6 +850,8 @@ animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
 	str_cmplx=random_math_complex(rand_complexity)
+	str_x=random_math_x(rand_complexity)
+	str_y=random_math_y(rand_complexity)
 	--str_cmplx=random_math_complex(rand_complexity,"c_mul(R,last_s/length(last_s)+c_one())")
 	--local FT=random_math_complex(rand_complexity)
 	--[[
@@ -970,7 +977,7 @@ function rand_function(  )
 
 	--]]
 
-	-- [[ complex seriesize
+	--[[ complex seriesize
 	local series_size=7
 	local rand_offset=0.1
 	local rand_size=0.25
@@ -981,18 +988,18 @@ function rand_function(  )
 			sub_s=string.format("c_mul(%s,%s)","s",sub_s)
 		end
 		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
-		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)*normed_iter",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
 	--[[ polar gravity
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
-	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
+	str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
 	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
-	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(p,p));s=last_s+ds*(move_dist*vv/ls);"
 	--]]
 	--[[ move towards circle
@@ -1022,7 +1029,7 @@ function rand_function(  )
 	--str_postamble=str_postamble.."s=s*vec2(exp(move_dist/(-p.x*p.x)),exp(move_dist/(-p.y*p.y)));"
 	--]]
 	--[[ invert-ination
-	--str_preamble=str_preamble.."s=c_inv(s);"
+	str_preamble=str_preamble.."s=c_inv(s);"
 	str_postamble=str_postamble.."s=c_inv(s);"
 	--]]
 	--[[ offset
@@ -1044,9 +1051,10 @@ function rand_function(  )
 	--str_preamble=str_preamble.."s=vec2(cos(p.y)*s.x-sin(p.y)*s.y,cos(p.y)*s.y+sin(p.y)*s.x);"
 	str_preamble=str_preamble.."s=vec2(cos(normed_iter*M_PI*2)*s.x-sin(normed_iter*M_PI*2)*s.y,cos(normed_iter*M_PI*2)*s.y+sin(normed_iter*M_PI*2)*s.x);"
 	--]]
-	-- [[ const-delta-like
+	--[[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
-	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
+	str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
 	--]]
@@ -1152,7 +1160,7 @@ function gui()
 	if imgui.Button("Update frame") then
 		update_animation_values()
 	end
-	imgui.Text(string.format("Done: %d",(cur_visit_iter/config.IFS_steps)*100))
+	imgui.Text(string.format("Done: %d %s",(cur_visit_iter/config.IFS_steps)*100,reset_stats or ""))
 	imgui.End()
 end
 
@@ -1495,14 +1503,14 @@ vec3 func(vec2 s,vec2 p)
 #endif
 #if 0
 	vec2 v=to_polar(p);
-	vec2 r=func_actual(s,v);
-	return from_polar(r);
+	vec3 r=func_actual(s,v);
+	return vec3(from_polar(r.xy),r.z);
 #endif
 #if 0
 	vec2 v=to_polar(p);
-	vec2 r=func_actual(s,v);
-	v+=r;
-	return from_polar(v);
+	vec3 r=func_actual(s,v);
+	v+=r.xy;
+	return vec3(from_polar(v),r.z);
 #endif
 #if 0
 	vec2 r=func_actual(s,p);
@@ -1866,7 +1874,22 @@ function vdc( n,base )
 end
 
 local cur_sample=0
+function test_point_for_random( p )
+	local dx=p.r-p.b
+	local dy=p.g-p.a
+	if dx~=dx or dy~=dy then --nan check
+		return 1
+	end
 
+	local dist=math.sqrt(dx*dx+dy*dy) --distance from start point
+	if dist<0.000005 then
+		return 2
+	end
+	local cdist=math.sqrt(p.r*p.r+p.g*p.g) --distance from center
+	if cdist>2 then
+		return 3
+	end
+end
 function visit_iter()
 	local psize=config.point_size
 	if psize<=0 then
@@ -1874,20 +1897,27 @@ function visit_iter()
 	end
 	make_visits_texture()
 	make_visit_shader()
-	
+
 	local gen_radius=config.gen_radius
 
 	local draw_sample_count=sample_count
 	if config.draw then
-		draw_sample_count=math.min(1e6,sample_count)
+		draw_sample_count=math.min(1e5,sample_count)
 	end
 
+	local count_reset={0,0,0}
 
 	local sample_count_w=math.floor(math.sqrt(draw_sample_count))
 	if cur_visit_iter>config.IFS_steps or need_clear then
 		visit_call_count=visit_call_count+1
 		cur_visit_iter=0
 		-- [===[
+		if config.smart_reset then
+			local cs=samples:get_current()
+			cs:use()
+			cs:read(samples_data.d,draw_sample_count*4*4)
+			__unbind_buffer()
+		end
 		for i=0,draw_sample_count-1 do
 			--gaussian blob
 		 	local x,y=gaussian2(0,gen_radius,0,gen_radius)
@@ -1997,7 +2027,13 @@ function visit_iter()
 				x=math.random()*2-1
 				y=math.random()*2-1
 			end
-			samples_data.d[i]={x,y,x,y}
+			local need_reset=test_point_for_random(samples_data.d[i])
+			if not config.smart_reset or need_reset or need_clear then
+				samples_data.d[i]={x,y,x,y}
+				if need_reset then
+					count_reset[need_reset]=count_reset[need_reset]+1
+				end
+			end
 			--[[ for lines
 			local a2 = math.random() * 2 * math.pi
 			x=x+math.cos(a2)*config.move_dist
@@ -2005,6 +2041,7 @@ function visit_iter()
 			--samples.d[i+1]={x,y}
 			--]]
 		end
+		reset_stats=string.format("Reset: NAN=%.3g TOO_CLOSE:%.3g TOO_FAR:%.3g",count_reset[1]/draw_sample_count,count_reset[2]/draw_sample_count,count_reset[3]/draw_sample_count)
 		local cs=samples:get_current()
 		cs:use()
 		cs:set(samples_data.d,draw_sample_count*4*4)
@@ -2043,7 +2080,7 @@ function visit_iter()
 		cur_visit_iter=0
 		need_clear=false
 	end
-	
+
 
 	local max_iter=1
 	if not config.draw then
@@ -2059,8 +2096,8 @@ function visit_iter()
 
 		add_visit_shader:set("seed",math.random())
 		add_visit_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
-		if cur_visit_iter<10 and not config.draw then
-			--add_visit_shader:raster_discard(true)
+		if cur_visit_iter<2 and not config.draw then
+			add_visit_shader:raster_discard(true)
 		else
 			add_visit_shader:raster_discard(false)
 		end

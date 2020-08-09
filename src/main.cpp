@@ -583,6 +583,7 @@ int main(int argc, char** argv)
         sf::Event event;
 		bool need_restart = false;
         bool need_reload = false;
+        bool need_print = false;
         while (window.pollEvent(event)) {
             ImGui::SFML::ProcessEvent(event);
 
@@ -606,6 +607,13 @@ int main(int argc, char** argv)
 			{
 				if (event.key.shift && event.key.control && event.key.code == sf::Keyboard::R)
 					need_restart = true;
+                if (event.key.shift && event.key.control && event.key.code == sf::Keyboard::E)
+                {
+                    for (auto& e : current_project.errors)
+                    {
+                        printf("%s\n", e.c_str());
+                    }
+                }
                 if (event.key.shift && event.key.control && event.key.code == sf::Keyboard::T)
                 {
                     need_restart = true;
