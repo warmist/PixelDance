@@ -183,13 +183,14 @@ static int push_attribute(lua_State* L)
         luaL_error(L, "Attribute %s not found in shader", name);
 	auto float_count=luaL_checkint(L,4);
     int attrib_type = luaL_optint(L, 5, GL_FLOAT);
+    int attrib_stride = luaL_optint(L, 6, 0);
     GLenum err;
     if ((err = glGetError()) != GL_NO_ERROR)
         printf("Pre:%d\n", err);
 	glEnableVertexAttribArray(pos_idx);
     if ((err = glGetError()) != GL_NO_ERROR)
         printf("enable:%d\n", err);
-	glVertexAttribPointer(pos_idx, float_count, attrib_type, false, 0, data);
+	glVertexAttribPointer(pos_idx, float_count, attrib_type, false, attrib_stride, data);
     if ((err = glGetError()) != GL_NO_ERROR)
         printf("vertex_pointer:%d\n", err);
 	pushed_attributes.push_back(pos_idx);
@@ -275,14 +276,19 @@ static int draw_array_lines(lua_State* L)
     if (feedbackmode)
         glBeginTransformFeedback(GL_LINES);
     auto pos_idx = glGetAttribLocation(s->id, "position");
-    glEnableVertexAttribArray(pos_idx);
-    glVertexAttribPointer(pos_idx, 2, GL_FLOAT, false, 0, data);
+    if (pos_idx != -1)
+    {
+        glEnableVertexAttribArray(pos_idx);
+        glVertexAttribPointer(pos_idx, 2, GL_FLOAT, false, 0, data);
+    }
     if(is_strip)
         glDrawArrays(GL_LINE_STRIP, 0, count);
     else
         glDrawArrays(GL_LINES, 0, count);
 
-    glDisableVertexAttribArray(pos_idx);
+    if (pos_idx != -1)
+        glDisableVertexAttribArray(pos_idx);
+
     if (feedbackmode)
         glEndTransformFeedback();
     clear_attributes();

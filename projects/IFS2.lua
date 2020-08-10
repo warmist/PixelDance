@@ -86,8 +86,8 @@ if samples_data==nil or samples_data.w~=sample_count then
 	need_clear=true
 	-- [[ needs to duplicate the point init logic so dont
 	for i=0,sample_count-1 do
-		local x=math.random()
-		local y=math.random()
+		local x=0--math.random()
+		local y=0--math.random()
 		samples_data:set(i,0,{x,y,x,y})
 	end
 	for i=1,2 do
@@ -1219,15 +1219,15 @@ end
 
 function make_visit_shader( force )
 
-if add_visit_shader==nil or force then
-	add_visit_shader=shaders.Make(
+if transform_shader==nil or force then
+	transform_shader=shaders.Make(
 string.format([==[
 #version 330
-#line 1092
+#line 1226
 //escape_mode_str
 #define ESCAPE_MODE %s
 layout(location = 0) in vec4 position;
-out vec3 pos;
+//out vec3 pos;
 out vec4 point_out;
 
 #define M_PI 3.1415926535897932384626433832795
@@ -1713,38 +1713,66 @@ void main()
 #if ESCAPE_MODE
 	vec2 inp_p=mapping((position.xy-center)/scale);
     vec3 rez= func(inp_p);//*scale+center;
-    pos.xy=position.xy;//*scale+center;
-    gl_Position.xy=position.xy;//*scale+center;
-    pos.z=rez.z;//length(rez);
+    //pos.xy=position.xy;//*scale+center;
+    //gl_Position.xy=position.xy;//*scale+center;
+    //pos.z=rez.z;//length(rez);
     point_out.xy=position.xy;
 #else
 	point_out.xy=func(position.xy,position.zw).xy;
 	point_out.zw=position.zw;
-	gl_Position.xy = mapping(point_out.xy*scale+center);
-    pos=gl_Position.xyz;
+	//pos=vec3(point_out.xy,1);
+	//gl_Position.xy = mapping(point_out.xy*scale+center);
+    //pos=gl_Position.xyz;
 #endif
 
     gl_PointSize=pix_size;
-	gl_Position.z = 0;
-    gl_Position.w = 1.0;
+	//gl_Position.z = 0;
+    //gl_Position.w = 1.0;
 }
 ]==],
 --Args to format
 	escape_mode_str(),
 	other_code or "",
 	str_preamble.."\n"..make_coord_change().."\n"..str_postamble
-),string.format(
+),
+[==[ void main(){} ]==],"point_out"
+)
+end
+
+end
+make_visit_shader(true)
+
+add_visits_shader=shaders.Make(
 [==[
 #version 330
-#line 1282
+#line 1748
+layout(location = 0) in vec2 pos;
+
+out vec2 pos_f;
+uniform vec2 center;
+uniform vec2 scale;
+void main()
+{
+    gl_Position.xyz = vec3(pos*scale+center,0);
+    gl_Position.w = 1.0;
+    pos_f=pos;
+}
+]==],
+string.format(
+[==[
+#version 330
+#line 1763
 
 #define ESCAPE_MODE %s
 
 out vec4 color;
-in vec3 pos;
+in vec2 pos_f;
+
 uniform sampler2D img_tex;
 uniform int pix_size;
 uniform float normed_iter;
+
+
 float shape_point(vec2 pos)
 {
 	float rr=dot(pos.xy,pos.xy);
@@ -1753,6 +1781,7 @@ float shape_point(vec2 pos)
 	return delta_size;
 }
 void main(){
+	vec2 pos=pos_f;
 #if ESCAPE_MODE
 	//if(pos.z>float(it_count)/10)
 	//	discard;
@@ -1782,13 +1811,9 @@ void main(){
 	color=vec4(a,0,0,1);
 	//color=vec4(a*intensity*v*it_w,0,0,1);
 }
-]==],escape_mode_str()),"point_out"
-)
-end
+]==],escape_mode_str()))
 
-end
 
-make_visit_shader(true)
 randomize_points=shaders.Make(
 [==[
 #version 330
@@ -2028,7 +2053,7 @@ function visit_iter()
 				y=math.random()*2-1
 			end
 			local need_reset=test_point_for_random(samples_data.d[i])
-			if not config.smart_reset or need_reset or need_clear then
+			if need_clear or not config.smart_reset or need_reset  then
 				samples_data.d[i]={x,y,x,y}
 				if need_reset then
 					count_reset[need_reset]=count_reset[need_reset]+1
@@ -2062,29 +2087,17 @@ function visit_iter()
 		samples:flip()
 		--]===]
 	end
-	add_visit_shader:use()
-	add_visit_shader:set("center",config.cx,config.cy)
-	add_visit_shader:set("scale",config.scale,config.scale*aspect_ratio)
-	add_visit_shader:set("params",config.v0,config.v1,config.v2,config.v3)
-	add_visit_shader:set("move_dist",config.move_dist)
-
-	visit_tex.t:use(0)
-	add_visit_shader:blend_add()
-	add_visit_shader:set_i("img_tex",1)
-	add_visit_shader:set_i("pix_size",psize)
-	if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
-		error("failed to set framebuffer up")
-	end
-	if need_clear then
-		__clear()
-		cur_visit_iter=0
-		need_clear=false
-	end
+-- [==[
+	transform_shader:use()
+	transform_shader:set("center",config.cx,config.cy)
+	transform_shader:set("scale",config.scale,config.scale*aspect_ratio)
+	transform_shader:set("params",config.v0,config.v1,config.v2,config.v3)
+	transform_shader:set("move_dist",config.move_dist)
 
 
 	local max_iter=1
 	if not config.draw then
-		max_iter=8
+		--max_iter=8
 	end
 	for i=1,max_iter do
 
@@ -2094,22 +2107,37 @@ function visit_iter()
 
 		samples:get_current():use()
 
-		add_visit_shader:set("seed",math.random())
-		add_visit_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
-		if cur_visit_iter<2 and not config.draw then
-			add_visit_shader:raster_discard(true)
-		else
-			add_visit_shader:raster_discard(false)
-		end
-		add_visit_shader:draw_points(0,draw_sample_count,4,1)
+		transform_shader:set("seed",math.random())
+		transform_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
+		transform_shader:raster_discard(true)
+		transform_shader:draw_points(0,draw_sample_count,4,1)
 		samples:flip()
 		cur_visit_iter=cur_visit_iter+1
 	end
-	add_visit_shader:raster_discard(false)
+--]==]
+	add_visits_shader:use()
+	local cs=samples:get_current()
+	cs:use()
 
+	add_visits_shader:raster_discard(false)
+	visit_tex.t:use(0)
+	add_visits_shader:push_attribute(0,"pos",2,nil,4*4)
+	add_visits_shader:blend_add()
+	add_visits_shader:set_i("img_tex",1)
+	add_visits_shader:set_i("pix_size",psize)
+	add_visits_shader:set("center",config.cx,config.cy)
+	add_visits_shader:set("scale",config.scale,config.scale*aspect_ratio)
+	if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
+		error("failed to set framebuffer up")
+	end
+	if need_clear then
+		__clear()
+		cur_visit_iter=0
+		need_clear=false
+	end
+	add_visits_shader:draw_points(0,draw_sample_count,4,1)
 
 	__unbind_buffer()
-	add_visit_shader:blend_default()
 	__render_to_window()
 end
 
