@@ -212,14 +212,15 @@ static int push_iattribute(lua_State* L)
     if (pos_idx == -1)
         luaL_error(L, "Attribute %s not found in shader", name);
     auto float_count = luaL_checkint(L, 4);
-    int attrib_type = luaL_optint(L, 5, GL_FLOAT);
+    int attrib_type = luaL_optint(L, 5, GL_UNSIGNED_INT);
+    int attrib_stride = luaL_optint(L, 6, 0);
     GLenum err;
     if ((err = glGetError()) != GL_NO_ERROR)
         printf("Pre:%d\n", err);
     glEnableVertexAttribArray(pos_idx);
     if ((err = glGetError()) != GL_NO_ERROR)
         printf("enable:%d\n", err);
-    glVertexAttribIPointer(pos_idx, float_count, attrib_type, 0, data);
+    glVertexAttribIPointer(pos_idx, float_count, attrib_type, attrib_stride, data);
     if ((err = glGetError()) != GL_NO_ERROR)
         printf("vertex_pointer:%d\n", err);
     pushed_attributes.push_back(pos_idx);
