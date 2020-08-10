@@ -1718,7 +1718,9 @@ void main()
     //pos.z=rez.z;//length(rez);
     point_out.xy=position.xy;
 #else
-	point_out.xy=func(position.xy,position.zw).xy;
+	vec2 p=func(position.xy,position.zw).xy;
+	p=(mapping(p*scale+center)-center)/scale;
+	point_out.xy=p;
 	point_out.zw=position.zw;
 	//pos=vec3(point_out.xy,1);
 	//gl_Position.xy = mapping(point_out.xy*scale+center);
@@ -1824,6 +1826,9 @@ out vec4 point_out;
 
 uniform float radius;
 uniform float rand_number;
+
+uniform int smart_reset;
+//uniform vec4 params;
 float random(vec2 co)
 {
     float a = 12.9898;
@@ -1843,16 +1848,52 @@ vec2 gaussian2 (vec2 seed,vec2 mean,vec2 var)
     sqrt(-2 * var.x * log(seed.x)) * cos(2 * M_PI * seed.y),
     sqrt(-2 * var.y * log(seed.x)) * sin(2 * M_PI * seed.y))+mean;
 }
+vec2 hash22(vec2 p)
+{
+	vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yzx+33.33);
+    return fract((p3.xx+p3.yz)*p3.zy);
+
+}
+bool need_reset(vec2 p,vec2 s)
+{
+#if 1
+	if(isnan(s.x) || isnan(s.y))
+		return true;
+#endif
+#if 1
+	float move_dist=length(s-p);
+	if(move_dist<0.000001)
+		return true;
+#endif
+#if 1
+	float dist=length(s);
+	if(dist>0.5)
+		return true;
+#endif
+	return false;
+}
 void main()
 {
-	vec2 seed=random2(position.zw+vec2(rand_number*1.2,rand_number*777));
+	float par_point=10000.0;
+	float par_uniform=1000.0;
+	float par_id=0.05;
+	//vec2 seed=hash22(position.zw*params.x+hash22(vec2(rand_number*params.y,gl_VertexID*params.z))*params.w);
+	vec2 seed=hash22(vec2(rand_number*par_uniform,gl_VertexID*par_id)+position.zw*par_point);
+	//vec2 seed=hash22(position.zw*params.x+vec2(rand_number*params.y,gl_VertexID*params.z));
 	//vec2 seed=vec2(rand(rand_number*999999),rand(position.x*789789+position.w*rand_number*45648978));
-	vec2 old_start=position.zw;
 	//vec2 seed=vec2(1-random(vec2(random_number,random_number)));//*2-vec2(1);
-	//vec2 g =seed;
+	//vec2 g =(seed*2-vec2(1))*radius;
 	vec2 g=gaussian2(seed,vec2(0),vec2(radius));
-	point_out.xy=g;
-	point_out.zw=g;
+	if((smart_reset==0) ||  need_reset(position.zw,position.xy))
+	{
+		point_out.xy=g;
+		point_out.zw=g;
+	}
+	else
+	{
+		point_out=position;
+	}
 }
 ]==],
 [==[
@@ -1916,6 +1957,7 @@ function test_point_for_random( p )
 	end
 end
 function visit_iter()
+	local shader_randomize=true
 	local psize=config.point_size
 	if psize<=0 then
 		psize=get_visit_size(visit_call_count)
@@ -1927,7 +1969,7 @@ function visit_iter()
 
 	local draw_sample_count=sample_count
 	if config.draw then
-		draw_sample_count=math.min(1e5,sample_count)
+		--draw_sample_count=math.min(1e5,sample_count)
 	end
 
 	local count_reset={0,0,0}
@@ -1937,155 +1979,164 @@ function visit_iter()
 		visit_call_count=visit_call_count+1
 		cur_visit_iter=0
 		-- [===[
-		if config.smart_reset then
+		if not shader_randomize then
+			if config.smart_reset then
+				local cs=samples:get_current()
+				cs:use()
+				cs:read(samples_data.d,draw_sample_count*4*4)
+				__unbind_buffer()
+			end
+			for i=0,draw_sample_count-1 do
+				--gaussian blob
+			 	local x,y=gaussian2(0,gen_radius,0,gen_radius)
+				--[[ exact grid
+				local x=((i%sample_count_w)/sample_count_w-0.5)*2
+				local y=(math.floor(i/sample_count_w)/sample_count_w-0.5)*2
+				--]]
+				--[[ halton sequence
+				cur_sample=cur_sample+1
+				if cur_sample>max_sample then cur_sample=0 end
+
+				local x=vdc(cur_sample,2)*gen_radius-gen_radius/2
+				local y=vdc(cur_sample,3)*gen_radius-gen_radius/2
+				--]]
+				--[[ box muller transform on halton sequence i.e. guassian halton?
+				cur_sample=cur_sample+1
+				if cur_sample>max_sample then cur_sample=0 end
+
+				local u1=vdc(cur_sample,2)
+				local u2=vdc(cur_sample,3)*math.pi*2
+				local x=math.sqrt(-2*gen_radius*math.log(u1))*math.cos(u2)
+				local y=math.sqrt(-2*gen_radius*math.log(u1))*math.sin(u2)
+				--]]
+				--[[
+				local cc=i/draw_sample_count
+				local pix_id=cc*win_w*win_h
+
+				local x=(math.floor(pix_id%win_w)/win_w)*2-1
+				local y=(math.floor(pix_id/win_w)/win_h)*2-1
+				local blur_x=0.05/win_w
+				local blur_y=0.05/win_h
+				--[=[
+				x=x+math.random()*blur_x-blur_x/2
+				y=y+math.random()*blur_y-blur_y/2
+				--]=]
+				x,y=gaussian2(x,blur_x,y,blur_y)
+				--print(x,y,i)
+				--]]
+				--[[ square
+				local x=math.random()*gen_radius-gen_radius/2
+				local y=math.random()*gen_radius-gen_radius/2
+				--]]
+				--gaussian blob with moving center
+				--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
+				
+				--[[ n gaussian blobs
+				local count=3
+				local rad=2+gen_radius*gen_radius
+				local n=math.random(0,count-1)
+				local a=(n/count)*math.pi*2
+				local cx=math.cos(a)*rad
+				local cy=math.sin(a)*rad
+				local x,y=gaussian2(cx,gen_radius,cy,gen_radius)
+				--]]
+				--[[ circle perimeter
+				local a=math.random()*math.pi*2
+				local x=math.cos(a)*gen_radius
+				local y=math.sin(a)*gen_radius
+				--]]
+
+				--[[ circle area
+				local a = math.random() * 2 * math.pi
+				local r = gen_radius *math.sqrt(math.random())
+				local x = r * math.cos(a)
+				local y = r * math.sin(a)
+				--]]
+				--[[ spiral
+				local angle_speed=500;
+				local t=math.random();
+				local x=math.cos(t*angle_speed)*math.sqrt(t)*gen_radius;
+				local y=math.sin(t*angle_speed)*math.sqrt(t)*gen_radius;
+				--]]
+				-------------mods
+				--[[ polar grid mod
+				local r=math.sqrt(x*x+y*y)
+				local a=math.atan2(y,x)
+				local grid_r=0.05
+				local grid_a=math.pi/21
+				r=math.floor(r/grid_r)*grid_r
+				--a=math.floor(a/grid_a)*grid_a
+
+				x=math.cos(a)*r
+				y=math.sin(a)*r
+				--]]
+				--[[ grid mod
+				--local gr=math.sqrt(x*x+y*y)
+				local grid_size=0.05
+				x=math.floor(x/grid_size)*grid_size
+				y=math.floor(y/grid_size)*grid_size
+				--]]
+				--[[ blur mod
+				local blur_str=0.0000005
+				x,y=gaussian2(x,blur_str,y,blur_str*aspect_ratio)
+				--]]
+				--[[ blur mod linear
+				local blur_str=0.1
+				x=x+math.random()*blur_str-blur_str/2
+				y=y+math.random()*blur_str-blur_str/2
+				--]]
+				--[[ circles mod
+				local circle_size=0.001
+				local a2 = math.random() * 2 * math.pi
+				x=x+math.cos(a2)*circle_size
+				y=y+math.sin(a2)*circle_size
+				--]]
+				if escape_fractal then
+					x=math.random()*2-1
+					y=math.random()*2-1
+				end
+				local need_reset=test_point_for_random(samples_data.d[i])
+				if need_clear or not config.smart_reset or need_reset  then
+					samples_data.d[i]={x,y,x,y}
+					if need_reset then
+						count_reset[need_reset]=count_reset[need_reset]+1
+					end
+				end
+				--[[ for lines
+				local a2 = math.random() * 2 * math.pi
+				x=x+math.cos(a2)*config.move_dist
+				y=y+math.sin(a2)*config.move_dist
+				--samples.d[i+1]={x,y}
+				--]]
+			end
+			reset_stats=string.format("Reset: NAN=%.3g TOO_CLOSE:%.3g TOO_FAR:%.3g",count_reset[1]/draw_sample_count,count_reset[2]/draw_sample_count,count_reset[3]/draw_sample_count)
 			local cs=samples:get_current()
 			cs:use()
-			cs:read(samples_data.d,draw_sample_count*4*4)
+			cs:set(samples_data.d,draw_sample_count*4*4)
+		else
+			--]===]
+			-- [===[
+			randomize_points:use()
+			randomize_points:set("rand_number",math.random())
+			randomize_points:set("radius",config.gen_radius)
+			--randomize_points:set("params",config.v0,config.v1,config.v2,config.v3)
+			if config.smart_reset and not need_clear then
+				randomize_points:set_i("smart_reset",1)
+			else
+				randomize_points:set_i("smart_reset",0)
+			end
+			local so=samples:get_other()
+			so:use()
+			so:bind_to_feedback()
+
+			samples:get_current():use()
+			randomize_points:raster_discard(true)
+			randomize_points:draw_points(0,draw_sample_count,4,1)
 			__unbind_buffer()
+			randomize_points:raster_discard(false)
+			samples:flip()
+			--]===]
 		end
-		for i=0,draw_sample_count-1 do
-			--gaussian blob
-		 	local x,y=gaussian2(0,gen_radius,0,gen_radius)
-			--[[ exact grid
-			local x=((i%sample_count_w)/sample_count_w-0.5)*2
-			local y=(math.floor(i/sample_count_w)/sample_count_w-0.5)*2
-			--]]
-			--[[ halton sequence
-			cur_sample=cur_sample+1
-			if cur_sample>max_sample then cur_sample=0 end
-
-			local x=vdc(cur_sample,2)*gen_radius-gen_radius/2
-			local y=vdc(cur_sample,3)*gen_radius-gen_radius/2
-			--]]
-			--[[ box muller transform on halton sequence i.e. guassian halton?
-			cur_sample=cur_sample+1
-			if cur_sample>max_sample then cur_sample=0 end
-
-			local u1=vdc(cur_sample,2)
-			local u2=vdc(cur_sample,3)*math.pi*2
-			local x=math.sqrt(-2*gen_radius*math.log(u1))*math.cos(u2)
-			local y=math.sqrt(-2*gen_radius*math.log(u1))*math.sin(u2)
-			--]]
-			--[[
-			local cc=i/draw_sample_count
-			local pix_id=cc*win_w*win_h
-
-			local x=(math.floor(pix_id%win_w)/win_w)*2-1
-			local y=(math.floor(pix_id/win_w)/win_h)*2-1
-			local blur_x=0.05/win_w
-			local blur_y=0.05/win_h
-			--[=[
-			x=x+math.random()*blur_x-blur_x/2
-			y=y+math.random()*blur_y-blur_y/2
-			--]=]
-			x,y=gaussian2(x,blur_x,y,blur_y)
-			--print(x,y,i)
-			--]]
-			--[[ square
-			local x=math.random()*gen_radius-gen_radius/2
-			local y=math.random()*gen_radius-gen_radius/2
-			--]]
-			--gaussian blob with moving center
-			--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
-			
-			--[[ n gaussian blobs
-			local count=3
-			local rad=2+gen_radius*gen_radius
-			local n=math.random(0,count-1)
-			local a=(n/count)*math.pi*2
-			local cx=math.cos(a)*rad
-			local cy=math.sin(a)*rad
-			local x,y=gaussian2(cx,gen_radius,cy,gen_radius)
-			--]]
-			--[[ circle perimeter
-			local a=math.random()*math.pi*2
-			local x=math.cos(a)*gen_radius
-			local y=math.sin(a)*gen_radius
-			--]]
-
-			--[[ circle area
-			local a = math.random() * 2 * math.pi
-			local r = gen_radius *math.sqrt(math.random())
-			local x = r * math.cos(a)
-			local y = r * math.sin(a)
-			--]]
-			--[[ spiral
-			local angle_speed=500;
-			local t=math.random();
-			local x=math.cos(t*angle_speed)*math.sqrt(t)*gen_radius;
-			local y=math.sin(t*angle_speed)*math.sqrt(t)*gen_radius;
-			--]]
-			-------------mods
-			--[[ polar grid mod
-			local r=math.sqrt(x*x+y*y)
-			local a=math.atan2(y,x)
-			local grid_r=0.05
-			local grid_a=math.pi/21
-			r=math.floor(r/grid_r)*grid_r
-			--a=math.floor(a/grid_a)*grid_a
-
-			x=math.cos(a)*r
-			y=math.sin(a)*r
-			--]]
-			--[[ grid mod
-			--local gr=math.sqrt(x*x+y*y)
-			local grid_size=0.05
-			x=math.floor(x/grid_size)*grid_size
-			y=math.floor(y/grid_size)*grid_size
-			--]]
-			--[[ blur mod
-			local blur_str=0.0000005
-			x,y=gaussian2(x,blur_str,y,blur_str*aspect_ratio)
-			--]]
-			--[[ blur mod linear
-			local blur_str=0.1
-			x=x+math.random()*blur_str-blur_str/2
-			y=y+math.random()*blur_str-blur_str/2
-			--]]
-			--[[ circles mod
-			local circle_size=0.001
-			local a2 = math.random() * 2 * math.pi
-			x=x+math.cos(a2)*circle_size
-			y=y+math.sin(a2)*circle_size
-			--]]
-			if escape_fractal then
-				x=math.random()*2-1
-				y=math.random()*2-1
-			end
-			local need_reset=test_point_for_random(samples_data.d[i])
-			if need_clear or not config.smart_reset or need_reset  then
-				samples_data.d[i]={x,y,x,y}
-				if need_reset then
-					count_reset[need_reset]=count_reset[need_reset]+1
-				end
-			end
-			--[[ for lines
-			local a2 = math.random() * 2 * math.pi
-			x=x+math.cos(a2)*config.move_dist
-			y=y+math.sin(a2)*config.move_dist
-			--samples.d[i+1]={x,y}
-			--]]
-		end
-		reset_stats=string.format("Reset: NAN=%.3g TOO_CLOSE:%.3g TOO_FAR:%.3g",count_reset[1]/draw_sample_count,count_reset[2]/draw_sample_count,count_reset[3]/draw_sample_count)
-		local cs=samples:get_current()
-		cs:use()
-		cs:set(samples_data.d,draw_sample_count*4*4)
-		--]===]
-		--[===[
-		randomize_points:use()
-		randomize_points:set("rand_number",math.random())
-		randomize_points:set("radius",config.gen_radius)
-		local so=samples:get_other()
-		so:use()
-		so:bind_to_feedback()
-
-		samples:get_current():use()
-		randomize_points:raster_discard(true)
-		randomize_points:draw_points(0,draw_sample_count,4,1)
-		__unbind_buffer()
-		randomize_points:raster_discard(false)
-		samples:flip()
-		--]===]
 	end
 -- [==[
 	transform_shader:use()
@@ -2115,27 +2166,29 @@ function visit_iter()
 		cur_visit_iter=cur_visit_iter+1
 	end
 --]==]
-	add_visits_shader:use()
-	local cs=samples:get_current()
-	cs:use()
+	--if need_clear or cur_visit_iter>3 then
+		add_visits_shader:use()
+		local cs=samples:get_current()
+		cs:use()
 
-	add_visits_shader:raster_discard(false)
-	visit_tex.t:use(0)
-	add_visits_shader:push_attribute(0,"pos",2,nil,4*4)
-	add_visits_shader:blend_add()
-	add_visits_shader:set_i("img_tex",1)
-	add_visits_shader:set_i("pix_size",psize)
-	add_visits_shader:set("center",config.cx,config.cy)
-	add_visits_shader:set("scale",config.scale,config.scale*aspect_ratio)
-	if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
-		error("failed to set framebuffer up")
-	end
-	if need_clear then
-		__clear()
-		cur_visit_iter=0
-		need_clear=false
-	end
-	add_visits_shader:draw_points(0,draw_sample_count,4,1)
+		add_visits_shader:raster_discard(false)
+		visit_tex.t:use(0)
+		add_visits_shader:push_attribute(0,"pos",2,nil,4*4)
+		add_visits_shader:blend_add()
+		add_visits_shader:set_i("img_tex",1)
+		add_visits_shader:set_i("pix_size",psize)
+		add_visits_shader:set("center",config.cx,config.cy)
+		add_visits_shader:set("scale",config.scale,config.scale*aspect_ratio)
+		if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
+			error("failed to set framebuffer up")
+		end
+		if need_clear then
+			__clear()
+			cur_visit_iter=0
+			need_clear=false
+		end
+		add_visits_shader:draw_points(0,draw_sample_count,4,1)
+	--end
 
 	__unbind_buffer()
 	__render_to_window()
