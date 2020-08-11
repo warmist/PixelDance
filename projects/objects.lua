@@ -20,42 +20,7 @@ config=make_config({
 	},config)
 object_list=object_list or {}
 image_no=image_no or 0
-function draw_config( tbl )
-	for _,entry in ipairs(tbl) do
-		local name=entry[1]
-		local v=tbl[name]
-		local k=name
-		if type(v)=="boolean" then
-			if imgui.RadioButton(k,tbl[k]) then
-				tbl[k]=not tbl[k]
-			end
-		elseif type(v)=="string" then
-			local changing
-			changing,tbl[k]=imgui.InputText(k,tbl[k])
-			entry.changing=changing
-		else --if type(v)~="table" then
-			
-			if entry.type=="int" then
-				local changing
-				changing,tbl[k]=imgui.SliderInt(k,tbl[k],entry.min or 0,entry.max or 100)
-				entry.changing=changing
-			elseif entry.type=="float" then
-				local changing
-				changing,tbl[k]=imgui.SliderFloat(k,tbl[k],entry.min or 0,entry.max or 1)
-				entry.changing=changing
-			elseif entry.type=="angle" then
-				local changing
-				changing,tbl[k]=imgui.SliderAngle(k,tbl[k],entry.min or 0,entry.max or 360)
-				entry.changing=changing
-			elseif entry.type=="color" then
-				local changing
-				changing,tbl[k]=imgui.ColorEdit4(k,tbl[k],true)
-				entry.changing=changing
-			end
-		
-		end
-	end
-end
+
 function is_mouse_down(  )
 	return __mouse.clicked0 and not __mouse.owned0, __mouse.x,__mouse.y
 end
@@ -115,7 +80,7 @@ function update_objects(  )
 		end
 		max_dv2=math.sqrt(max_dv2)
 		config.dt=(1-0.0001)/max_dv2
-		if config.dt>10 then
+		if config.dt>1 then
 			config.dt=1
 		end
 	end
@@ -261,8 +226,14 @@ function rand_color(  )
 		return {math.random(0,255),math.random(0,255),math.random(0,255),255}
 	end
 end
-function create_object( x,y,color,vx,vy )
-	table.insert(object_list,{x=x,y=y,color=color or rand_color(),vx=vx or 0, vy=vy or 0,ax=0,ay=0,lx=x,ly=y})
+
+function create_object( x,y,color,vx,vy ,ax,ay)
+	vx=vx or 0
+	vy=vy or 0
+	local lx=x-vx*config.dt
+	local ly=y-vy*config.dt
+
+	table.insert(object_list,{x=x,y=y,color=color or rand_color(),vx=vx, vy=vy,ax=ax or 0,ay=ay or 0,lx=lx,ly=ly})
 end
 tick_num=tick_num or 0
 function update(  )
@@ -287,9 +258,10 @@ function update(  )
 	if imgui.Button("Add") then
 		local cx=size[1]/2
 		local cy=size[2]/2
-		local count=6
+		local count=7
 		for i=0,math.pi*2-0.01,math.pi*2/count do
-			create_object(cx+math.cos(i)*size[1]/8,cy+math.sin(i)*size[2]/8)
+			local speed=0.1
+			create_object(cx+math.cos(i)*size[1]/8,cy+math.sin(i)*size[2]/8,nil,-math.sin(i)*speed,math.cos(i)*speed)
 		end
 	end
 	for i=1,config.steps do
@@ -305,7 +277,9 @@ function update(  )
 			end
 		else
 			for i,v in ipairs(object_list) do
-				img_buf:set(math.floor(v.x),math.floor(v.y),v.color)
+				--if i==1 then
+					img_buf:set(math.floor(v.x),math.floor(v.y),v.color)
+				--end
 			end
 		end
 	end
