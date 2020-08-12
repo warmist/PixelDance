@@ -248,17 +248,22 @@ static int draw_array_points(lua_State* L)
     auto feedbackmode= luaL_optint(L, 5, 0);
     if (feedbackmode)
         glBeginTransformFeedback(GL_POINTS);
-	glEnableVertexAttribArray(pos_idx);
-	glVertexAttribPointer(pos_idx, float_count, GL_FLOAT, false, 0, data);
+
+    if (pos_idx != -1)
+    {
+        glEnableVertexAttribArray(pos_idx);
+        glVertexAttribPointer(pos_idx, float_count, GL_FLOAT, false, 0, data);
+    }
+
 	glEnable(GL_PROGRAM_POINT_SIZE);
 	glEnable(GL_POINT_SPRITE);
 	glDrawArrays(GL_POINTS, 0, count);
-	glDisableVertexAttribArray(pos_idx);
 
+    if (pos_idx != -1)
+	    glDisableVertexAttribArray(pos_idx);
     if (feedbackmode)
         glEndTransformFeedback();
 	clear_attributes();
-
 	return 0;
 }
 static int draw_array_lines(lua_State* L)
