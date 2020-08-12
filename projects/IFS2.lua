@@ -8,9 +8,11 @@ local size_mult=1
 local ffi = require("ffi")
 --[[
 	TODO:
-		add in-shader random refill
 		split very changing and non-changing (s/p) parts
-		when randomizing check if moved too far or not moved at all...
+		add LAB based color placement
+			- start point has color, add it to end point
+			- do real (from chrom. abber.) tonemapping
+			- maybe 2d map of colors?
 --]]
 
 win_w=win_w or 0
@@ -37,7 +39,7 @@ local need_clear=false
 local oversample=1
 local complex=true
 local init_zero=false
-local sample_count=math.pow(2,22)
+local sample_count=math.pow(2,15)
 
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
@@ -1725,11 +1727,18 @@ vec2 gaussian2 (vec2 seed,vec2 mean,vec2 var)
     sqrt(-2 * var.x * log(seed.x)) * cos(2 * M_PI * seed.y),
     sqrt(-2 * var.y * log(seed.x)) * sin(2 * M_PI * seed.y))+mean;
 }
+uniform int non_hashed_random;
 void main()
 {
 	float d=0;
-	vec2 seed=float_from_floathash(position.zw);
-	vec2 start_pos=gaussian2(seed,vec2(0),vec2(gen_radius));
+	vec2 start_pos;
+	if (non_hashed_random==1)
+		start_pos=position.zw;
+	else
+	{
+		vec2 seed=float_from_floathash(position.zw);
+		start_pos=gaussian2(seed,vec2(0),vec2(gen_radius));
+	}
 #if ESCAPE_MODE
 	vec2 inp_p=mapping((position.xy-center)/scale);
     vec3 rez= func(inp_p);//*scale+center;
@@ -1941,7 +1950,7 @@ bool need_reset(vec2 p,vec2 s)
 #endif
 #if 1
 	float dist=length(s);
-	if(dist>0.5)
+	if(dist>2)
 		return true;
 #endif
 	return false;
@@ -1957,6 +1966,7 @@ void main()
 	float par_point=10000.0;
 	float par_uniform=1000.0;
 	float par_id=0.05;
+
 	//vec2 seed=hash22(position.zw*params.x+hash22(vec2(rand_number*params.y,gl_VertexID*params.z))*params.w);
 	//vec2 seed=hash22(vec2(rand_number*par_uniform,gl_VertexID*par_id)+position.zw*par_point);
 
@@ -1964,6 +1974,7 @@ void main()
 	//vec2 seed=vec2(rand(rand_number*999999),rand(position.x*789789+position.w*rand_number*45648978));
 	//vec2 seed=vec2(1-random(vec2(random_number,random_number)));//*2-vec2(1);
 	//vec2 g =(seed*2-vec2(1))*radius;
+
 	vec2 g=gaussian2(seed,vec2(0),vec2(radius));
 	vec2 old_g=gaussian2(old_seed,vec2(0),vec2(radius));
 	if((smart_reset==0) ||  need_reset(old_g,position.xy))
@@ -2054,7 +2065,7 @@ function sample_rand( numsamples,max_count )
 end
 
 function visit_iter()
-	local shader_randomize=true
+	local shader_randomize=false
 	local psize=config.point_size
 	if psize<=0 then
 		psize=get_visit_size(visit_call_count)
@@ -2252,7 +2263,11 @@ function visit_iter()
 	transform_shader:set("scale",config.scale,config.scale*aspect_ratio)
 	transform_shader:set("params",config.v0,config.v1,config.v2,config.v3)
 	transform_shader:set("move_dist",config.move_dist)
-
+	if shader_randomize then
+		transform_shader:set_i("non_hashed_random",0)
+	else
+		transform_shader:set_i("non_hashed_random",1)
+	end
 
 	local max_iter=1
 	if not config.draw then

@@ -1,9 +1,14 @@
-
 require "common"
 local luv=require "colors_luv"
 local size=STATE.size
+
+--[[
+	TODO:
+		defocus aberration
+--]]
 local image_buf
 image_buf=load_png("saved_1596619752.png")
+
 -- [[
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
