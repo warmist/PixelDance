@@ -5,7 +5,7 @@ local luv=require "colors_luv"
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
 local size_mult=1
-
+local ffi = require("ffi")
 --[[
 	TODO:
 		add in-shader random refill
@@ -110,7 +110,7 @@ config=make_config({
 	{"v2",0,type="float",min=-1,max=1},
 	{"v3",0,type="float",min=-1,max=1},
 
-	{"IFS_steps",50,type="int",min=1,max=10000},
+	{"IFS_steps",50,type="int",min=1,max=1000},
 	{"smart_reset",false,type="boolean"},
 	{"move_dist",0.4,type="float",min=0.001,max=2},
 	{"scale",1,type="float",min=0.00001,max=2},
@@ -1705,7 +1705,10 @@ vec2 mapping(vec2 p)
 	return p-vec2(w/2,h/2);
 	//*/
 }
-
+vec2 float_from_floathash(vec2 val)
+{
+	return floatBitsToUint(val)/vec2(4294967295.0);
+}
 void main()
 {
 	float d=0;
@@ -1718,7 +1721,8 @@ void main()
     //pos.z=rez.z;//length(rez);
     point_out.xy=position.xy;
 #else
-	vec2 p=func(position.xy,position.zw).xy;
+	vec2 start_pos=float_from_floathash(position.zw);
+	vec2 p=func(position.xy,start_pos).xy;
 	p=(mapping(p*scale+center)-center)/scale;
 	point_out.xy=p;
 	point_out.zw=position.zw;
@@ -1821,7 +1825,7 @@ randomize_points=shaders.Make(
 #version 330
 #define M_PI   3.14159265358979323846264338327950288
 
-in vec4 position;
+layout(location = 0) in vec4 position;
 out vec4 point_out;
 
 uniform float radius;
@@ -1855,6 +1859,31 @@ vec2 hash22(vec2 p)
     return fract((p3.xx+p3.yz)*p3.zy);
 
 }
+uint wang_hash(uint seed)
+{
+    seed = (seed ^ 61) ^ (seed >> 16);
+    seed *= 9;
+    seed = seed ^ (seed >> 4);
+    seed *= 0x27d4eb2d;
+    seed = seed ^ (seed >> 15);
+    return seed;
+}
+uvec2 wang_hash_float(vec2 v)
+{
+	return uvec2(wang_hash(floatBitsToUint(v.x)),wang_hash(floatBitsToUint(v.y)));
+}
+vec2 float_from_hash(uvec2 val)
+{
+	return val/vec2(4294967295.0);
+}
+vec2 float_from_floathash(vec2 val)
+{
+	return floatBitsToUint(val)/vec2(4294967295.0);
+}
+vec2 seed_from_hash(uvec2 val)
+{
+	return uintBitsToFloat(val);
+}
 bool need_reset(vec2 p,vec2 s)
 {
 #if 1
@@ -1879,16 +1908,19 @@ void main()
 	float par_uniform=1000.0;
 	float par_id=0.05;
 	//vec2 seed=hash22(position.zw*params.x+hash22(vec2(rand_number*params.y,gl_VertexID*params.z))*params.w);
-	vec2 seed=hash22(vec2(rand_number*par_uniform,gl_VertexID*par_id)+position.zw*par_point);
+	//vec2 seed=hash22(vec2(rand_number*par_uniform,gl_VertexID*par_id)+position.zw*par_point);
+	uvec2 wseed=wang_hash_float(position.zw);
+	wseed+=uvec2(gl_VertexID);
+	vec2 seed=float_from_hash(wseed);
 	//vec2 seed=hash22(position.zw*params.x+vec2(rand_number*params.y,gl_VertexID*params.z));
 	//vec2 seed=vec2(rand(rand_number*999999),rand(position.x*789789+position.w*rand_number*45648978));
 	//vec2 seed=vec2(1-random(vec2(random_number,random_number)));//*2-vec2(1);
 	//vec2 g =(seed*2-vec2(1))*radius;
 	vec2 g=gaussian2(seed,vec2(0),vec2(radius));
-	if((smart_reset==0) ||  need_reset(position.zw,position.xy))
+	if((smart_reset==0) ||  need_reset(float_from_floathash(position.zw),position.xy))
 	{
 		point_out.xy=g;
-		point_out.zw=g;
+		point_out.zw=seed_from_hash(wseed);
 	}
 	else
 	{
@@ -1956,6 +1988,21 @@ function test_point_for_random( p )
 		return 3
 	end
 end
+
+function sample_rand( numsamples,max_count )
+	local cs=samples:get_current()
+	cs:use()
+	cs:read(samples_data.d,max_count*4*4)
+	__unbind_buffer()
+	for i=1,numsamples do
+		local id=math.random(0,max_count-1)
+		local ss=ffi.cast("uint32_t*",samples_data.d)
+		local s=samples_data.d[id]
+		print(ss[id*4+2]/4294967295)
+		print(ss[id*4+3]/4294967295)
+		print(string.format("Id:%d %g %g %g %g",id,s.r,s.g,s.b,s.a))
+	end
+end
 function visit_iter()
 	local shader_randomize=true
 	local psize=config.point_size
@@ -1968,11 +2015,11 @@ function visit_iter()
 	local gen_radius=config.gen_radius
 
 	local draw_sample_count=sample_count
-	if config.draw then
-		--draw_sample_count=math.min(1e5,sample_count)
+	if config.draw and not shader_randomize then
+		draw_sample_count=math.min(1e5,sample_count)
 	end
 
-	local count_reset={0,0,0}
+	local count_reset={0,0,0,0}
 
 	local sample_count_w=math.floor(math.sqrt(draw_sample_count))
 	if cur_visit_iter>config.IFS_steps or need_clear then
@@ -1986,9 +2033,10 @@ function visit_iter()
 				cs:read(samples_data.d,draw_sample_count*4*4)
 				__unbind_buffer()
 			end
+			local last_pos={0,0}
 			for i=0,draw_sample_count-1 do
 				--gaussian blob
-			 	local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			 	--local x,y=gaussian2(0,gen_radius,0,gen_radius)
 				--[[ exact grid
 				local x=((i%sample_count_w)/sample_count_w-0.5)*2
 				local y=(math.floor(i/sample_count_w)/sample_count_w-0.5)*2
@@ -2045,7 +2093,14 @@ function visit_iter()
 				local x=math.cos(a)*gen_radius
 				local y=math.sin(a)*gen_radius
 				--]]
-
+				--[[ random walk
+				last_pos[1]=last_pos[1]+(math.random()*2-1)*gen_radius/10000
+				last_pos[2]=last_pos[2]+(math.random()*2-1)*gen_radius/10000
+				if math.abs(last_pos[1])>gen_radius then last_pos[1]=0 end
+				if math.abs(last_pos[2])>gen_radius then last_pos[2]=0 end
+				local x=last_pos[1]
+				local y=last_pos[2]
+				--]]
 				--[[ circle area
 				local a = math.random() * 2 * math.pi
 				local r = gen_radius *math.sqrt(math.random())
@@ -2101,6 +2156,7 @@ function visit_iter()
 					if need_reset then
 						count_reset[need_reset]=count_reset[need_reset]+1
 					end
+					count_reset[4]=count_reset[4]+1
 				end
 				--[[ for lines
 				local a2 = math.random() * 2 * math.pi
@@ -2109,7 +2165,7 @@ function visit_iter()
 				--samples.d[i+1]={x,y}
 				--]]
 			end
-			reset_stats=string.format("Reset: NAN=%.3g TOO_CLOSE:%.3g TOO_FAR:%.3g",count_reset[1]/draw_sample_count,count_reset[2]/draw_sample_count,count_reset[3]/draw_sample_count)
+			reset_stats=string.format("Reset: NAN=%.3g TOO_CLOSE:%.3g TOO_FAR:%.3g Total:%.3g",count_reset[1]/draw_sample_count,count_reset[2]/draw_sample_count,count_reset[3]/draw_sample_count,count_reset[4]/draw_sample_count)
 			local cs=samples:get_current()
 			cs:use()
 			cs:set(samples_data.d,draw_sample_count*4*4)
@@ -2135,6 +2191,7 @@ function visit_iter()
 			__unbind_buffer()
 			randomize_points:raster_discard(false)
 			samples:flip()
+			--sample_rand(10,draw_sample_count)
 			--]===]
 		end
 	end
@@ -2162,11 +2219,12 @@ function visit_iter()
 		transform_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
 		transform_shader:raster_discard(true)
 		transform_shader:draw_points(0,draw_sample_count,4,1)
+		transform_shader:raster_discard(false)
 		samples:flip()
 		cur_visit_iter=cur_visit_iter+1
 	end
 --]==]
-	--if need_clear or cur_visit_iter>3 then
+	if need_clear or cur_visit_iter>3 then
 		add_visits_shader:use()
 		local cs=samples:get_current()
 		cs:use()
@@ -2187,8 +2245,8 @@ function visit_iter()
 			cur_visit_iter=0
 			need_clear=false
 		end
-		add_visits_shader:draw_points(0,draw_sample_count,4,1)
-	--end
+		add_visits_shader:draw_points(0,draw_sample_count,4)
+	end
 
 	__unbind_buffer()
 	__render_to_window()
