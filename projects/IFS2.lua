@@ -65,6 +65,13 @@ function make_visits_texture()
 	end
 end
 -- samples i.e. random points that get transformed by IFS each step
+function fill_rand_samples()
+	local ss=ffi.cast("struct{uint32_t d[4];}*",samples_data.d)
+	for i=0,sample_count-1 do
+		ss[i].d[2]=math.random(0,4294967295)
+		ss[i].d[3]=math.random(0,4294967295)
+	end
+end
 
 if samples_data==nil or samples_data.w~=sample_count then
 	samples_data=make_flt_buffer(sample_count,1)
@@ -90,6 +97,7 @@ if samples_data==nil or samples_data.w~=sample_count then
 		local y=0--math.random()
 		samples_data:set(i,0,{x,y,x,y})
 	end
+	fill_rand_samples()
 	for i=1,2 do
 		samples[i]:use()
 		samples[i]:set(samples_data.d,sample_count*4*4)
@@ -1904,19 +1912,22 @@ bool need_reset(vec2 p,vec2 s)
 }
 void main()
 {
+	uvec2 wseed=wang_hash_float(position.zw);
+	wseed+=uvec2(gl_VertexID);
+	vec2 seed=float_from_hash(wseed);
+
 	float par_point=10000.0;
 	float par_uniform=1000.0;
 	float par_id=0.05;
 	//vec2 seed=hash22(position.zw*params.x+hash22(vec2(rand_number*params.y,gl_VertexID*params.z))*params.w);
 	//vec2 seed=hash22(vec2(rand_number*par_uniform,gl_VertexID*par_id)+position.zw*par_point);
-	uvec2 wseed=wang_hash_float(position.zw);
-	wseed+=uvec2(gl_VertexID);
-	vec2 seed=float_from_hash(wseed);
+
 	//vec2 seed=hash22(position.zw*params.x+vec2(rand_number*params.y,gl_VertexID*params.z));
 	//vec2 seed=vec2(rand(rand_number*999999),rand(position.x*789789+position.w*rand_number*45648978));
 	//vec2 seed=vec2(1-random(vec2(random_number,random_number)));//*2-vec2(1);
 	//vec2 g =(seed*2-vec2(1))*radius;
 	vec2 g=gaussian2(seed,vec2(0),vec2(radius));
+
 	if((smart_reset==0) ||  need_reset(float_from_floathash(position.zw),position.xy))
 	{
 		point_out.xy=g;
@@ -2003,8 +2014,9 @@ function sample_rand( numsamples,max_count )
 		print(string.format("Id:%d %g %g %g %g",id,s.r,s.g,s.b,s.a))
 	end
 end
+
 function visit_iter()
-	local shader_randomize=true
+	local shader_randomize=false
 	local psize=config.point_size
 	if psize<=0 then
 		psize=get_visit_size(visit_call_count)
@@ -2034,9 +2046,10 @@ function visit_iter()
 				__unbind_buffer()
 			end
 			local last_pos={0,0}
+			local samples_int=ffi.cast("struct{uint32_t d[4];}*",samples_data.d)
 			for i=0,draw_sample_count-1 do
 				--gaussian blob
-			 	--local x,y=gaussian2(0,gen_radius,0,gen_radius)
+			 	local x,y=gaussian2(0,gen_radius,0,gen_radius)
 				--[[ exact grid
 				local x=((i%sample_count_w)/sample_count_w-0.5)*2
 				local y=(math.floor(i/sample_count_w)/sample_count_w-0.5)*2
