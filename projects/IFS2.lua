@@ -4,7 +4,7 @@ require "colors"
 local luv=require "colors_luv"
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
-local size_mult=1
+local size_mult=0.5
 local ffi = require("ffi")
 --[[
 	TODO:
@@ -1247,6 +1247,8 @@ uniform float seed;
 uniform float move_dist;
 uniform vec4 params;
 uniform float normed_iter;
+uniform float gen_radius;
+
 float rand1(float n){return fract(sin(n) * 43758.5453123);}
 float rand2(float n){return fract(sin(n) * 78745.6326871);}
 float cosh(float val) {
@@ -1717,10 +1719,17 @@ vec2 float_from_floathash(vec2 val)
 {
 	return floatBitsToUint(val)/vec2(4294967295.0);
 }
+vec2 gaussian2 (vec2 seed,vec2 mean,vec2 var)
+{
+    return  vec2(
+    sqrt(-2 * var.x * log(seed.x)) * cos(2 * M_PI * seed.y),
+    sqrt(-2 * var.y * log(seed.x)) * sin(2 * M_PI * seed.y))+mean;
+}
 void main()
 {
 	float d=0;
-
+	vec2 seed=float_from_floathash(position.zw);
+	vec2 start_pos=gaussian2(seed,vec2(0),vec2(gen_radius));
 #if ESCAPE_MODE
 	vec2 inp_p=mapping((position.xy-center)/scale);
     vec3 rez= func(inp_p);//*scale+center;
@@ -1729,7 +1738,7 @@ void main()
     //pos.z=rez.z;//length(rez);
     point_out.xy=position.xy;
 #else
-	vec2 start_pos=float_from_floathash(position.zw);
+	
 	vec2 p=func(position.xy,start_pos).xy;
 	p=(mapping(p*scale+center)-center)/scale;
 	point_out.xy=p;
@@ -1832,7 +1841,7 @@ randomize_points=shaders.Make(
 [==[
 #version 330
 #define M_PI   3.14159265358979323846264338327950288
-
+#line 1835
 layout(location = 0) in vec4 position;
 out vec4 point_out;
 
@@ -1867,18 +1876,45 @@ vec2 hash22(vec2 p)
     return fract((p3.xx+p3.yz)*p3.zy);
 
 }
+
 uint wang_hash(uint seed)
 {
-    seed = (seed ^ 61) ^ (seed >> 16);
-    seed *= 9;
-    seed = seed ^ (seed >> 4);
-    seed *= 0x27d4eb2d;
-    seed = seed ^ (seed >> 15);
+    seed = (seed ^ 61U) ^ (seed >> 16U);
+    seed *= 9U;
+    seed = seed ^ (seed >> 4U);
+    seed *= 0x27d4eb2dU;
+    seed = seed ^ (seed >> 15U);
     return seed;
 }
+
+//from: https://www.shadertoy.com/view/WttXWX
+//bias: 0.17353355999581582 ( very probably the best of its kind )
+uint lowbias32(uint x)
+{
+    x ^= x >> 16;
+    x *= 0x7feb352dU;
+    x ^= x >> 15;
+    x *= 0x846ca68bU;
+    x ^= x >> 16;
+    return x;
+}
+
+// bias: 0.020888578919738908 = minimal theoretic limit
+uint triple32(uint x)
+{
+    x ^= x >> 17;
+    x *= 0xed5ad4bbU;
+    x ^= x >> 11;
+    x *= 0xac4c1b51U;
+    x ^= x >> 15;
+    x *= 0x31848babU;
+    x ^= x >> 14;
+    return x;
+}
+#define HASH wang_hash
 uvec2 wang_hash_float(vec2 v)
 {
-	return uvec2(wang_hash(floatBitsToUint(v.x)),wang_hash(floatBitsToUint(v.y)));
+	return uvec2(HASH(floatBitsToUint(v.x)),HASH(floatBitsToUint(v.y)));
 }
 vec2 float_from_hash(uvec2 val)
 {
@@ -1915,7 +1951,7 @@ void main()
 	uvec2 wseed=wang_hash_float(position.zw);
 	wseed+=uvec2(gl_VertexID);
 	vec2 seed=float_from_hash(wseed);
-
+	vec2 old_seed=float_from_floathash(position.zw);
 	float par_point=10000.0;
 	float par_uniform=1000.0;
 	float par_id=0.05;
@@ -1927,8 +1963,8 @@ void main()
 	//vec2 seed=vec2(1-random(vec2(random_number,random_number)));//*2-vec2(1);
 	//vec2 g =(seed*2-vec2(1))*radius;
 	vec2 g=gaussian2(seed,vec2(0),vec2(radius));
-
-	if((smart_reset==0) ||  need_reset(float_from_floathash(position.zw),position.xy))
+	vec2 old_g=gaussian2(old_seed,vec2(0),vec2(radius));
+	if((smart_reset==0) ||  need_reset(old_g,position.xy))
 	{
 		point_out.xy=g;
 		point_out.zw=seed_from_hash(wseed);
@@ -2016,7 +2052,7 @@ function sample_rand( numsamples,max_count )
 end
 
 function visit_iter()
-	local shader_randomize=false
+	local shader_randomize=true
 	local psize=config.point_size
 	if psize<=0 then
 		psize=get_visit_size(visit_call_count)
@@ -2230,6 +2266,7 @@ function visit_iter()
 
 		transform_shader:set("seed",math.random())
 		transform_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
+		transform_shader:set("gen_radius",config.gen_radius)
 		transform_shader:raster_discard(true)
 		transform_shader:draw_points(0,draw_sample_count,4,1)
 		transform_shader:raster_discard(false)
