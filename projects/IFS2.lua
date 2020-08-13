@@ -4,7 +4,7 @@ require "colors"
 local luv=require "colors_luv"
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
-local size_mult=0.5
+local size_mult=1
 local ffi = require("ffi")
 --[[
 	TODO:
@@ -1912,9 +1912,9 @@ uint triple32(uint x)
     return x;
 }
 #define HASH wang_hash
-uvec2 wang_hash_float(vec2 v)
+uvec2 wang_hash_seed(uvec2 v)
 {
-	return uvec2(HASH(floatBitsToUint(v.x)),HASH(floatBitsToUint(v.y)));
+	return uvec2(HASH(v.x),HASH(v.y));
 }
 vec2 float_from_hash(uvec2 val)
 {
@@ -1948,8 +1948,10 @@ bool need_reset(vec2 p,vec2 s)
 }
 void main()
 {
-	uvec2 wseed=wang_hash_float(position.zw);
+	uvec2 wseed=floatBitsToUint(position.zw);
 	wseed+=uvec2(gl_VertexID);
+	wseed+=uvec2(rand_number*4294967295.0);
+	wseed=wang_hash_seed(wseed);
 	vec2 seed=float_from_hash(wseed);
 	vec2 old_seed=float_from_floathash(position.zw);
 	float par_point=10000.0;

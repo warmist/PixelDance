@@ -425,6 +425,11 @@ vec2 distort_x(vec2 p,vec2 offset, float arg)
 	float tx=p.x+offset.x;
 	return p+vec2((tx*tx)*arg,0);
 }
+vec2 distort_y(vec2 p,vec2 offset, float arg)
+{
+	float ty=p.y+offset.y;
+	return p+vec2((ty*ty)*arg,0);
+}
 float easeOutQuad(float x)
 {
 	return 1 - (1 - x) * (1 - x);
@@ -435,7 +440,8 @@ void main(){
 	vec2 dist_pos=pos.xy;
 	//dist_pos=Distort(dist_pos,offset,barrel_power*iteration+1);
 	//dist_pos=tangent_distort(dist_pos,vec2(barrel_power*iteration,barrel_power*iteration)*0.1);
-	dist_pos=distort_x(dist_pos,offset,barrel_power*iteration);
+	//dist_pos=distort_x(dist_pos,offset,barrel_power*iteration);
+	dist_pos=distort_y(dist_pos,offset,barrel_power*iteration);
 	dist_pos=(dist_pos+vec2(1))/2;
 	//vec2 dist_pos=normed+vec2(barrel_power)*iteration;
 
