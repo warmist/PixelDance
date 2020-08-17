@@ -1918,8 +1918,8 @@ void main(){
 	float it_w=1;//exp(normed_iter);
 	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
-	color=vec4(a,0,0,1);
-	//color=vec4(a*intensity*v*it_w,0,0,1);
+	//color=vec4(a,0,0,1);
+	color=vec4(a*intensity*v*it_w,0,0,1);
 }
 ]==],escape_mode_str()))
 
@@ -2382,6 +2382,8 @@ function visit_iter()
 		add_visits_shader:set_i("pix_size",psize)
 		add_visits_shader:set("center",config.cx,config.cy)
 		add_visits_shader:set("scale",config.scale,config.scale*aspect_ratio)
+		add_visits_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
+		set_shader_palette(add_visits_shader)
 		if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
 			error("failed to set framebuffer up")
 		end
