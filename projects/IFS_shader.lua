@@ -937,7 +937,7 @@ function random_math_complex_series_t( steps,seed )
 		end
 		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
 
-		cur_string=cur_string..string.format("+c_mul(%s,FT(normed_i,%g))",sub_s,(i-1)/steps)
+		cur_string=cur_string..string.format("+c_mul(%s,FT(normed_iter,%g))",sub_s,(i-1)/steps)
 	end
 	return cur_string
 end

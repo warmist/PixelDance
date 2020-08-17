@@ -646,7 +646,28 @@ local normal_symbols_complex={
 ["c_mul(R,R)"]=2,
 ["(R)-(R)"]=3,["(R)+(R)"]=3
 }
-
+local terminal_symbols_FT={
+["t"]=0.5,["c"]=0.5,
+["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,
+["1.0"]=0.01,["0.0"]=0.01
+}
+local terminal_symbols_complex_FT={
+["vec2(t,0)"]=1,
+["vec2(0,t)"]=1,
+["vec2(c,0)"]=1,
+["vec2(0,c)"]=1,
+["vec2(t,c)"]=3,
+["vec2(c,t)"]=3,
+["params.xy"]=1,["params.zw"]=1,
+["c_one()"]=0.1,["c_i()"]=0.1,
+}
+local normal_symbols_FT={
+["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,
+["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,
+["sqrt(R)"]=0.1,["exp(R)"]=0.01,
+["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,
+["log(R)"]=1,["(R)/(R)"]=2,["(R)*(R)"]=4,["(R)-(R)"]=2,["(R)+(R)"]=2
+}
 function normalize( tbl )
 	local sum=0
 	for i,v in pairs(tbl) do
@@ -664,6 +685,10 @@ normalize(normal_symbols)
 
 normalize(terminal_symbols_complex)
 normalize(normal_symbols_complex)
+
+normalize(terminal_symbols_FT)
+normalize(terminal_symbols_complex_FT)
+normalize(normal_symbols_FT)
 
 function rand_weighted(tbl)
 	local r=math.random()
@@ -727,6 +752,9 @@ random_math_complex=make_rand_math(normal_symbols_complex,terminal_symbols_compl
 random_math_x=make_rand_math(normal_symbols,terminal_symbols,{"s.x","params.x","p.x"})
 random_math_y=make_rand_math(normal_symbols,terminal_symbols,{"s.y","params.y","p.y"})
 
+random_math_FT=make_rand_math(normal_symbols_FT,terminal_symbols_FT,{"c","t"})
+random_math_complex_FT=make_rand_math(normal_symbols_complex,terminal_symbols_complex_FT,{"vec2(c,t)","params.xy","params.zw"})
+
 function random_math_complex_pts(steps,pts,seed )
 	local cur_string=seed or "R"
 
@@ -786,7 +814,25 @@ function random_math_complex_series( steps,seed )
 	end
 	return cur_string
 end
+function random_math_complex_series_t( steps,seed,offset )
+	offset=offset or 0
+	seed=seed or "p"
+	local cur_string=seed
+	function MT(  )
+		return rand_weighted(terminal_symbols_complex)
+	end
 
+	for i=1,steps do
+		local sub_s=seed
+		for i=1,i do
+			sub_s=string.format("c_mul(%s,%s)",sub_s,seed)
+		end
+		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
+
+		cur_string=cur_string..string.format("+c_mul(%s,FT(normed_iter,%g))",sub_s,(i-1)/steps+offset)
+	end
+	return cur_string
+end
 
 function random_math_centered(steps,complications,seed )
 	local cur_string=("R+%.3f"):format(math.random()*2-1) or seed
@@ -877,6 +923,15 @@ function rand_function(  )
 		local angle=((i-1)/num_roots)*math.pi*2
 		table.insert(pts,{math.cos(angle)*config.move_dist,math.sin(angle)*config.move_dist})
 	end
+	--[=[
+	other_code=string.format([[
+	vec2 FT(float t,float c)
+	{
+		return %s;
+	}]],random_math_complex_FT(rand_complexity))
+
+	str_cmplx=random_math_complex_series_t(4).."+"..random_math_complex_series_t(4,"s",1)
+	--]=]
 	--str_cmplx=random_math_complex_pts(rand_complexity,pts)
 	--[=[ http://www.fractalsciencekit.com/topics/mobius.htm maybe?
 	--str_cmplx="c_div(c_mul(params.xy,s)+vec2(-0.1,0.2),c_mul(vec2(0.2,0.1),s)+params.zw)"
@@ -2065,7 +2120,7 @@ function sample_rand( numsamples,max_count )
 end
 
 function visit_iter()
-	local shader_randomize=false
+	local shader_randomize=true
 	local psize=config.point_size
 	if psize<=0 then
 		psize=get_visit_size(visit_call_count)
