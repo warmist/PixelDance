@@ -39,12 +39,12 @@ local need_clear=false
 local oversample=1
 local complex=true
 local init_zero=false
-local sample_count=math.pow(2,15)
+local sample_count=math.pow(2,20)
 
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
 
-str_cmplx=str_cmplx or "c_mul(s,s)+p"
+str_cmplx=str_cmplx or "s"
 
 str_other_code=str_other_code or ""
 str_preamble=str_preamble or ""
@@ -63,7 +63,7 @@ function make_visits_texture()
 		visit_tex={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
 		visit_tex.t:use(0,1)
 		visit_tex.t:set(size[1]*oversample,size[2]*oversample,2)
-		visit_buf=make_float_buffer(size[1]*oversample,size[2]*oversample)
+		visit_buf=make_flt_buffer(size[1]*oversample,size[2]*oversample)
 	end
 end
 -- samples i.e. random points that get transformed by IFS each step
@@ -217,7 +217,10 @@ function buffer_save( name ,min,max)
 	for x=0,visit_buf.w-1 do
 	for y=0,visit_buf.h-1 do
 		local v=visit_buf:get(x,y)
-		b:f32(v)
+		b:f32(v.r)
+		b:f32(v.g)
+		b:f32(v.b)
+		b:f32(v.a)
 	end
 	end
 	local f=io.open(name,"wb")
@@ -235,7 +238,7 @@ function draw_visits(  )
 	visit_buf:read_texture(visit_tex.t)
 	for x=0,visit_buf.w-1 do
 	for y=0,visit_buf.h-1 do
-		local v=visit_buf:get(x,y)
+		local v=visit_buf:get(x,y).g
 		if v>math.exp(config.min_value)-1 then --skip non-visited tiles
 			if lmax<v then lmax=v end
 			if lmin>v then lmin=v end
@@ -1044,8 +1047,8 @@ function rand_function(  )
 
 	--[[ complex seriesize
 	local series_size=7
-	local rand_offset=0.1
-	local rand_size=0.25
+	local rand_offset=0.01
+	local rand_size=0.025
 	local input_s=""
 	for i=1,series_size do
 		local sub_s="s"
@@ -1812,7 +1815,7 @@ void main()
     //pos=gl_Position.xyz;
 #endif
 
-    gl_PointSize=pix_size;
+
 	//gl_Position.z = 0;
     //gl_Position.w = 1.0;
 }
@@ -1838,10 +1841,12 @@ layout(location = 0) in vec2 pos;
 out vec2 pos_f;
 uniform vec2 center;
 uniform vec2 scale;
+uniform int pix_size;
 void main()
 {
     gl_Position.xyz = vec3(pos*scale+center,0);
     gl_Position.w = 1.0;
+    gl_PointSize=pix_size;
     pos_f=pos;
 }
 ]==],
@@ -1859,6 +1864,24 @@ uniform sampler2D img_tex;
 uniform int pix_size;
 uniform float normed_iter;
 
+uniform vec4 palette[50];
+uniform int palette_size;
+
+
+vec4 mix_palette(float value )
+{
+	if (palette_size==0)
+		return vec4(0);
+	value=clamp(value,0,1);
+	float tg=value*(float(palette_size)-1); //[0,1]-->[0,#colors]
+	float tl=floor(tg);
+
+	float t=tg-tl;
+	vec4 c1=palette[int(tl)];
+	int hidx=min(int(ceil(tg)),palette_size-1);
+	vec4 c2=palette[hidx];
+	return mix(c1,c2,t);
+}
 
 float shape_point(vec2 pos)
 {
@@ -1975,7 +1998,7 @@ uint triple32(uint x)
     x ^= x >> 14;
     return x;
 }
-#define HASH wang_hash
+#define HASH triple32
 uvec2 wang_hash_seed(uvec2 v)
 {
 	return uvec2(HASH(v.x),HASH(v.y));
@@ -2014,7 +2037,7 @@ void main()
 {
 	uvec2 wseed=floatBitsToUint(position.zw);
 	wseed+=uvec2(gl_VertexID);
-	wseed+=uvec2(rand_number*4294967295.0);
+	wseed.x+=uint(rand_number*4294967295.0);
 	wseed=wang_hash_seed(wseed);
 	vec2 seed=float_from_hash(wseed);
 	vec2 old_seed=float_from_floathash(position.zw);
