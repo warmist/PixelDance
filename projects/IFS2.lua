@@ -62,7 +62,7 @@ function make_visits_texture()
 	if visit_tex==nil or visit_tex.w~=size[1]*oversample or visit_tex.h~=size[2]*oversample then
 		visit_tex={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
 		visit_tex.t:use(0,1)
-		visit_tex.t:set(size[1]*oversample,size[2]*oversample,2)
+		visit_tex.t:set(size[1]*oversample,size[2]*oversample,1)
 		visit_buf=make_flt_buffer(size[1]*oversample,size[2]*oversample)
 	end
 end
@@ -278,11 +278,15 @@ vec3 eye_adapt_and_stuff(vec3 light)
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec3 ccol=texture(tex_main,normed).xyz;
+
+	/*
 	if(ccol.x<0)ccol.x=log(1-ccol.x);
 	if(ccol.y<0)ccol.y=log(1-ccol.y);
 	if(ccol.z<0)ccol.z=log(1-ccol.z);
+	//*/
+
 	//ccol=abs(ccol);
-	//ccol=max(vec3(0),ccol);
+	ccol=max(vec3(0),ccol);
 	ccol=pow(ccol,vec3(v_gamma));
 	color = vec4(eye_adapt_and_stuff(ccol),1);
 
@@ -2046,12 +2050,18 @@ void main(){
 	vec2 start_pos=gaussian2(seed,vec2(0),vec2(2));
 
 	float start_l=length(start_pos);
+	start_l=clamp(start_l,0,1);
+	start_l=1-exp(-start_l*start_l);
 	//float color_value=start_l;
+	//float color_value=exp(-start_l*start_l);
 	float color_value=normed_iter;
 	//float color_value=smoothstep(0,1,start_l);
 	//float color_value=sin(start_l*M_PI*2/4)*0.5+0.5;
-
-	vec3 c=rgb2xyz(mix_palette(color_value).xyz)*a*intensity*v*(sin(normed_iter*M_PI*4)+0.2);
+	//float color_value=normed_iter*exp(-start_l*start_l);
+	vec3 c=rgb2xyz(mix_palette(color_value).xyz);
+	c*=a*intensity;
+	//c*=(sin(start_l*M_PI*16)+0.6);
+	//c*=(sin(normed_iter*M_PI*4)+0.2);
 	color=vec4(c,1);
 
 }
