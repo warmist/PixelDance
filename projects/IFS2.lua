@@ -132,11 +132,13 @@ config=make_config({
 
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"gain",1,type="float",min=-5,max=5},
+	{"exposure",1,type="float",min=0,max=10},
+	{"white_point",1,type="float",min=0,max=10},
 },config)
 
 local display_shader=shaders.Make[==[
 #version 330
-#line 108
+#line 139
 
 out vec4 color;
 in vec3 pos;
@@ -149,7 +151,11 @@ uniform sampler2D tex_main;
 uniform sampler2D tex_palette;
 uniform int auto_scale_color;
 uniform float v_gamma;
-uniform float v_gain;
+
+uniform float avg_lum;
+uniform float exposure;
+uniform float white_point;
+
 #define M_PI   3.14159265358979323846264338327950288
 
 vec4 mix_palette(float value )
@@ -180,27 +186,106 @@ float gain(float x, float k)
     float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
     return (x<0.5)?a:1.0-a;
 }
+
+vec3 rgb2xyz( vec3 c ) {
+    vec3 tmp;
+    tmp.x = ( c.r > 0.04045 ) ? pow( ( c.r + 0.055 ) / 1.055, 2.4 ) : c.r / 12.92;
+    tmp.y = ( c.g > 0.04045 ) ? pow( ( c.g + 0.055 ) / 1.055, 2.4 ) : c.g / 12.92,
+    tmp.z = ( c.b > 0.04045 ) ? pow( ( c.b + 0.055 ) / 1.055, 2.4 ) : c.b / 12.92;
+    return 100.0 * tmp *
+        mat3( 0.4124, 0.3576, 0.1805,
+              0.2126, 0.7152, 0.0722,
+              0.0193, 0.1192, 0.9505 );
+}
+
+vec3 xyz2lab( vec3 c ) {
+    vec3 n = c / vec3( 95.047, 100, 108.883 );
+    vec3 v;
+    v.x = ( n.x > 0.008856 ) ? pow( n.x, 1.0 / 3.0 ) : ( 7.787 * n.x ) + ( 16.0 / 116.0 );
+    v.y = ( n.y > 0.008856 ) ? pow( n.y, 1.0 / 3.0 ) : ( 7.787 * n.y ) + ( 16.0 / 116.0 );
+    v.z = ( n.z > 0.008856 ) ? pow( n.z, 1.0 / 3.0 ) : ( 7.787 * n.z ) + ( 16.0 / 116.0 );
+    return vec3(( 116.0 * v.y ) - 16.0, 500.0 * ( v.x - v.y ), 200.0 * ( v.y - v.z ));
+}
+
+vec3 rgb2lab(vec3 c) {
+    vec3 lab = xyz2lab( rgb2xyz( c ) );
+    return vec3( lab.x / 100.0, 0.5 + 0.5 * ( lab.y / 127.0 ), 0.5 + 0.5 * ( lab.z / 127.0 ));
+}
+
+vec3 lab2xyz( vec3 c ) {
+    float fy = ( c.x + 16.0 ) / 116.0;
+    float fx = c.y / 500.0 + fy;
+    float fz = fy - c.z / 200.0;
+    return vec3(
+         95.047 * (( fx > 0.206897 ) ? fx * fx * fx : ( fx - 16.0 / 116.0 ) / 7.787),
+        100.000 * (( fy > 0.206897 ) ? fy * fy * fy : ( fy - 16.0 / 116.0 ) / 7.787),
+        108.883 * (( fz > 0.206897 ) ? fz * fz * fz : ( fz - 16.0 / 116.0 ) / 7.787)
+    );
+}
+
+vec3 xyz2rgb( vec3 c ) {
+    vec3 v =  c / 100.0 * mat3(
+        3.2406, -1.5372, -0.4986,
+        -0.9689, 1.8758, 0.0415,
+        0.0557, -0.2040, 1.0570
+    );
+    vec3 r;
+    r.x = ( v.r > 0.0031308 ) ? (( 1.055 * pow( v.r, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.r;
+    r.y = ( v.g > 0.0031308 ) ? (( 1.055 * pow( v.g, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.g;
+    r.z = ( v.b > 0.0031308 ) ? (( 1.055 * pow( v.b, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.b;
+    return r;
+}
+
+vec3 lab2rgb(vec3 c) {
+    return xyz2rgb( lab2xyz( vec3(100.0 * c.x, 2.0 * 127.0 * (c.y - 0.5), 2.0 * 127.0 * (c.z - 0.5)) ) );
+}
+
+vec3 hsv2rgb(vec3 c)
+{
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
+vec3 eye_adapt_and_stuff(vec3 light)
+{
+	float lum_white = pow(10,white_point);
+	//lum_white*=lum_white;
+
+	//tocieYxy
+	float sum=light.x+light.y+light.z;
+	float x=light.x/sum;
+	float y=light.y/sum;
+	float Y=light.y;
+
+	Y = (Y* exposure )/avg_lum;
+	if(white_point<0)
+    	Y = Y / (1 + Y); //simple compression
+	else
+    	Y = (Y*(1 + Y / lum_white)) / (Y + 1); //allow to burn out bright areas
+
+
+    //transform back to cieXYZ
+    light.y=Y;
+    float small_x = x;
+    float small_y = y;
+    light.x = light.y*(small_x / small_y);
+    light.z = light.x / small_x - light.x - light.y;
+
+    return light;
+}
+
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	float nv=texture(tex_main,normed).x;
-	vec2 lmm=min_max;
-	if(auto_scale_color==1)
-	{
-		nv=(log(nv+1)-lmm.x)/(lmm.y-lmm.x);
-	}
-	else
-	{
-		nv=log(nv+1)/lmm.y;
-	}
-	nv=clamp(nv,0,1);
+	vec3 ccol=texture(tex_main,normed).xyz;
+	if(ccol.x<0)ccol.x=log(1-ccol.x);
+	if(ccol.y<0)ccol.y=log(1-ccol.y);
+	if(ccol.z<0)ccol.z=log(1-ccol.z);
+	//ccol=abs(ccol);
+	//ccol=max(vec3(0),ccol);
+	ccol=pow(ccol,vec3(v_gamma));
+	color = vec4(eye_adapt_and_stuff(ccol),1);
 
-
-	//nv=floor(nv*10)/10; //stylistic quantization
-
-	nv=gain(nv,v_gain);
-	nv=pow(nv,v_gamma);
-
-	color = mix_palette2(nv);;
 	color.a=1;
 }
 ]==]
@@ -229,24 +314,42 @@ function buffer_save( name ,min,max)
 end
 
 visits_minmax=visits_minmax or {}
-function draw_visits(  )
-	local lmax=0
-	local lmin=math.huge
-	make_visits_texture()
+function find_min_max( tex,buf )
+	tex:use(0,1)
+	local lmin={math.huge,math.huge,math.huge}
+	local lmax={-math.huge,-math.huge,-math.huge}
 
-	visit_tex.t:use(0,1)
-	visit_buf:read_texture(visit_tex.t)
-	for x=0,visit_buf.w-1 do
-	for y=0,visit_buf.h-1 do
-		local v=visit_buf:get(x,y).g
-		if v>math.exp(config.min_value)-1 then --skip non-visited tiles
-			if lmax<v then lmax=v end
-			if lmin>v then lmin=v end
-		end
+	buf:read_texture(tex)
+	local avg_lum=0
+	local count=0
+	for x=0,buf.w-1 do
+	for y=0,buf.h-1 do
+		local v=buf:get(x,y)
+		if v.r<lmin[1] then lmin[1]=v.r end
+		if v.g<lmin[2] then lmin[2]=v.g end
+		if v.b<lmin[3] then lmin[3]=v.b end
+
+		if v.r>lmax[1] then lmax[1]=v.r end
+		if v.g>lmax[2] then lmax[2]=v.g end
+		if v.b>lmax[3] then lmax[3]=v.b end
+		local lum=math.abs(v.g)
+		avg_lum=avg_lum+math.log(1+lum)
+		count=count+1
 	end
 	end
-	lmax=math.log(lmax+1)
-	lmin=math.log(lmin+1)
+	avg_lum = math.exp(avg_lum / count);
+	--[[print(avg_lum)
+	for i,v in ipairs(lmax) do
+		print(i,v)
+	end
+	--]]
+	return lmin,lmax,avg_lum
+end
+function draw_visits(  )
+
+	make_visits_texture()
+	local lmin,lmax,lavg=find_min_max(visit_tex.t,visit_buf)
+
 	visits_minmax={lmin,lmax}
 
 	if need_buffer_save then
@@ -257,10 +360,13 @@ function draw_visits(  )
 	display_shader:use()
 	visit_tex.t:use(0,1)
 	set_shader_palette(display_shader)
-	display_shader:set("min_max",lmin,lmax)
+	display_shader:set("min_max",lmin[2],lmax[2])
+	display_shader:set("avg_lum",lavg)
 	display_shader:set_i("tex_main",0)
 	display_shader:set("v_gamma",config.gamma)
-	display_shader:set("v_gain",config.gain)
+
+	display_shader:set("exposure",config.exposure)
+	display_shader:set("white_point",config.white_point)
 	local auto_scale=0
 	if config.auto_scale_color then auto_scale=1 end
 	display_shader:set_i("auto_scale_color",auto_scale)
@@ -1836,15 +1942,15 @@ add_visits_shader=shaders.Make(
 [==[
 #version 330
 #line 1748
-layout(location = 0) in vec2 pos;
+layout(location = 0) in vec4 pos;
 
-out vec2 pos_f;
+out vec4 pos_f;
 uniform vec2 center;
 uniform vec2 scale;
 uniform int pix_size;
 void main()
 {
-    gl_Position.xyz = vec3(pos*scale+center,0);
+    gl_Position.xyz = vec3(pos.xy*scale+center,0);
     gl_Position.w = 1.0;
     gl_PointSize=pix_size;
     pos_f=pos;
@@ -1854,11 +1960,11 @@ string.format(
 [==[
 #version 330
 #line 1763
-
+#define M_PI   3.14159265358979323846264338327950288
 #define ESCAPE_MODE %s
 
 out vec4 color;
-in vec2 pos_f;
+in vec4 pos_f;
 
 uniform sampler2D img_tex;
 uniform int pix_size;
@@ -1890,8 +1996,28 @@ float shape_point(vec2 pos)
 	float delta_size=(1-0.2)*rr+0.2;
 	return delta_size;
 }
+vec3 rgb2xyz( vec3 c ) {
+    vec3 tmp;
+    tmp.x = ( c.r > 0.04045 ) ? pow( ( c.r + 0.055 ) / 1.055, 2.4 ) : c.r / 12.92;
+    tmp.y = ( c.g > 0.04045 ) ? pow( ( c.g + 0.055 ) / 1.055, 2.4 ) : c.g / 12.92,
+    tmp.z = ( c.b > 0.04045 ) ? pow( ( c.b + 0.055 ) / 1.055, 2.4 ) : c.b / 12.92;
+    return 100.0 * tmp *
+        mat3( 0.4124, 0.3576, 0.1805,
+              0.2126, 0.7152, 0.0722,
+              0.0193, 0.1192, 0.9505 );
+}
+vec2 float_from_floathash(vec2 val)
+{
+	return floatBitsToUint(val)/vec2(4294967295.0);
+}
+vec2 gaussian2 (vec2 seed,vec2 mean,vec2 var)
+{
+    return  vec2(
+    sqrt(-2 * var.x * log(seed.x)) * cos(2 * M_PI * seed.y),
+    sqrt(-2 * var.y * log(seed.x)) * sin(2 * M_PI * seed.y))+mean;
+}
 void main(){
-	vec2 pos=pos_f;
+	vec2 pos=pos_f.xy;
 #if ESCAPE_MODE
 	//if(pos.z>float(it_count)/10)
 	//	discard;
@@ -1915,11 +2041,19 @@ void main(){
 	float a = 1 - smoothstep(0, 1, r);
 	//float a=1; //uncomment this for line mode
 	float intensity=1/float(pix_size);
-	float it_w=1;//exp(normed_iter);
-	//rr=clamp((1-rr),0,1);
-	//rr*=rr;
-	//color=vec4(a,0,0,1);
-	color=vec4(a*intensity*v*it_w,0,0,1);
+
+	vec2 seed=float_from_floathash(pos_f.zw);
+	vec2 start_pos=gaussian2(seed,vec2(0),vec2(2));
+
+	float start_l=length(start_pos);
+	//float color_value=start_l;
+	float color_value=normed_iter;
+	//float color_value=smoothstep(0,1,start_l);
+	//float color_value=sin(start_l*M_PI*2/4)*0.5+0.5;
+
+	vec3 c=rgb2xyz(mix_palette(color_value).xyz)*a*intensity*v*(sin(normed_iter*M_PI*4)+0.2);
+	color=vec4(c,1);
+
 }
 ]==],escape_mode_str()))
 
@@ -2376,7 +2510,7 @@ function visit_iter()
 
 		add_visits_shader:raster_discard(false)
 		visit_tex.t:use(0)
-		add_visits_shader:push_attribute(0,"pos",2,nil,4*4)
+		add_visits_shader:push_attribute(0,"pos",4,nil,4*4)
 		add_visits_shader:blend_add()
 		add_visits_shader:set_i("img_tex",1)
 		add_visits_shader:set_i("pix_size",psize)
@@ -2387,12 +2521,12 @@ function visit_iter()
 		if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
 			error("failed to set framebuffer up")
 		end
+		add_visits_shader:draw_points(0,draw_sample_count,4)
 		if need_clear then
 			__clear()
 			cur_visit_iter=0
 			need_clear=false
 		end
-		add_visits_shader:draw_points(0,draw_sample_count,4)
 	end
 
 	__unbind_buffer()
