@@ -2052,12 +2052,14 @@ void main(){
 	float start_l=length(start_pos);
 	start_l=clamp(start_l,0,1);
 	start_l=1-exp(-start_l*start_l);
+	float dist_traveled=length(start_pos-pos);
 	//float color_value=start_l;
 	//float color_value=exp(-start_l*start_l);
-	float color_value=normed_iter;
+	//float color_value=normed_iter;
 	//float color_value=smoothstep(0,1,start_l);
 	//float color_value=sin(start_l*M_PI*2/4)*0.5+0.5;
 	//float color_value=normed_iter*exp(-start_l*start_l);
+	float color_value=1-exp(-dist_traveled*dist_traveled/100);
 	vec3 c=rgb2xyz(mix_palette(color_value).xyz);
 	c*=a*intensity;
 	//c*=(sin(start_l*M_PI*16)+0.6);
