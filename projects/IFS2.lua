@@ -110,7 +110,7 @@ end
 
 tick=tick or 0
 config=make_config({
-	{"auto_scale_color",true,type="boolean"},
+	{"multiplicative",false,type="boolean"},
 	{"draw",true,type="boolean"},
 	{"point_size",0,type="int",min=0,max=10},
 	{"size_mult",true,type="boolean"},
@@ -135,7 +135,24 @@ config=make_config({
 	{"exposure",1,type="float",min=0,max=10},
 	{"white_point",1,type="float",min=0,max=10},
 },config)
+local clear_shader=shaders.Make[==[
+#version 330
+#line 139
+out vec4 color;
+in vec3 pos;
 
+uniform vec4 clear_color;
+void main()
+{
+	color=clear_color;
+}
+]==]
+
+function clear_unclamped( col )
+	clear_shader:use()
+	clear_shader:set("clear_color",col[1],col[2],col[3],col[4])
+	clear_shader:draw_quad()
+end
 local display_shader=shaders.Make[==[
 #version 330
 #line 139
@@ -149,7 +166,6 @@ uniform int palette_size;
 uniform vec2 min_max;
 uniform sampler2D tex_main;
 uniform sampler2D tex_palette;
-uniform int auto_scale_color;
 uniform float v_gamma;
 
 uniform float avg_lum;
@@ -337,14 +353,15 @@ function find_min_max( tex,buf )
 		if v.g>lmax[2] then lmax[2]=v.g end
 		if v.b>lmax[3] then lmax[3]=v.b end
 		local lum=math.abs(v.g)
-		if lum > config.min_value then
+		if lum > config.min_value and lum<math.huge then
 			avg_lum=avg_lum+math.log(1+lum)
 			count=count+1
 		end
 	end
 	end
 	avg_lum = math.exp(avg_lum / count);
-	--[[print(avg_lum)
+	--[[
+	print(avg_lum)
 	for i,v in ipairs(lmax) do
 		print(i,v)
 	end
@@ -373,9 +390,6 @@ function draw_visits(  )
 
 	display_shader:set("exposure",config.exposure)
 	display_shader:set("white_point",config.white_point)
-	local auto_scale=0
-	if config.auto_scale_color then auto_scale=1 end
-	display_shader:set_i("auto_scale_color",auto_scale)
 	display_shader:draw_quad()
 
 	if need_save then
@@ -2061,12 +2075,15 @@ void main(){
 	//float color_value=smoothstep(0,1,start_l);
 	//float color_value=sin(start_l*M_PI*2/4)*0.5+0.5;
 	//float color_value=normed_iter*exp(-start_l*start_l);
+	float multiplier=a;
+	multiplier=1-clamp(multiplier,0,0.00001);
 	float color_value=1-exp(-dist_traveled*dist_traveled/100);
 	vec3 c=rgb2xyz(mix_palette(color_value).xyz);
-	c*=a*intensity;
+
+	//c*=multiplier;
 	//c*=(sin(start_l*M_PI*16)+0.6);
 	//c*=(sin(normed_iter*M_PI*4)+0.2);
-	color=vec4(c,1);
+	color=vec4(mix(c,vec3(1),multiplier),1);
 
 }
 ]==],escape_mode_str()))
@@ -2525,7 +2542,11 @@ function visit_iter()
 		add_visits_shader:raster_discard(false)
 		visit_tex.t:use(0)
 		add_visits_shader:push_attribute(0,"pos",4,nil,4*4)
-		add_visits_shader:blend_add()
+		if config.multiplicative then
+			add_visits_shader:blend_multiply()
+		else
+			add_visits_shader:blend_add()
+		end
 		add_visits_shader:set_i("img_tex",1)
 		add_visits_shader:set_i("pix_size",psize)
 		add_visits_shader:set("center",config.cx,config.cy)
@@ -2536,8 +2557,16 @@ function visit_iter()
 			error("failed to set framebuffer up")
 		end
 		add_visits_shader:draw_points(0,draw_sample_count,4)
+		add_visits_shader:blend_default()
+		__unbind_buffer()
 		if need_clear then
-			__clear()
+			if config.multiplicative then
+				local max_value=1e20
+				__clear()
+				clear_unclamped({max_value,max_value,max_value,1})
+			else
+				__clear()
+			end
 			cur_visit_iter=0
 			need_clear=false
 		end
