@@ -337,8 +337,10 @@ function find_min_max( tex,buf )
 		if v.g>lmax[2] then lmax[2]=v.g end
 		if v.b>lmax[3] then lmax[3]=v.b end
 		local lum=math.abs(v.g)
-		avg_lum=avg_lum+math.log(1+lum)
-		count=count+1
+		if lum > config.min_value then
+			avg_lum=avg_lum+math.log(1+lum)
+			count=count+1
+		end
 	end
 	end
 	avg_lum = math.exp(avg_lum / count);
