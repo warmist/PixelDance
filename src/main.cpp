@@ -241,6 +241,15 @@ static int clear_screen(lua_State* L)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	return 0;
 }
+static int set_clear_color(lua_State* L)
+{
+    float r = lua_tonumber(L, 1);
+    float g = lua_tonumber(L, 2);
+    float b = lua_tonumber(L, 3);
+    float a = luaL_optnumber(L, 4,0);
+    glClearColor(r, g, b, a);
+    return 0;
+}
 static int flush_gl(lua_State* L)
 {
     glFlush();
@@ -335,6 +344,9 @@ struct project {
 
 		lua_pushcfunction(L, clear_screen);
 		lua_setglobal(L, "__clear");
+
+        lua_pushcfunction(L, set_clear_color);
+        lua_setglobal(L, "__setclear");
 
 		lua_pushcfunction(L, unset_render_target);
 		lua_setglobal(L, "__render_to_window");

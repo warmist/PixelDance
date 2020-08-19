@@ -133,6 +133,7 @@ static int draw_quad(lua_State* L)
 	glDisableVertexAttribArray(pos_idx);
 	return 0;
 }
+//TODO: move blending to main?
 static int blend_default(lua_State* L)
 {
 	glBlendEquation(GL_FUNC_ADD);
@@ -147,7 +148,12 @@ static int blend_additive(lua_State* L)
 	glBlendFunc(GL_ONE, GL_ONE);
 	return 0;
 }
-
+static int blend_multiply(lua_State* L)
+{
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_DST_COLOR, GL_ZERO);
+    return 0;
+}
 static int depth_test(lua_State* L)
 {
     bool t = lua_toboolean(L, 2);
@@ -420,6 +426,9 @@ static int make_shader(lua_State* L, const char* vertex, const char* fragment,co
 
 		lua_pushcfunction(L, blend_additive);
 		lua_setfield(L, -2, "blend_add");
+
+        lua_pushcfunction(L, blend_multiply);
+        lua_setfield(L, -2, "blend_multiply");
 
         lua_pushcfunction(L, depth_test);
         lua_setfield(L, -2, "depth_test");
