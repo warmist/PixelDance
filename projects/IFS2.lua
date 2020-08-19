@@ -13,6 +13,7 @@ local ffi = require("ffi")
 			- start point has color, add it to end point
 			- do real (from chrom. abber.) tonemapping
 			- maybe 2d map of colors?
+			- multiplicative blending for "absorption" like thing
 --]]
 
 win_w=win_w or 0
@@ -20,8 +21,8 @@ win_h=win_h or 0
 
 aspect_ratio=aspect_ratio or 1
 function update_size()
-	local trg_w=2560*size_mult
-	local trg_h=1440*size_mult
+	local trg_w=1020*size_mult
+	local trg_h=1020*size_mult
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
 	if win_w~=trg_w or win_h~=trg_h then
@@ -110,7 +111,6 @@ end
 
 tick=tick or 0
 config=make_config({
-	{"auto_scale_color",true,type="boolean"},
 	{"draw",true,type="boolean"},
 	{"point_size",0,type="int",min=0,max=10},
 	{"size_mult",true,type="boolean"},
@@ -131,7 +131,6 @@ config=make_config({
 	{"gen_radius",2,type="float",min=0,max=10},
 
 	{"gamma",1,type="float",min=0.01,max=5},
-	{"gain",1,type="float",min=-5,max=5},
 	{"exposure",1,type="float",min=0,max=10},
 	{"white_point",1,type="float",min=0,max=10},
 },config)
@@ -373,9 +372,6 @@ function draw_visits(  )
 
 	display_shader:set("exposure",config.exposure)
 	display_shader:set("white_point",config.white_point)
-	local auto_scale=0
-	if config.auto_scale_color then auto_scale=1 end
-	display_shader:set_i("auto_scale_color",auto_scale)
 	display_shader:draw_quad()
 
 	if need_save then
@@ -2050,18 +2046,21 @@ void main(){
 
 	vec2 seed=float_from_floathash(pos_f.zw);
 	vec2 start_pos=gaussian2(seed,vec2(0),vec2(2));
+	vec2 delta_pos=start_pos-pos;
 
 	float start_l=length(start_pos);
 	start_l=clamp(start_l,0,1);
 	start_l=1-exp(-start_l*start_l);
-	float dist_traveled=length(start_pos-pos);
+	float dist_traveled=length(delta_pos);
 	//float color_value=start_l;
+	//float color_value=length(pos);
+	//float color_value=dot(delta_pos,delta_pos);
 	//float color_value=exp(-start_l*start_l);
 	//float color_value=normed_iter;
 	//float color_value=smoothstep(0,1,start_l);
 	//float color_value=sin(start_l*M_PI*2/4)*0.5+0.5;
 	//float color_value=normed_iter*exp(-start_l*start_l);
-	float color_value=1-exp(-dist_traveled*dist_traveled/100);
+	float color_value=1-exp(-dot(delta_pos,delta_pos)/100);
 	vec3 c=rgb2xyz(mix_palette(color_value).xyz);
 	c*=a*intensity;
 	//c*=(sin(start_l*M_PI*16)+0.6);
