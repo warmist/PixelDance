@@ -628,6 +628,7 @@ function palette_chooser()
 	imgui.SameLine()
 	if imgui.Button("Randomize") then
 		gen_palette()
+		need_clear=true
 	end
 	imgui.SameLine()
 	local generators={
@@ -2052,19 +2053,25 @@ void main(){
 	start_l=clamp(start_l,0,1);
 	start_l=1-exp(-start_l*start_l);
 	float dist_traveled=length(delta_pos);
+	//float color_value=cos(seed.x)*0.5+0.5;
+	float color_value=cos(seed.y*4*M_PI)*0.5+0.5;
 	//float color_value=start_l;
 	//float color_value=length(pos);
-	//float color_value=dot(delta_pos,delta_pos);
+	//float color_value=dot(delta_pos,delta_pos)/100;
 	//float color_value=exp(-start_l*start_l);
 	//float color_value=normed_iter;
+	//float color_value=cos(normed_iter*M_PI*2*20)*0.5+0.5;
 	//float color_value=smoothstep(0,1,start_l);
 	//float color_value=sin(start_l*M_PI*2/4)*0.5+0.5;
 	//float color_value=normed_iter*exp(-start_l*start_l);
-	float color_value=1-exp(-dot(delta_pos,delta_pos)/100);
+	//float color_value=1-exp(-dot(delta_pos,delta_pos)/2.5);
+	//float color_value=mix(start_l,dist_traveled,normed_iter);
 	vec3 c=rgb2xyz(mix_palette(color_value).xyz);
 	c*=a*intensity;
 	//c*=(sin(start_l*M_PI*16)+0.6);
-	//c*=(sin(normed_iter*M_PI*4)+0.2);
+	//c*=(sin(normed_iter*M_PI*8)+0.1);
+	//c*=(sin(start_l*M_PI*8)+0.0);
+	//c*=(start_l-0.5)*2;
 	color=vec4(c,1);
 
 }
