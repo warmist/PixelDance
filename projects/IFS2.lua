@@ -21,8 +21,8 @@ win_h=win_h or 0
 
 aspect_ratio=aspect_ratio or 1
 function update_size()
-	local trg_w=1020*size_mult
-	local trg_h=1020*size_mult
+	local trg_w=1300*size_mult
+	local trg_h=1300*size_mult
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
 	if win_w~=trg_w or win_h~=trg_h then
@@ -120,6 +120,8 @@ config=make_config({
 	{"v2",0,type="float",min=-1,max=1},
 	{"v3",0,type="float",min=-1,max=1},
 
+	
+
 	{"IFS_steps",50,type="int",min=1,max=1000},
 	{"smart_reset",false,type="boolean"},
 	{"move_dist",0.4,type="float",min=0.001,max=2},
@@ -133,6 +135,13 @@ config=make_config({
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"exposure",1,type="float",min=0,max=10},
 	{"white_point",1,type="float",min=0,max=10},
+
+	{"max_bright",1.0,type="float",min=0,max=2},
+	{"contrast",1.0,type="float",min=0,max=2},
+	{"linear_start",0.22,type="float",min=0,max=2},
+	{"linear_len",0.4,type="float",min=0,max=1},
+	{"black_tight",1.33,type="float",min=0,max=2},
+	{"black_off",0,type="float",min=0,max=1},
 },config)
 
 local display_shader=shaders.Make[==[
@@ -154,6 +163,8 @@ uniform float v_gamma;
 uniform float avg_lum;
 uniform float exposure;
 uniform float white_point;
+
+uniform float uchimura_params[6];
 
 #define M_PI   3.14159265358979323846264338327950288
 
@@ -246,7 +257,7 @@ vec3 hsv2rgb(vec3 c)
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 
-vec3 eye_adapt_and_stuff(vec3 light)
+vec3 tonemap_old(vec3 light)
 {
 	float lum_white = pow(10,white_point);
 	//lum_white*=lum_white;
@@ -273,7 +284,77 @@ vec3 eye_adapt_and_stuff(vec3 light)
 
     return light;
 }
+float Tonemap_ACES(float x) {
+    // Narkowicz 2015, "ACES Filmic Tone Mapping Curve"
+    const float a = 2.51;
+    const float b = 0.03;
+    const float c = 2.43;
+    const float d = 0.59;
+    const float e = 0.14;
+    return (x * (a * x + b)) / (x * (c * x + d) + e);
+}
+//https://www.shadertoy.com/view/WdjSW3
+float Tonemap_Uchimura(float x, float P, float a, float m, float l, float c, float b) {
+    // Uchimura 2017, "HDR theory and practice"
+    // Math: https://www.desmos.com/calculator/gslcdxvipg
+    // Source: https://www.slideshare.net/nikuque/hdr-theory-and-practicce-jp
+    float l0 = ((P - m) * l) / a;
+    float L0 = m - m / a;
+    float L1 = m + (1.0 - m) / a;
+    float S0 = m + l0;
+    float S1 = m + a * l0;
+    float C2 = (a * P) / (P - S1);
+    float CP = -C2 / P;
 
+    float w0 = 1.0 - smoothstep(0.0, m, x);
+    float w2 = step(m + l0, x);
+    float w1 = 1.0 - w0 - w2;
+
+    float T = m * pow(x / m, c) + b;
+    float S = P - (P - S1) * exp(CP * (x - S0));
+    float L = m + a * (x - m);
+
+    return T * w0 + L * w1 + S * w2;
+}
+
+float Tonemap_Uchimura(float x) {
+    float P = uchimura_params[0];  // max display brightness
+    float a = uchimura_params[1];  // contrast
+    float m = uchimura_params[2]; // linear section start
+    float l = uchimura_params[3];  // linear section length
+    float c = uchimura_params[4]; // black
+    float b = uchimura_params[5];  // pedestal
+    return Tonemap_Uchimura(x, P, a, m, l, c, b);
+}
+vec3 tonemap(vec3 light)
+{
+	float lum_white =white_point*white_point;// pow(10,white_point);
+	//lum_white*=lum_white;
+
+	//tocieYxy
+	float sum=light.x+light.y+light.z;
+	float x=light.x/sum;
+	float y=light.y/sum;
+	float Y=light.y;
+
+	Y=Y/(9.6*avg_lum);
+	//Y=Tonemap_Uchimura(Y);
+	///*
+	if(white_point<0)
+    	Y = Y / (1 + Y); //simple compression
+	else
+    	Y = (Y*(1 + Y / lum_white)) / (Y + 1); //allow to burn out bright areas
+    //*/
+
+    //transform back to cieXYZ
+    light.y=Y;
+    float small_x = x;
+    float small_y = y;
+    light.x = light.y*(small_x / small_y);
+    light.z = light.x / small_x - light.x - light.y;
+
+    return light;
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec3 ccol=texture(tex_main,normed).xyz;
@@ -287,7 +368,7 @@ void main(){
 	//ccol=abs(ccol);
 	ccol=max(vec3(0),ccol);
 	ccol=pow(ccol,vec3(v_gamma));
-	color = vec4(eye_adapt_and_stuff(ccol),1);
+	color = vec4(tonemap(ccol),1);
 
 	color.a=1;
 }
@@ -366,6 +447,14 @@ function draw_visits(  )
 	visit_tex.t:use(0,1)
 	set_shader_palette(display_shader)
 	display_shader:set("min_max",lmin[2],lmax[2])
+
+	display_shader:set("uchimura_params[0]",config.max_bright)
+	display_shader:set("uchimura_params[1]",config.contrast)
+	display_shader:set("uchimura_params[2]",config.linear_start)
+	display_shader:set("uchimura_params[3]",config.linear_len)
+	display_shader:set("uchimura_params[4]",config.black_tight)
+	display_shader:set("uchimura_params[5]",config.black_off)
+
 	display_shader:set("avg_lum",lavg)
 	display_shader:set_i("tex_main",0)
 	display_shader:set("v_gamma",config.gamma)
@@ -1029,12 +1118,15 @@ function rand_function(  )
 	--[[ nice tri-lobed shape
 		str_cmplx="c_div(c_conj(p),(s)-(p))"
 	--]]
+	--[[
 	local pts={}
 	local num_roots=7
 	for i=1,num_roots do
 		local angle=((i-1)/num_roots)*math.pi*2
 		table.insert(pts,{math.cos(angle)*config.move_dist,math.sin(angle)*config.move_dist})
 	end
+	str_cmplx=random_math_complex_pts(rand_complexity,pts)
+	--]]
 	--[=[
 	other_code=string.format([[
 	vec2 FT(float t,float c)
@@ -1044,7 +1136,7 @@ function rand_function(  )
 
 	str_cmplx=random_math_complex_series_t(4).."+"..random_math_complex_series_t(4,"s",1)
 	--]=]
-	--str_cmplx=random_math_complex_pts(rand_complexity,pts)
+	
 	--[=[ http://www.fractalsciencekit.com/topics/mobius.htm maybe?
 	--str_cmplx="c_div(c_mul(params.xy,s)+vec2(-0.1,0.2),c_mul(vec2(0.2,0.1),s)+params.zw)"
 	str_cmplx=random_math_complex(rand_complexity,"c_div(c_mul(R,s)+R,c_mul(R,s)+R)")
@@ -1171,11 +1263,11 @@ function rand_function(  )
 	--]]
 	--[[ polar gravity
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
-	str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
+	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
 	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
-	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
+	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(p,p));s=last_s+ds*(move_dist*vv/ls);"
 	--]]
@@ -1208,6 +1300,14 @@ function rand_function(  )
 	--[[ invert-ination
 	str_preamble=str_preamble.."s=c_inv(s);"
 	str_postamble=str_postamble.."s=c_inv(s);"
+	--]]
+	-- [[ Chebyshev polynomial
+	str_preamble=str_preamble.."s=move_dist*acos(s);"
+	str_postamble=str_postamble.."s=cos(s);"
+	--]]
+	--[[ Chebyshev polynomial2
+	str_preamble=str_preamble.."s=move_dist*cos(s);"
+	str_postamble=str_postamble.."s=acos(s);"
 	--]]
 	--[[ offset
 	str_preamble=str_preamble.."s+=params.xy;"
@@ -2019,6 +2119,53 @@ vec2 gaussian2 (vec2 seed,vec2 mean,vec2 var)
     sqrt(-2 * var.x * log(seed.x)) * cos(2 * M_PI * seed.y),
     sqrt(-2 * var.y * log(seed.x)) * sin(2 * M_PI * seed.y))+mean;
 }
+
+uint triple32(uint x)
+{
+    x ^= x >> 17;
+    x *= 0xed5ad4bbU;
+    x ^= x >> 11;
+    x *= 0xac4c1b51U;
+    x ^= x >> 15;
+    x *= 0x31848babU;
+    x ^= x >> 14;
+    return x;
+}
+vec2 hash22(vec2 seed)
+{	
+	uint x=triple32(floatBitsToUint(seed.x));
+	uint y=triple32(floatBitsToUint(seed.y));
+	return uvec2(x,y)/vec2(4294967295.0);
+}
+float color_value_vornoi(vec2 pos)
+{
+	int num_domains=30;
+	float cur_dom=0;
+	float min_dist=999999;
+	vec2 seed=vec2(1.8779,0.99932);
+	uvec2 useed=uvec2(floatBitsToUint(seed.x),floatBitsToUint(seed.y));
+	for(int i=0;i<num_domains;i++)
+	{
+		useed.x=triple32(useed.x);
+		useed.y=triple32(useed.y);
+
+		vec2 loc=useed/vec2(4294967295.0);
+		loc-=pos;
+		/*vec2 loc;
+		if(i==0)
+			loc=vec2(0,0)-pos;
+		else
+			loc=vec2(1,1)-pos;
+		*/
+		float d=dot(loc,loc);
+		if(d<min_dist)
+		{
+			min_dist=d;
+			cur_dom=i/float(num_domains);
+		}
+	}
+	return cur_dom;
+}
 void main(){
 	vec2 pos=pos_f.xy;
 #if ESCAPE_MODE
@@ -2053,11 +2200,12 @@ void main(){
 	start_l=clamp(start_l,0,1);
 	start_l=1-exp(-start_l*start_l);
 	float dist_traveled=length(delta_pos);
+	//float color_value=color_value_vornoi(delta_pos);
 	//float color_value=cos(seed.x)*0.5+0.5;
-	float color_value=cos(seed.y*4*M_PI)*0.5+0.5;
+	//float color_value=cos(seed.y*4*M_PI)*0.5+0.5;
 	//float color_value=start_l;
 	//float color_value=length(pos);
-	//float color_value=dot(delta_pos,delta_pos)/100;
+	float color_value=dot(delta_pos,delta_pos)/10;
 	//float color_value=exp(-start_l*start_l);
 	//float color_value=normed_iter;
 	//float color_value=cos(normed_iter*M_PI*2*20)*0.5+0.5;
@@ -2115,7 +2263,6 @@ vec2 hash22(vec2 p)
 	vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
     p3 += dot(p3, p3.yzx+33.33);
     return fract((p3.xx+p3.yz)*p3.zy);
-
 }
 
 uint wang_hash(uint seed)
