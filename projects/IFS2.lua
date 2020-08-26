@@ -338,13 +338,14 @@ vec3 tonemap(vec3 light)
 	float Y=light.y;
 
 	Y=Y/(9.6*avg_lum);
-	//Y=Tonemap_Uchimura(Y);
-	///*
+#if 1
+	Y=Tonemap_Uchimura(Y);
+#else
 	if(white_point<0)
     	Y = Y / (1 + Y); //simple compression
 	else
     	Y = (Y*(1 + Y / lum_white)) / (Y + 1); //allow to burn out bright areas
-    //*/
+#endif
 
     //transform back to cieXYZ
     light.y=Y;
@@ -1246,7 +1247,7 @@ function rand_function(  )
 
 	--]]
 
-	--[[ complex seriesize
+	-- [[ complex seriesize
 	local series_size=7
 	local rand_offset=0.01
 	local rand_size=0.025
@@ -1257,7 +1258,7 @@ function rand_function(  )
 			sub_s=string.format("c_mul(%s,%s)","s",sub_s)
 		end
 		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
-		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)*normed_iter",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)*floor(seed*15+1)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
@@ -1302,12 +1303,12 @@ function rand_function(  )
 	str_postamble=str_postamble.."s=c_inv(s);"
 	--]]
 	-- [[ Chebyshev polynomial
-	str_preamble=str_preamble.."s=move_dist*acos(s);"
-	str_postamble=str_postamble.."s=cos(s);"
+	str_preamble=str_preamble.."s=floor(seed*move_dist+1)*c_acos(s);"
+	str_postamble=str_postamble.."s=c_cos(s);"
 	--]]
 	--[[ Chebyshev polynomial2
-	str_preamble=str_preamble.."s=move_dist*cos(s);"
-	str_postamble=str_postamble.."s=acos(s);"
+	str_preamble=str_preamble.."s=move_dist*c_cos(s);"
+	str_postamble=str_postamble.."s=c_acos(s);"
 	--]]
 	--[[ offset
 	str_preamble=str_preamble.."s+=params.xy;"
@@ -2205,7 +2206,7 @@ void main(){
 	//float color_value=cos(seed.y*4*M_PI)*0.5+0.5;
 	//float color_value=start_l;
 	//float color_value=length(pos);
-	float color_value=dot(delta_pos,delta_pos)/10;
+	float color_value=dot(delta_pos,delta_pos)/100;
 	//float color_value=exp(-start_l*start_l);
 	//float color_value=normed_iter;
 	//float color_value=cos(normed_iter*M_PI*2*20)*0.5+0.5;
