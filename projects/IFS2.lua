@@ -338,7 +338,7 @@ vec3 tonemap(vec3 light)
 	float Y=light.y;
 
 	Y=Y/(9.6*avg_lum);
-#if 1
+#if 0
 	Y=Tonemap_Uchimura(Y);
 #else
 	if(white_point<0)
@@ -1249,8 +1249,8 @@ function rand_function(  )
 
 	-- [[ complex seriesize
 	local series_size=7
-	local rand_offset=0.01
-	local rand_size=0.025
+	local rand_offset=0.1
+	local rand_size=0.25
 	local input_s=""
 	for i=1,series_size do
 		local sub_s="s"
@@ -1302,7 +1302,7 @@ function rand_function(  )
 	str_preamble=str_preamble.."s=c_inv(s);"
 	str_postamble=str_postamble.."s=c_inv(s);"
 	--]]
-	-- [[ Chebyshev polynomial
+	--[[ Chebyshev polynomial
 	str_preamble=str_preamble.."s=floor(seed*move_dist+1)*c_acos(s);"
 	str_postamble=str_postamble.."s=c_cos(s);"
 	--]]
@@ -2073,6 +2073,7 @@ in vec4 pos_f;
 uniform sampler2D img_tex;
 uniform int pix_size;
 uniform float normed_iter;
+uniform float global_seed;
 
 uniform vec4 palette[50];
 uniform int palette_size;
@@ -2201,12 +2202,13 @@ void main(){
 	start_l=clamp(start_l,0,1);
 	start_l=1-exp(-start_l*start_l);
 	float dist_traveled=length(delta_pos);
+	float color_value=global_seed;
 	//float color_value=color_value_vornoi(delta_pos);
 	//float color_value=cos(seed.x)*0.5+0.5;
 	//float color_value=cos(seed.y*4*M_PI)*0.5+0.5;
 	//float color_value=start_l;
 	//float color_value=length(pos);
-	float color_value=dot(delta_pos,delta_pos)/100;
+	//float color_value=dot(delta_pos,delta_pos)/10;
 	//float color_value=exp(-start_l*start_l);
 	//float color_value=normed_iter;
 	//float color_value=cos(normed_iter*M_PI*2*20)*0.5+0.5;
@@ -2648,7 +2650,7 @@ function visit_iter()
 	else
 		transform_shader:set_i("non_hashed_random",1)
 	end
-
+	local global_seed=math.random()
 	local max_iter=1
 	if not config.draw then
 		--max_iter=8
@@ -2661,7 +2663,7 @@ function visit_iter()
 
 		samples:get_current():use()
 
-		transform_shader:set("seed",math.random())
+		transform_shader:set("seed",global_seed)
 		transform_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
 		transform_shader:set("gen_radius",config.gen_radius)
 		transform_shader:raster_discard(true)
@@ -2685,6 +2687,7 @@ function visit_iter()
 		add_visits_shader:set("center",config.cx,config.cy)
 		add_visits_shader:set("scale",config.scale,config.scale*aspect_ratio)
 		add_visits_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
+		add_visits_shader:set("global_seed",global_seed)
 		set_shader_palette(add_visits_shader)
 		if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
 			error("failed to set framebuffer up")
