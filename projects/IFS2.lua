@@ -338,6 +338,9 @@ vec3 tonemap(vec3 light)
 	float Y=light.y;
 
 	Y=Y/(9.6*avg_lum);
+	//Y=(Y-min_max.x)/(min_max.y-min_max.x);
+	//Y=(log(Y+1)-log(min_max.x+1))/(log(min_max.y+1)-log(min_max.x+1));
+	//Y=log(Y+1)/log(min_max.y+1);
 #if 0
 	Y=Tonemap_Uchimura(Y);
 #else
@@ -974,7 +977,19 @@ function random_math_complex_pts(steps,pts,seed )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
-
+function random_math_complex_intervals(steps,count_intervals,seed )
+	local cur_string=seed or "R"
+	local ret=""
+	for i=1,count_intervals do
+		local istart=(i-1)/count_intervals
+		local iend=(i)/count_intervals
+		ret=ret..random_math_complex(steps,seed)..string.format("*value_inside(seed,%g,%g)",istart,iend)
+		if i~=count_intervals then
+			ret=ret.."+"
+		end
+	end
+	return ret
+end
 function factorial( n )
 	if n<=1 then return 1 end
 	return n*factorial(n-1)
@@ -1107,8 +1122,8 @@ end
 animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
-	--str_cmplx=random_math_complex(rand_complexity,nil,{"from_polar(to_polar(p)+vec2(0,floor(seed*move_dist)*M_PI*2/move_dist))"})
-	str_cmplx=random_math_complex(rand_complexity)
+	--str_cmplx=random_math_complex(rand_complexity)
+	str_cmplx=random_math_complex_intervals(rand_complexity,config.move_dist)
 	str_x=random_math_x(rand_complexity)
 	str_y=random_math_y(rand_complexity)
 	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,floor(seed*move_dist)*M_PI*2/move_dist))"
@@ -1249,7 +1264,7 @@ function rand_function(  )
 
 	--]]
 
-	-- [[ complex seriesize
+	--[[ complex seriesize
 	local series_size=7
 	local rand_offset=0.1
 	local rand_size=0.25
@@ -1527,6 +1542,8 @@ uniform float move_dist;
 uniform vec4 params;
 uniform float normed_iter;
 uniform float gen_radius;
+
+float value_inside(float x,float a,float b){return step(a,x)-step(x,b);}
 
 float rand1(float n){return fract(sin(n) * 43758.5453123);}
 float rand2(float n){return fract(sin(n) * 78745.6326871);}
