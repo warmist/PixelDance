@@ -353,8 +353,8 @@ vec3 tonemap(vec3 light)
     float small_y = y;
     light.x = light.y*(small_x / small_y);
     light.z = light.x / small_x - light.x - light.y;
-
-    return xyz2rgb(light);
+    //light=clamp(light,0,1);
+    return xyz2rgb(light*100);
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -1107,9 +1107,11 @@ end
 animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
+	--str_cmplx=random_math_complex(rand_complexity,nil,{"from_polar(to_polar(p)+vec2(0,floor(seed*move_dist)*M_PI*2/move_dist))"})
 	str_cmplx=random_math_complex(rand_complexity)
 	str_x=random_math_x(rand_complexity)
 	str_y=random_math_y(rand_complexity)
+	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,floor(seed*move_dist)*M_PI*2/move_dist))"
 	--str_cmplx=random_math_complex(rand_complexity,"c_mul(R,last_s/length(last_s)+c_one())")
 	--local FT=random_math_complex(rand_complexity)
 	--[[
@@ -1261,7 +1263,7 @@ function rand_function(  )
 		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
 		local dx=math.cos((i/series_size)*math.pi*2)
 		local dy=math.sin((i/series_size)*math.pi*2)
-		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)*seed",sub_s,dx,dy)
+		input_s=input_s..string.format("+%s*vec2(cos(seed*M_PI*2),sin(seed*M_PI*2))",sub_s)
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
