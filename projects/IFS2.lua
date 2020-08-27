@@ -928,9 +928,9 @@ function replace_random( s,substr,rep )
 end
 function make_rand_math( normal_s,terminal_s,forced_s )
 	forced_s=forced_s or {}
-	return function ( steps,seed )
+	return function ( steps,seed,force_values)
 		local cur_string=seed or "R"
-
+		force_values=force_values or forced_s
 		function M(  )
 			return rand_weighted(normal_s)
 		end
@@ -941,7 +941,7 @@ function make_rand_math( normal_s,terminal_s,forced_s )
 		for i=1,steps do
 			cur_string=replace_random(cur_string,"R",M)
 		end
-		for i,v in ipairs(forced_s) do
+		for i,v in ipairs(force_values) do
 			cur_string=replace_random(cur_string,"R",v)
 		end
 		cur_string=string.gsub(cur_string,"R",MT)
