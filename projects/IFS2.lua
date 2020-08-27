@@ -1258,17 +1258,21 @@ function rand_function(  )
 			sub_s=string.format("c_mul(%s,%s)","s",sub_s)
 		end
 		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
-		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)*floor(seed*15+1)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+		local dx=math.cos((i/series_size)*math.pi*2)
+		local dy=math.sin((i/series_size)*math.pi*2)
+		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)*seed",sub_s,dx,dy)
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	--[[ polar gravity
+	-- [[ polar gravity
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
 	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
-	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*floor(seed*move_dist+1)/move_dist)/(M_PI/2);s=last_s+ds*(floor(seed*move_dist+1)*vv/(ls*move_dist));"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(p,p));s=last_s+ds*(move_dist*vv/ls);"
 	--]]
@@ -1319,10 +1323,12 @@ function rand_function(  )
 
 	--]]
 	--[[ offset_complex
-	str_preamble=str_preamble.."s+=params.xy;s=c_mul(s,params.zw);"
+	--str_preamble=str_preamble.."s+=params.xy*floor(seed*move_dist+1)/move_dist;s=c_mul(s,params.zw);"
+	str_preamble=str_preamble.."s+=vec2(0.125,-0.25);s=c_mul(s,vec2(seed,floor(seed*move_dist+1)/move_dist));"
 	--]]
 	--[[ unoffset_complex
-	str_postamble=str_postamble.."s=c_div(s,params.zw);s-=params.xy;"
+	--str_postamble=str_postamble.."s=c_div(s,params.zw);s-=params.xy*floor(seed*move_dist+1)/move_dist;"
+	str_postamble=str_postamble.."s=c_mul(s,c_inv(params.zw));s-=params.xy*floor(seed*move_dist+1)/move_dist;"
 	--]]
 	--[[ rotate (p)
 	--str_preamble=str_preamble.."s=vec2(cos(p.x)*s.x-sin(p.x)*s.y,cos(p.x)*s.y+sin(p.x)*s.x);"
@@ -1332,9 +1338,10 @@ function rand_function(  )
 	--[[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
-	str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
+	str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(seed*move_dist+1)/move_dist);"
 	--]]
 	--[[ const-delta-like complex
 	str_preamble=str_preamble.."vec2 os=s;"
