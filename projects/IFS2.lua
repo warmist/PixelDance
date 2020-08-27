@@ -354,7 +354,7 @@ vec3 tonemap(vec3 light)
     light.x = light.y*(small_x / small_y);
     light.z = light.x / small_x - light.x - light.y;
 
-    return light;
+    return xyz2rgb(light);
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -370,7 +370,7 @@ void main(){
 	ccol=max(vec3(0),ccol);
 	ccol=pow(ccol,vec3(v_gamma));
 	color = vec4(tonemap(ccol),1);
-
+	color.xyz=pow(color.xyz,vec3(2.2));
 	color.a=1;
 }
 ]==]
