@@ -979,14 +979,32 @@ function random_math_complex_pts(steps,pts,seed )
 end
 function random_math_complex_intervals(steps,count_intervals,seed )
 	local cur_string=seed or "R"
+	local rc=random_math_complex(steps,seed)
 	local ret=""
 	for i=1,count_intervals do
 		local istart=(i-1)/count_intervals
 		local iend=(i)/count_intervals
-		ret=ret..random_math_complex(steps,seed)..string.format("*value_inside(seed,%g,%g)",istart,iend)
+		-- [[
+		local dx=math.random()*2-1
+		local dy=math.sqrt(1-dx*dx)*0.95--math.random()*0.5-0.25
+		local dx2=math.random()*0.5-0.25
+		local dy2=math.random()*0.5-0.25
+		--]]
+		--[[
+		local dx=math.cos(istart*math.pi*2)*1
+		local dy=math.sin(istart*math.pi*2)*1
+		--]]
+		--ret=ret.."("..rc..string.format("+vec2(%g,%g))*value_inside(global_seed,%g,%g)",dx,dy,istart,iend)
+		if i==1 then
+			ret=ret..string.format("(c_mul(%s,vec2(%g,%g))+vec2(%g,%g))*value_inside(global_seed,%g,%g)",rc,dx,dy,dx2,dy2,istart,iend)
+		else
+			ret=ret..string.format("(c_mul(s,vec2(%g,%g))+vec2(%g,%g))*value_inside(global_seed,%g,%g)",dx,dy,dx2,dy2,istart,iend)
+		end
+		--ret=ret..string.format("(c_pow(s,%d)+p+vec2(%g,%g))*value_inside(seed,%g,%g)",i+1,dx,dy,istart,iend)
 		if i~=count_intervals then
 			ret=ret.."+"
 		end
+		--rc="c_mul("..rc..","..random_math_complex(3,seed)..")"
 	end
 	return ret
 end
@@ -1123,7 +1141,7 @@ animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
 	--str_cmplx=random_math_complex(rand_complexity)
-	str_cmplx=random_math_complex_intervals(rand_complexity,config.move_dist)
+	str_cmplx=random_math_complex_intervals(rand_complexity,10)
 	str_x=random_math_x(rand_complexity)
 	str_y=random_math_y(rand_complexity)
 	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,floor(seed*move_dist)*M_PI*2/move_dist))"
@@ -1275,10 +1293,10 @@ function rand_function(  )
 			sub_s=string.format("c_mul(%s,%s)","s",sub_s)
 		end
 		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
-		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
 		local dx=math.cos((i/series_size)*math.pi*2)
 		local dy=math.sin((i/series_size)*math.pi*2)
-		input_s=input_s..string.format("+%s*vec2(cos(seed*M_PI*2),sin(seed*M_PI*2))",sub_s)
+		--input_s=input_s..string.format("+%s*vec2(cos(seed*M_PI*2),sin(seed*M_PI*2))",sub_s)
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
@@ -1541,13 +1559,13 @@ out vec4 point_out;
 uniform vec2 center;
 uniform vec2 scale;
 uniform int pix_size;
-uniform float seed;
+uniform float global_seed;
 uniform float move_dist;
 uniform vec4 params;
 uniform float normed_iter;
 uniform float gen_radius;
 
-float value_inside(float x,float a,float b){return step(a,x)-step(x,b);}
+float value_inside(float x,float a,float b){return step(a,x)-step(b,x);}
 
 float rand1(float n){return fract(sin(n) * 43758.5453123);}
 float rand2(float n){return fract(sin(n) * 78745.6326871);}
@@ -2198,6 +2216,7 @@ float color_value_vornoi(vec2 pos)
 	}
 	return cur_dom;
 }
+float value_inside(float x,float a,float b){return step(a,x)-step(b,x);}
 void main(){
 	vec2 pos=pos_f.xy;
 #if ESCAPE_MODE
@@ -2706,7 +2725,7 @@ function visit_iter()
 
 		samples:get_current():use()
 
-		transform_shader:set("seed",global_seed)
+		transform_shader:set("global_seed",global_seed)
 		transform_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
 		transform_shader:set("gen_radius",config.gen_radius)
 		transform_shader:raster_discard(true)
