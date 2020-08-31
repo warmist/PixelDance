@@ -1445,6 +1445,10 @@ function gui()
 	if imgui.Button("Save buffer") then
 		need_buffer_save="out.buf"
 	end
+	imgui.SameLine()
+	if imgui.Button("regen shuffling") then
+		global_seed_shuffling={}
+	end
 	rand_complexity=rand_complexity or 3
 	if imgui.Button("Rand function") then
 		rand_function()
@@ -2471,7 +2475,13 @@ function sample_rand( numsamples,max_count )
 		print(string.format("Id:%d %g %g %g %g",id,s.r,s.g,s.b,s.a))
 	end
 end
-
+global_seed_shuffling=global_seed_shuffling or {}
+function generate_shuffling( num_steps )
+	global_seed_shuffling={}
+	for i=1,num_steps do
+		global_seed_shuffling[i]=math.random()
+	end
+end
 function visit_iter()
 	local shader_randomize=true
 	local psize=config.point_size
@@ -2676,7 +2686,14 @@ function visit_iter()
 	else
 		transform_shader:set_i("non_hashed_random",1)
 	end
-	local global_seed=math.random()
+	if #global_seed_shuffling==0 then
+		generate_shuffling(10)
+	end
+	global_seed_id=global_seed_id or 1
+	global_seed_id=global_seed_id+1
+	if global_seed_id>#global_seed_shuffling then global_seed_id=1 end
+
+	global_seed=global_seed_shuffling[global_seed_id]
 	local max_iter=1
 	if not config.draw then
 		--max_iter=8
