@@ -977,14 +977,14 @@ function random_math_complex_pts(steps,pts,seed )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
-function random_math_complex_intervals(steps,count_intervals,seed )
+function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 	local cur_string=seed or "R"
-	local rc=random_math_complex(steps,seed)
+	local rc=random_math_complex(steps,seed,force_values)
 	local ret=""
 	for i=1,count_intervals do
 		local istart=(i-1)/count_intervals
 		local iend=(i)/count_intervals
-		-- [[
+		--[[
 		local dx=math.random()*2-1
 		local dy=math.sqrt(1-dx*dx)*0.95--math.random()*0.5-0.25
 		local dx2=math.random()*0.5-0.25
@@ -994,17 +994,22 @@ function random_math_complex_intervals(steps,count_intervals,seed )
 		local dx=math.cos(istart*math.pi*2)*1
 		local dy=math.sin(istart*math.pi*2)*1
 		--]]
-		--ret=ret.."("..rc..string.format("+vec2(%g,%g))*value_inside(global_seed,%g,%g)",dx,dy,istart,iend)
+		local dx=0
+		local dy=0
+		ret=ret.."("..rc..string.format("+vec2(%g,%g))*value_inside(global_seed,%g,%g)",dx,dy,istart,iend)
+		--[[
 		if i==1 then
 			ret=ret..string.format("(c_mul(%s,vec2(%g,%g))+vec2(%g,%g))*value_inside(global_seed,%g,%g)",rc,dx,dy,dx2,dy2,istart,iend)
 		else
 			ret=ret..string.format("(c_mul(s,vec2(%g,%g))+vec2(%g,%g))*value_inside(global_seed,%g,%g)",dx,dy,dx2,dy2,istart,iend)
 		end
-		--ret=ret..string.format("(c_pow(s,%d)+p+vec2(%g,%g))*value_inside(seed,%g,%g)",i+1,dx,dy,istart,iend)
+		]]
+		--ret=ret..string.format("(c_pow(s,%d)+p+vec2(%g,%g))*value_inside(global_seed,%g,%g)",i+1,dx,dy,istart,iend)
 		if i~=count_intervals then
 			ret=ret.."+"
 		end
 		--rc="c_mul("..rc..","..random_math_complex(3,seed)..")"
+		rc=random_math_complex(steps,seed,force_values)
 	end
 	return ret
 end
@@ -1013,7 +1018,7 @@ function factorial( n )
 	return n*factorial(n-1)
 end
 function random_math_complex_series( steps,seed )
-	local cur_string="0" or seed
+	local cur_string= seed or "0"
 	function MT(  )
 		return rand_weighted(terminal_symbols_complex)
 	end
@@ -1111,6 +1116,27 @@ function random_math_fourier( steps,complications ,seed)
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
+function random_math_fourier_complex( steps,complications ,seed,force_values)
+	local cur_string=seed or "(R)/2"
+	local period=1
+	for i=1,steps do
+		cur_string=cur_string..("+(R)*c_exp(vec2(0,2*%d*M_PI/%g))"):format(i,period)
+	end
+	function M(  )
+		return rand_weighted(normal_symbols_complex)
+	end
+	function MT(  )
+		return rand_weighted(terminal_symbols_complex)
+	end
+	for i=1,complications do
+		cur_string=replace_random(cur_string,"R",M)
+	end
+	for i,v in ipairs(force_values or {}) do
+		cur_string=replace_random(cur_string,"R",v)
+	end
+	cur_string=string.gsub(cur_string,"R",MT)
+	return cur_string
+end
 function random_math_power( steps,complications,seed )
 	local cur_string=seed or "R"
 	for i=1,steps do
@@ -1140,11 +1166,18 @@ end
 animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
-	--str_cmplx=random_math_complex(rand_complexity)
-	str_cmplx=random_math_complex_intervals(rand_complexity,10)
+	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(global_seed,0)","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
+	str_cmplx=random_math_complex_intervals(rand_complexity,6,nil,{"s","p","params.xy","params.zw"})
+	--str_cmplx=random_math_complex_intervals(rand_complexity,15,"(R)/2+(R)*c_sin(vec2(2*M_PI,1)*(R)+R)")
+	--str_cmplx=random_math_fourier_complex(7,rand_complexity)
+	--str_cmplx=random_math_complex_series(4,random_math_complex_intervals(rand_complexity,5))
+	--str_cmplx="c_inv(((s)-((c_cos((vec2(global_seed,0))+(s)))-(c_asin(s))))-(c_conj(c_cos(c_inv(s)))))"
+	--str_cmplx="c_inv((s-c_cos(vec2(global_seed,0)+s)+c_asin(s+params.xy))-c_conj(c_mul(c_cos(c_inv(s)),params.zw)))"
+
 	str_x=random_math_x(rand_complexity)
 	str_y=random_math_y(rand_complexity)
-	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,floor(seed*move_dist)*M_PI*2/move_dist))"
+	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,global_seed*move_dist*M_PI*2))"
+	--str_cmplx="c_cos(s)+p*global_seed+c_mul(s,s)*(1-global_seed)"
 	--str_cmplx=random_math_complex(rand_complexity,"c_mul(R,last_s/length(last_s)+c_one())")
 	--local FT=random_math_complex(rand_complexity)
 	--[[
@@ -2272,6 +2305,7 @@ void main(){
 	//c*=(sin(normed_iter*M_PI*8)+0.1);
 	//c*=(sin(start_l*M_PI*8)+0.0);
 	//c*=(start_l-0.5)*2;
+	//c*=sin(global_seed*M_PI*8)+0.3;
 	color=vec4(c,1);
 
 }
