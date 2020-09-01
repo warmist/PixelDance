@@ -1179,7 +1179,7 @@ function rand_function(  )
 	--str_cmplx="c_inv((s-c_cos(vec2(global_seed,0)+s)+c_asin(s+params.xy))-c_conj(c_mul(c_cos(c_inv(s)),params.zw)))"
 
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"c_pow(s,vec2(1,global_seed*2))"})
-	str_cmplx=random_math_complex_intervals(rand_complexity,10)
+	--str_cmplx=random_math_complex_intervals(rand_complexity,10)
 	str_x=random_math_x(rand_complexity)
 	str_y=random_math_y(rand_complexity)
 	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,global_seed*move_dist*M_PI*2))"
@@ -1974,106 +1974,7 @@ vec2 gaussian(float mean,float var,vec2 rnd)
             sqrt(-2 * var * log(rnd.x)) *
             sin(2 * 3.14159265359 * rnd.y) + mean);
 }
-vec2 pMod2(inout vec2 p,float size)
-{
-	vec2 halfsize=vec2(size*0.5);
-	vec2 c= floor((p+halfsize)/size);
-	p=mod(p+halfsize,size)-halfsize;
-	return c;
-}
-vec2 mapping(vec2 p)
-{
-	return p; //normal - do nothing
-	//return abs(p)-vec2(1);
-	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
-	/*
-	if(length(p)<50) //modulo, but no artifacts because far away points are far away
-	{
-		float size=2.005; //0.005 overdraw as it smooths the tiling when using non 1 sized points
-		return mod(p+vec2(size/2),size)-vec2(size/2);
-	}
-	else
-		return p;
-	//*/
-	//TODO: https://en.wikipedia.org/wiki/Wallpaper_group most of these would be fun...
-	if(length(p)<50) //modulo, but no artifacts because far away points are far away
-	{
-		//float size=2.005; //0.005 overdraw as it smooths the tiling when using non 1 sized points
-		float size=2;
-		vec2 r=pMod2(p,size);
-		//float index=abs(r.x)+abs(r.y);
 
-		//if(mod(index,2)!=0) //make more interesting tiling: each second tile is flipped
-		//p*=-1;
-		float index=mod(r.x,2)+mod(r.y,2)*2;
-		///* code for group p4
-		float rot=0;
-		if(index==1)
-			rot=1;
-		else if(index==2)
-			rot=3;
-		else if(index==3)
-			rot=2;
-		else if(index==-1)
-			rot=-1;
-		else if(index==-2)
-			rot=-3;
-		else if(index==-3)
-			rot=-2;
-
-		p=tRotate(p,rot*M_PI/2.0);
-		//*/
-		/*
-		if(mod(r.x,2)!=0)
-		{
-			p.x*=-1;
-			p.y+=1;
-			pMod2(p,size);
-		}
-		*/
-		/*
-		if(mod(r.y,2)!=0)
-		{
-			p.y*=-1;
-			pMod2(p,size);
-		}
-		*/
-		return p;
-		//return mod(p+vec2(size/2),size)-vec2(size/2);
-	}
-	else
-		return p;
-	//return mod(p+vec2(1),2)-vec2(1)+vec2(0.001)*log(dot(p,p)+1);
-	//return c_rem(p+vec2(1),vec2(2,0))-vec2(1);
-	/* polar
-	float angle=(2*M_PI)/3;
-	float r=length(p);
-	float a=atan(p.y,p.x);
-	r=mod(r,2);
-	a=mod(a,angle);
-	a/=angle;
-	return vec2(r-1,a*2-1);
-	//*/
-	//spherical... needs compression in poles
-	/*
-	float w=2;
-	float h=2;
-
-	p+=vec2(w/2,h/2);
-	float d=floor(p.y/h);
-	if(mod(d,2)<1)
-	{
-		p.y=mod(p.y,h);
-	}
-	else
-	{
-		p.y=h-mod(p.y,h);
-		p.x+=w/2;
-	}
-	p.x=mod(p.x,w);
-	return p-vec2(w/2,h/2);
-	//*/
-}
 vec2 float_from_floathash(vec2 val)
 {
 	return floatBitsToUint(val)/vec2(4294967295.0);
@@ -2104,19 +2005,13 @@ void main()
     //pos.z=rez.z;//length(rez);
     point_out.xy=position.xy;
 #else
-	
+	//in add shader: pos.xy*scale+center
 	vec2 p=func(position.xy,start_pos).xy;
-	p=(mapping(p*scale+center)-center)/scale;
+	//p=(mapping(p*scale+center)-center)/scale;
 	point_out.xy=p;
 	point_out.zw=position.zw;
-	//pos=vec3(point_out.xy,1);
-	//gl_Position.xy = mapping(point_out.xy*scale+center);
-    //pos=gl_Position.xyz;
 #endif
 
-
-	//gl_Position.z = 0;
-    //gl_Position.w = 1.0;
 }
 ]==],
 --Args to format
@@ -2134,16 +2029,141 @@ make_visit_shader(true)
 add_visits_shader=shaders.Make(
 [==[
 #version 330
-#line 1748
+#line 2032
 layout(location = 0) in vec4 pos;
+
+#define M_PI 3.1415926535897932384626433832795
 
 out vec4 pos_f;
 uniform vec2 center;
 uniform vec2 scale;
 uniform int pix_size;
+vec2 pMod2(inout vec2 p,float size)
+{
+	vec2 halfsize=vec2(size*0.5);
+	vec2 c= floor((p+halfsize)/size);
+	p=mod(p+halfsize,size)-halfsize;
+	return c;
+}
+vec2 tRotate(vec2 p, float a) {
+	float c=cos(a);
+	float s=sin(a);
+	mat2 m=mat2(c,-s,s,c);
+	return m*p;
+}
+vec2 tReflect(vec2 p,float a){
+	float c=cos(2*a);
+	float s=sin(2*a);
+	mat2 m=mat2(c,s,s,-c);
+	return m*p;
+}
+vec2 mapping(vec2 p)
+{
+	//return p; //normal - do nothing
+	//return abs(p)-vec2(1);
+	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
+	///*
+	if(length(p)<50) //modulo, but no artifacts because far away points are far away
+	{
+		float size=2.005; //0.005 overdraw as it smooths the tiling when using non 1 sized points
+		return mod(p+vec2(size/2),size)-vec2(size/2);
+	}
+	else
+		return p;
+	//*/
+#if 0
+	//TODO: https://en.wikipedia.org/wiki/Wallpaper_group most of these would be fun...
+	if(length(p)<50) //modulo, but no artifacts because far away points are far away
+	{
+		//float size=2.005; //0.005 overdraw as it smooths the tiling when using non 1 sized points
+		float size=2;
+		vec2 r=pMod2(p,size);
+
+		/*
+		float index=abs(r.x)+abs(r.y);
+		if(mod(index,2)!=0) //make more interesting tiling: each second tile is flipped
+			p*=-1;
+		//*/
+
+
+		///* code for group p4
+		float index=mod(r.x,2)+mod(r.y,2)*2;
+		float rot=0;
+		if(index==1)
+			rot=1;
+		else if(index==2)
+			rot=3;
+		else if(index==3)
+			rot=2;
+		else if(index==-1)
+			rot=-1;
+		else if(index==-2)
+			rot=-3;
+		else if(index==-3)
+			rot=-2;
+
+		p=tRotate(p,rot*M_PI/2.0);
+		//*/
+
+		/*
+		if(mod(r.x,2)!=0)
+		{
+			p.x*=-1;
+			p.y+=1;
+			pMod2(p,size);
+		}
+		//*/
+
+		/*
+		if(mod(r.y,2)!=0)
+		{
+			p.y*=-1;
+			pMod2(p,size);
+		}
+		//*/
+
+		return p;
+
+		//return mod(p+vec2(size/2),size)-vec2(size/2);
+	}
+	else
+		return p;
+#endif
+	//return mod(p+vec2(1),2)-vec2(1)+vec2(0.001)*log(dot(p,p)+1);
+	//return c_rem(p+vec2(1),vec2(2,0))-vec2(1);
+	/* polar
+	float angle=(2*M_PI)/3;
+	float r=length(p);
+	float a=atan(p.y,p.x);
+	r=mod(r,2);
+	a=mod(a,angle);
+	a/=angle;
+	return vec2(r-1,a*2-1);
+	//*/
+	//spherical... needs compression in poles
+	///*
+	float w=2;
+	float h=2;
+
+	p+=vec2(w/2,h/2);
+	float d=floor(p.y/h);
+	if(mod(d,2)<1)
+	{
+		p.y=mod(p.y,h);
+	}
+	else
+	{
+		p.y=h-mod(p.y,h);
+		p.x+=w/2;
+	}
+	p.x=mod(p.x,w);
+	return p-vec2(w/2,h/2);
+	//*/
+}
 void main()
 {
-    gl_Position.xyz = vec3(pos.xy*scale+center,0);
+	vec2 p=mapping(pos.xy*scale+center);
+    gl_Position.xyz = vec3(p,0);
     gl_Position.w = 1.0;
     gl_PointSize=pix_size;
     pos_f=pos;
