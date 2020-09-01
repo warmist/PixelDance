@@ -21,8 +21,8 @@ win_h=win_h or 0
 
 aspect_ratio=aspect_ratio or 1
 function update_size()
-	local trg_w=1300*size_mult
-	local trg_h=1300*size_mult
+	local trg_w=2560*size_mult
+	local trg_h=1440*size_mult
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
 	if win_w~=trg_w or win_h~=trg_h then
@@ -129,8 +129,9 @@ config=make_config({
 
 	{"cx",0,type="float",min=-10,max=10},
 	{"cy",0,type="float",min=-10,max=10},
-	{"min_value",0,type="float",min=0,max=20},
-	{"gen_radius",2,type="float",min=0,max=10},
+	{"shuffle_size",5,type="int",min=1,max=200},
+	--{"min_value",0,type="float",min=0,max=20},
+	--{"gen_radius",2,type="float",min=0,max=10},
 
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"exposure",1,type="float",min=0,max=10},
@@ -421,10 +422,10 @@ function find_min_max( tex,buf )
 		if v.g>lmax[2] then lmax[2]=v.g end
 		if v.b>lmax[3] then lmax[3]=v.b end
 		local lum=math.abs(v.g)
-		if lum > config.min_value then
+		--if lum > config.min_value then
 			avg_lum=avg_lum+math.log(1+lum)
 			count=count+1
-		end
+		--end
 	end
 	end
 	avg_lum = math.exp(avg_lum / count);
@@ -986,7 +987,10 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 		local iend=(i)/count_intervals
 		--[[
 		local dx=math.random()*2-1
-		local dy=math.sqrt(1-dx*dx)*0.95--math.random()*0.5-0.25
+		local dy=math.sqrt(1-dx*dx)--math.random()*0.5-0.25
+		if math.random()>0.5 then
+			dy=-dy
+		end
 		local dx2=math.random()*0.5-0.25
 		local dy2=math.random()*0.5-0.25
 		--]]
@@ -1003,7 +1007,7 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 		else
 			ret=ret..string.format("(c_mul(s,vec2(%g,%g))+vec2(%g,%g))*value_inside(global_seed,%g,%g)",dx,dy,dx2,dy2,istart,iend)
 		end
-		]]
+		--]]
 		--ret=ret..string.format("(c_pow(s,%d)+p+vec2(%g,%g))*value_inside(global_seed,%g,%g)",i+1,dx,dy,istart,iend)
 		if i~=count_intervals then
 			ret=ret.."+"
@@ -1174,6 +1178,8 @@ function rand_function(  )
 	--str_cmplx="c_inv(((s)-((c_cos((vec2(global_seed,0))+(s)))-(c_asin(s))))-(c_conj(c_cos(c_inv(s)))))"
 	--str_cmplx="c_inv((s-c_cos(vec2(global_seed,0)+s)+c_asin(s+params.xy))-c_conj(c_mul(c_cos(c_inv(s)),params.zw)))"
 
+	--str_cmplx=random_math_complex(rand_complexity,nil,{"c_pow(s,vec2(1,global_seed*2))"})
+	str_cmplx=random_math_complex_intervals(rand_complexity,10)
 	str_x=random_math_x(rand_complexity)
 	str_y=random_math_y(rand_complexity)
 	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,global_seed*move_dist*M_PI*2))"
@@ -1316,9 +1322,9 @@ function rand_function(  )
 	--]]
 
 	--[[ complex seriesize
-	local series_size=7
-	local rand_offset=0.1
-	local rand_size=0.25
+	local series_size=5
+	local rand_offset=0.01
+	local rand_size=0.025
 	local input_s=""
 	for i=1,series_size do
 		local sub_s="s"
@@ -1326,21 +1332,21 @@ function rand_function(  )
 			sub_s=string.format("c_mul(%s,%s)","s",sub_s)
 		end
 		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
-		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
 		local dx=math.cos((i/series_size)*math.pi*2)
 		local dy=math.sin((i/series_size)*math.pi*2)
-		--input_s=input_s..string.format("+%s*vec2(cos(seed*M_PI*2),sin(seed*M_PI*2))",sub_s)
+		input_s=input_s..string.format("+%s*vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))",sub_s)
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	-- [[ polar gravity
+	--[[ polar gravity
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
 	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
-	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*floor(seed*move_dist+1)/move_dist)/(M_PI/2);s=last_s+ds*(floor(seed*move_dist+1)*vv/(ls*move_dist));"
+	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seed*8))/(M_PI/2);s=last_s+ds*((global_seed*7)*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(p,p));s=last_s+ds*(move_dist*vv/ls);"
 	--]]
@@ -1351,7 +1357,8 @@ function rand_function(  )
 	str_preamble=str_preamble.."s*=move_dist;"
 	--]]
 	--[[ boost less with distance
-	str_preamble=str_preamble.."s*=move_dist*exp(-1/dot(s,s));"
+	--str_preamble=str_preamble.."s*=move_dist*exp(-1/dot(s,s));"
+	str_preamble=str_preamble.."s*=global_seed*exp(-1/dot(s,s));"
 	--]]
 	--[[ center PRE
 	str_preamble=str_preamble.."s=s-p;"
@@ -1369,13 +1376,14 @@ function rand_function(  )
 	-- [[ gaussination
 	--str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
 	--str_postamble=str_postamble.."s=s*vec2(exp(move_dist/(-p.x*p.x)),exp(move_dist/(-p.y*p.y)));"
+	--str_postamble=str_postamble.."s=vec2(exp(global_seed/(-s.x*s.x)),exp(global_seed/(-s.y*s.y)));"
 	--]]
 	--[[ invert-ination
 	str_preamble=str_preamble.."s=c_inv(s);"
 	str_postamble=str_postamble.."s=c_inv(s);"
 	--]]
 	--[[ Chebyshev polynomial
-	str_preamble=str_preamble.."s=floor(seed*move_dist+1)*c_acos(s);"
+	str_preamble=str_preamble.."s=floor(global_seed*move_dist+1)*c_acos(s);"
 	str_postamble=str_postamble.."s=c_cos(s);"
 	--]]
 	--[[ Chebyshev polynomial2
@@ -1392,11 +1400,11 @@ function rand_function(  )
 	--]]
 	--[[ offset_complex
 	--str_preamble=str_preamble.."s+=params.xy*floor(seed*move_dist+1)/move_dist;s=c_mul(s,params.zw);"
-	str_preamble=str_preamble.."s+=vec2(0.125,-0.25);s=c_mul(s,vec2(seed,floor(seed*move_dist+1)/move_dist));"
+	str_preamble=str_preamble.."s+=vec2(0.125,-0.25);s=c_mul(s,vec2(global_seed,floor(global_seed*move_dist+1)/move_dist));"
 	--]]
 	--[[ unoffset_complex
 	--str_postamble=str_postamble.."s=c_div(s,params.zw);s-=params.xy*floor(seed*move_dist+1)/move_dist;"
-	str_postamble=str_postamble.."s=c_mul(s,c_inv(params.zw));s-=params.xy*floor(seed*move_dist+1)/move_dist;"
+	str_postamble=str_postamble.."s=c_mul(s,c_inv(params.zw));s-=params.xy*floor(global_seed*move_dist+1)/move_dist;"
 	--]]
 	--[[ rotate (p)
 	--str_preamble=str_preamble.."s=vec2(cos(p.x)*s.x-sin(p.x)*s.y,cos(p.x)*s.y+sin(p.x)*s.x);"
@@ -1409,7 +1417,7 @@ function rand_function(  )
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
-	str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(seed*move_dist+1)/move_dist);"
+	str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seed*move_dist+1)/move_dist);"
 	--]]
 	--[[ const-delta-like complex
 	str_preamble=str_preamble.."vec2 os=s;"
@@ -2544,7 +2552,7 @@ function visit_iter()
 	make_visits_texture()
 	make_visit_shader()
 
-	local gen_radius=config.gen_radius
+	local gen_radius=config.gen_radius or 2
 
 	local draw_sample_count=sample_count
 	if config.draw and not shader_randomize then
@@ -2707,7 +2715,7 @@ function visit_iter()
 			-- [===[
 			randomize_points:use()
 			randomize_points:set("rand_number",math.random())
-			randomize_points:set("radius",config.gen_radius)
+			randomize_points:set("radius",config.gen_radius or 2)
 			--randomize_points:set("params",config.v0,config.v1,config.v2,config.v3)
 			if config.smart_reset and not need_clear then
 				randomize_points:set_i("smart_reset",1)
@@ -2740,7 +2748,7 @@ function visit_iter()
 		transform_shader:set_i("non_hashed_random",1)
 	end
 	if #global_seed_shuffling==0 then
-		generate_shuffling(10)
+		generate_shuffling(config.shuffle_size)
 	end
 	global_seed_id=global_seed_id or 1
 	global_seed_id=global_seed_id+1
@@ -2761,7 +2769,7 @@ function visit_iter()
 
 		transform_shader:set("global_seed",global_seed)
 		transform_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
-		transform_shader:set("gen_radius",config.gen_radius)
+		transform_shader:set("gen_radius",config.gen_radius or 2)
 		transform_shader:raster_discard(true)
 		transform_shader:draw_points(0,draw_sample_count,4,1)
 		transform_shader:raster_discard(false)
