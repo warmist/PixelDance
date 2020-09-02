@@ -12,6 +12,33 @@ image_buf=load_png("saved_1596619752.png")
 -- [[
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
+
+function tonemap( light,avg_lum )
+	local lum_white = math.pow(10,5);
+	--tocieYxy
+	local sum=light.r+light.g+light.b;
+	local x=light.r/sum;
+	local y=light.g/sum;
+	local Y=light.g;
+
+	Y = (Y* 9.6 )/avg_lum;
+	if(true) then
+    	Y = Y / (1 + Y); --simple compression
+	else
+    	Y = (Y*(1 + Y / lum_white)) / (Y + 1); --allow to burn out bright areas
+    end
+
+
+    --transform back to cieXYZ
+    light.g=Y;
+    local small_x = x;
+    local small_y = y;
+    light.r = light.g*(small_x / small_y);
+    light.b = light.r / small_x - light.r - light.g;
+
+    return light;
+end
+
 function read_hd_png_buf( fname,log_norm ,log_norm_minmax)
 	local file = io.open(fname, 'rb')
 	local b = bread(file:read('*all'))
@@ -21,13 +48,22 @@ function read_hd_png_buf( fname,log_norm ,log_norm_minmax)
 	local sy=b:u32()
 	local background_buf=make_flt_buffer(sx,sy)
 	local background_minmax={}
+	b:f32()
 	background_minmax[1]=b:f32()
-	background_minmax[2]=b:f32()
+	b:f32()
 
+	b:f32()
+	background_minmax[2]=b:f32()
+	b:f32()
+
+	local lavg=b:f32()
 	for x=0,background_buf.w-1 do
 	for y=0,background_buf.h-1 do
-		local v=b:f32()
-		background_buf:set(x,y,{v,v,v,1})
+		local cr=b:f32()
+		local cg=b:f32()
+		local cb=b:f32()
+		local a=b:f32()
+		background_buf:set(x,y,{cr,cg,cb,1})
 	end
 	end
 
@@ -36,9 +72,11 @@ function read_hd_png_buf( fname,log_norm ,log_norm_minmax)
 		background_minmax[2]=math.log(background_minmax[2]+1)
 	end
 	print("Loaded:",background_minmax[1],background_minmax[2])
-
+	-- [[
 	for x=0,background_buf.w-1 do
 	for y=0,background_buf.h-1 do
+		--tonemap(background_buf:get(x,y),lavg)
+		--[[
 		local iv=background_buf:get(x,y).r
 		if log_norm then
 			local min=background_minmax[1]
@@ -49,9 +87,10 @@ function read_hd_png_buf( fname,log_norm ,log_norm_minmax)
 			local v=(iv-background_minmax[1])/(background_minmax[2]-background_minmax[1])
 			background_buf:set(x,y,{v,v,v,1})
 		end
+		--]]
 	end
 	end
-
+	--]]
 	return background_buf,background_minmax
 end
 function load_hd_png()
@@ -461,7 +500,8 @@ void main(){
 	*/
 
 	float c=texture(tex_main,dist_pos*vec2(1,-1)).x;
-	vec3 nv=rgb2xyz(texture(tex_main,dist_pos*vec2(1,-1)).xyz);
+	//vec3 nv=rgb2xyz(texture(tex_main,dist_pos*vec2(1,-1)).xyz);
+	vec3 nv=texture(tex_main,dist_pos*vec2(1,-1)).xyz;
 
 	//vec3 nv=texture(tex_main,dist_pos*vec2(1,-1)).xyz;
 

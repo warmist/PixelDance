@@ -382,12 +382,17 @@ void main(){
 
 local need_save
 local need_buffer_save
-function buffer_save( name ,min,max)
+function buffer_save( name ,min,max,avg)
 	local b=bwrite()
 	b:u32(visit_buf.w)
 	b:u32(visit_buf.h)
-	b:f32(min)
-	b:f32(max)
+	b:f32(min[1])
+	b:f32(min[2])
+	b:f32(min[3])
+	b:f32(max[1])
+	b:f32(max[2])
+	b:f32(max[3])
+	b:f32(avg)
 	for x=0,visit_buf.w-1 do
 	for y=0,visit_buf.h-1 do
 		local v=visit_buf:get(x,y)
@@ -444,7 +449,7 @@ function draw_visits(  )
 	visits_minmax={lmin,lmax}
 
 	if need_buffer_save then
-		buffer_save(need_buffer_save,visits_minmax[1],visits_minmax[2])
+		buffer_save(need_buffer_save,visits_minmax[1],visits_minmax[2],lavg)
 		need_buffer_save=nil
 	end
 
@@ -813,9 +818,10 @@ end
 
 
 local terminal_symbols={
-["s.x"]=10,["s.y"]=10,["p.x"]=3,["p.y"]=3,
+["s.x"]=3,["s.y"]=3,["p.x"]=3,["p.y"]=3,
 ["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,
-["normed_iter"]=0.05,["1.0"]=0.1,["0.0"]=0.1
+["normed_iter"]=0.05,
+["1.0"]=0.1,["0.0"]=0.1
 }
 local terminal_symbols_alt={
 ["p.x"]=3,["p.y"]=3
@@ -829,10 +835,10 @@ local normal_symbols={
 ["max(R,R)"]=0.05,["min(R,R)"]=0.05,
 ["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,
 ["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,
-["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,
-["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R)"]=1,
-["(R)/(R)"]=2,["(R)*(R)"]=4,
-["(R)-(R)"]=6,["(R)+(R)"]=6
+["atan(R,R)"]=0.1,["acos(R)"]=0.1,["asin(R)"]=0.1,
+["tan(R)"]=0.1,["sin(R)"]=0.1,["cos(R)"]=0.1,["log(R)"]=0.1,
+["(R)/(R)"]=2,["(R)*(R)"]=6,
+["(R)-(R)"]=2,["(R)+(R)"]=2
 }
 
 local terminal_symbols_complex={
@@ -998,8 +1004,10 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 		local dx=math.cos(istart*math.pi*2)*1
 		local dy=math.sin(istart*math.pi*2)*1
 		--]]
+		-- [[
 		local dx=0
 		local dy=0
+		--]]
 		ret=ret.."("..rc..string.format("+vec2(%g,%g))*value_inside(global_seed,%g,%g)",dx,dy,istart,iend)
 		--[[
 		if i==1 then
@@ -1014,6 +1022,42 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 		end
 		--rc="c_mul("..rc..","..random_math_complex(3,seed)..")"
 		rc=random_math_complex(steps,seed,force_values)
+	end
+	return ret
+end
+function random_math_intervals(is_dx,steps,count_intervals,seed,force_values )
+	local cur_string=seed or "R"
+	local rc=random_math(steps,seed,force_values)
+	local ret=""
+	for i=1,count_intervals do
+		local istart=(i-1)/count_intervals
+		local iend=(i)/count_intervals
+		-- [[
+		local dx=math.random()*2-1
+		local dy=math.sqrt(1-dx*dx)--math.random()*0.5-0.25
+		if math.random()>0.5 then
+			dy=-dy
+		end
+		local dx2=math.random()*0.5-0.25
+		local dy2=math.random()*0.5-0.25
+		--]]
+		--[[
+		local dx=math.cos(istart*math.pi*2)*1
+		local dy=math.sin(istart*math.pi*2)*1
+		--]]
+		--[[x
+		local dx=0
+		local dy=0
+		--]]
+		local delta=dx
+		if not is_dx then delta=dy end
+
+		ret=ret.."("..rc..string.format("+%g)*value_inside(global_seed,%g,%g)",dy,istart,iend)
+		if i~=count_intervals then
+			ret=ret.."+"
+		end
+		--rc="c_mul("..rc..","..random_math(3,seed)..")"
+		rc=random_math(steps,seed,force_values)
 	end
 	return ret
 end
@@ -1180,8 +1224,10 @@ function rand_function(  )
 
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"c_pow(s,vec2(1,global_seed*2))"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,10)
-	str_x=random_math_x(rand_complexity)
-	str_y=random_math_y(rand_complexity)
+
+
+	str_x=random_math_intervals(true,rand_complexity,6,nil,{"s.x","p.y","params.x","params.y"})
+	str_y=random_math_intervals(false,rand_complexity,6,nil,{"s.y","p.x","params.z","params.w"})
 	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,global_seed*move_dist*M_PI*2))"
 	--str_cmplx="c_cos(s)+p*global_seed+c_mul(s,s)*(1-global_seed)"
 	--str_cmplx=random_math_complex(rand_complexity,"c_mul(R,last_s/length(last_s)+c_one())")
@@ -1240,8 +1286,8 @@ function rand_function(  )
 	--str_y="cos("..s.."-s.y*s.x)"
 	--str_x=random_math_centered(3,rand_complexity)
 	--str_y=random_math_centered(3,rand_complexity)
-	str_x=random_math(rand_complexity)
-	str_y=random_math(rand_complexity)
+	--str_x=random_math(rand_complexity)
+	--str_y=random_math(rand_complexity)
 
 	--[[
 	local str1="p.x"
@@ -1346,7 +1392,7 @@ function rand_function(  )
 	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
-	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seed*8))/(M_PI/2);s=last_s+ds*((global_seed*7)*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seed*8))/(M_PI/2);s=last_s+ds*((global_seed*7)*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(p,p));s=last_s+ds*(move_dist*vv/ls);"
 	--]]
@@ -1415,9 +1461,9 @@ function rand_function(  )
 	str_preamble=str_preamble.."vec2 os=s;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
-	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
+	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
-	str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seed*move_dist+1)/move_dist);"
+	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seed*move_dist+1)/move_dist);"
 	--]]
 	--[[ const-delta-like complex
 	str_preamble=str_preamble.."vec2 os=s;"
