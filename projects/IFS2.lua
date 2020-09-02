@@ -8,6 +8,9 @@ local size_mult=1
 local ffi = require("ffi")
 --[[
 	TODO:
+		some way of fitting a function to have a "fixed target"
+		per-vertex "local_seed" for function selection for more fractal flame like work
+		way to animate the shuffling...
 		split very changing and non-changing (s/p) parts
 		add LAB based color placement
 			- start point has color, add it to end point
@@ -21,8 +24,8 @@ win_h=win_h or 0
 
 aspect_ratio=aspect_ratio or 1
 function update_size()
-	local trg_w=1920*size_mult
-	local trg_h=1200*size_mult
+	local trg_w=1024*size_mult
+	local trg_h=1024*size_mult
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
 	if win_w~=trg_w or win_h~=trg_h then
