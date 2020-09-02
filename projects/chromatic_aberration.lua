@@ -38,7 +38,25 @@ function tonemap( light,avg_lum )
 
     return light;
 end
+function tonemap2( light,min_lum,max_lum )
 
+	--tocieYxy
+	local sum=light.r+light.g+light.b;
+	local x=light.r/sum;
+	local y=light.g/sum;
+	local Y=light.g;
+
+	Y=(Y-min_lum)/(max_lum-min_lum)
+
+    --transform back to cieXYZ
+    light.g=Y;
+    local small_x = x;
+    local small_y = y;
+    light.r = light.g*(small_x / small_y);
+    light.b = light.r / small_x - light.r - light.g;
+
+    return light;
+end
 function read_hd_png_buf( fname,log_norm ,log_norm_minmax)
 	local file = io.open(fname, 'rb')
 	local b = bread(file:read('*all'))
@@ -75,6 +93,7 @@ function read_hd_png_buf( fname,log_norm ,log_norm_minmax)
 	-- [[
 	for x=0,background_buf.w-1 do
 	for y=0,background_buf.h-1 do
+		tonemap2(background_buf:get(x,y),background_minmax[1],background_minmax[2])
 		--tonemap(background_buf:get(x,y),lavg)
 		--[[
 		local iv=background_buf:get(x,y).r
@@ -482,10 +501,10 @@ void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec2 offset=vec2(0,0);
 	vec2 dist_pos=pos.xy;
-	//dist_pos=Distort(dist_pos,offset,barrel_power*iteration+1);
+	dist_pos=Distort(dist_pos,offset,barrel_power*iteration+1);
 	//dist_pos=tangent_distort(dist_pos,vec2(barrel_power*iteration,barrel_power*iteration)*0.1);
 	//dist_pos=distort_x(dist_pos,offset,barrel_power*iteration);
-	dist_pos=distort_y(dist_pos,offset,barrel_power*iteration);
+	//dist_pos=distort_y(dist_pos,offset,barrel_power*iteration);
 	dist_pos=(dist_pos+vec2(1))/2;
 	//vec2 dist_pos=normed+vec2(barrel_power)*iteration;
 
