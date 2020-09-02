@@ -1214,18 +1214,18 @@ end
 animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
-	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(global_seed,0)","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
-	str_cmplx=random_math_complex_intervals(rand_complexity,6,nil,{"s","p","params.xy","params.zw"})
+	str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(global_seed,0)","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
+	--str_cmplx=random_math_complex_intervals(rand_complexity,25,nil,{"s","p","params.xy","params.zw"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,15,"(R)/2+(R)*c_sin(vec2(2*M_PI,1)*(R)+R)")
 	--str_cmplx=random_math_fourier_complex(7,rand_complexity)
 	--str_cmplx=random_math_complex_series(4,random_math_complex_intervals(rand_complexity,5))
 	--str_cmplx="c_inv(((s)-((c_cos((vec2(global_seed,0))+(s)))-(c_asin(s))))-(c_conj(c_cos(c_inv(s)))))"
 	--str_cmplx="c_inv((s-c_cos(vec2(global_seed,0)+s)+c_asin(s+params.xy))-c_conj(c_mul(c_cos(c_inv(s)),params.zw)))"
-
+	
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"c_pow(s,vec2(1,global_seed*2))"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,10)
 
-
+	str_cmplx=str_cmplx.."*value_inside(global_seed,0,0.25)+(c_mul(s,vec2(0.8,0.5))+vec2(0.1,0.1))*value_inside(global_seed,0.25,1)+p*global_seed"
 	str_x=random_math_intervals(true,rand_complexity,6,nil,{"s.x","p.y","params.x","params.y"})
 	str_y=random_math_intervals(false,rand_complexity,6,nil,{"s.y","p.x","params.z","params.w"})
 	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,global_seed*move_dist*M_PI*2))"
