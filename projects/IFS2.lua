@@ -21,8 +21,8 @@ win_h=win_h or 0
 
 aspect_ratio=aspect_ratio or 1
 function update_size()
-	local trg_w=2560*size_mult
-	local trg_h=1440*size_mult
+	local trg_w=1920*size_mult
+	local trg_h=1200*size_mult
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
 	if win_w~=trg_w or win_h~=trg_h then
@@ -1000,11 +1000,11 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 		local dx2=math.random()*0.5-0.25
 		local dy2=math.random()*0.5-0.25
 		--]]
-		--[[
+		-- [[
 		local dx=math.cos(istart*math.pi*2)*1
 		local dy=math.sin(istart*math.pi*2)*1
 		--]]
-		-- [[
+		--[[
 		local dx=0
 		local dy=0
 		--]]
@@ -1021,7 +1021,7 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 			ret=ret.."+"
 		end
 		--rc="c_mul("..rc..","..random_math_complex(3,seed)..")"
-		rc=random_math_complex(steps,seed,force_values)
+		rc=random_math_complex(math.random(math.min(5,steps),steps),seed,force_values)
 	end
 	return ret
 end
@@ -1214,8 +1214,8 @@ end
 animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
-	str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(global_seed,0)","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
-	--str_cmplx=random_math_complex_intervals(rand_complexity,25,nil,{"s","p","params.xy","params.zw"})
+	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(global_seed,0)","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
+	str_cmplx=random_math_complex_intervals(rand_complexity,7,nil,{"s","p","params.xy","params.zw"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,15,"(R)/2+(R)*c_sin(vec2(2*M_PI,1)*(R)+R)")
 	--str_cmplx=random_math_fourier_complex(7,rand_complexity)
 	--str_cmplx=random_math_complex_series(4,random_math_complex_intervals(rand_complexity,5))
@@ -1225,7 +1225,8 @@ function rand_function(  )
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"c_pow(s,vec2(1,global_seed*2))"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,10)
 
-	str_cmplx=str_cmplx.."*value_inside(global_seed,0,0.25)+(c_mul(s,vec2(0.8,0.5))+vec2(0.1,0.1))*value_inside(global_seed,0.25,1)+p*global_seed"
+	--str_cmplx=str_cmplx.."*value_inside(global_seed,0,0.5)+(s-(s*move_dist)/length(s))*value_inside(global_seed,0.5,1)+(s*floor(global_seed*5)/5)/length(s)"
+
 	str_x=random_math_intervals(true,rand_complexity,6,nil,{"s.x","p.y","params.x","params.y"})
 	str_y=random_math_intervals(false,rand_complexity,6,nil,{"s.y","p.x","params.z","params.w"})
 	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,global_seed*move_dist*M_PI*2))"
@@ -1367,7 +1368,7 @@ function rand_function(  )
 
 	--]]
 
-	--[[ complex seriesize
+	-- [[ complex seriesize
 	local series_size=5
 	local rand_offset=0.01
 	local rand_size=0.025
@@ -1378,10 +1379,10 @@ function rand_function(  )
 			sub_s=string.format("c_mul(%s,%s)","s",sub_s)
 		end
 		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
-		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
 		local dx=math.cos((i/series_size)*math.pi*2)
 		local dy=math.sin((i/series_size)*math.pi*2)
-		input_s=input_s..string.format("+%s*vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))",sub_s)
+		--input_s=input_s..string.format("+%s*vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))",sub_s)
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
@@ -1390,7 +1391,7 @@ function rand_function(  )
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
 	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
-	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
+	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seed*8))/(M_PI/2);s=last_s+ds*((global_seed*7)*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
@@ -1414,7 +1415,8 @@ function rand_function(  )
 	str_preamble=str_preamble.."s=c_cos(s);"
 	--]]
 	--[[ tanify
-	str_preamble=str_preamble.."s=tan(s);"
+	--str_preamble=str_preamble.."s=tan(s);"
+	str_preamble=str_preamble.."s=c_tan(s);"
 	--]]
 	--[[ logitify PRE
 	str_preamble=str_preamble.."s=log(abs(s));"
@@ -1435,6 +1437,10 @@ function rand_function(  )
 	--[[ Chebyshev polynomial2
 	str_preamble=str_preamble.."s=move_dist*c_cos(s);"
 	str_postamble=str_postamble.."s=c_acos(s);"
+	--]]
+	--[[ Chebyshev polynomial3
+	str_preamble=str_preamble.."s=move_dist*c_sin(s);"
+	str_postamble=str_postamble.."s=c_asin(s);"
 	--]]
 	--[[ offset
 	str_preamble=str_preamble.."s+=params.xy;"
@@ -1460,8 +1466,8 @@ function rand_function(  )
 	--[[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
-	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
-	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
+	str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seed*move_dist+1)/move_dist);"
 	--]]
@@ -2105,10 +2111,10 @@ vec2 tReflect(vec2 p,float a){
 }
 vec2 mapping(vec2 p)
 {
-	//return p; //normal - do nothing
+	return p; //normal - do nothing
 	//return abs(p)-vec2(1);
 	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
-	///*
+	/*
 	if(length(p)<50) //modulo, but no artifacts because far away points are far away
 	{
 		float size=2.005; //0.005 overdraw as it smooths the tiling when using non 1 sized points
@@ -2117,7 +2123,7 @@ vec2 mapping(vec2 p)
 	else
 		return p;
 	//*/
-#if 0
+#if 1
 	//TODO: https://en.wikipedia.org/wiki/Wallpaper_group most of these would be fun...
 	if(length(p)<50) //modulo, but no artifacts because far away points are far away
 	{

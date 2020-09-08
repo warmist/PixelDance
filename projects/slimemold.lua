@@ -800,9 +800,10 @@ void main(){
 	head=atan(new_h.y,new_h.x);
 	//*/
 	//step_size*=1-clamp(cubicPulse(0,0.1,fow),0,1);
+    step_size*=1-clamp(fow/turn_around,0.5,1);
 	//step_size*=1-cubicPulse(0,0.4,abs(pl))*0.5;
 	//step_size*=(clamp(fow/turn_around,0,1))*0.95+0.05;
-	step_size*=noise(state.xy/100);
+	//step_size*=noise(state.xy/100);
 	//step_size*=expStep(abs(pl-0.2),1,2);
 	//step_size*=tex_sample*0.5+0.5;
     //step_size*=normed_state.x;
@@ -951,17 +952,17 @@ function update()
     imgui.SameLine()
     if imgui.Button("Agentswarm") then
     	for i=0,agent_count-1 do
-    		-- [[
+    		--[[
     		agent_data:set(i,0,
     			{math.random(0,map_w-1),
     			 math.random(0,map_h-1),
     			 math.random()*math.pi*2,
     			 0})
     		--]]
-    		--[[
-    		local r=map_w/5+rnd(10)
+    		-- [[
+    		local r=math.sqrt(math.random())*map_w/3
     		local phi=math.random()*math.pi*2
-    		agent_data:set(i,j,
+    		agent_data:set(i,0,
     			{math.cos(phi)*r+map_w/2,
     			 math.sin(phi)*r+map_h/2,
     			 math.random()*math.pi*2,
