@@ -17,7 +17,7 @@ local win_h=1280
 
 __set_window_size(win_w,win_h)
 local oversample=1
-local agent_count=1e6
+local agent_count=3e6
 --[[ perf:
 	oversample 2 768x768
 		ac: 3000 -> 43fps
@@ -110,22 +110,23 @@ end
 update_buffers()
 config=make_config({
     {"pause",false,type="bool"},
-    {"color_back",{0,0,0,1},type="color"},
-    {"color_fore",{0.98,0.6,0.05,1},type="color"},
-    {"color_turn_around",{0.99,0.99,0.991,1},type="color"},
+    {"color_back",{0.208, 0.274, 0.386, 1.000},type="color"},
+    {"color_fore",{0.047, 0.000, 0.000, 1.000},type="color"},
+    {"color_turn_around",{1,1,1,1},type="color"},
     --system
-    {"decay",0.995181,type="floatsci",min=0.99,max=1},
+    {"decay",0.99174201488495,type="floatsci",min=0.99,max=1},
     --{"diffuse",0.5,type="float"},
     --agent
-    {"ag_sensor_distance",4,type="float",min=0.1,max=10},
+    {"ag_sensor_distance",5.1840000152588,type="float",min=0.1,max=10},
     --{"ag_sensor_size",1,type="int",min=1,max=3},
-    {"ag_sensor_angle",math.pi/2,type="float",min=0,max=math.pi/2},
-    {"ag_turn_angle",math.pi/8,type="float",min=-math.pi/2,max=math.pi/2},
-    {"ag_turn_avoid",-math.pi/8,type="float",min=-math.pi/2,max=math.pi/2},
-	{"ag_step_size",2.431,type="float",min=0.01,max=10},
-	{"ag_trail_amount",0.013,type="float",min=0,max=0.5},
-	{"trail_size",1,type="int",min=1,max=5},
-	{"turn_around",10,type="float",min=0,max=5},
+    {"ag_sensor_angle",1.3159999847412,type="float",min=0,max=math.pi/2},
+    {"ag_turn_angle",0.25,type="float",min=-math.pi/2,max=math.pi/2},
+    {"ag_turn_avoid",-0.60900002717972,type="float",min=-math.pi/2,max=math.pi/2},
+    {"ag_step_size",6.7600002288818,type="float",min=0.01,max=10},
+    {"ag_trail_amount",0.5,type="float",min=0,max=0.5},
+    {"trail_size",1,type="int",min=1,max=5},
+    {"turn_around",200,type="float",min=0,max=200},
+    {"ag_clumpiness",70.871002197266,type="float",min=0,max=200},
     },config)
 
 local decay_diffuse_shader=shaders.Make[==[
@@ -621,12 +622,13 @@ vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     //normed=normed/zoom+translate;
-
+    float turn_around_actual=turn_around;
+    //turn_around_actual*=normed.x;
     vec4 pixel=texture(tex_main,normed);
     //float v=log(pixel.x+1);
-    float v=pow(pixel.x/turn_around,1);
-    //float v=pixel.x/turn_around;
-    //float v=gain(pixel.x/turn_around,-0.8);
+    float v=pow(pixel.x/turn_around_actual,1);
+    //float v=pixel.x/turn_around_actual;
+    //float v=gain(pixel.x/turn_around_actual,-0.8);
     //v=noise(pos.xy*rez/100);
     ///*
     if(v<1)
@@ -671,6 +673,7 @@ uniform float ag_turn_angle;
 uniform float ag_step_size;
 uniform float ag_turn_around;
 uniform float ag_turn_avoid;
+uniform float ag_clumpiness;
 //
 //float rand(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x))));}
 
@@ -711,6 +714,10 @@ float sample_back(vec2 pos)
 	//return (log(texture(background,pos).x+1)-background_swing.x)/(background_swing.y-background_swing.x);
 	return clamp(texture(background,pos).x,0,1);
 }
+float random_normed(vec3 state)
+{
+    return rand(state.xy*state.z*794347+state.xy*45721);
+}
 void main(){
 	float step_size=ag_step_size;
 	float sensor_distance=ag_sensor_distance;
@@ -718,7 +725,7 @@ void main(){
 	float turn_size=ag_turn_angle;
 	float turn_size_neg=ag_turn_around;
 	float turn_around=ag_turn_around;
-
+    float clumpiness=ag_clumpiness;
 
 	vec3 state=position.xyz;
 	vec2 normed_state=state.xy/rez;
@@ -728,7 +735,7 @@ void main(){
 	float pl=length(normed_p);
 
 	//sensor_distance*=(1-tex_sample)*0.9+0.1;
-	//sensor_distance*=normed_state.y;
+	//sensor_distance*=normed_state.x;
 
 	//sensor_distance*=1-cubicPulse(0.1,0.5,abs(normed_p.x));
 	//sensor_distance=clamp(sensor_distance,2,15);
@@ -736,6 +743,8 @@ void main(){
 	//turn_around*=noise(state.xy/100);
 	//turn_around-=cubicPulse(0.6,0.3,abs(normed_p.x));
 	//turn_around*=tex_sample*0.3+0.7;
+    //turn_around*=normed_state.x;
+    //clumpiness*=normed_state.y;
 	//clamp(turn_around,0.2,5);
 	//figure out new heading
 	//sensor_angle*=(1-tex_sample)*.9+.1;
@@ -750,7 +759,7 @@ void main(){
 
 	if(fow<lft && fow<rgt)
 	{
-		head+=(rand(position.xy*position.z*9999+state.xy*4572)-0.5)*turn_size*2;
+		head+=(random_normed(state)-0.5)*2*turn_size;
 	}
 	else if(rgt>fow)
 	{
@@ -782,7 +791,7 @@ void main(){
 		//head+=(rand(position.xy*position.z*9999+state.xy*4572)-0.5)*turn_size*2;
 		//head+=M_PI;//turn_size*2;//(rand(position.xy+state.xy*4572)-0.5)*turn_size*2;
 		//step_size*=-1;
-		head+=rand(position.xy*position.z*9999+state.xy*4572)*turn_size_neg;
+		head+=random_normed(state)*turn_size_neg/2;
 		//head+=turn_size_neg;
 
 	}
@@ -800,13 +809,17 @@ void main(){
 	head=atan(new_h.y,new_h.x);
 	//*/
 	//step_size*=1-clamp(cubicPulse(0,0.1,fow),0,1);
-    step_size*=1-clamp(fow/turn_around,0.5,1);
+    //step_size*=1-clamp(fow/clumpiness,0.0,1);
+    //float diff=abs(fow-lft)+abs(fow-rgt)+abs(rgt-fow);
+    float diff=fow;
+    diff*=0.333333333333;
+    step_size*=1-clamp(diff/clumpiness,0.4,1);
 	//step_size*=1-cubicPulse(0,0.4,abs(pl))*0.5;
 	//step_size*=(clamp(fow/turn_around,0,1))*0.95+0.05;
 	//step_size*=noise(state.xy/100);
 	//step_size*=expStep(abs(pl-0.2),1,2);
 	//step_size*=tex_sample*0.5+0.5;
-    //step_size*=normed_state.x;
+    //step_size*=normed_state.y;
 	//step_size=clamp(step_size,0.001,100);
 
 	//step in heading direction
@@ -841,6 +854,7 @@ function do_agent_logic_fbk(  )
 	agent_logic_shader_fbk:set("ag_step_size",config.ag_step_size)
 	agent_logic_shader_fbk:set("ag_turn_around",config.turn_around)
 	agent_logic_shader_fbk:set("ag_turn_avoid",config.ag_turn_avoid)
+    agent_logic_shader_fbk:set("ag_clumpiness",config.ag_clumpiness)
 	agent_logic_shader_fbk:set("rez",map_w,map_h)
 
 	agent_logic_shader_fbk:raster_discard(true)
@@ -959,7 +973,7 @@ function update()
     			 math.random()*math.pi*2,
     			 0})
     		--]]
-    		-- [[
+    		--[[
     		local r=math.sqrt(math.random())*map_w/3
     		local phi=math.random()*math.pi*2
     		agent_data:set(i,0,
@@ -968,7 +982,7 @@ function update()
     			 math.random()*math.pi*2,
     			 0})
     		--]]
-    		--[[
+    		-- [[
     		local a = math.random() * 2 * math.pi
 			local r = map_w/8 * math.sqrt(math.random())
 			local x = r * math.cos(a)
@@ -997,7 +1011,7 @@ function update()
 			end
 			--local d=math.sqrt(x*x+y*y)
 			local a=math.atan(y-map_h/2,x-map_w/2)
-			agent_data:set(i,j,
+			agent_data:set(i,0,
     			{x,
     			 y,
     			 a+math.pi,
@@ -1019,7 +1033,7 @@ function update()
         diffuse_and_decay()
     end
     --if config.draw then
-
+    --if false then
     draw_shader:use()
     tex_pixel:use(0)
 
