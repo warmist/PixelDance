@@ -729,7 +729,7 @@ float sample_back(vec2 pos)
 }
 float random_normed(vec3 state)
 {
-    return rand(state.xy*state.z*794347+state.xy*45721);
+    return rand(state.xy*state.z*794347+state.xy*45721+vec2(7.5,2.813));
 }
 void main(){
 	float step_size=ag_step_size;
@@ -748,8 +748,7 @@ void main(){
 	float tex_sample=sample_back(normed_state);//cubicPulse(0.6,0.3,abs(normed_p.x));//;
 
 	float pl=length(normed_p);
-    //clumpiness*=clamp(pl/2,0,1);
-    //sensor_distance*=1-clamp(pl/3,0,0.75);
+    sensor_distance*=clamp(0.2,1,(pl/2));
 	//sensor_distance*=(1-tex_sample)*0.9+0.1;
 	//sensor_distance*=normed_state.x;
 
@@ -760,8 +759,7 @@ void main(){
 	//turn_around-=cubicPulse(0.6,0.3,abs(normed_p.x));
 	//turn_around*=tex_sample*0.3+0.7;
     //turn_around*=normed_state.x;
-    //clumpiness*=1-cubicPulse(0,0.4,normed_state.x)*0.5;
-    //clumpiness*=normed_state.y;
+    clumpiness*=abs(normed_p.x*10);
 	//clamp(turn_around,0.2,5);
 	//figure out new heading
 	//sensor_angle*=(1-tex_sample)*.9+.1;
@@ -777,6 +775,7 @@ void main(){
 	if(fow<lft && fow<rgt)
 	{
 		head+=(random_normed(state)-0.5)*2*turn_size;
+
 	}
 	else if(rgt>fow)
 	{
@@ -985,7 +984,7 @@ function update()
     imgui.SameLine()
     if imgui.Button("Agentswarm") then
     	for i=0,agent_count-1 do
-    		--[[
+    		-- [[
     		agent_data:set(i,0,
     			{math.random(0,map_w-1),
     			 math.random(0,map_h-1),
@@ -993,7 +992,7 @@ function update()
     			 0})
     		--]]
     		--[[
-    		local r=math.sqrt(math.random())*map_w/6
+    		local r=map_w/6+math.sqrt(math.random())*map_w/8
     		local phi=math.random()*math.pi*2
     		agent_data:set(i,0,
     			{math.cos(phi)*r+map_w/2,
@@ -1001,10 +1000,9 @@ function update()
     			 math.random()*math.pi*2,
     			 0})
     		--]]
-    		-- [[
-            local ra=math.random()
-    		local a = ra * 2 * math.pi
-			local r = map_w/6 * math.sqrt(math.random())
+    		--[[
+    		local a = math.random() * 2 * math.pi
+			local r = map_w/8 * math.sqrt(math.random())
 			local x = r * math.cos(a)
 			local y = r * math.sin(a)
 
