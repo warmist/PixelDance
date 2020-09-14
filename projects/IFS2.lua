@@ -849,6 +849,13 @@ local terminal_symbols_complex={
 ["params.xy"]=1,["params.zw"]=1,
 ["(c_one()*normed_iter)"]=0.05,["(c_i()*normed_iter)"]=0.05,["c_one()"]=0.1,["c_i()"]=0.1,
 }
+local terminal_symbols_complex_const={
+["c_one()"]=1,["c_i()"]=0.1,
+["vec2(0.25,0)"]=0.1,["vec2(0,0.25)"]=0.01,
+["vec2(0.25,0.25)"]=0.01,["vec2(0.15,0.125)"]=0.01,
+["vec2(-0.5)"]=0.01,["vec2(-1,0)"]=0.1,
+["vec2(0,-1)"]=0.03
+}
 local normal_symbols_complex={
 -- [=[
 ["c_sqrt(R)"]=1,
@@ -899,6 +906,7 @@ normalize(terminal_symbols_param)
 normalize(normal_symbols)
 
 normalize(terminal_symbols_complex)
+normalize(terminal_symbols_complex_const)
 normalize(normal_symbols_complex)
 
 normalize(terminal_symbols_FT)
@@ -963,6 +971,7 @@ function make_rand_math( normal_s,terminal_s,forced_s )
 end
 random_math=make_rand_math(normal_symbols,terminal_symbols)
 random_math_complex=make_rand_math(normal_symbols_complex,terminal_symbols_complex)
+random_math_complex_const=make_rand_math(normal_symbols_complex,terminal_symbols_complex_const)
 
 random_math_x=make_rand_math(normal_symbols,terminal_symbols,{"s.x","params.x","p.x"})
 random_math_y=make_rand_math(normal_symbols,terminal_symbols,{"s.y","params.y","p.y"})
@@ -1218,19 +1227,20 @@ animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
-	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p*vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))*(0.75+sin(global_seed*8*M_PI)*0.25)","params.xy","params.zw"})
+	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p*vec2(move_dist,global_seed)","params.xy","params.zw"})
+	str_cmplx=random_math_complex_const(rand_complexity,nil,{"s","p*vec2(move_dist,global_seed)","params.xy","params.zw"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,7,nil,{"s","p","params.xy","params.zw"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,15,"(R)/2+(R)*c_sin(vec2(2*M_PI,1)*(R)+R)")
 	--str_cmplx=random_math_fourier_complex(7,rand_complexity)
 	--str_cmplx=random_math_complex_series(4,random_math_complex_intervals(rand_complexity,5))
 	--str_cmplx="c_inv(((s)-((c_cos((vec2(global_seed,0))+(s)))-(c_asin(s))))-(c_conj(c_cos(c_inv(s)))))"
 	--str_cmplx="c_inv((s-c_cos(vec2(global_seed,0)+s)+c_asin(s+params.xy))-c_conj(c_mul(c_cos(c_inv(s)),params.zw)))"
-	
+	--str_cmplx="c_cos(c_inv(s-params.zw+p*vec2(move_dist,global_seed)))-params.xy"
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"c_pow(s,vec2(1,global_seed*2))"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,10)
-	str_cmplx="c_mul(params.xy,c_inv(c_mul(c_conj(c_cos(s+params.zw)),p*vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))*(0.75+sin(global_seed*16*M_PI)*0.25))))"
+	--str_cmplx="c_mul(params.xy,c_inv(c_mul(c_conj(c_cos(s)),p*vec2(move_dist,global_seed)+params.zw)))"
 	--str_cmplx=str_cmplx.."*value_inside(global_seed,0,0.5)+(s-(s*move_dist)/length(s))*value_inside(global_seed,0.5,1)+(s*floor(global_seed*5)/5)/length(s)"
-
+	--str_cmplx="c_tan(c_cos(c_tan((((params.xy)-(s))-(c_cos(c_mul(c_atan(params.zw),c_tan((params.zw)+(params.xy))))))-(p*vec2(move_dist*(1-global_seed*global_seed),global_seed)))))"
 	str_x=random_math_intervals(true,rand_complexity,6,nil,{"s.x","p.y","params.x","params.y"})
 	str_y=random_math_intervals(false,rand_complexity,6,nil,{"s.y","p.x","params.z","params.w"})
 	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,global_seed*move_dist*M_PI*2))"
