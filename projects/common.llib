@@ -195,6 +195,30 @@ function draw_config( tbl )
 		end
 	end
 end
+function serialize_config( tbl,tbl_name )
+	local ret=""
+	tbl_name=tbl_name or "config"
+
+	for _,entry in ipairs(tbl) do
+		local name=entry[1]
+		local v=tbl[name]
+		local k=name
+		if type(v)=="boolean" or type(v)=="string" then
+			ret=ret..string.format("%s[%q]=%s\n",tbl_name,k,tbl[k])
+		else --if type(v)~="table" then
+			local simple_types={int=true,float=true,angle=true,floatsci=true}
+			if simple_types[entry.type] then
+				ret=ret..string.format("%s[%q]=%s\n",tbl_name,k,tbl[k])
+			elseif entry.type=="color" then
+				local c=tbl[k]
+				ret=ret..string.format("%s[%q]={%s,%s,%s,%s}\n",tbl_name,k,c[1],c[2],c[3],c[4])
+			else
+				error("invalid config type")
+			end
+		end
+	end
+	return ret
+end
 function is_mouse_down(  )
 	return __mouse.clicked0 and not __mouse.owned0, __mouse.x,__mouse.y
 end

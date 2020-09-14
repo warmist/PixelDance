@@ -126,7 +126,7 @@ config=make_config({
     {"ag_trail_amount",0.5,type="float",min=0,max=0.5},
     {"trail_size",1,type="int",min=1,max=5},
     {"turn_around",200,type="float",min=0,max=200},
-    {"ag_clumpiness",70.871002197266,type="float",min=0,max=200},
+    {"ag_clumpiness",70.871002197266,type="float",min=0,max=1},
     },config)
 
 local decay_diffuse_shader=shaders.Make[==[
@@ -176,6 +176,7 @@ uniform float move_dist;
 uniform vec4 params;
 uniform vec2 rez;
 
+out vec4 pos_out;
 void main()
 {
 	vec2 normed=(position.xy/rez)*2-vec2(1,1);
@@ -183,6 +184,7 @@ void main()
 	gl_PointSize=pix_size;
 	gl_Position.z = 0;
     gl_Position.w = 1.0;
+    pos_out=position;
 }
 ]==],
 [==[
@@ -191,6 +193,7 @@ void main()
 
 out vec4 color;
 //in vec3 pos;
+in vec4 pos_out;
 uniform int pix_size;
 uniform float trail_amount;
 float shape_point(vec2 pos)
@@ -216,7 +219,10 @@ void main(){
 	//rr=clamp((1-rr),0,1);
 	//rr*=rr;
 	//color=vec4(a,0,0,1);
-	color=vec4(a*intensity*trail_amount,0,0,1);
+    if(pos_out.w>0.5)
+	   color=vec4(a*intensity*trail_amount,0,0,1);
+    else
+       color=vec4(-a*intensity*trail_amount,0,0,1);
 	//color=vec4(1,0,0,1);
 }
 ]==])
@@ -626,15 +632,22 @@ void main(){
     //turn_around_actual*=normed.x;
     vec4 pixel=texture(tex_main,normed);
     //float v=log(pixel.x+1);
-    float v=pow(pixel.x/turn_around_actual,1);
+    float v=pow(abs(pixel.x)/turn_around_actual,1);
     //float v=pixel.x/turn_around_actual;
     //float v=gain(pixel.x/turn_around_actual,-0.8);
     //v=noise(pos.xy*rez/100);
+    float select_color=0;
+    if(pixel.x<0)
+        select_color=1;
+
+    vec4 c1=mix(color_fore,color_turn_around,select_color);
+    vec4 c2=mix(color_fore,color_turn_around,select_color);
+    vec4 c3=mix(color_turn_around,color_fore,select_color);
     ///*
     if(v<1)
-    	color=mix(color_back,color_fore,v);
+    	color=mix(color_back,c1,v);
     else
-    	color=mix(color_fore,color_turn_around,clamp((v-1)*1,0,1));
+    	color=mix(c2,c3,clamp((v-1)*1,0,1));
 	//*/
     /*
     if(v<1)
@@ -728,12 +741,15 @@ void main(){
     float clumpiness=ag_clumpiness;
 
 	vec3 state=position.xyz;
+    float type=position.w;
+
 	vec2 normed_state=state.xy/rez;
 	vec2 normed_p=(normed_state)*2-vec2(1,1);
 	float tex_sample=sample_back(normed_state);//cubicPulse(0.6,0.3,abs(normed_p.x));//;
 
 	float pl=length(normed_p);
-
+    //clumpiness*=clamp(pl/2,0,1);
+    //sensor_distance*=1-clamp(pl/3,0,0.75);
 	//sensor_distance*=(1-tex_sample)*0.9+0.1;
 	//sensor_distance*=normed_state.x;
 
@@ -744,6 +760,7 @@ void main(){
 	//turn_around-=cubicPulse(0.6,0.3,abs(normed_p.x));
 	//turn_around*=tex_sample*0.3+0.7;
     //turn_around*=normed_state.x;
+    //clumpiness*=1-cubicPulse(0,0.4,normed_state.x)*0.5;
     //clumpiness*=normed_state.y;
 	//clamp(turn_around,0.2,5);
 	//figure out new heading
@@ -752,10 +769,10 @@ void main(){
 	//turn_size_neg*=tex_sample*.9+0.1;
 
 	float head=state.z;
-	float fow=sample_heading(state.xy,head,sensor_distance);
+	float fow=abs(sample_heading(state.xy,head,sensor_distance));
 
-	float lft=sample_heading(state.xy,head-sensor_angle,sensor_distance);
-	float rgt=sample_heading(state.xy,head+sensor_angle,sensor_distance);
+	float lft=abs(sample_heading(state.xy,head-sensor_angle,sensor_distance));
+	float rgt=abs(sample_heading(state.xy,head+sensor_angle,sensor_distance));
 
 	if(fow<lft && fow<rgt)
 	{
@@ -791,8 +808,8 @@ void main(){
 		//head+=(rand(position.xy*position.z*9999+state.xy*4572)-0.5)*turn_size*2;
 		//head+=M_PI;//turn_size*2;//(rand(position.xy+state.xy*4572)-0.5)*turn_size*2;
 		//step_size*=-1;
-		head+=random_normed(state)*turn_size_neg/2;
-		//head+=turn_size_neg;
+		//head+=random_normed(state)*turn_size_neg/2;
+		head+=turn_size_neg;
 
 	}
 	//step_size/=clamp(rgt/lft,0.5,2);
@@ -810,10 +827,15 @@ void main(){
 	//*/
 	//step_size*=1-clamp(cubicPulse(0,0.1,fow),0,1);
     //step_size*=1-clamp(fow/clumpiness,0.0,1);
-    //float diff=abs(fow-lft)+abs(fow-rgt)+abs(rgt-fow);
-    float diff=fow;
-    diff*=0.333333333333;
-    step_size*=1-clamp(diff/clumpiness,0.4,1);
+    //float diff=abs(fow-lft)+abs(fow-rgt)+abs(rgt-lft);
+    //float diff=fow/turn_around;
+    //float diff=abs(rgt-lft)/fow;
+    float center=abs(sample_heading(state.xy,0,0));
+    //float diff=fow/center;
+    float diff=abs(center-fow)/fow;
+    //diff*=0.333333333333;
+    //if(fow<turn_around*1.2)
+        step_size*=1-clamp(diff/clumpiness,0.0,1);
 	//step_size*=1-cubicPulse(0,0.4,abs(pl))*0.5;
 	//step_size*=(clamp(fow/turn_around,0,1))*0.95+0.05;
 	//step_size*=noise(state.xy/100);
@@ -826,7 +848,7 @@ void main(){
 	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
 	state.z=head;
 	state.xy=mod(state.xy,rez);
-	state_out=vec4(state.xyz,position.w);
+	state_out=vec4(state.xyz,type);
 
 }
 ]==]
@@ -927,11 +949,8 @@ end
 function save_img(  )
 	img_buf=img_buf or make_image_buffer(win_w,win_h)
 	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
-	for k,v in pairs(config) do
-		if type(v)~="table" then
-			config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
-		end
-	end
+    config_serial=config_serial..serialize_config(config)
+    --print(config_serial)
 	img_buf:read_frame()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
@@ -974,7 +993,7 @@ function update()
     			 0})
     		--]]
     		--[[
-    		local r=math.sqrt(math.random())*map_w/3
+    		local r=math.sqrt(math.random())*map_w/6
     		local phi=math.random()*math.pi*2
     		agent_data:set(i,0,
     			{math.cos(phi)*r+map_w/2,
@@ -983,15 +1002,21 @@ function update()
     			 0})
     		--]]
     		-- [[
-    		local a = math.random() * 2 * math.pi
-			local r = map_w/8 * math.sqrt(math.random())
+            local ra=math.random()
+    		local a = ra * 2 * math.pi
+			local r = map_w/6 * math.sqrt(math.random())
 			local x = r * math.cos(a)
 			local y = r * math.sin(a)
+
+            local w=1
+            if math.fmod(ra*3,1)>0.5 then
+                w=-1
+            end
 			agent_data:set(i,0,
     			{math.cos(a)*r+map_w/2,
     			 math.sin(a)*r+map_h/2,
-    			 a+math.pi/4,
-    			 math.random()*10})
+    			 a+(math.pi/2)+math.random()*math.pi/2,
+    			w})
     		--]]
     		--[[
     		local side=math.random(1,4)
@@ -1030,7 +1055,9 @@ function update()
     if not config.pause then
         --agents_step()
         agents_step_fbk()
-        diffuse_and_decay()
+        for i=1,5 do
+            diffuse_and_decay()
+        end
     end
     --if config.draw then
     --if false then

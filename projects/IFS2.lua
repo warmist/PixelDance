@@ -1217,8 +1217,9 @@ end
 animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
-	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(global_seed,0)","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
-	str_cmplx=random_math_complex_intervals(rand_complexity,7,nil,{"s","p","params.xy","params.zw"})
+	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
+	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p*vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))*(0.75+sin(global_seed*8*M_PI)*0.25)","params.xy","params.zw"})
+	--str_cmplx=random_math_complex_intervals(rand_complexity,7,nil,{"s","p","params.xy","params.zw"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,15,"(R)/2+(R)*c_sin(vec2(2*M_PI,1)*(R)+R)")
 	--str_cmplx=random_math_fourier_complex(7,rand_complexity)
 	--str_cmplx=random_math_complex_series(4,random_math_complex_intervals(rand_complexity,5))
@@ -1227,7 +1228,7 @@ function rand_function(  )
 	
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"c_pow(s,vec2(1,global_seed*2))"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,10)
-
+	str_cmplx="c_mul(params.xy,c_inv(c_mul(c_conj(c_cos(s+params.zw)),p*vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))*(0.75+sin(global_seed*16*M_PI)*0.25))))"
 	--str_cmplx=str_cmplx.."*value_inside(global_seed,0,0.5)+(s-(s*move_dist)/length(s))*value_inside(global_seed,0.5,1)+(s*floor(global_seed*5)/5)/length(s)"
 
 	str_x=random_math_intervals(true,rand_complexity,6,nil,{"s.x","p.y","params.x","params.y"})
@@ -1371,7 +1372,7 @@ function rand_function(  )
 
 	--]]
 
-	-- [[ complex seriesize
+	--[[ complex seriesize
 	local series_size=5
 	local rand_offset=0.01
 	local rand_size=0.025
@@ -2614,9 +2615,33 @@ end
 global_seed_shuffling=global_seed_shuffling or {}
 function generate_shuffling( num_steps )
 	global_seed_shuffling={}
+	--[[ random centers with spread around
+	local spread=0.0005
+	local num_spread=10
+	local id=1
+	for i=1,num_steps do
+		local c=math.random()
+		for i=1,num_spread do
+			global_seed_shuffling[id]=c+(math.random()*spread-0.5*spread)
+			id=id+1
+		end
+	end
+	--]]
+	-- [[ vanilla
 	for i=1,num_steps do
 		global_seed_shuffling[i]=math.random()
 	end
+	--]]
+	--[[ constantly biggening
+	local v=math.random()
+	for i=1,num_steps do
+		global_seed_shuffling[i]=v
+		v=v+math.random()
+	end
+	for i=1,num_steps do
+		global_seed_shuffling[i]=global_seed_shuffling[i]/v
+	end
+	--]]
 end
 function visit_iter()
 	local shader_randomize=true
@@ -2822,14 +2847,18 @@ function visit_iter()
 	else
 		transform_shader:set_i("non_hashed_random",1)
 	end
-	if #global_seed_shuffling==0 then
+	if #global_seed_shuffling==0 and config.shuffle_size>0 then
 		generate_shuffling(config.shuffle_size)
 	end
-	global_seed_id=global_seed_id or 1
-	global_seed_id=global_seed_id+1
-	if global_seed_id>#global_seed_shuffling then global_seed_id=1 end
+	if config.shuffle_size<=0 then
+		global_seed=math.random()
+	else
+		global_seed_id=global_seed_id or 1
+		global_seed_id=global_seed_id+1
+		if global_seed_id>#global_seed_shuffling then global_seed_id=1 end
 
-	global_seed=global_seed_shuffling[global_seed_id]
+		global_seed=global_seed_shuffling[global_seed_id]
+	end
 	local max_iter=1
 	if not config.draw then
 		--max_iter=8
