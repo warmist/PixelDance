@@ -18,7 +18,7 @@ config=make_config({
 	{"dt",0.002,type="floatsci",min=0.000001,max=0.005},
 	{"percent_update",0.3,type="float"},
 	{"max_dist_moved",10, type="int",min=0,max=grid.w},
-	{"fixed_colors",true, type="boolean"},
+	{"fixed_colors",false, type="boolean"},
 	{"paused",true, type="boolean"},
 	},config)
 
@@ -50,9 +50,9 @@ void main(){
 }
 ]==]
 local ruleset={
-	[1]={0,-3,0},
-	[2]={-3,1,3},
-	[3]={-2,-2,-3},
+	[1]={1,-1,-2},
+	[2]={-1,-1,-1},
+	[3]={-2,-1,1},
 }
 function randomize_ruleset(count )
 	local ret={}
@@ -130,6 +130,11 @@ function random_in_circle( dist )
 	local a=math.random()*math.pi*2
 	return round(math.cos(a)*r),round(math.sin(a)*r)
 end
+function delta_substep( v )
+	--return 1.5-v*v
+	--return math.sin(v*math.pi*2)*2+1.5
+	return math.cos(v*math.pi*2)*2+1.5
+end
 function do_grid_step(x,y)
 
 	local max_dist=config.max_dist_moved*config.temperature
@@ -147,10 +152,10 @@ function do_grid_step(x,y)
 	local tv=math.floor(trv*num_values)
 	--if tv==0 then
 
-		local old_value=calculate_value(x,y,v)*(rv-v)
-		local old_trg_value=calculate_value(tx,ty,tv)*(trv-tv)
-		local new_trg_value=calculate_value(tx,ty,v)*(rv-v)
-		local new_value=calculate_value(x,y,tv)*(trv-tv)
+		local old_value=calculate_value(x,y,v)*delta_substep(rv-v)
+		local old_trg_value=calculate_value(tx,ty,tv)*delta_substep(trv-tv)
+		local new_trg_value=calculate_value(tx,ty,v)*delta_substep(rv-v)
+		local new_value=calculate_value(x,y,tv)*delta_substep(trv-tv)
 
 		if old_value+old_trg_value<new_value+new_trg_value then
 			--[[
@@ -210,7 +215,7 @@ function update(  )
 		for x=0,grid.w-1 do
 		for y=0,grid.h-1 do
 			--grid:set(x,y,math.random())
-			--grid:set(x,y,(x*0.8/grid.w+math.random()*0.2))
+			grid:set(x,y,(x*0.8/grid.w+math.random()*0.2))
 			-- [[
 			local dx=(x-grid.w/2)
 			local dy=(y-grid.h/2)
