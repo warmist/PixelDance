@@ -17,7 +17,7 @@ config=make_config({
 	{"temperature",1,type="float"},
 	{"dt",0.002,type="floatsci",min=0.000001,max=0.005},
 	{"percent_update",0.3,type="float"},
-	{"max_dist_moved",grid.w, type="int",min=0,max=grid.w},
+	{"max_dist_moved",10, type="int",min=0,max=grid.w},
 	{"fixed_colors",true, type="boolean"},
 	{"paused",true, type="boolean"},
 	},config)
@@ -146,10 +146,12 @@ function do_grid_step(x,y)
 	local trv=grid:get(tx,ty)
 	local tv=math.floor(trv*num_values)
 	--if tv==0 then
-		local old_value=calculate_value(x,y,v)
-		local old_trg_value=calculate_value(tx,ty,tv)
-		local new_trg_value=calculate_value(tx,ty,v)
-		local new_value=calculate_value(x,y,tv)
+
+		local old_value=calculate_value(x,y,v)*(rv-v)
+		local old_trg_value=calculate_value(tx,ty,tv)*(trv-tv)
+		local new_trg_value=calculate_value(tx,ty,v)*(rv-v)
+		local new_value=calculate_value(x,y,tv)*(trv-tv)
+
 		if old_value+old_trg_value<new_value+new_trg_value then
 			--[[
 			grid:set(x,y,tv/num_values)
@@ -209,11 +211,13 @@ function update(  )
 		for y=0,grid.h-1 do
 			--grid:set(x,y,math.random())
 			--grid:set(x,y,(x*0.8/grid.w+math.random()*0.2))
+			-- [[
 			local dx=(x-grid.w/2)
 			local dy=(y-grid.h/2)
-			local len=math.sqrt(dx*dx+dy*dy)/(0.8*grid.w)
+			local len=math.sqrt(dx*dx+dy*dy)/(0.7*grid.w)
 			if len>1 then len=1 end
-			grid:set(x,y,(len*0.8+math.random()*0.2))
+			grid:set(x,y,(len*0.9+math.random()*0.1))
+			--]]
 		end
 		end
 		config.temperature=1
