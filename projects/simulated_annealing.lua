@@ -54,7 +54,7 @@ local ruleset={
 	[2]={1,1,0,-1,1},
 	[3]={0,1,1,1,-4},
 	[4]={-0.1,0.1,1,-0.2,0},
-	--[5]={-0.1,0.1,1,0.2,0.1},
+	[5]={-0.1,0.1,1,0.2,0.1},
 }
 function randomize_ruleset(count )
 	local ret={}
@@ -115,8 +115,22 @@ function coord_edge( x,y )
 end
 function get_around( x,y )
 	local ret={}
-	local dx={-1,-1,-1,0,0,1,1,1}
-	local dy={-1,0,1,-1,1,-1,0,1}
+	-- [[
+	local dx={-1,-1,-1, 0, 0, 1, 1, 1}
+	local dy={-1, 0, 1,-1, 1,-1, 0, 1}
+	--]]
+	--[[
+	local dx={-2,-2,-2, 0, 0, 2, 2, 2}
+	local dy={-2, 0, 2,-2, 2,-2, 0, 2}
+	--]]
+	--[[
+	local dx={-1,-1,-1,0,0,1,1,1,2,0,0,-2,3,0,0,-3}
+	local dy={-1,0,1,-1,1,-1,0,1,0,2,-2,0,0,3,-3,0}
+	--]]
+	--[[
+	local dx={-1,0,0,1,2,0,0,-2,3,0,0,-3}
+	local dy={0,-1,1,0,0,2,-2,0,0,3,-3,0}
+	--]]
 	for i=1,#dx do
 		local tx=x+dx[i]
 		local ty=y+dy[i]
@@ -214,11 +228,13 @@ function update_grid(  )
 				local nx=x
 				local ny=y
 				nx,ny=do_grid_step(nx,ny)
-				--[[for i=1,config.max_dist_moved do
+				--[[
+				for i=1,config.max_dist_moved do
 					if nx==nil then break end
 					nx,ny=do_grid_step(nx,ny)
 
-				end]]
+				end
+				--]]
 			end
 		end
 	end
