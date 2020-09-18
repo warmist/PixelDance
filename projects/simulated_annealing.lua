@@ -50,45 +50,38 @@ void main(){
 }
 ]==]
 local ruleset={
-	[1]={-0.1,0.1,0,1,4},
-	[2]={1,1,0,-1,1},
-	[3]={0,1,1,1,-4},
-	[4]={-0.1,0.1,1,-0.2,0},
-	[5]={-0.1,0.1,1,0.2,0.1},
+	[1]={  1,-1,   1, 0.1,-5},
+	[2]={ -1, 1,-0.5,   1, 0},
+	--[[
+	[2]=function ( a )
+		--local dx={-1,-1,-1, 0, 0, 1, 1, 1}
+		--local dy={-1, 0, 1,-1, 1,-1, 0, 1}
+		local s={-1,-1,-1,1,1,-1,-1,-1}
+		local ret=0
+		for i,v in ipairs(a) do
+			ret=ret+(v[1]-1)*s[i]+v[2]
+		end
+		return ret
+	end
+	--]]
+	--[[
+	[3]={   1,-0.5,   1,-0.5, 1},
+	[4]={ 0.1,   1,-0.5,   1,-1},
+	[5]={2,0,4,-1,1},
+	--]]
 }
 function randomize_ruleset(count )
 	local ret={}
 	for i=1,count do
 		local tbl={}
 		for i=1,count do
-			tbl[i]={math.random()*8-4,math.random()*2-1}
+			tbl[i]=math.random()*8-4
 		end
 		ret[i]=tbl
 	end
 	ruleset=ret
 end
 --randomize_ruleset(4)
-function parse_ruleset(  )
-	local ret={}
-	for k,v in pairs(ruleset) do
-		if type(v)=="table" then
-			local tbl={}
-			for i,vv in ipairs(v) do
-				if type(vv)=="number" then
-					tbl[i]={const=vv,mult=1}
-				else
-					tbl[i]={const=vv[1],mult=vv[2]}
-				end
-			end
-			ret[k]=tbl
-		else
-			ret[k]=v
-		end
-	end
-	return ret
-end
-local parsed_ruleset=parse_ruleset()
-
 local num_values=#ruleset
 
 function coord_edge( x,y )
@@ -115,7 +108,7 @@ function coord_edge( x,y )
 end
 function get_around( x,y )
 	local ret={}
-	-- [[
+	--[[
 	local dx={-1,-1,-1, 0, 0, 1, 1, 1}
 	local dy={-1, 0, 1,-1, 1,-1, 0, 1}
 	--]]
@@ -123,7 +116,7 @@ function get_around( x,y )
 	local dx={-2,-2,-2, 0, 0, 2, 2, 2}
 	local dy={-2, 0, 2,-2, 2,-2, 0, 2}
 	--]]
-	--[[
+	-- [[
 	local dx={-1,-1,-1,0,0,1,1,1,2,0,0,-2,3,0,0,-3}
 	local dy={-1,0,1,-1,1,-1,0,1,0,2,-2,0,0,3,-3,0}
 	--]]
@@ -145,6 +138,47 @@ function get_around( x,y )
 	end
 	return ret
 end
+function get_around_fract( x,y )
+	local ret={}
+	--[[
+	local dx={-1, 0, 0, 1}
+	local dy={ 0,-1, 1, 0}
+	--]]
+	-- [[
+	local dx={-1,-1,-1, 0, 0, 1, 1, 1}
+	local dy={-1, 0, 1,-1, 1,-1, 0, 1}
+	--]]
+	--[[
+	local dx={-2,-2,-2, 0, 0, 2, 2, 2}
+	local dy={-2, 0, 2,-2, 2,-2, 0, 2}
+	--]]
+	--[[
+	local dx={-1,-1,-1,0,0,1,1,1,2,0,0,-2,3,0,0,-3}
+	local dy={-1,0,1,-1,1,-1,0,1,0,2,-2,0,0,3,-3,0}
+	--]]
+	--[[
+	local dx={-1,-1,-1,0,0,1,1,1,2,2,2,-2,-2,-2}
+	local dy={-1,0,1,-1,1,-1,0,1,0,-2,-1,0,2, 1}
+	--]]
+	--[[
+	local dx={-1, 0,0,1,2,0, 0,-2,3,0,0,-3}
+	local dy={ 0,-1,1,0,0,2,-2, 0,0,3,-3,0}
+	--]]
+	for i=1,#dx do
+		local tx=x+dx[i]
+		local ty=y+dy[i]
+		tx,ty=coord_edge(tx,ty)
+
+		--if tx<grid.w or ty<grid.h or tx>=0 or ty>=0 then
+			local rv=grid:get(tx,ty)
+			local v=math.floor(rv*num_values)
+			ret[i]={v,rv*num_values-v}
+		--else
+		--ret[i]=0
+		--end
+	end
+	return ret
+end
 function calculate_value( x,y,v)
 	local a=get_around(x,y)
 	local r=parsed_ruleset[v+1]
@@ -155,9 +189,42 @@ function calculate_value( x,y,v)
 
 	for i,vv in ipairs(a) do
 		local rule=r[vv+1]
-		ret=rule.const+rule.mult*ret
+		ret=rule+ret
 	end
 	return ret
+end
+function delta_substep( v )
+	--return 1+v
+	--return math.abs(1-v)
+	return 0.5+math.abs(0.5-v)*2
+	--return -math.sin(v*math.pi*3)+1.5
+	--return -(math.cos(v*math.pi*2)+1)*0.5*0.3-0.7
+	--return 1-v*0.5
+
+	--smoothstep
+	--[[
+	if v<=0 then return 0.5 end
+	if v>=1 then return 1.5 end
+	return 3*v*v-2*v*v*v+0.5
+	--]]
+end
+function calculate_value_fract( x,y,v,v_fract)
+	local a=get_around_fract(x,y)
+	local r=ruleset[v+1]
+	if r==nil then print(v+1,v_fract) end
+	local ret=0
+	local dst=delta_substep(v_fract)
+	if type(r)=="function" then
+		return r(a,v,x,y)
+	end
+
+	for i,vv in ipairs(a) do
+		local rule=r[vv[1]+1]
+		--ret=rule*(dst+delta_substep(vv[2]))+ret
+		ret=rule*delta_substep((vv[2]+v_fract)/2)+ret
+		--ret=rule*delta_substep(math.sqrt(vv[2]*v_fract))+ret
+	end
+	return ret --*delta_substep(v_fract)
 end
 function round(n)
     return n % 1 >= 0.5 and math.ceil(n) or math.floor(n)
@@ -167,17 +234,12 @@ function random_in_circle( dist )
 	local a=math.random()*math.pi*2
 	return round(math.cos(a)*r),round(math.sin(a)*r)
 end
-function delta_substep( v )
-	--return v
-	return v-0.5
-	--return math.sin(v*math.pi)*2+1.5
-	--return (math.cos(v*math.pi*2)+1)*0.5*0.3+0.7
-	--return 1
-end
+
 function do_grid_step(x,y)
 
 	local rv=grid:get(x,y)
 	local v=math.floor(rv*num_values)
+	local v_fract=rv*num_values-v
 	--[[
 	local dx={-1,-1,-1,0,0,1,1,1}
 	local dy={-1,0,1,-1,1,-1,0,1}
@@ -186,8 +248,8 @@ function do_grid_step(x,y)
 	local ty=y+dy[math.random(1,#dy)]
 	--]]
 	-- [[
-	local max_dist=config.max_dist_moved*config.temperature+1
-	--local max_dist=config.max_dist_moved
+	--local max_dist=config.max_dist_moved*config.temperature+1
+	local max_dist=config.max_dist_moved
 	local dx,dy=random_in_circle(max_dist)
 	local tx=x+dx
 	local ty=y+dy
@@ -198,14 +260,28 @@ function do_grid_step(x,y)
 	end]]
 	local trv=grid:get(tx,ty)
 	local tv=math.floor(trv*num_values)
+	local t_fract=trv*num_values-tv
 	--if tv==0 then
-
+		--[[
 		local old_value=calculate_value(x,y,v)*delta_substep(rv*num_values-v)
 		local old_trg_value=calculate_value(tx,ty,tv)*delta_substep(trv*num_values-tv)
 		local new_trg_value=calculate_value(tx,ty,v)*delta_substep(rv*num_values-v)
 		local new_value=calculate_value(x,y,tv)*delta_substep(trv*num_values-tv)
+		--]]
+		local old_value=calculate_value_fract(x,y,v,v_fract)
+		local old_trg_value=calculate_value_fract(tx,ty,tv,t_fract)
 
-		if (old_value+old_trg_value)*(1-config.temperature)<(new_value+new_trg_value)*(1-config.temperature)+config.temperature then
+		local new_trg_value=calculate_value_fract(tx,ty,v,v_fract)
+		local new_value=calculate_value_fract(x,y,tv,t_fract)
+
+		local delta_value=(old_value+old_trg_value)-(new_value+new_trg_value)
+
+		--[[
+		if math.random()>0.99999 and delta_value~=0 then
+			print(math.sqrt(dx*dx+dy*dy),delta_value)
+		end
+		--]]
+		if delta_value<0 or ( math.exp(-delta_value*(1-config.temperature))>math.random()) then
 			--[[
 			grid:set(x,y,tv/num_values)
 			grid:set(tx,ty,v/num_values)
@@ -263,27 +339,29 @@ function draw_grid(  )
 		need_save=nil
 	end
 end
-
+function is_mouse_down(  )
+	return __mouse.clicked1 and not __mouse.owned1, __mouse.x,__mouse.y
+end
 function update(  )
 	__no_redraw()
 	__clear()
-	imgui.Begin("Objects in space")
+	imgui.Begin("Simulated annealing")
 	draw_config(config)
-	
+	local variation_const=0.0
 	if imgui.Button("Restart") then
 		for x=0,grid.w-1 do
 		for y=0,grid.h-1 do
 			--grid:set(x,y,math.random())
-			--grid:set(x,y,(x*0.9/grid.w+math.random()*0.1))
-			-- [[
+			grid:set(x,y,(x*(1-variation_const)/grid.w+math.random()*variation_const))
+			--[[
 			local dx=(x-grid.w/2)
 			local dy=(y-grid.h/2)
 			local len=math.sqrt(dx*dx+dy*dy)/(0.7*grid.w)
-			if len>1 then len=1 end
+			if len>=1 then len=0.99999 end
 			if y>grid.h/2 then
-				grid:set(x,y,(len*0.9+math.random()*0.1))
+				grid:set(x,y,(len*(1-variation_const)+math.random()*variation_const))
 			else
-				grid:set(x,y,1-(len*0.9+math.random()*0.1))
+				grid:set(x,y,1-(len*(1-variation_const)+math.random()*variation_const))
 			end
 			--]]
 		end
@@ -297,12 +375,25 @@ function update(  )
 	end
 	imgui.End()
 	if not config.paused then
+		local stop_cond=0.001
 		update_grid()
 		--config.temperature=config.temperature-config.dt --linear cooling
-		config.temperature=config.temperature*(1-config.dt) --exponential cooling
-		if config.temperature<=0.000001 then
+		--config.temperature=config.temperature*(1-config.dt) --exponential cooling
+		config.temperature=config.temperature*math.pow(stop_cond,config.dt/(1-stop_cond)) --exp cooling, but same step count as linear
+		if config.temperature<=stop_cond then
 			config.paused=true
+			config.temperature=1
 		end
 	end
 	draw_grid()
+	local c,x,y= is_mouse_down()
+	if c then
+		local tx = math.floor(x/zoom)
+		local ty = math.floor(y/zoom)
+
+		local trv=grid:get(tx,ty)
+		local tv=math.floor(trv*num_values)
+		local t_fract=trv*num_values-tv
+		print(string.format("M(%d,%d)=%g (%d;%g), value:%g",tx,ty,trv,tv,t_fract,calculate_value_fract(tx,ty,tv,t_fract)))
+	end
 end
