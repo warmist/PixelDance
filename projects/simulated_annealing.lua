@@ -35,8 +35,12 @@ vec3 palette(float v)
 {
 	vec3 a=vec3(0.5,0.5,0.5);
 	vec3 b=vec3(0.5,0.5,0.5);
+	/* gold and blue
 	vec3 c=vec3(1,1,0.5);
 	vec3 d=vec3(0.8,0.9,0.3);
+	*/
+	vec3 c=vec3(0.5,0.5,0.45);
+	vec3 d=vec3(0.6,0.5,0.35);
 	return a+b*cos(3.1459*2*(c*v+d));
 }
 void main(){
@@ -51,7 +55,53 @@ void main(){
 ]==]
 local ruleset={
 	[1]={  1,-1,   1, 0.1,-5},
-	[2]={ -1, 1,-0.5,   1, 0},
+	[2]={ -1, -1,   1,   1, 0},
+	[3]=function ( a,v,v_fract,x,y)
+
+		local s=a[2][1]
+		local r ={1,1,1,0,0,-1}
+
+		--local dx={-1,-1,-1, 0, 0, 1, 1 ,1}
+		--local dy={-1, 0, 1,-1, 1,-1, 0, 1}
+		if true then
+			return math.cos(2*math.pi*y/grid.h)*10
+		end
+		if s==a[4][1] and s==a[5][1] and s==a[7][1] then
+			if y>grid.h/2 then
+				return -s*delta_substep((a[2][2]+a[4][2]+a[5][2]+a[7][2]+v_fract)/5)
+			else
+				return s*delta_substep((a[2][2]+a[4][2]+a[5][2]+a[7][2]+v_fract)/5)
+			end
+		else
+			local ret=0
+			for i,v in ipairs(a) do
+				ret=ret+r[v[1]+1]*delta_substep((v[2]+v_fract)/2)
+			end
+			return ret
+		end
+	end,
+	--[[function ( a,v,v_fract)
+		local has_2=false
+		local ret=0
+		local ret2=0
+		local r ={1,1,1}
+		local r2={-5,0,-0.9}
+		for i,v in ipairs(a) do
+			ret=ret+r[v[1]+1]*delta_substep((v[2]+v_fract)/2)
+			ret2=ret2+r2[v[1]+1]*delta_substep((v[2]+v_fract)/2)
+
+			if v[1]==2 then
+				has_2=true
+			end
+
+			if has_2 then
+				return ret+ret2
+			else
+				return ret
+			end
+		end
+	end
+	]]--
 	--[[
 	[2]=function ( a )
 		--local dx={-1,-1,-1, 0, 0, 1, 1, 1}
@@ -64,8 +114,8 @@ local ruleset={
 		return ret
 	end
 	--]]
-	--[[
-	[3]={   1,-0.5,   1,-0.5, 1},
+	-- [[
+	--[3]={   1,-0.5,   1,-0.5, 1},
 	[4]={ 0.1,   1,-0.5,   1,-1},
 	[5]={2,0,4,-1,1},
 	--]]
@@ -215,7 +265,7 @@ function calculate_value_fract( x,y,v,v_fract)
 	local ret=0
 	local dst=delta_substep(v_fract)
 	if type(r)=="function" then
-		return r(a,v,x,y)
+		return r(a,v,v_fract,x,y)
 	end
 
 	for i,vv in ipairs(a) do
@@ -347,7 +397,7 @@ function update(  )
 	__clear()
 	imgui.Begin("Simulated annealing")
 	draw_config(config)
-	local variation_const=0.0
+	local variation_const=0.1
 	if imgui.Button("Restart") then
 		for x=0,grid.w-1 do
 		for y=0,grid.h-1 do
