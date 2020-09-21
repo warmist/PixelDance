@@ -5,6 +5,7 @@ local size=STATE.size
 --[[
 	TODO:
 		defocus aberration
+		thin film interference
 --]]
 local image_buf
 image_buf=load_png("saved_1596619752.png")

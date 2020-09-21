@@ -8,17 +8,20 @@ require "common"
 		* sound output
 		* bowstring input
 		* add variance display/accumulation
+		* thin film interference
 --]]
 local size_mult
 local oversample=1
 local win_w
 local win_h
 local aspect_ratio
-function update_size(  )
-	win_w=1280*size_mult
-	win_h=1280*size_mult--math.floor(win_w*size_mult*(1/math.sqrt(2)))
-	aspect_ratio=win_w/win_h
-	__set_window_size(win_w,win_h)
+function update_size( w,h )
+	if w~= win_w or h~=win_h then
+		win_w=1280*size_mult
+		win_h=1280*size_mult--math.floor(win_w*size_mult*(1/math.sqrt(2)))
+		aspect_ratio=win_w/win_h
+		__set_window_size(win_w,win_h)
+	end
 end
 --update_size()
 local bwrite = require "blobwriter"
