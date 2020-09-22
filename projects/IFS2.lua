@@ -1382,7 +1382,7 @@ function rand_function(  )
 
 	--]]
 
-	--[[ complex seriesize
+	-- [[ complex seriesize
 	local series_size=5
 	local rand_offset=0.01
 	local rand_size=0.025
@@ -1393,7 +1393,11 @@ function rand_function(  )
 			sub_s=string.format("c_mul(%s,%s)","s",sub_s)
 		end
 		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
-		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+		local v_start=(i-1)/series_size
+		local v_end=i/series_size
+		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)*value_inside(global_seed,%g,%g)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2,v_start,v_end)
+
 		local dx=math.cos((i/series_size)*math.pi*2)
 		local dy=math.sin((i/series_size)*math.pi*2)
 		--input_s=input_s..string.format("+%s*vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))",sub_s)
@@ -2651,6 +2655,13 @@ function generate_shuffling( num_steps )
 	for i=1,num_steps do
 		global_seed_shuffling[i]=global_seed_shuffling[i]/v
 	end
+	-- [=[ flip every second one
+	for i=1,num_steps do
+		if i%2==0 then
+			global_seed_shuffling[i]=1-global_seed_shuffling[i]
+		end
+	end
+	--]=]
 	--]]
 end
 function visit_iter()
