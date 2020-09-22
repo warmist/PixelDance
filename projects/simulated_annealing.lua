@@ -6,7 +6,7 @@
 require "common"
 
 local size=STATE.size
-local zoom=2
+local zoom=4
 
 grid=grid or make_float_buffer(math.floor(size[1]/zoom),math.floor(size[2]/zoom))
 function resize( w,h )
@@ -39,8 +39,12 @@ vec3 palette(float v)
 	vec3 c=vec3(1,1,0.5);
 	vec3 d=vec3(0.8,0.9,0.3);
 	*/
+	/* gold and violet
 	vec3 c=vec3(0.5,0.5,0.45);
 	vec3 d=vec3(0.6,0.5,0.35);
+	*/
+	vec3 c=vec3(1.25,1.0,1.0);
+	vec3 d=vec3(0.75,0.0,0.0);
 	return a+b*cos(3.1459*2*(c*v+d));
 }
 void main(){
@@ -53,44 +57,36 @@ void main(){
 	//color.w=1;
 }
 ]==]
-local ruleset={
-	[1]={  1,-1,   0, 0.1,-5},
-	[2]={ -1, -1,  0,   1, 0},
-	[3]=function ( a,v,v_fract,x,y)
-
-		local s=a[2][1]
-		local r ={-1,1,10,0,0,-1}
-
-		--local dx={-1,-1,-1, 0, 0, 1, 1 ,1}
-		--local dy={-1, 0, 1,-1, 1,-1, 0, 1}
-		--[[
-		if true then
-			return math.cos(2*math.pi*y/grid.h)*10
-		end
-		if s==a[4][1] and s==a[5][1] and s==a[7][1] then
-			if y>grid.h/2 then
-				return -s*delta_substep((a[2][2]+a[4][2]+a[5][2]+a[7][2]+v_fract)/5)
-			else
-				return s*delta_substep((a[2][2]+a[4][2]+a[5][2]+a[7][2]+v_fract)/5)
-			end
+org_ruleset2={
+	[1]={  -1,1,   1, 0.1,-5},
+	[2]={ 1, 0,  2,   1, 0},
+	[3]={0,5,1,  0,   0,-1},
+}
+local org_ruleset
+local unif_func=function ( a,org_v,v_fract,x,y)
+	local r =org_ruleset[org_v+1]
+	local r2=org_ruleset2[org_v+1]
+	local ret=0
+	for i,v in ipairs(a) do
+		if i<=4 or v==org_v then
+			ret=ret+r[v[1]+1]*delta_substep((v[2]+v_fract)/2)
+		elseif i<=6 then
+			ret=ret-r[v[1]+1]*delta_substep((v[2]+v_fract)/2)
 		else
-			local ret=0
-			for i,v in ipairs(a) do
-				ret=ret+r[v[1]+1]*delta_substep((v[2]+v_fract)/2)
-			end
-			return ret
+			ret=ret-r2[v[1]+1]*delta_substep((v[2]+v_fract)/2)
 		end
-		]]
-		local ret=0
-		for i,v in ipairs(a) do
-			if i<=8 or v==3 then
-				ret=ret+r[v[1]+1]*delta_substep((v[2]+v_fract)/2)
-			else
-				ret=ret-r[v[1]+1]*delta_substep((v[2]+v_fract)/2)
-			end
-		end
-		return ret
-	end,
+	end
+	return ret
+end
+org_ruleset={
+	[1]={  1,-1,   -1, 0.1,-5},
+	[2]={ -1, 1,  0,   1, 0},
+	[3]={-1,1,-1,  0,   0,-1},
+}
+local ruleset={
+	[1]=unif_func,
+	[2]=unif_func,
+	[3]=unif_func,
 	--[[function ( a,v,v_fract)
 		local has_2=false
 		local ret=0
@@ -131,6 +127,7 @@ local ruleset={
 	[5]={2,0,4,-1,1},
 	--]]
 }
+
 function randomize_ruleset(count )
 	local ret={}
 	for i=1,count do
@@ -169,7 +166,7 @@ function coord_edge( x,y )
 end
 function get_around( x,y )
 	local ret={}
-	--[[
+	-- [[
 	local dx={-1,-1,-1, 0, 0, 1, 1, 1}
 	local dy={-1, 0, 1,-1, 1,-1, 0, 1}
 	--]]
@@ -177,7 +174,7 @@ function get_around( x,y )
 	local dx={-2,-2,-2, 0, 0, 2, 2, 2}
 	local dy={-2, 0, 2,-2, 2,-2, 0, 2}
 	--]]
-	-- [[
+	--[[
 	local dx={-1,-1,-1,0,0,1,1,1,2,0,0,-2,3,0,0,-3}
 	local dy={-1,0,1,-1,1,-1,0,1,0,2,-2,0,0,3,-3,0}
 	--]]
@@ -214,8 +211,8 @@ function get_around_fract( x,y )
 	local dy={-2, 0, 2,-2, 2,-2, 0, 2}
 	--]]
 	-- [[
-	local dx={-1,-1,-1,0,0,1,1,1,2,0,0,-2,3,0,0,-3}
-	local dy={-1,0,1,-1,1,-1,0,1,0,2,-2,0,0,3,-3,0}
+	local dx={-1,-1,-1,0,0,1,1,1,2,0,0,-2,3,0,0,-3,4,0,0,-4}
+	local dy={-1,0,1,-1,1,-1,0,1,0,2,-2,0,0,3,-3,0,0,4,-4,0}
 	--]]
 	--[[
 	local dx={-1,-1,-1,0,0,1,1,1,2,2,2,-2,-2,-2}
@@ -413,13 +410,13 @@ function update(  )
 		for x=0,grid.w-1 do
 		for y=0,grid.h-1 do
 			--grid:set(x,y,math.random())
-			--grid:set(x,y,(x*(1-variation_const)/grid.w+math.random()*variation_const))
-			-- [[
+			grid:set(x,y,(x*(1-variation_const)/grid.w+math.random()*variation_const))
+			--[[
 			local dx=(x-grid.w/2)
 			local dy=(y-grid.h/2)
 			local len=math.sqrt(dx*dx+dy*dy)/(0.5*grid.w)
 			if len>=1 then len=0.99999 end
-			if y>grid.h/2 and false then
+			if y>grid.h/2 then
 				grid:set(x,y,(len*(1-variation_const)+math.random()*variation_const))
 			else
 				grid:set(x,y,1-(len*(1-variation_const)+math.random()*variation_const))
