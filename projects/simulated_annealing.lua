@@ -61,6 +61,7 @@ org_ruleset2={
 	[1]={  -1,1,   1, 0.1,-5},
 	[2]={ 1, 0,  2,   1, 0},
 	[3]={0,5,1,  0,   0,-1},
+	[4]={-5,5,-10,  10,   0,-1},
 }
 local org_ruleset
 local unif_func=function ( a,org_v,v_fract,x,y)
@@ -81,12 +82,14 @@ end
 org_ruleset={
 	[1]={  1,-1,   -1, 0.1,-5},
 	[2]={ -1, 1,  0,   1, 0},
-	[3]={-1,1,-1,  0,   0,-1},
+	[3]={-1,1,-1,  -1,   0,-1},
+	[4]={1,1,-1,  1,   0,-1},
 }
 local ruleset={
 	[1]=unif_func,
 	[2]=unif_func,
 	[3]=unif_func,
+	[4]=unif_func,
 	--[[function ( a,v,v_fract)
 		local has_2=false
 		local ret=0
@@ -410,8 +413,8 @@ function update(  )
 		for x=0,grid.w-1 do
 		for y=0,grid.h-1 do
 			--grid:set(x,y,math.random())
-			grid:set(x,y,(x*(1-variation_const)/grid.w+math.random()*variation_const))
-			--[[
+			--grid:set(x,y,(x*(1-variation_const)/grid.w+math.random()*variation_const))
+			-- [[
 			local dx=(x-grid.w/2)
 			local dy=(y-grid.h/2)
 			local len=math.sqrt(dx*dx+dy*dy)/(0.5*grid.w)
