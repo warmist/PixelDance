@@ -146,6 +146,7 @@ config=make_config({
 	{"linear_len",0.4,type="float",min=0,max=1},
 	{"black_tight",1.33,type="float",min=0,max=2},
 	{"black_off",0,type="float",min=0,max=1},
+	{"animation",0,type="float",min=0,max=1},
 },config)
 
 local display_shader=shaders.Make[==[
@@ -1382,7 +1383,7 @@ function rand_function(  )
 
 	--]]
 
-	-- [[ complex seriesize
+	--[[ complex seriesize
 	local series_size=5
 	local rand_offset=0.01
 	local rand_size=0.025
@@ -1424,6 +1425,12 @@ function rand_function(  )
 	--[[ boost less with distance
 	--str_preamble=str_preamble.."s*=move_dist*exp(-1/dot(s,s));"
 	str_preamble=str_preamble.."s*=global_seed*exp(-1/dot(s,s));"
+	--]]
+	-- [[SINK!
+	str_postamble=str_postamble.."p=p*(2-normed_iter);"
+	--]]
+	--[[ 4fold mirror
+	str_postamble=str_postamble.."s=abs(s);"
 	--]]
 	--[[ center PRE
 	str_preamble=str_preamble.."s=s-p;"
@@ -2933,8 +2940,8 @@ function visit_iter()
 	__render_to_window()
 end
 
-local draw_frames=100
-local frame_count=10
+local draw_frames=600
+local frame_count=30
 function update_scale( new_scale )
 	local old_scale=config.scale
 
@@ -2947,35 +2954,44 @@ end
 function is_mouse_down(  )
 	return __mouse.clicked1 and not __mouse.owned1, __mouse.x,__mouse.y
 end
+function lerp( x,y,v )
+	return x*(1-v)+y*v
+end
+
 function update_animation_values( )
 	local a=config.animation*math.pi*2
 	--update_scale(math.cos(a)*0.25+0.75)
 	--v2:-5,2 =>7
 	--v3:-3,3
 
-	config.v1=math.random()*10-5
+	--[[config.v1=math.random()*10-5
 	config.v2=math.random()*10-5
 	config.v3=math.random()*10-5
 	config.v4=math.random()*10-5
-	gen_palette()
-	rand_function()
+	]]
+	--gen_palette()
+	--rand_function()
+	config.move_dist=lerp(0.0001,0.1,config.animation)
+	config.gamma=lerp(0.4,0.89,config.animation)
 end
 
 function update_real(  )
 	__no_redraw()
 	if animate then
+		__clear()
 		tick=tick or 0
-			need_save=true
-			draw_visits()
+		--
 		tick=tick+1
 		if tick%draw_frames==0 then
-			__clear()
 			update_animation_values()
+			need_save=true
+			draw_visits()
 			need_clear=true
 			config.animation=config.animation+1/frame_count
 			if config.animation>1 then
 				animate=false
 			end
+			draw_visits()
 		end
 	else
 		__clear()
