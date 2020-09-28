@@ -221,6 +221,18 @@ function get_around( x,y )
 	end
 	return ret
 end
+function gen_cos_sin_table( size )
+	local ct={}
+	local st={}
+	for i=1,size-1 do
+		local c=math.cos(i*math.pi*2/size)
+		local s=math.sin(i*math.pi*2/size)
+		ct[i]=c
+		st[i]=s
+	end
+	return ct,st
+end
+ctab,stab=gen_cos_sin_table(7)
 function get_around_fract( x,y )
 	local ret={}
 	--[[
@@ -276,7 +288,7 @@ function get_around_fract( x,y )
 		ret[i+#dx]={v,rv*num_values-v}
 	end
 	--]]
-	-- [[ 4(up to) fold symetry
+	--[[ 4(up to) fold symetry
 
 	local gdxx={0,-1,0}
 	local gdxy={1,0,-1}
@@ -289,6 +301,25 @@ function get_around_fract( x,y )
 	for i=1,#gdxx do
 		local tx=grid.w/2+cx*gdxx[i]+cy*gdxy[i]
 		local ty=grid.h/2+cx*gdyx[i]+cy*gdyy[i]
+
+		tx=math.floor(tx)
+		ty=math.floor(ty)
+		tx,ty=coord_edge(tx,ty)
+		local rv=grid:get(tx,ty)
+		local v=math.floor(rv*num_values)
+		ret[i+#dx]={v,rv*num_values-v}
+	end
+	--]]
+	-- [[ n fold rotational sym
+
+
+	local cx=x-grid.w/2
+	local cy=y-grid.h/2
+
+	for i=1,#ctab do
+
+		local tx=grid.w/2+cx*ctab[i]-cy*stab[i]
+		local ty=grid.h/2+cx*stab[i]+cy*ctab[i]
 
 		tx=math.floor(tx)
 		ty=math.floor(ty)
