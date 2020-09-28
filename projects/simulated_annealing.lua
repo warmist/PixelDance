@@ -39,12 +39,14 @@ vec3 palette(float v)
 	vec3 c=vec3(1,1,0.5);
 	vec3 d=vec3(0.8,0.9,0.3);
 	*/
-	/* gold and violet
+	///* gold and violet
 	vec3 c=vec3(0.5,0.5,0.45);
 	vec3 d=vec3(0.6,0.5,0.35);
-	*/
+	//*/
+	/* ice and blood
 	vec3 c=vec3(1.25,1.0,1.0);
 	vec3 d=vec3(0.75,0.0,0.0);
+	*/
 	return a+b*cos(3.1459*2*(c*v+d));
 }
 void main(){
@@ -65,31 +67,51 @@ org_ruleset2={
 }
 local org_ruleset
 local unif_func=function ( a,org_v,v_fract,x,y)
-	local r =org_ruleset[org_v+1]
-	local r2=org_ruleset2[org_v+1]
 	local ret=0
+	local r =org_ruleset[org_v+1]
+	-- [[
+	local r2=org_ruleset2[org_v+1]
 	for i,v in ipairs(a) do
-		if i<=4 or v==org_v then
+		--if i<=4 or v==org_v then
 			ret=ret+r[v[1]+1]*delta_substep((v[2]+v_fract)/2)
+		--[=[
 		elseif i<=6 then
 			ret=ret-r[v[1]+1]*delta_substep((v[2]+v_fract)/2)
 		else
 			ret=ret-r2[v[1]+1]*delta_substep((v[2]+v_fract)/2)
 		end
+		--]=]
 	end
+	--]]
+	--[[
+	local tx=grid.w-x-1
+	local ty=grid.h-y-1
+	tx,ty=coord_edge(tx,ty)
+	local rv=grid:get(tx,ty)
+	local v=math.floor(rv*4)
+	local fv=rv*4-v
+	ret=ret+(r[v+1]*delta_substep((fv+v_fract)/2))*4
+	--]]
+	local dx=0.5-(x)/grid.w
+	local dy=0.5-(y)/grid.h
+	local d=math.sqrt(dx*dx+dy*dy)
+	ret=ret-math.abs(d-org_v/3)*80
 	return ret
 end
 org_ruleset={
-	[1]={  1,-1,   -1, 0.1,-5},
-	[2]={ -1, 1,  0,   1, 0},
-	[3]={-1,1,-1,  -1,   0,-1},
+	[1]={  1, -1,   -1, 0.1,-5},
+	[2]={ -1, -0.5,  1,   1, 0},
+	[3]={ -1, 1,   3,  -1,   0,-1},
+	--[[
 	[4]={1,1,-1,  1,   0,-1},
+	[5]={0,0,-1,  -3,   1,-1},]]
 }
-local ruleset={
+local ruleset=org_ruleset
+--[==[{
 	[1]=unif_func,
 	[2]=unif_func,
 	[3]=unif_func,
-	[4]=unif_func,
+	--[4]=unif_func,
 	--[[function ( a,v,v_fract)
 		local has_2=false
 		local ret=0
@@ -130,7 +152,7 @@ local ruleset={
 	[5]={2,0,4,-1,1},
 	--]]
 }
-
+--]==]
 function randomize_ruleset(count )
 	local ret={}
 	for i=1,count do
@@ -146,13 +168,13 @@ end
 local num_values=#ruleset
 
 function coord_edge( x,y )
-	--[[ loop
+	-- [[ loop
 	if x<0 then x=grid.w+x end
 	if y<0 then y=grid.h+y end
 	if x>=grid.w then x=x-grid.w end
 	if y>=grid.h then y=y-grid.h end
 	--]]
-	-- [[ bounce
+	--[[ bounce
 	if x<0 then x=-x end
 	if y<0 then y=-y end
 	if x>=grid.w then x=grid.w*2-x-1 end
@@ -205,7 +227,7 @@ function get_around_fract( x,y )
 	local dx={-1, 0, 0, 1}
 	local dy={ 0,-1, 1, 0}
 	--]]
-	--[[
+	-- [[
 	local dx={-1,-1,-1, 0, 0, 1, 1, 1}
 	local dy={-1, 0, 1,-1, 1,-1, 0, 1}
 	--]]
@@ -213,7 +235,7 @@ function get_around_fract( x,y )
 	local dx={-2,-2,-2, 0, 0, 2, 2, 2}
 	local dy={-2, 0, 2,-2, 2,-2, 0, 2}
 	--]]
-	-- [[
+	--[[
 	local dx={-1,-1,-1,0,0,1,1,1,2,0,0,-2,3,0,0,-3,4,0,0,-4}
 	local dy={-1,0,1,-1,1,-1,0,1,0,2,-2,0,0,3,-3,0,0,4,-4,0}
 	--]]
@@ -238,6 +260,137 @@ function get_around_fract( x,y )
 		--ret[i]=0
 		--end
 	end
+	--[[ 4(up to) fold symetry 
+
+	local gdx={1,-1,1,-1}
+	local gdy={1,1,-1,-1}
+	local mdx={0,1,0,1}
+	local mdy={0,0,1,1}
+
+	for i=1,#gdx do
+		local tx=(grid.w-1)*mdx[i]+x*gdx[i]
+		local ty=(grid.h-1)*mdy[i]+y*gdy[i]
+		tx,ty=coord_edge(tx,ty)
+		local rv=grid:get(tx,ty)
+		local v=math.floor(rv*num_values)
+		ret[i+#dx]={v,rv*num_values-v}
+	end
+	--]]
+	-- [[ 4(up to) fold symetry
+
+	local gdxx={0,-1,0}
+	local gdxy={1,0,-1}
+	local gdyx={-1,0,1}
+	local gdyy={0,-1,0}
+
+	local cx=x-grid.w/2
+	local cy=y-grid.h/2
+
+	for i=1,#gdxx do
+		local tx=grid.w/2+cx*gdxx[i]+cy*gdxy[i]
+		local ty=grid.h/2+cx*gdyx[i]+cy*gdyy[i]
+
+		tx=math.floor(tx)
+		ty=math.floor(ty)
+		tx,ty=coord_edge(tx,ty)
+		local rv=grid:get(tx,ty)
+		local v=math.floor(rv*num_values)
+		ret[i+#dx]={v,rv*num_values-v}
+	end
+	--]]
+	--[[
+	local gdx={0.5,0.25,1,1,0.25,0.5}
+	local gdy={1,1,0.25,0.5,0.5,0.25}
+	local cx=x-grid.w/2
+	local cy=y-grid.h/2
+	for i=1,#gdx do
+		local tx=(grid.w/2)+cx*gdx[i]
+		local ty=(grid.h/2)+cy*gdy[i]
+		tx,ty=coord_edge(tx,ty)
+		local rv=grid:get(tx,ty)
+		local v=math.floor(rv*num_values)
+		ret[i+#dx]={v,rv*num_values-v}
+	end
+	--]]
+	--[[
+	local rot_sym=3
+	local ddx=x-grid.w/2
+	local ddy=y-grid.h/2
+	local r=math.sqrt(ddx*ddx+ddy*ddy)
+	local a=math.atan(ddy,ddx)
+	
+	for i=1,rot_sym-1 do
+		local t=i/rot_sym
+		local tx=(grid.w/2)+math.cos(a+t*math.pi/8)*(r)
+		local ty=(grid.h/2)+math.sin(a+t*math.pi/8)*(r)
+		tx=math.floor(tx)
+		ty=math.floor(ty)
+		tx,ty=coord_edge(tx,ty)
+		local rv=grid:get(tx,ty)
+		local v=math.floor(rv*num_values)
+		ret[i+#dx]={v,rv*num_values-v}
+	end
+	--]]
+	--[[
+	local radial_sym=8
+	local ddx=x-grid.w/2
+	local ddy=y-grid.h/2
+	local r=math.sqrt(ddx*ddx+ddy*ddy)
+	local a=math.atan(ddy,ddx)
+	
+	for i=1,radial_sym-1 do
+		local t=i/radial_sym
+		local tx=(grid.w/2)+math.cos(a)*(r*t)
+		local ty=(grid.h/2)+math.sin(a)*(r*t)
+		tx=math.floor(tx)
+		ty=math.floor(ty)
+		tx,ty=coord_edge(tx,ty)
+		local rv=grid:get(tx,ty)
+		local v=math.floor(rv*num_values)
+		ret[i+#dx]={v,rv*num_values-v}
+	end
+	--]]
+	--[[
+	local rot_sym=8
+	local ddx=x-grid.w/2
+	local ddy=y-grid.h/2
+	local r=math.sqrt(ddx*ddx+ddy*ddy)
+	local a=math.atan(ddy,ddx)
+	
+	for i=1,rot_sym-1 do
+		local t=i/rot_sym
+		local tx=(grid.w/2)+math.cos(a+t*math.pi*4)*(r*t)
+		local ty=(grid.h/2)+math.sin(a+t*math.pi*4)*(r*t)
+		tx=math.floor(tx)
+		ty=math.floor(ty)
+		tx,ty=coord_edge(tx,ty)
+		local rv=grid:get(tx,ty)
+		local v=math.floor(rv*num_values)
+		ret[i+#dx]={v,rv*num_values-v}
+	end
+	--]]
+	--[[
+	local grid_div=4
+	
+	local id=1
+	for ix=0,grid_div-1 do
+	for iy=0,grid_div-1 do
+		local ddx=math.floor(x/grid_div+ix)*grid_div
+		local ddy=math.floor(y/grid_div+iy)*grid_div
+		if ix~= 0 or iy~=0 then
+			local tx=ddx
+			local ty=ddy
+			tx=math.floor(tx)
+			ty=math.floor(ty)
+			tx,ty=coord_edge(tx,ty)
+			local rv=grid:get(tx,ty)
+			local v=math.floor(rv*num_values)
+			ret[id+#dx]={v,rv*num_values-v}
+			id=id+1
+		end
+	end
+	end
+	--]]
 	return ret
 end
 function calculate_value( x,y,v)
@@ -408,17 +561,21 @@ function update(  )
 	__clear()
 	imgui.Begin("Simulated annealing")
 	draw_config(config)
-	local variation_const=0.1
+	local variation_const=0.8
 	if imgui.Button("Restart") then
 		for x=0,grid.w-1 do
 		for y=0,grid.h-1 do
 			--grid:set(x,y,math.random())
 			--grid:set(x,y,(x*(1-variation_const)/grid.w+math.random()*variation_const))
+			--[[
+			local t=(x/grid.w+y/grid.h)*0.5
+			grid:set(x,y,(t*(1-variation_const)+math.random()*variation_const))
+			--]]
 			-- [[
 			local dx=(x-grid.w/2)
 			local dy=(y-grid.h/2)
 			local len=math.sqrt(dx*dx+dy*dy)/(0.5*grid.w)
-			if len>=1 then len=0.99999 end
+			if len>=1 then len=0.9999 end
 			if y>grid.h/2 then
 				grid:set(x,y,(len*(1-variation_const)+math.random()*variation_const))
 			else

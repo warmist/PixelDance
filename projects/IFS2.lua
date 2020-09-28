@@ -147,6 +147,7 @@ config=make_config({
 	{"black_tight",1.33,type="float",min=0,max=2},
 	{"black_off",0,type="float",min=0,max=1},
 	{"animation",0,type="float",min=0,max=1},
+	{"reshuffle",false,type="boolean"},
 },config)
 
 local display_shader=shaders.Make[==[
@@ -1013,11 +1014,11 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 		local dx2=math.random()*0.5-0.25
 		local dy2=math.random()*0.5-0.25
 		--]]
-		-- [[
+		--[[
 		local dx=math.cos(istart*math.pi*2)*1
 		local dy=math.sin(istart*math.pi*2)*1
 		--]]
-		--[[
+		-- [[
 		local dx=0
 		local dy=0
 		--]]
@@ -1229,8 +1230,8 @@ function rand_function(  )
 	local s=random_math(rand_complexity)
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p*vec2(move_dist,global_seed)","params.xy","params.zw"})
-	str_cmplx=random_math_complex_const(rand_complexity,nil,{"s","p*vec2(move_dist,global_seed)","params.xy","params.zw"})
-	--str_cmplx=random_math_complex_intervals(rand_complexity,7,nil,{"s","p","params.xy","params.zw"})
+	--str_cmplx=random_math_complex_const(rand_complexity,nil,{"s","p*vec2(move_dist,global_seed)","params.xy","params.zw"})
+	str_cmplx=random_math_complex_intervals(rand_complexity,7,nil,{"s","p","params.xy","params.zw"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,15,"(R)/2+(R)*c_sin(vec2(2*M_PI,1)*(R)+R)")
 	--str_cmplx=random_math_fourier_complex(7,rand_complexity)
 	--str_cmplx=random_math_complex_series(4,random_math_complex_intervals(rand_complexity,5))
@@ -1426,7 +1427,7 @@ function rand_function(  )
 	--str_preamble=str_preamble.."s*=move_dist*exp(-1/dot(s,s));"
 	str_preamble=str_preamble.."s*=global_seed*exp(-1/dot(s,s));"
 	--]]
-	-- [[SINK!
+	--[[SINK!
 	str_postamble=str_postamble.."p=p*(2-normed_iter);"
 	--]]
 	--[[ 4fold mirror
@@ -1585,6 +1586,7 @@ function gui()
 	if imgui.Button("regen shuffling") then
 		global_seed_shuffling={}
 	end
+
 	rand_complexity=rand_complexity or 3
 	if imgui.Button("Rand function") then
 		rand_function()
@@ -2671,6 +2673,12 @@ function generate_shuffling( num_steps )
 	--]=]
 	--]]
 end
+function shuffle(list)
+	for i = #list, 2, -1 do
+		local j = math.random(i)
+		list[i], list[j] = list[j], list[i]
+	end
+end
 function visit_iter()
 	local shader_randomize=true
 	local psize=config.point_size
@@ -2881,9 +2889,15 @@ function visit_iter()
 	if config.shuffle_size<=0 then
 		global_seed=math.random()
 	else
+
 		global_seed_id=global_seed_id or 1
 		global_seed_id=global_seed_id+1
-		if global_seed_id>#global_seed_shuffling then global_seed_id=1 end
+		if global_seed_id>#global_seed_shuffling then
+			if config.reshuffle then
+				shuffle(global_seed_shuffling)
+			end
+			global_seed_id=1
+		end
 
 		global_seed=global_seed_shuffling[global_seed_id]
 	end
