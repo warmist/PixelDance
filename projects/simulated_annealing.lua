@@ -60,25 +60,26 @@ void main(){
 }
 ]==]
 org_ruleset2={
-	[1]={  -1,1,   1, 0.1,-5},
-	[2]={ 1, 0,  2,   1, 0},
+	[1]={  1,-1,   1, 0.1,-5},
+	[2]={ -1, 4,  2,   1, 0},
 	[3]={0,5,1,  0,   0,-1},
 	[4]={-5,5,-10,  10,   0,-1},
 }
 local org_ruleset
 local unif_func=function ( a,org_v,v_fract,x,y)
 	local ret=0
+
 	local r =org_ruleset[org_v+1]
 	-- [[
 	local r2=org_ruleset2[org_v+1]
 	for i,v in ipairs(a) do
-		--if i<=4 or v==org_v then
+		if i<=8 or v==org_v then
 			ret=ret+r[v[1]+1]*delta_substep((v[2]+v_fract)/2)
-		--[=[
-		elseif i<=6 then
-			ret=ret-r[v[1]+1]*delta_substep((v[2]+v_fract)/2)
+		-- [=[
+		--elseif i<=6 then
+		--	ret=ret-r[v[1]+1]*delta_substep((v[2]+v_fract)/2)
 		else
-			ret=ret-r2[v[1]+1]*delta_substep((v[2]+v_fract)/2)
+			ret=ret+r2[v[1]+1]*delta_substep((v[2]+v_fract)/2)
 		end
 		--]=]
 	end
@@ -92,22 +93,26 @@ local unif_func=function ( a,org_v,v_fract,x,y)
 	local fv=rv*4-v
 	ret=ret+(r[v+1]*delta_substep((fv+v_fract)/2))*4
 	--]]
+	--[[
 	local dx=0.5-(x)/grid.w
 	local dy=0.5-(y)/grid.h
 	local d=math.sqrt(dx*dx+dy*dy)
 	ret=ret-math.abs(d-org_v/3)*80
+	--]]
 	return ret
 end
 org_ruleset={
 	[1]={  1, -1,   -1, 0.1,-5},
-	[2]={ -1, -0.5,  1,   1, 0},
+	[2]={ 1, -0.25,  1,   1, 0},
 	[3]={ -1, 1,   3,  -1,   0,-1},
 	--[[
 	[4]={1,1,-1,  1,   0,-1},
 	[5]={0,0,-1,  -3,   1,-1},]]
 }
-local ruleset=org_ruleset
---[==[{
+
+ruleset=org_ruleset
+--[==[
+{
 	[1]=unif_func,
 	[2]=unif_func,
 	[3]=unif_func,
@@ -158,6 +163,17 @@ function randomize_ruleset(count )
 	for i=1,count do
 		local tbl={}
 		for i=1,count do
+			--[[
+			local t={}
+			for i=1,4 do
+				t[i]=math.random()*8-4
+			end
+			local v=math.random()*8-4
+			for i=5,10 do
+				t[i]=v
+			end
+			tbl[i]=t
+			--]]
 			tbl[i]=math.random()*8-4
 		end
 		ret[i]=tbl
@@ -168,13 +184,29 @@ end
 local num_values=#ruleset
 
 function coord_edge( x,y )
-	-- [[ loop
+	--[[ clamp
+	if x<0 then x=0 end
+	if y<0 then y=0 end
+	if x>=grid.w then x=grid.w-1 end
+	if y>=grid.h then y=grid.h-1 end
+	--]]
+	--[[ loop
+	if x<0 then x=grid.w+x end
+	if y<0 then y=grid.h+y end
+
 	if x<0 then x=grid.w+x end
 	if y<0 then y=grid.h+y end
 	if x>=grid.w then x=x-grid.w end
 	if y>=grid.h then y=y-grid.h end
+
+	if x>=grid.w then x=x-grid.w end
+	if y>=grid.h then y=y-grid.h end
 	--]]
-	--[[ bounce
+	-- [[ bounce
+	if x<0 then x=-x end
+	if y<0 then y=-y end
+	if x>=grid.w then x=grid.w*2-x-1 end
+	if y>=grid.h then y=grid.h*2-y-1 end
 	if x<0 then x=-x end
 	if y<0 then y=-y end
 	if x>=grid.w then x=grid.w*2-x-1 end
@@ -200,9 +232,10 @@ function gen_cos_sin_table( size )
 	end
 	return ct,st
 end
-ctab,stab=gen_cos_sin_table(7)
+ctab,stab=gen_cos_sin_table(3)
 function get_around_fract( x,y )
 	local ret={}
+	local offset=0
 	--[[
 	local dx={-1, 0, 0, 1}
 	local dy={ 0,-1, 1, 0}
@@ -227,6 +260,7 @@ function get_around_fract( x,y )
 	local dx={-1, 0,0,1,2,0, 0,-2,3,0,0,-3}
 	local dy={ 0,-1,1,0,0,2,-2, 0,0,3,-3,0}
 	--]]
+	-- [[
 	for i=1,#dx do
 		local tx=x+dx[i]
 		local ty=y+dy[i]
@@ -240,6 +274,8 @@ function get_around_fract( x,y )
 		--ret[i]=0
 		--end
 	end
+	offset=#dx
+	--]]
 	--[[ 4(up to) fold symetry 
 
 	local gdx={1,-1,1,-1}
@@ -253,8 +289,9 @@ function get_around_fract( x,y )
 		tx,ty=coord_edge(tx,ty)
 		local rv=grid:get(tx,ty)
 		local v=math.floor(rv*num_values)
-		ret[i+#dx]={v,rv*num_values-v}
+		ret[i+offset]={v,rv*num_values-v}
 	end
+	offset=offset+#gdx
 	--]]
 	--[[ 4(up to) fold symetry
 
@@ -275,8 +312,9 @@ function get_around_fract( x,y )
 		tx,ty=coord_edge(tx,ty)
 		local rv=grid:get(tx,ty)
 		local v=math.floor(rv*num_values)
-		ret[i+#dx]={v,rv*num_values-v}
+		ret[i+offset]={v,rv*num_values-v}
 	end
+	offset=offset+#gdxx
 	--]]
 	-- [[ n fold rotational sym
 
@@ -286,16 +324,18 @@ function get_around_fract( x,y )
 
 	for i=1,#ctab do
 
-		local tx=grid.w/2+cx*ctab[i]-cy*stab[i]
-		local ty=grid.h/2+cx*stab[i]+cy*ctab[i]
+		local tx=cx*ctab[i]-cy*stab[i]+grid.w/2
+		local ty=cx*stab[i]+cy*ctab[i]+grid.h/2
 
+		
+		tx,ty=coord_edge(tx,ty)
 		tx=math.floor(tx)
 		ty=math.floor(ty)
-		tx,ty=coord_edge(tx,ty)
 		local rv=grid:get(tx,ty)
 		local v=math.floor(rv*num_values)
-		ret[i+#dx]={v,rv*num_values-v}
+		ret[i+offset]={v,rv*num_values-v}
 	end
+	offset=offset+#ctab
 	--]]
 	--[[
 	local gdx={0.5,0.25,1,1,0.25,0.5}
@@ -358,8 +398,8 @@ function get_around_fract( x,y )
 	
 	for i=1,rot_sym-1 do
 		local t=i/rot_sym
-		local tx=(grid.w/2)+math.cos(a+t*math.pi*4)*(r*t)
-		local ty=(grid.h/2)+math.sin(a+t*math.pi*4)*(r*t)
+		local tx=(grid.w/2)+math.cos(a+t*math.pi*4)*(r)
+		local ty=(grid.h/2)+math.sin(a+t*math.pi*4)*(r)
 		tx=math.floor(tx)
 		ty=math.floor(ty)
 		tx,ty=coord_edge(tx,ty)
@@ -418,7 +458,11 @@ function calculate_value_fract( x,y,v,v_fract)
 	end
 
 	for i,vv in ipairs(a) do
+		if vv[1]==nil then print(vv[1],vv[2],x,y,v,v_fract) end
 		local rule=r[vv[1]+1]
+		--[[if type(rule)=="table" then
+			rule=rule[i]
+		end]]
 		--ret=rule*(dst+delta_substep(vv[2]))+ret
 		ret=rule*delta_substep((vv[2]+v_fract)/2)+ret
 		--ret=rule*delta_substep(math.sqrt(vv[2]*v_fract))+ret
@@ -546,17 +590,17 @@ function update(  )
 	__clear()
 	imgui.Begin("Simulated annealing")
 	draw_config(config)
-	local variation_const=0.8
+	local variation_const=0.3
 	if imgui.Button("Restart") then
 		for x=0,grid.w-1 do
 		for y=0,grid.h-1 do
 			--grid:set(x,y,math.random())
-			--grid:set(x,y,(x*(1-variation_const)/grid.w+math.random()*variation_const))
+			grid:set(x,y,(x*(1-variation_const)/grid.w+math.random()*variation_const))
 			--[[
 			local t=(x/grid.w+y/grid.h)*0.5
 			grid:set(x,y,(t*(1-variation_const)+math.random()*variation_const))
 			--]]
-			-- [[
+			--[[
 			local dx=(x-grid.w/2)
 			local dy=(y-grid.h/2)
 			local len=math.sqrt(dx*dx+dy*dy)/(0.5*grid.w)
