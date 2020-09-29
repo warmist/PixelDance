@@ -54,9 +54,12 @@ void main(){
 	float col=texture(tex_main,normed).x;
 	if(count_steps>0)
 		col=floor(col*count_steps)/count_steps;
+#if 1
 	color = vec4(palette(col),1);
-	//color.xyz=vec3(col);
-	//color.w=1;
+#else
+	color.xyz=vec3(col);
+	color.w=1;
+#endif
 }
 ]==]
 org_ruleset2={
