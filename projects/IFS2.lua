@@ -2636,6 +2636,12 @@ function sample_rand( numsamples,max_count )
 	end
 end
 global_seed_shuffling=global_seed_shuffling or {}
+function shuffle(list)
+	for i = #list, 2, -1 do
+		local j = math.random(i)
+		list[i], list[j] = list[j], list[i]
+	end
+end
 function generate_shuffling( num_steps )
 	global_seed_shuffling={}
 	--[[ random centers with spread around
@@ -2672,13 +2678,20 @@ function generate_shuffling( num_steps )
 	end
 	--]=]
 	--]]
-end
-function shuffle(list)
-	for i = #list, 2, -1 do
-		local j = math.random(i)
-		list[i], list[j] = list[j], list[i]
+	-- [[ add shufflings of the original
+	local num_shuffles=5
+	local tmp=global_seed_shuffling
+	local ret={}
+	for i=1,num_shuffles do
+		shuffle(tmp)
+		for i,v in ipairs(tmp) do
+			table.insert(ret,v)
+		end
 	end
+	global_seed_shuffling=tmp
+	--]]
 end
+
 function visit_iter()
 	local shader_randomize=true
 	local psize=config.point_size
