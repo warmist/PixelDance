@@ -189,38 +189,6 @@ function coord_edge( x,y )
 	return x,y
 
 end
-function get_around( x,y )
-	local ret={}
-	-- [[
-	local dx={-1,-1,-1, 0, 0, 1, 1, 1}
-	local dy={-1, 0, 1,-1, 1,-1, 0, 1}
-	--]]
-	--[[
-	local dx={-2,-2,-2, 0, 0, 2, 2, 2}
-	local dy={-2, 0, 2,-2, 2,-2, 0, 2}
-	--]]
-	--[[
-	local dx={-1,-1,-1,0,0,1,1,1,2,0,0,-2,3,0,0,-3}
-	local dy={-1,0,1,-1,1,-1,0,1,0,2,-2,0,0,3,-3,0}
-	--]]
-	--[[
-	local dx={-1,0,0,1,2,0,0,-2,3,0,0,-3}
-	local dy={0,-1,1,0,0,2,-2,0,0,3,-3,0}
-	--]]
-	for i=1,#dx do
-		local tx=x+dx[i]
-		local ty=y+dy[i]
-		tx,ty=coord_edge(tx,ty)
-
-		--if tx<grid.w or ty<grid.h or tx>=0 or ty>=0 then
-			local v=math.floor(grid:get(tx,ty)*num_values)
-			ret[i]=v
-		--else
-		--ret[i]=0
-		--end
-	end
-	return ret
-end
 function gen_cos_sin_table( size )
 	local ct={}
 	local st={}
@@ -424,20 +392,6 @@ function get_around_fract( x,y )
 	--]]
 	return ret
 end
-function calculate_value( x,y,v)
-	local a=get_around(x,y)
-	local r=parsed_ruleset[v+1]
-	local ret=0
-	if type(r)=="function" then
-		return r(a,v,x,y)
-	end
-
-	for i,vv in ipairs(a) do
-		local rule=r[vv+1]
-		ret=rule+ret
-	end
-	return ret
-end
 function delta_substep( v )
 	--return 1+v
 	--return math.abs(1-v)
@@ -621,6 +575,11 @@ function update(  )
 	imgui.SameLine()
 	if imgui.Button("Save") then
 		need_save=true
+	end
+	imgui.SameLine()
+	if imgui.Button("RandomizeRules") then
+		randomize_ruleset(2)
+		num_values=#ruleset
 	end
 	imgui.End()
 	if not config.paused then
