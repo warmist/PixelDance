@@ -6,7 +6,7 @@
 require "common"
 
 local size=STATE.size
-local zoom=4
+local zoom=2
 
 grid=grid or make_float_buffer(math.floor(size[1]/zoom),math.floor(size[2]/zoom))
 function resize( w,h )
@@ -21,10 +21,29 @@ config=make_config({
 	{"fixed_colors",false, type="boolean"},
 	{"paused",true, type="boolean"},
 	},config)
-
+-- [[
+local bwrite = require "blobwriter"
+local bread = require "blobreader"
+function buffer_save( name )
+	local b=bwrite()
+	b:u32(grid.w)
+	b:u32(grid.h)
+	b:f32(0)
+	b:f32(1)
+	for x=0,grid.w-1 do
+	for y=0,grid.h-1 do
+		local v=grid:get(x,y)
+		b:f32(v)
+	end
+	end
+	local f=io.open(name,"wb")
+	f:write(b:tostring())
+	f:close()
+end
+--]]
 local draw_shader=shaders.Make[==[
 #version 330
-#line 22
+#line 27
 out vec4 color;
 in vec3 pos;
 
@@ -35,11 +54,15 @@ vec3 palette(float v)
 {
 	vec3 a=vec3(0.5,0.5,0.5);
 	vec3 b=vec3(0.5,0.5,0.5);
-	/* gold and blue
+	/*
+	vec3 c=vec3(0.8,2.7,1.0);
+	vec3 d=vec3(0.2,0.5,0.8);
+	*/
+	///* gold and blue
 	vec3 c=vec3(1,1,0.5);
 	vec3 d=vec3(0.8,0.9,0.3);
-	*/
-	///* gold and violet
+	//*/
+	/* gold and violet
 	vec3 c=vec3(0.5,0.5,0.45);
 	vec3 d=vec3(0.6,0.5,0.35);
 	//*/
@@ -63,9 +86,9 @@ void main(){
 }
 ]==]
 org_ruleset2={
-	[1]={  1,-1,   1, 0.1,-5},
-	[2]={ -1, 4,  2,   1, 0},
-	[3]={0,5,1,  0,   0,-1},
+	[1]={  -1,1,   -1, 0.1,-5},
+	[2]={ -1, -4,  2,   1, 0},
+	[3]={8,-5,-1,  0,   0,-1},
 	[4]={-5,5,-10,  10,   0,-1},
 }
 local org_ruleset
@@ -106,14 +129,22 @@ local unif_func=function ( a,org_v,v_fract,x,y)
 end
 org_ruleset={
 	[1]={  1, -1,   -1, 0.1,-5},
-	[2]={ 1, -0.25,  1,   1, 0},
+	[2]={ 1, 1,  1,   1, 0},
 	[3]={ -1, 1,   3,  -1,   0,-1},
 	--[[
 	[4]={1,1,-1,  1,   0,-1},
 	[5]={0,0,-1,  -3,   1,-1},]]
 }
 
-ruleset=org_ruleset
+ruleset=ruleset or org_ruleset
+print("====================")
+for i,v in ipairs(ruleset) do
+	local s=""
+	for ii,vv in ipairs(v) do
+		s=s..tostring(vv)..","
+	end
+	print(string.format("[%d]={%s}",i,s))
+end
 --[==[
 {
 	[1]=unif_func,
@@ -235,10 +266,12 @@ function gen_cos_sin_table( size )
 	end
 	return ct,st
 end
-ctab,stab=gen_cos_sin_table(3)
+ctab,stab=gen_cos_sin_table(11)
 function get_around_fract( x,y )
 	local ret={}
 	local offset=0
+
+	local cv=grid:get(x,y)
 	--[[
 	local dx={-1, 0, 0, 1}
 	local dy={ 0,-1, 1, 0}
@@ -246,6 +279,10 @@ function get_around_fract( x,y )
 	-- [[
 	local dx={-1,-1,-1, 0, 0, 1, 1, 1}
 	local dy={-1, 0, 1,-1, 1,-1, 0, 1}
+	--]]
+	--[[
+	local dx={-1,-1,-1, 0, 0, 1, 1, 1,2,-2,2,-2}
+	local dy={-1, 0, 1,-1, 1,-1, 0, 1,2,2,-2,-2}
 	--]]
 	--[[
 	local dx={-2,-2,-2, 0, 0, 2, 2, 2}
@@ -278,6 +315,27 @@ function get_around_fract( x,y )
 		--end
 	end
 	offset=#dx
+	--]]
+	-- [[
+	local offsets_x={cv*1.5,cv*0.5,1,1}
+	local offsets_y={1,1,cv*1.5,cv*0.5}
+
+	local cx=x-grid.w/2
+	local cy=y-grid.h/2
+
+	for i=1,#offsets_x do
+		local tx=cx*offsets_x[i]+grid.w/2
+		local ty=cy*offsets_y[i]+grid.h/2
+
+		tx=math.floor(tx)
+		ty=math.floor(ty)
+		tx,ty=coord_edge(tx,ty)
+		local rv=grid:get(tx,ty)
+		local v=math.floor(rv*num_values)
+		ret[i+offset]={v,rv*num_values-v}
+
+	end
+	offset=offset+#offsets_x
 	--]]
 	--[[ 4(up to) fold symetry 
 
@@ -319,6 +377,21 @@ function get_around_fract( x,y )
 	end
 	offset=offset+#gdxx
 	--]]
+	--[[
+	local delta_v={1,2,4,8,16}
+	for i=1,#delta_v do
+		local tx=delta_v[i]/(x+1)
+		local ty=delta_v[i]/(y+1)
+
+		tx=math.floor(tx)
+		ty=math.floor(ty)
+		tx,ty=coord_edge(tx,ty)
+		local rv=grid:get(tx,ty)
+		local v=math.floor(rv*num_values)
+		ret[i+offset]={v,rv*num_values-v}
+	end
+	offset=offset+#delta_v
+	--]]
 	-- [[ n fold rotational sym
 
 
@@ -328,7 +401,7 @@ function get_around_fract( x,y )
 	for i=1,#ctab do
 
 		local tx=cx*ctab[i]-cy*stab[i]+grid.w/2
-		local ty=cx*stab[i]+cy*ctab[i]+grid.h/2
+		local ty=cx*stab[i]+cy*ctab[i]-grid.h/2
 
 		
 		tx,ty=coord_edge(tx,ty)
@@ -593,7 +666,7 @@ function update(  )
 	__clear()
 	imgui.Begin("Simulated annealing")
 	draw_config(config)
-	local variation_const=0.3
+	local variation_const=0.0
 	if imgui.Button("Restart") then
 		for x=0,grid.w-1 do
 		for y=0,grid.h-1 do
@@ -624,8 +697,12 @@ function update(  )
 		need_save=true
 	end
 	imgui.SameLine()
+	if imgui.Button("SaveBuf") then
+		buffer_save("sim_aneal.dat")
+	end
+	imgui.SameLine()
 	if imgui.Button("RandomizeRules") then
-		randomize_ruleset(2)
+		randomize_ruleset(4)
 		num_values=#ruleset
 	end
 	imgui.End()
