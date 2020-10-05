@@ -67,22 +67,25 @@ function read_hd_png_buf( fname,log_norm ,log_norm_minmax)
 	local sy=b:u32()
 	local background_buf=make_flt_buffer(sx,sy)
 	local background_minmax={}
-	b:f32()
+	--b:f32()
 	background_minmax[1]=b:f32()
-	b:f32()
+	--b:f32()
 
-	b:f32()
+	--b:f32()
 	background_minmax[2]=b:f32()
-	b:f32()
+	--b:f32()
 
-	local lavg=b:f32()
+	--local lavg=b:f32()
 	for x=0,background_buf.w-1 do
 	for y=0,background_buf.h-1 do
-		local cr=b:f32()
+		--[[local cr=b:f32()
 		local cg=b:f32()
 		local cb=b:f32()
 		local a=b:f32()
 		background_buf:set(x,y,{cr,cg,cb,1})
+		]]
+		local v=b:f32()
+		background_buf:set(x,y,{v,v,v,1})
 	end
 	end
 
@@ -123,7 +126,7 @@ function load_hd_png()
 		__unbind_buffer()
 	end
 end
-image_buf=read_hd_png_buf("out.buf",true)
+image_buf=read_hd_png_buf("sim_aneal.dat",false)
 --]]
 
 __set_window_size(image_buf.w,image_buf.h)

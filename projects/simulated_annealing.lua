@@ -6,7 +6,7 @@
 require "common"
 
 local size=STATE.size
-local zoom=2
+local zoom=4
 
 grid=grid or make_float_buffer(math.floor(size[1]/zoom),math.floor(size[2]/zoom))
 function resize( w,h )
@@ -57,7 +57,7 @@ vec3 palette(float v)
 	/*
 	vec3 c=vec3(0.8,2.7,1.0);
 	vec3 d=vec3(0.2,0.5,0.8);
-	*/
+	//*/
 	///* gold and blue
 	vec3 c=vec3(1,1,0.5);
 	vec3 d=vec3(0.8,0.9,0.3);
@@ -69,12 +69,13 @@ vec3 palette(float v)
 	/* ice and blood
 	vec3 c=vec3(1.25,1.0,1.0);
 	vec3 d=vec3(0.75,0.0,0.0);
-	*/
+	//*/
 	return a+b*cos(3.1459*2*(c*v+d));
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float col=texture(tex_main,normed).x;
+
 	if(count_steps>0)
 		col=floor(col*count_steps)/count_steps;
 #if 1
@@ -128,23 +129,17 @@ local unif_func=function ( a,org_v,v_fract,x,y)
 	return ret
 end
 org_ruleset={
-	[1]={  1, -1,   -1, 0.1,-5},
-	[2]={ 1, 1,  1,   1, 0},
-	[3]={ -1, 1,   3,  -1,   0,-1},
+[1]={1.050534960329,2.8011640168863,1.0713388527572,-1.418155686454,},
+[2]={2.7275103983318,-2.7684494602978,-2.2556926164395,2.5410745884247,},
+[3]={1.0039516242389,-2.4073493439788,3.0456065895772,-0.95797595012118,},
+[4]={0.58162930522197,-1.4412001876779,-3.0412968617895,3.2062549688465,},
 	--[[
 	[4]={1,1,-1,  1,   0,-1},
 	[5]={0,0,-1,  -3,   1,-1},]]
 }
 
 ruleset=ruleset or org_ruleset
-print("====================")
-for i,v in ipairs(ruleset) do
-	local s=""
-	for ii,vv in ipairs(v) do
-		s=s..tostring(vv)..","
-	end
-	print(string.format("[%d]={%s}",i,s))
-end
+
 --[==[
 {
 	[1]=unif_func,
@@ -196,7 +191,7 @@ function randomize_ruleset(count )
 	local ret={}
 	for i=1,count do
 		local tbl={}
-		for i=1,count do
+		for ii=1,count do
 			--[[
 			local t={}
 			for i=1,4 do
@@ -208,7 +203,11 @@ function randomize_ruleset(count )
 			end
 			tbl[i]=t
 			--]]
-			tbl[i]=math.random()*8-4
+			if i==ii and i~=1 then
+				tbl[ii]=4
+			else
+				tbl[ii]=math.random()*8-4
+			end
 		end
 		ret[i]=tbl
 	end
@@ -236,7 +235,7 @@ function coord_edge( x,y )
 	if x>=grid.w then x=x-grid.w end
 	if y>=grid.h then y=y-grid.h end
 	--]]
-	-- [[ bounce
+	--[[ bounce
 	if x<0 then x=-x end
 	if y<0 then y=-y end
 	if x>=grid.w then x=grid.w*2-x-1 end
@@ -245,6 +244,9 @@ function coord_edge( x,y )
 	if y<0 then y=-y end
 	if x>=grid.w then x=grid.w*2-x-1 end
 	if y>=grid.h then y=grid.h*2-y-1 end
+	--]]
+	-- [[ rotate each flip?
+	--TODO
 	--]]
 	--[[ mixed
 	if x<0 then x=-x end
@@ -266,10 +268,13 @@ function gen_cos_sin_table( size )
 	end
 	return ct,st
 end
-ctab,stab=gen_cos_sin_table(11)
+ctab,stab=gen_cos_sin_table(21)
 function get_around_fract( x,y )
 	local ret={}
 	local offset=0
+
+	local cx=x--grid.w/2
+	local cy=y--grid.h/2
 
 	local cv=grid:get(x,y)
 	--[[
@@ -316,12 +321,30 @@ function get_around_fract( x,y )
 	end
 	offset=#dx
 	--]]
-	-- [[
-	local offsets_x={cv*1.5,cv*0.5,1,1}
-	local offsets_y={1,1,cv*1.5,cv*0.5}
+	--[[
 
-	local cx=x-grid.w/2
-	local cy=y-grid.h/2
+	local d_cos={1,3,5,7,9,11}
+	local d_sin={2,4,6,8,10,12}
+	for i=1,#d_cos do
+		local tx=cx+(grid.w/2)*(math.cos(d_cos[i]*x)+math.sin(d_cos[i]*y))
+		local ty=cy+(grid.h/2)*(math.sin(d_sin[i]*y)+math.cos(d_sin[i]*x))
+		tx=math.floor(tx)
+		ty=math.floor(ty)
+		tx,ty=coord_edge(tx,ty)
+
+		local rv=grid:get(tx,ty)
+		local v=math.floor(rv*num_values)
+		ret[i+offset]={v,rv*num_values-v}
+
+	end
+	offset=#d_cos
+	--]]
+	--[[
+	local dist=0.1
+	local offsets_x={cv*(1+dist),cv*(1-dist),1,1}
+	local offsets_y={1,1,cv*(1+dist),cv*(1-dist)}
+
+
 
 	for i=1,#offsets_x do
 		local tx=cx*offsets_x[i]+grid.w/2
@@ -354,7 +377,7 @@ function get_around_fract( x,y )
 	end
 	offset=offset+#gdx
 	--]]
-	--[[ 4(up to) fold symetry
+	--[[ 4(up to) fold symmetry
 
 	local gdxx={0,-1,0}
 	local gdxy={1,0,-1}
@@ -394,14 +417,10 @@ function get_around_fract( x,y )
 	--]]
 	-- [[ n fold rotational sym
 
-
-	local cx=x-grid.w/2
-	local cy=y-grid.h/2
-
 	for i=1,#ctab do
 
-		local tx=cx*ctab[i]-cy*stab[i]+grid.w/2
-		local ty=cx*stab[i]+cy*ctab[i]-grid.h/2
+		local tx=cx*ctab[i]-cy*stab[i]--+grid.w/2
+		local ty=cx*stab[i]+cy*ctab[i]--+grid.h/2
 
 		
 		tx,ty=coord_edge(tx,ty)
@@ -634,10 +653,21 @@ function update_grid(  )
 		end
 	end
 end
+function rule_string()
+	local ret = "ruleset={"
+	for i,v in ipairs(ruleset) do
+		local s=""
+		for ii,vv in ipairs(v) do
+			s=s..tostring(vv)..","
+		end
+		ret=ret..s.."\n"
+	end
+	return ret.."}"
+end
 function save_img(  )
 	img_buf=img_buf or make_image_buffer(size[1],size[2])
 	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
-    config_serial=config_serial..serialize_config(config)
+    config_serial=config_serial..serialize_config(config).."\n"..rule_string()
 	img_buf:read_frame()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
@@ -671,21 +701,24 @@ function update(  )
 		for x=0,grid.w-1 do
 		for y=0,grid.h-1 do
 			--grid:set(x,y,math.random())
-			grid:set(x,y,(x*(1-variation_const)/grid.w+math.random()*variation_const))
+			--grid:set(x,y,(x*(1-variation_const)/grid.w+math.random()*variation_const))
 			--[[
 			local t=(x/grid.w+y/grid.h)*0.5
 			grid:set(x,y,(t*(1-variation_const)+math.random()*variation_const))
 			--]]
-			--[[
+			-- [[
 			local dx=(x-grid.w/2)
 			local dy=(y-grid.h/2)
-			local len=math.sqrt(dx*dx+dy*dy)/(0.5*grid.w)
-			if len>=1 then len=0.9999 end
-			if y>grid.h/2 then
-				grid:set(x,y,(len*(1-variation_const)+math.random()*variation_const))
-			else
-				grid:set(x,y,1-(len*(1-variation_const)+math.random()*variation_const))
-			end
+			local len=math.sqrt(dx*dx+dy*dy)/(0.6*grid.w)
+			local v=0
+			--if y>grid.h/2 then
+				v=(len*(1-variation_const)+math.random()*variation_const)
+			--else
+			--	v=0.9999-(len*(1-variation_const)+math.random()*variation_const)
+			--end
+			if v>=1 then v=0.999 end
+			if v<0 then v=0 end
+			grid:set(x,y,v)
 			--]]
 		end
 		end
@@ -702,7 +735,7 @@ function update(  )
 	end
 	imgui.SameLine()
 	if imgui.Button("RandomizeRules") then
-		randomize_ruleset(4)
+		randomize_ruleset(8)
 		num_values=#ruleset
 	end
 	imgui.End()
