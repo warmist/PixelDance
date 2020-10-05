@@ -6,7 +6,7 @@
 require "common"
 
 local size=STATE.size
-local zoom=4
+local zoom=3
 
 grid=grid or make_float_buffer(math.floor(size[1]/zoom),math.floor(size[2]/zoom))
 function resize( w,h )
@@ -54,15 +54,19 @@ vec3 palette(float v)
 {
 	vec3 a=vec3(0.5,0.5,0.5);
 	vec3 b=vec3(0.5,0.5,0.5);
+	/* blue-black-red
+	vec3 c=vec3(0.25,0.3,0.4);
+	vec3 d=vec3(0.5,0.3,0.2);
+	//*/
 	/*
 	vec3 c=vec3(0.8,2.7,1.0);
 	vec3 d=vec3(0.2,0.5,0.8);
 	//*/
-	///* gold and blue
+	/* gold and blue
 	vec3 c=vec3(1,1,0.5);
 	vec3 d=vec3(0.8,0.9,0.3);
 	//*/
-	/* gold and violet
+	///* gold and violet
 	vec3 c=vec3(0.5,0.5,0.45);
 	vec3 d=vec3(0.6,0.5,0.35);
 	//*/
@@ -81,6 +85,7 @@ void main(){
 #if 1
 	color = vec4(palette(col),1);
 #else
+	col=pow(col,2.2);
 	color.xyz=vec3(col);
 	color.w=1;
 #endif
@@ -187,6 +192,22 @@ ruleset=ruleset or org_ruleset
 	--]]
 }
 --]==]
+local function signum(number)
+   if number > 0 then
+      return 1
+   elseif number < 0 then
+      return -1
+   else
+      return 0
+   end
+end
+function factorial(n)
+    if (n == 0) then
+        return 1
+    else
+        return n * factorial(n - 1)
+    end
+end
 function randomize_ruleset(count )
 	local ret={}
 	for i=1,count do
@@ -203,19 +224,79 @@ function randomize_ruleset(count )
 			end
 			tbl[i]=t
 			--]]
-			if i==ii and i~=1 then
-				tbl[ii]=4
-			else
-				tbl[ii]=math.random()*8-4
-			end
+			tbl[ii]=math.random()*4-2
 		end
 		ret[i]=tbl
 	end
+
+	-- [[ enforce >1 self
+	for i=1,count do
+		ret[i][i]=math.abs(ret[i][i])
+	end
+	--]]
+	-- [[ enforce symetry
+	for i=1,count do
+		for ii=i+1,count do
+			-- [=[ full
+				ret[i][ii]=ret[ii][i]
+			--]=]
+			--[=[ sign only
+				local s=signum(ret[ii][i])
+				ret[i][ii]=s*math.abs(ret[i][ii])
+			--]=]
+			--[=[ anti sign (mostly chaos)
+				local s=signum(ret[ii][i])
+				ret[i][ii]=-s*math.abs(ret[i][ii])
+			--]=]
+		end
+	end
+	--]]
+	--[[ normalize (Frobenius)
+	local norm=0
+	for i=1,count do
+		for ii=1,count do
+			local v=ret[i][ii]
+			norm=norm+v*v
+		end
+	end
+	norm=math.sqrt(norm)
+	for i=1,count do
+		for ii=1,count do
+			ret[i][ii]=ret[i][ii]/norm
+		end
+	end
+	--]]
+	-- [[ row-wise norm
+	for i=1,count do
+		local norm=0
+		for ii=1,count do
+			local v=ret[i][ii]
+			norm=norm+v*v
+		end
+		norm=math.sqrt(norm)
+		for ii=1,count do
+			ret[i][ii]=ret[i][ii]/norm
+		end
+	end
+	--]]
 	ruleset=ret
+
+	rules_pol={}
+	for i=1,10 do
+		rules_pol[i]=(math.random()*4-2)
+	end
 end
 --randomize_ruleset(4)
 local num_values=#ruleset
-
+function pmod2( x,y ,sizex,sizey)
+	local hsizex=sizex*0.5
+	local hsizey=sizey*0.5
+	local cx=math.floor((x+hsizex)/sizex)
+	x=(x+hsizex)%sizex - hsizex
+	local cy=math.floor((y+hsizey)/sizey)
+	y=(y+hsizey)%sizey - hsizey
+	return x,y,cx,cy;
+end
 function coord_edge( x,y )
 	--[[ clamp
 	if x<0 then x=0 end
@@ -235,7 +316,7 @@ function coord_edge( x,y )
 	if x>=grid.w then x=x-grid.w end
 	if y>=grid.h then y=y-grid.h end
 	--]]
-	--[[ bounce
+	-- [[ bounce
 	if x<0 then x=-x end
 	if y<0 then y=-y end
 	if x>=grid.w then x=grid.w*2-x-1 end
@@ -245,8 +326,24 @@ function coord_edge( x,y )
 	if x>=grid.w then x=grid.w*2-x-1 end
 	if y>=grid.h then y=grid.h*2-y-1 end
 	--]]
-	-- [[ rotate each flip?
-	--TODO
+	--[[ flip each flip?
+	local rx,ry
+	x,y,rx,ry=pmod2(x,y,grid.w,grid.h);
+	local index=math.abs(rx)+math.abs(ry);
+	if(index%2~=0) then --make more interesting tiling: each second tile is flipped
+		x=-x
+		y=-y
+	end
+	if x<0 then x=grid.w+x end
+	if y<0 then y=grid.h+y end
+
+	if x<0 then x=grid.w+x end
+	if y<0 then y=grid.h+y end
+	if x>=grid.w then x=x-grid.w end
+	if y>=grid.h then y=y-grid.h end
+
+	if x>=grid.w then x=x-grid.w end
+	if y>=grid.h then y=y-grid.h end
 	--]]
 	--[[ mixed
 	if x<0 then x=-x end
@@ -257,24 +354,27 @@ function coord_edge( x,y )
 	return x,y
 
 end
-function gen_cos_sin_table( size )
+function gen_cos_sin_table( size,times)
 	local ct={}
 	local st={}
+	times=times or 1 --simple way to weight the interaction more
+	for t=1,times do
 	for i=1,size-1 do
 		local c=math.cos(i*math.pi*2/size)
 		local s=math.sin(i*math.pi*2/size)
-		ct[i]=c
-		st[i]=s
+		table.insert(ct,c)
+		table.insert(st,s)
+	end
 	end
 	return ct,st
 end
-ctab,stab=gen_cos_sin_table(21)
+ctab,stab=gen_cos_sin_table(3,2)
 function get_around_fract( x,y )
 	local ret={}
 	local offset=0
 
-	local cx=x--grid.w/2
-	local cy=y--grid.h/2
+	local cx=x-grid.w/2
+	local cy=y-grid.h/2
 
 	local cv=grid:get(x,y)
 	--[[
@@ -419,8 +519,8 @@ function get_around_fract( x,y )
 
 	for i=1,#ctab do
 
-		local tx=cx*ctab[i]-cy*stab[i]--+grid.w/2
-		local ty=cx*stab[i]+cy*ctab[i]--+grid.h/2
+		local tx=cx*ctab[i]-cy*stab[i]+grid.w/2
+		local ty=cx*stab[i]+cy*ctab[i]+grid.h/2
 
 		
 		tx,ty=coord_edge(tx,ty)
@@ -564,6 +664,48 @@ function calculate_value_fract( x,y,v,v_fract)
 	end
 	return ret --*delta_substep(v_fract)
 end
+
+function calculate_value_smooth( x,y,v,v_fract,real_value)
+	local a=get_around_fract(x,y)
+	--[[
+	local f=function ( v1,v2 )
+		local d=v1-v2
+		--return math.exp(-d*d)
+		--return 1-math.abs(math.abs(d)*4-(x/grid.w)*(y/grid.h))
+		return 1-math.abs(d)/(1+v2)
+		--return math.abs(d)
+		--return math.cos(math.abs(d)*math.pi*2)
+	end
+	--]]
+	local r=rules_pol
+	local f=function ( v1,v2 )
+		local d=math.abs(v1-v2)
+		--return r[1]+r[2]*d+r[3]*d*d/factorial(2)+r[4]*d*d*d/factorial(3)+r[5]*d*d*d*d/factorial(4)
+		--return r[1]+r[2]*d+r[3]*d*d+r[4]*d*d*d+r[5]*d*d*d*d
+		return r[1]+r[2]*v1+r[3]*v2+r[4]*v1*v2+r[5]*v1*v2*v1+r[5]*v2*v1*v2
+		--return r[1]+r[2]*v1+r[3]*v2+r[4]*v1*v2/factorial(2)+r[5]*v1*v2*v1/factorial(3)+r[5]*v2*v1*v2/factorial(3)
+	end
+	local ret=0
+	for i,vv in ipairs(a) do
+		if vv[1]==nil then print(vv[1],vv[2],x,y,v,v_fract) end
+		ret=ret+f(real_value,(vv[1]+vv[2])/num_values)
+	end
+	return ret
+end
+function calculate_value_avg( x,y,v,v_fract,real_value)
+	local a=get_around_fract(x,y)
+	local ret=0
+	for i,vv in ipairs(a) do
+		if vv[1]==nil then print(vv[1],vv[2],x,y,v,v_fract) end
+		local rv=(vv[1]+vv[2])/num_values
+		if rv<real_value then
+			ret=ret+1
+		else
+			ret=ret-1
+		end
+	end
+	return ret
+end
 function round(n)
     return n % 1 >= 0.5 and math.ceil(n) or math.floor(n)
 end
@@ -606,11 +748,12 @@ function do_grid_step(x,y)
 		local new_trg_value=calculate_value(tx,ty,v)*delta_substep(rv*num_values-v)
 		local new_value=calculate_value(x,y,tv)*delta_substep(trv*num_values-tv)
 		--]]
-		local old_value=calculate_value_fract(x,y,v,v_fract)
-		local old_trg_value=calculate_value_fract(tx,ty,tv,t_fract)
+		local f=calculate_value_smooth
+		local old_value=f(x,y,v,v_fract,rv)
+		local old_trg_value=f(tx,ty,tv,t_fract,trv)
 
-		local new_trg_value=calculate_value_fract(tx,ty,v,v_fract)
-		local new_value=calculate_value_fract(x,y,tv,t_fract)
+		local new_trg_value=f(tx,ty,v,v_fract,rv)
+		local new_value=f(x,y,tv,t_fract,trv)
 
 		local delta_value=(old_value+old_trg_value)-(new_value+new_trg_value)
 
@@ -709,20 +852,20 @@ function update(  )
 			-- [[
 			local dx=(x-grid.w/2)
 			local dy=(y-grid.h/2)
-			local len=math.sqrt(dx*dx+dy*dy)/(0.6*grid.w)
+			local len=math.sqrt(dx*dx+dy*dy)/(0.5*grid.w)
 			local v=0
-			--if y>grid.h/2 then
+			if y>grid.h/2 then
 				v=(len*(1-variation_const)+math.random()*variation_const)
-			--else
-			--	v=0.9999-(len*(1-variation_const)+math.random()*variation_const)
-			--end
+			else
+				v=0.9999-(len*(1-variation_const)+math.random()*variation_const)
+			end
 			if v>=1 then v=0.999 end
 			if v<0 then v=0 end
 			grid:set(x,y,v)
 			--]]
 		end
 		end
-		config.temperature=1
+		config.temperature=0.2
 		--config.paused=false
 	end
 	imgui.SameLine()
@@ -735,8 +878,9 @@ function update(  )
 	end
 	imgui.SameLine()
 	if imgui.Button("RandomizeRules") then
-		randomize_ruleset(8)
+		randomize_ruleset(10)
 		num_values=#ruleset
+		print(rule_string())
 	end
 	imgui.End()
 	if not config.paused then
