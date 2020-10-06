@@ -521,9 +521,9 @@ function get_around_fract( x,y )
 	-- [[ n fold rotational sym
 
 	for i=1,#ctab do
-
-		local tx=cx*ctab[i]-cy*stab[i]+grid.w/2
-		local ty=cx*stab[i]+cy*ctab[i]+grid.h/2
+		local v=(0.5+i/#ctab)*2
+		local tx=(cx*ctab[i]-cy*stab[i])*v+grid.w/2
+		local ty=(cx*stab[i]+cy*ctab[i])*v+grid.h/2
 
 		
 		tx,ty=coord_edge(tx,ty)
