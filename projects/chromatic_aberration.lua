@@ -67,31 +67,36 @@ function read_hd_png_buf( fname,log_norm ,log_norm_minmax)
 	local sy=b:u32()
 	local background_buf=make_flt_buffer(sx,sy)
 	local background_minmax={}
-	--b:f32()
+	b:f32()
 	background_minmax[1]=b:f32()
-	--b:f32()
+	b:f32()
 
-	--b:f32()
+	b:f32()
 	background_minmax[2]=b:f32()
-	--b:f32()
+	b:f32()
 
-	--local lavg=b:f32()
+	local lavg=b:f32()
 	for x=0,background_buf.w-1 do
 	for y=0,background_buf.h-1 do
-		--[[local cr=b:f32()
+		-- [[
+
+		local cr=b:f32()
 		local cg=b:f32()
 		local cb=b:f32()
 		local a=b:f32()
 		background_buf:set(x,y,{cr,cg,cb,1})
-		]]
+		--]]
+		--[[
 		local v=b:f32()
 		background_buf:set(x,y,{v,v,v,1})
+		--]]
 	end
 	end
 
 	if log_norm_minmax then
 		background_minmax[1]=math.log(background_minmax[1]+1)
 		background_minmax[2]=math.log(background_minmax[2]+1)
+		--lavg=math.log(lavg)
 	end
 	print("Loaded:",background_minmax[1],background_minmax[2])
 	-- [[
@@ -126,7 +131,7 @@ function load_hd_png()
 		__unbind_buffer()
 	end
 end
-image_buf=read_hd_png_buf("sim_aneal.dat",false)
+image_buf=read_hd_png_buf("out.buf",true)
 --]]
 
 __set_window_size(image_buf.w,image_buf.h)
@@ -135,11 +140,11 @@ function resize( w,h )
 end
 config=make_config({
 	--{"blur",0,type="int"}, TODO
-	{"iteration_step",0.001,type="floatsci",max=1},
+	{"iteration_step",0.001,type="floatsci",max=0.25},
 	{"bulge_r",0.1,type="float",max=0.5},
 	{"bulge_radius_offset",0,type="float",max=1},
 	{"gamma",2.2,type="float",min=0.01,max=5},
-	{"gain",0.33,type="float",min=-0.01,max=1},
+	{"whitepoint",0.33,type="float",min=-0.01,max=1},
 	{"exposure",50,type="float",min=0.001,max=100},
 	{"temperature",5778,type="float",min=0.001,max=10000},
 	{"image_is_intensity",true,type="boolean"},
@@ -497,28 +502,56 @@ vec2 distort_y(vec2 p,vec2 offset, float arg)
 	float ty=p.y+offset.y;
 	return p+vec2((ty*ty)*arg,0);
 }
+vec2 rotate(vec2 v, float a) {
+	float s = sin(a);
+	float c = cos(a);
+	mat2 m = mat2(c, -s, s, c);
+	return m * v;
+}
+vec2 distort_spiral(vec2 p,vec2 offset,float arg)
+{
+	vec2 tp=p-offset;
+	return rotate(tp,arg*3.1459*2)+offset;
+}
 float easeOutQuad(float x)
 {
 	return 1 - (1 - x) * (1 - x);
+}
+//how much the interference happens 
+//if v is int then it's 1 and if v-0.5 is int then it's 0
+float interfere(float v ) 
+{
+	return abs((v-floor(v-0.5)-1)*2);
+}
+float interference_spectrum(float wavelen,float film_size,float angle)
+{
+	float n=1.4;// index of refraction for soapy water
+	//10 nanometers to 1000 nm
+	//float angle=light_angle*3.1459;
+	float m=(2*n*(film_size)*cos(angle));
+	float i=m/(wavelen*(740-380)+380);
+
+	return interfere(i);
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec2 offset=vec2(0,0);
 	vec2 dist_pos=pos.xy;
-	dist_pos=Distort(dist_pos,offset,barrel_power*iteration+1);
+	//dist_pos=Distort(dist_pos,offset,barrel_power*iteration+1);
 	//dist_pos=tangent_distort(dist_pos,vec2(barrel_power*iteration,barrel_power*iteration)*0.1);
 	//dist_pos=distort_x(dist_pos,offset,barrel_power*iteration);
 	//dist_pos=distort_y(dist_pos,offset,barrel_power*iteration);
+	//dist_pos=distort_spiral(dist_pos,offset,barrel_power*iteration);
 	dist_pos=(dist_pos+vec2(1))/2;
 	//vec2 dist_pos=normed+vec2(barrel_power)*iteration;
 
 
 	/*TODO
-		another way to do this: calculate spectrum of point, distort by it's 
+		another way to do this: calculate spectrum of point, distort by it's
 		wave length. Needs some sort of smoothing/reverse interpolation?
 		Another idea: get wavelength sort of like this: https://www.semrock.com/Data/Sites/1/semrockpdfs/whitepaper_howtocalculateluminositywavelengthandpurity.pdf
 		and then shift it somewhat
-		Another idea: calculate something like a lightsource (i.e. spectrum) is 
+		Another idea: calculate something like a lightsource (i.e. spectrum) is
 		falling down and image is distorting it by it's VALUE.
 	*/
 
@@ -551,10 +584,20 @@ void main(){
 	//float T=4500;
 	//float T=8000;
 	//float T=6503.6; //D65 illiuminant
+	#if 0
 	if(do_intensity==1)
 		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,T)*nv*iteration_step;
 	else
 		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,easeOutQuad(c)))*iteration_step;
+	#else //film interference... not looking great...
+	//c is depth
+		//c=clamp(1-length(pos),0,1);
+		//c*=c;
+		c=pow(c,1.5);
+		c=c*9000+1;
+		float inteference=interference_spectrum(iteration,c,0.2);
+		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,T)*inteference*iteration_step;
+	#endif
 	//
 	//color.xyz=nv;
 	//color.xyz=vec3(1,0.1,0.1);
@@ -572,7 +615,7 @@ uniform float iteration_step;
 uniform vec3 min_v;
 uniform vec3 max_v;
 uniform float v_gamma;
-uniform float v_gain;
+uniform float whitepoint;
 uniform float exposure;
 uniform float avg_lum;
 vec3 xyz2rgb( vec3 c ) {
@@ -599,7 +642,7 @@ vec3 tonemapFilmic(vec3 x) {
 }
 vec3 eye_adapt_and_stuff(vec3 light)
 {
-	float lum_white = pow(10,v_gain);
+	float lum_white = pow(10,whitepoint);
 	//lum_white*=lum_white;
 
 	//tocieYxy
@@ -609,7 +652,7 @@ vec3 eye_adapt_and_stuff(vec3 light)
 	float Y=light.y;
 
 	Y = (Y* exposure )/avg_lum;
-	if(v_gain<0)
+	if(whitepoint<0)
     	Y = Y / (1 + Y); //simple compression
 	else
     	Y = (Y*(1 + Y / lum_white)) / (Y + 1); //allow to burn out bright areas
@@ -622,7 +665,7 @@ vec3 eye_adapt_and_stuff(vec3 light)
     light.x = light.y*(small_x / small_y);
     light.z = light.x / small_x - light.x - light.y;
 
-    return light;
+    return light*100;
 }
 void main()
 {
@@ -712,7 +755,7 @@ function update(  )
 		main_shader:set("barrel_power",config.bulge_r);
 		main_shader:set("barrel_offset",config.bulge_radius_offset)
 		main_shader:set("v_gamma",config.gamma)
-		main_shader:set("v_gain",config.gain)
+		main_shader:set("whitepoint",config.whitepoint)
 		main_shader:set("iteration",iteration)
 		main_shader:set("iteration_step",config.iteration_step)
 		if config.image_is_intensity then
@@ -747,7 +790,7 @@ function update(  )
 	draw_shader:set("min_v",lmin[1],lmin[2],lmin[3])
 	draw_shader:set("max_v",lmax[1],lmax[2],lmax[3])
 	draw_shader:set("v_gamma",config.gamma)
-	draw_shader:set("v_gain",config.gain)
+	draw_shader:set("whitepoint",config.whitepoint)
 	draw_shader:set("avg_lum",avg_lum)
 	draw_shader:set("exposure",config.exposure)
 	draw_shader:draw_quad()
