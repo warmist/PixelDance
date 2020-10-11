@@ -759,7 +759,7 @@ void main(){
 	//turn_around-=cubicPulse(0.6,0.3,abs(normed_p.x));
 	//turn_around*=tex_sample*0.3+0.7;
     //turn_around*=normed_state.x;
-    clumpiness*=abs(normed_p.x*10);
+    clumpiness*=abs(normed_p.x*10)+0.3;
 	//clamp(turn_around,0.2,5);
 	//figure out new heading
 	//sensor_angle*=(1-tex_sample)*.9+.1;

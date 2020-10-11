@@ -4,9 +4,9 @@
 --]]
 
 require "common"
-
+--__set_window_size(1024,1024)
 local size=STATE.size
-local zoom=3
+local zoom=2
 
 grid=grid or make_float_buffer(math.floor(size[1]/zoom),math.floor(size[2]/zoom))
 function resize( w,h )
@@ -28,8 +28,11 @@ function buffer_save( name )
 	local b=bwrite()
 	b:u32(grid.w)
 	b:u32(grid.h)
+	b:u32(1) --channel count
+	b:u32(0) --do log norm on load
 	b:f32(0)
 	b:f32(1)
+	b:f32(0.5)
 	for x=0,grid.w-1 do
 	for y=0,grid.h-1 do
 		local v=grid:get(x,y)
@@ -368,7 +371,7 @@ function gen_cos_sin_table( size,times)
 	end
 	return ct,st
 end
-ctab,stab=gen_cos_sin_table(3,2)
+ctab,stab=gen_cos_sin_table(5,2)
 function get_around_fract( x,y )
 	local ret={}
 	local offset=0
@@ -667,7 +670,7 @@ end
 
 function calculate_value_smooth( x,y,v,v_fract,real_value)
 	local a=get_around_fract(x,y)
-	--[[
+	-- [[
 	local f=function ( v1,v2 )
 		local d=v1-v2
 		--return math.exp(-d*d)
@@ -677,6 +680,7 @@ function calculate_value_smooth( x,y,v,v_fract,real_value)
 		--return math.cos(math.abs(d)*math.pi*2)
 	end
 	--]]
+	--[[
 	local r=rules_pol
 	local f=function ( v1,v2 )
 		local d=math.abs(v1-v2)
@@ -685,6 +689,7 @@ function calculate_value_smooth( x,y,v,v_fract,real_value)
 		return r[1]+r[2]*v1+r[3]*v2+r[4]*v1*v2+r[5]*v1*v2*v1+r[5]*v2*v1*v2
 		--return r[1]+r[2]*v1+r[3]*v2+r[4]*v1*v2/factorial(2)+r[5]*v1*v2*v1/factorial(3)+r[5]*v2*v1*v2/factorial(3)
 	end
+	]]
 	local ret=0
 	for i,vv in ipairs(a) do
 		if vv[1]==nil then print(vv[1],vv[2],x,y,v,v_fract) end
@@ -748,7 +753,7 @@ function do_grid_step(x,y)
 		local new_trg_value=calculate_value(tx,ty,v)*delta_substep(rv*num_values-v)
 		local new_value=calculate_value(x,y,tv)*delta_substep(trv*num_values-tv)
 		--]]
-		local f=calculate_value_smooth
+		local f=calculate_value_fract
 		local old_value=f(x,y,v,v_fract,rv)
 		local old_trg_value=f(tx,ty,tv,t_fract,trv)
 
@@ -878,7 +883,7 @@ function update(  )
 	end
 	imgui.SameLine()
 	if imgui.Button("RandomizeRules") then
-		randomize_ruleset(10)
+		randomize_ruleset(3)
 		num_values=#ruleset
 		print(rule_string())
 	end

@@ -4,7 +4,7 @@ require "colors"
 local luv=require "colors_luv"
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
-local size_mult=1
+local size_mult=3
 local ffi = require("ffi")
 --[[
 	TODO:
@@ -24,8 +24,8 @@ win_h=win_h or 0
 
 aspect_ratio=aspect_ratio or 1
 function update_size()
-	local trg_w=1024*size_mult
-	local trg_h=1024*size_mult
+	local trg_w=2560*size_mult
+	local trg_h=1440*size_mult
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
 	if win_w~=trg_w or win_h~=trg_h then
@@ -1229,9 +1229,9 @@ animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
-	str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
+	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
 	--str_cmplx=random_math_complex_const(rand_complexity,nil,{"s","p*vec2(move_dist,global_seed)","params.xy","params.zw"})
-	--str_cmplx=random_math_complex_intervals(rand_complexity,7,nil,{"s","p","params.xy","params.zw"})
+	str_cmplx=random_math_complex_intervals(rand_complexity,2,nil,{"s","c_mul(p,vec2(move_dist,global_seed))","params.xy","params.zw"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,15,"(R)/2+(R)*c_sin(vec2(2*M_PI,1)*(R)+R)")
 	--str_cmplx=random_math_fourier_complex(7,rand_complexity)
 	--str_cmplx=random_math_complex_series(4,random_math_complex_intervals(rand_complexity,5))
@@ -1281,11 +1281,13 @@ function rand_function(  )
 	--]=]
 	--mandelbrot?
 	--[=[
+	--str_cmplx="c_mul(s,s)*value_inside(global_seed,0,0.5)+c_mul(s,c_mul(s,s))*value_inside(global_seed,0.5,1)+p"
 	str_cmplx="c_mul(s,s)+p"
 	--]=]
 
 	--[[ julia
-	str_cmplx="c_mul(s,s)+params.xy"
+	--str_cmplx="c_mul(s,s)+params.xy"
+	str_cmplx="c_mul(s,s)+c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))"
 	--]]
 	--[[ cubebrot julian
 	str_cmplx="c_mul(s,c_mul(s,s))+c_mul(p,params.zw)+params.xy"
@@ -1384,7 +1386,7 @@ function rand_function(  )
 
 	--]]
 
-	--[[ complex seriesize
+	-- [[ complex seriesize
 	local series_size=5
 	local rand_offset=0.01
 	local rand_size=0.025
@@ -1395,10 +1397,10 @@ function rand_function(  )
 			sub_s=string.format("c_mul(%s,%s)","s",sub_s)
 		end
 		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
-		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
 		local v_start=(i-1)/series_size
 		local v_end=i/series_size
-		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)*value_inside(global_seed,%g,%g)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2,v_start,v_end)
+		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)*value_inside(global_seed,%g,%g)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2,v_start,v_end)
 
 		local dx=math.cos((i/series_size)*math.pi*2)
 		local dy=math.sin((i/series_size)*math.pi*2)
@@ -1411,8 +1413,8 @@ function rand_function(  )
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
 	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
-	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
-	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
+	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seed*8))/(M_PI/2);s=last_s+ds*((global_seed*7)*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(p,p));s=last_s+ds*(move_dist*vv/ls);"

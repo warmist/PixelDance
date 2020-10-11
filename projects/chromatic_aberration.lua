@@ -58,45 +58,49 @@ function tonemap2( light,min_lum,max_lum )
 
     return light;
 end
-function read_hd_png_buf( fname,log_norm ,log_norm_minmax)
+function read_hd_png_buf( fname )
 	local file = io.open(fname, 'rb')
 	local b = bread(file:read('*all'))
 	file:close()
 
 	local sx=b:u32()
 	local sy=b:u32()
+ 	local chan_count=b:u32()
+ 	local do_log_norm=b:u32()
 	local background_buf=make_flt_buffer(sx,sy)
 	local background_minmax={}
-	b:f32()
-	background_minmax[1]=b:f32()
-	b:f32()
+	if chan_count>=3 then
+		b:f32()
+		background_minmax[1]=b:f32()
+		b:f32()
 
-	b:f32()
-	background_minmax[2]=b:f32()
-	b:f32()
-
+		b:f32()
+		background_minmax[2]=b:f32()
+		b:f32()
+	else
+		background_minmax[1]=b:f32()
+		background_minmax[2]=b:f32()
+	end
 	local lavg=b:f32()
 	for x=0,background_buf.w-1 do
 	for y=0,background_buf.h-1 do
-		-- [[
-
-		local cr=b:f32()
-		local cg=b:f32()
-		local cb=b:f32()
-		local a=b:f32()
-		background_buf:set(x,y,{cr,cg,cb,1})
-		--]]
-		--[[
-		local v=b:f32()
-		background_buf:set(x,y,{v,v,v,1})
-		--]]
+		if chan_count==4 then
+			local cr=b:f32()
+			local cg=b:f32()
+			local cb=b:f32()
+			local a=b:f32()
+			background_buf:set(x,y,{cr,cg,cb,1})
+		else
+			local v=b:f32()
+			background_buf:set(x,y,{v,v,v,1})
+		end
 	end
 	end
 
-	if log_norm_minmax then
+	if do_log_norm then
 		background_minmax[1]=math.log(background_minmax[1]+1)
 		background_minmax[2]=math.log(background_minmax[2]+1)
-		--lavg=math.log(lavg)
+		lavg=math.log(lavg)
 	end
 	print("Loaded:",background_minmax[1],background_minmax[2])
 	-- [[
@@ -131,10 +135,10 @@ function load_hd_png()
 		__unbind_buffer()
 	end
 end
-image_buf=read_hd_png_buf("out.buf",true)
+image_buf=read_hd_png_buf("sim_aneal.dat")
 --]]
 
-__set_window_size(image_buf.w,image_buf.h)
+__set_window_size(image_buf.w*2,image_buf.h*2)
 function resize( w,h )
 	size=STATE.size
 end
@@ -533,6 +537,17 @@ float interference_spectrum(float wavelen,float film_size,float angle)
 
 	return interfere(i);
 }
+vec4 sample_22(vec2 pos)
+{
+	vec4 ret=vec4(0);
+	float w=0.15;
+	ret+=textureOffset(tex_main,pos,ivec2(1,1))*w;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,1))*w;
+	ret+=textureOffset(tex_main,pos,ivec2(1,-1))*w;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,-1))*w;
+	ret+=textureOffset(tex_main,pos,ivec2(0,0))*(1-4*w);
+	return ret;
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec2 offset=vec2(0,0);
@@ -555,7 +570,8 @@ void main(){
 		falling down and image is distorting it by it's VALUE.
 	*/
 
-	float c=texture(tex_main,dist_pos*vec2(1,-1)).x;
+	float c=sample_22(dist_pos*vec2(1,-1)).y;
+	//float c=texture(tex_main,dist_pos*vec2(1,-1)).y;
 	//vec3 nv=rgb2xyz(texture(tex_main,dist_pos*vec2(1,-1)).xyz);
 	vec3 nv=texture(tex_main,dist_pos*vec2(1,-1)).xyz;
 
@@ -591,11 +607,13 @@ void main(){
 		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,easeOutQuad(c)))*iteration_step;
 	#else //film interference... not looking great...
 	//c is depth
+		//c*=2-length(pos);
 		//c=clamp(1-length(pos),0,1);
 		//c*=c;
-		c=pow(c,1.5);
-		c=c*9000+1;
-		float inteference=interference_spectrum(iteration,c,0.2);
+		//c=pow(c,1.5);
+		//c=c*1000+50;
+		float depth=mix(10,1000,c);
+		float inteference=interference_spectrum(iteration,depth,0)*mix(1,0.0,c);
 		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,T)*inteference*iteration_step;
 	#endif
 	//
