@@ -283,8 +283,9 @@ static int draw_array_triangles(lua_State* L)
     //if (data == nullptr)
     //   luaL_error(L, "Incorrect second argument: expected pointer to array");
     size_t count = luaL_checkinteger(L, 3);
-    int strip_type = luaL_optint(L, 4,0);
-    auto feedbackmode = luaL_optint(L, 5, 0);
+    auto float_count = luaL_optint(L, 4, 4);
+    int strip_type = luaL_optint(L, 5,0);
+    auto feedbackmode = luaL_optint(L, 6, 0);
     if (feedbackmode)
         glBeginTransformFeedback(GL_LINES);
     auto pos_idx = glGetAttribLocation(s->id, "position");

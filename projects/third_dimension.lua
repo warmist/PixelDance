@@ -1,13 +1,13 @@
 require 'common'
 local tri_count=1
-tri_data=make_flt_buffer(tri_count*3,1)
+tri_data=make_flt_buffer(tri_count*4,1)
 tri_buffer=buffer_data.Make()
 function gen_tris(  )
 	tri_buffer:use()
-	tri_data:set(0,0,{0,0,0,1})
-	tri_data:set(1,0,{0,1,0,1})
+	tri_data:set(0,0,{-1,-1,0,1})
+	tri_data:set(1,0,{-1,1,0,1})
 	tri_data:set(2,0,{1,1,0,1})
-	tri_buffer:set(tri_data.d,tri_count*3*4)
+	tri_buffer:set(tri_data.d,tri_count*4*4)
 	__unbind_buffer()
 end
 gen_tris()
