@@ -11,6 +11,7 @@
 struct shader_program {
 	GLuint id = -1;
 };
+struct mat44{};
 static shader_program* check(lua_State* L, int id) { return *reinterpret_cast<shader_program**>(luaL_checkudata(L, id, "shader")); }
 static int use_shader(lua_State* L)
 {
@@ -98,6 +99,33 @@ static void set_uniform_args<int>(lua_State* L, GLint uloc, int arg_start, int n
 		luaL_error(L, "reached unreachable area?! !!ERROR!!");
 		break;
 	}
+}
+template<>
+static void set_uniform_args<mat44>(lua_State* L,GLint uloc,int arg_start,int num_args)
+{
+	//TODO: directly entering 16 numbers
+	/*GLint buf[16] = { 0 };
+	for (int i = 0; i < num_args; i++)
+	{
+		buf[i] = luaL_checkinteger(L, i + arg_start + 1);
+	}*/
+	const void* data = nullptr;
+    if ((lua_type(L, arg_start+1) == 10) /*cdata*/ || (lua_type(L, arg_start+1) == LUA_TLIGHTUSERDATA))
+    {
+        data = lua_topointer(L, arg_start + 1); //TODO: check pointer?
+    }
+	switch (num_args)
+	{
+		case 1:
+		glUniformMatrix4fv(uloc,1,false,(const GLfloat*)data);
+		break;
+		case 2:
+		glUniformMatrix4fv(uloc,1,lua_toboolean(L, arg_start+2), (const GLfloat*)data);
+		break;
+		default:
+		luaL_error(L,"expected 1 pointer to 4x4 matrix");
+		break;
+	};
 }
 static int del_shader(lua_State* L)
 {
@@ -448,6 +476,9 @@ static int make_shader(lua_State* L, const char* vertex, const char* fragment,co
 
 		lua_pushcfunction(L, set_uniform<int>); 
 		lua_setfield(L, -2, "set_i");
+
+		lua_pushcfunction(L, set_uniform<mat44>); 
+		lua_setfield(L, -2, "set_m");
 
 		lua_pushcfunction(L, draw_quad);
 		lua_setfield(L, -2, "draw_quad");
