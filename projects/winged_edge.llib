@@ -1,0 +1,10 @@
+require "common"
+we_mesh=class(
+function(self)
+	self.edges={}
+	self.verts={}
+	self.faces={}
+end
+)
+--TODO: meh...
+--https://pages.mtu.edu/~shene/PUBLICATIONS/2007/WE.pdf
