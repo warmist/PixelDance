@@ -391,6 +391,8 @@ function buffer_save( name ,min,max,avg)
 	local b=bwrite()
 	b:u32(visit_buf.w)
 	b:u32(visit_buf.h)
+	b:u32(4)--channels
+	b:u32(0)--do log norm
 	b:f32(min[1])
 	b:f32(min[2])
 	b:f32(min[3])

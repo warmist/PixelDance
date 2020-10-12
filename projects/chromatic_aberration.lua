@@ -15,7 +15,7 @@ local bwrite = require "blobwriter"
 local bread = require "blobreader"
 
 function tonemap( light,avg_lum )
-	local lum_white = math.pow(10,5);
+	local lum_white = math.pow(10,2);
 	--tocieYxy
 	local sum=light.r+light.g+light.b;
 	local x=light.r/sum;
@@ -23,12 +23,14 @@ function tonemap( light,avg_lum )
 	local Y=light.g;
 
 	Y = (Y* 9.6 )/avg_lum;
-	if(true) then
+	if(false) then
     	Y = Y / (1 + Y); --simple compression
 	else
     	Y = (Y*(1 + Y / lum_white)) / (Y + 1); --allow to burn out bright areas
     end
-
+	if math.random()>0.9999 then
+		print(Y)
+	end
 
     --transform back to cieXYZ
     light.g=Y;
@@ -47,15 +49,31 @@ function tonemap2( light,min_lum,max_lum )
 	local y=light.g/sum;
 	local Y=light.g;
 
-	Y=(Y-min_lum)/(max_lum-min_lum)
 
+	--Y=(math.log(Y)-min_lum)/(max_lum-min_lum)
+	Y=(Y-min_lum)/(max_lum-min_lum)
+	--Y=math.exp(Y)
+
+	--Y=math.max(Y,1e-12)
     --transform back to cieXYZ
     light.g=Y;
     local small_x = x;
     local small_y = y;
     light.r = light.g*(small_x / small_y);
     light.b = light.r / small_x - light.r - light.g;
-
+    light.r=math.max(light.r,0)
+    light.g=math.max(light.g,0)
+    light.b=math.max(light.b,0)
+    --[[
+    if light.r<0 or light.r>1e6 then print("r:",light.r) end
+    if light.g<0 or light.g>1e6 then print("g:",light.g) end
+    if light.b<0 or light.b>1e6 then print("b:",light.b) end
+    --]]
+    --[[
+    light.r=math.min(light.r,1e12)
+    light.g=math.min(light.g,1e12)
+    light.b=math.min(light.b,1e12)
+    ]]
     return light;
 end
 function read_hd_png_buf( fname )
@@ -65,8 +83,13 @@ function read_hd_png_buf( fname )
 
 	local sx=b:u32()
 	local sy=b:u32()
- 	local chan_count=b:u32()
- 	local do_log_norm=b:u32()
+	local chan_count = 4
+	local do_log_norm=true
+	local old_version=false
+	if not old_version then
+ 		chan_count=b:u32()
+ 		do_log_norm=b:u32()
+ 	end
 	local background_buf=make_flt_buffer(sx,sy)
 	local background_minmax={}
 	if chan_count>=3 then
@@ -82,6 +105,8 @@ function read_hd_png_buf( fname )
 		background_minmax[2]=b:f32()
 	end
 	local lavg=b:f32()
+	--local loc_avg=0
+	--local count=0
 	for x=0,background_buf.w-1 do
 	for y=0,background_buf.h-1 do
 		if chan_count==4 then
@@ -89,7 +114,13 @@ function read_hd_png_buf( fname )
 			local cg=b:f32()
 			local cb=b:f32()
 			local a=b:f32()
-			background_buf:set(x,y,{cr,cg,cb,1})
+			--if do_log_norm then
+			--	background_buf:set(x,y,{math.log(cr+2.8),math.log(cg+2.8),math.log(cb+2.8),1})
+			--else
+				background_buf:set(x,y,{cr,cg,cb,1})
+				--loc_avg=loc_avg+math.log(cg+2.8)
+				--count=count+1
+			--end
 		else
 			local v=b:f32()
 			background_buf:set(x,y,{v,v,v,1})
@@ -97,16 +128,18 @@ function read_hd_png_buf( fname )
 	end
 	end
 
+	--loc_avg = math.exp(loc_avg / count);
+	--print(loc_avg,lavg)
 	if do_log_norm then
-		background_minmax[1]=math.log(background_minmax[1]+1)
-		background_minmax[2]=math.log(background_minmax[2]+1)
-		lavg=math.log(lavg)
+		background_minmax[1]=math.log(background_minmax[1]+2.8)
+		background_minmax[2]=math.log(background_minmax[2]+2.8)
+		lavg=math.log(lavg+2.8)
 	end
 	print("Loaded:",background_minmax[1],background_minmax[2])
 	-- [[
 	for x=0,background_buf.w-1 do
 	for y=0,background_buf.h-1 do
-		tonemap2(background_buf:get(x,y),background_minmax[1],background_minmax[2])
+		--tonemap2(background_buf:get(x,y),background_minmax[1],background_minmax[2])
 		--tonemap(background_buf:get(x,y),lavg)
 		--[[
 		local iv=background_buf:get(x,y).r
@@ -135,10 +168,14 @@ function load_hd_png()
 		__unbind_buffer()
 	end
 end
-image_buf=read_hd_png_buf("sim_aneal.dat")
+image_buf=read_hd_png_buf("waves_out.buf")
 --]]
-
-__set_window_size(image_buf.w*2,image_buf.h*2)
+function safe_set_size( w,h )
+	if STATE.size[1]~=w or STATE.size[2]~=h then
+		__set_window_size(w,h)
+	end
+end
+safe_set_size(image_buf.w,image_buf.h)
 function resize( w,h )
 	size=STATE.size
 end
@@ -149,7 +186,7 @@ config=make_config({
 	{"bulge_radius_offset",0,type="float",max=1},
 	{"gamma",2.2,type="float",min=0.01,max=5},
 	{"whitepoint",0.33,type="float",min=-0.01,max=1},
-	{"exposure",50,type="float",min=0.001,max=100},
+	{"exposure",0.004,type="floatsci",min=0.0001,max=1},
 	{"temperature",5778,type="float",min=0.001,max=10000},
 	{"image_is_intensity",true,type="boolean"},
 },config)
@@ -499,12 +536,17 @@ vec2 tangent_distort(vec2 p,vec2 arg)
 vec2 distort_x(vec2 p,vec2 offset, float arg)
 {
 	float tx=p.x+offset.x;
-	return p+vec2((tx*tx)*arg,0);
+	return p+vec2((tx*tx*tx)*arg,0);
 }
 vec2 distort_y(vec2 p,vec2 offset, float arg)
 {
 	float ty=p.y+offset.y;
 	return p+vec2((ty*ty)*arg,0);
+}
+vec2 distort_y2(vec2 p,vec2 offset, float arg)
+{
+	float ty=p.y+offset.y;
+	return p+vec2(0,(ty*ty*ty+ty)*arg);
 }
 vec2 rotate(vec2 v, float a) {
 	float s = sin(a);
@@ -554,8 +596,9 @@ void main(){
 	vec2 dist_pos=pos.xy;
 	//dist_pos=Distort(dist_pos,offset,barrel_power*iteration+1);
 	//dist_pos=tangent_distort(dist_pos,vec2(barrel_power*iteration,barrel_power*iteration)*0.1);
-	//dist_pos=distort_x(dist_pos,offset,barrel_power*iteration);
+	dist_pos=distort_x(dist_pos,offset,barrel_power*iteration);
 	//dist_pos=distort_y(dist_pos,offset,barrel_power*iteration);
+	dist_pos=distort_y2(dist_pos,offset,barrel_power*iteration);
 	//dist_pos=distort_spiral(dist_pos,offset,barrel_power*iteration);
 	dist_pos=(dist_pos+vec2(1))/2;
 	//vec2 dist_pos=normed+vec2(barrel_power)*iteration;
@@ -570,8 +613,10 @@ void main(){
 		falling down and image is distorting it by it's VALUE.
 	*/
 
-	float c=sample_22(dist_pos*vec2(1,-1)).y;
-	//float c=texture(tex_main,dist_pos*vec2(1,-1)).y;
+	//float c=sample_22(dist_pos*vec2(1,-1)).y;
+	float c=texture(tex_main,dist_pos*vec2(1,-1)).y;
+	//c=clamp(c/10,0,1);
+	//c=exp(c);
 	//vec3 nv=rgb2xyz(texture(tex_main,dist_pos*vec2(1,-1)).xyz);
 	vec3 nv=texture(tex_main,dist_pos*vec2(1,-1)).xyz;
 
@@ -600,10 +645,11 @@ void main(){
 	//float T=4500;
 	//float T=8000;
 	//float T=6503.6; //D65 illiuminant
-	#if 0
+	#if 1
 	if(do_intensity==1)
 		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,T)*nv*iteration_step;
 	else
+		//color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,c))*iteration_step;
 		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,easeOutQuad(c)))*iteration_step;
 	#else //film interference... not looking great...
 	//c is depth
@@ -619,6 +665,7 @@ void main(){
 	//
 	//color.xyz=nv;
 	//color.xyz=vec3(1,0.1,0.1);
+	//color.xyz=nv*iteration_step;
 	color.a=1;
 }
 ]]
@@ -656,8 +703,19 @@ float gain(float x, float k)
 vec3 tonemapFilmic(vec3 x) {
   vec3 X = max(vec3(0.0), x - 0.004);
   vec3 result = (X * (6.2 * X + 0.5)) / (X * (6.2 * X + 1.7) + 0.06);
-  return pow(result, vec3(2.2));
+  return result;
 }
+float Tonemap_ACES(float x) {
+    // Narkowicz 2015, "ACES Filmic Tone Mapping Curve"
+    const float a = 2.51;
+    const float b = 0.03;
+    const float c = 2.43;
+    const float d = 0.59;
+    const float e = 0.14;
+    return (x * (a * x + b)) / (x * (c * x + d) + e);
+}
+float llog(float x)
+{return log(x+2.8);}
 vec3 eye_adapt_and_stuff(vec3 light)
 {
 	float lum_white = pow(10,whitepoint);
@@ -668,14 +726,17 @@ vec3 eye_adapt_and_stuff(vec3 light)
 	float x=light.x/sum;
 	float y=light.y/sum;
 	float Y=light.y;
-
+	//Y=(llog(Y)-llog(min_v.y))/(llog(max_v.y)-llog(min_v.y));
+	//Y=exp(Y);
 	Y = (Y* exposure )/avg_lum;
+#if 0
 	if(whitepoint<0)
     	Y = Y / (1 + Y); //simple compression
 	else
     	Y = (Y*(1 + Y / lum_white)) / (Y + 1); //allow to burn out bright areas
-
-
+#else
+    //Y=Tonemap_ACES(Y);
+#endif
     //transform back to cieXYZ
     light.y=Y;
     float small_x = x;
@@ -691,6 +752,7 @@ void main()
 	color=texture(tex_main,normed);
 	//color.xyz*=iteration_step;
 	//color.xyz-=min_v;
+	//color.xyz/=(max_v-min_v);
 	//color.xyz/=max(max_v.x,max(max_v.y,max_v.z));//-min_v);
 	//color.xyz/=max_v.x+max_v.y+max_v.z;
 
@@ -701,11 +763,12 @@ void main()
 	color.xyz=xyz2rgb(color.xyz);
 
 	*/
-	//color.xyz=tonemapFilmic(color.xyz);
 	//color.xyz=pow(color.xyz,vec3(1/2.2));
-
+	//color.xyz*=exposure/(max(color.x,max(color.y,color.z)));
 	color.xyz=eye_adapt_and_stuff(color.xyz);
+	//color.xyz=xyz2rgb(color.xyz*exposure);
 	color.xyz=xyz2rgb(color.xyz);
+	//color.xyz=tonemapFilmic(color.xyz);
 
 	color.xyz=pow(color.xyz,vec3(v_gamma));
 	//color.xyz=vec3(gain(color.x,v_gain),gain(color.y,v_gain),gain(color.z,v_gain));
@@ -739,8 +802,10 @@ function find_min_max(  )
 		if v.g>lmax[2] then lmax[2]=v.g end
 		if v.b>lmax[3] then lmax[3]=v.b end
 		local lum=math.abs(v.g)
-		avg_lum=avg_lum+math.log(1+lum)
-		count=count+1
+		if lum<math.huge and lum>1 then
+			avg_lum=avg_lum+math.log(2.8+lum)
+			count=count+1
+		end
 	end
 	end
 	avg_lum = math.exp(avg_lum / count);
@@ -801,6 +866,8 @@ function update(  )
 		lmin,lmax,avg_lum=find_min_max()
 		done=true
 	end
+	imgui.SameLine()
+	imgui.Text(string.format("Done:%g",iteration))
 	draw_shader:use()
 	compute_tex.t:use(0)
 	draw_shader:set_i("tex_main",0)

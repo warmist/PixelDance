@@ -26,12 +26,41 @@ end
 --update_size()
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
+--[[
+	local b=bwrite()
+	b:u32(visit_buf.w)
+	b:u32(visit_buf.h)
+	b:u32(4)--channels
+	b:u32(0)--do log norm
+	b:f32(min[1])
+	b:f32(min[2])
+	b:f32(min[3])
+	b:f32(max[1])
+	b:f32(max[2])
+	b:f32(max[3])
+	b:f32(avg)
+	for x=0,visit_buf.w-1 do
+	for y=0,visit_buf.h-1 do
+		local v=visit_buf:get(x,y)
+		b:f32(v.r)
+		b:f32(v.g)
+		b:f32(v.b)
+		b:f32(v.a)
+	end
+	end
+	local f=io.open(name,"wb")
+	f:write(b:tostring())
+	f:close()
+	]]
 function buffer_save(buf,min,max, name )
 	local b=bwrite()
 	b:u32(buf.w)
 	b:u32(buf.h)
+	b:u32(1)
+	b:u32(0)
 	b:f32(min)
 	b:f32(max)
+	b:f32((max+min)/2)
 	for x=0,buf.w-1 do
 	for y=0,buf.h-1 do
 		local v=buf:get(x,y)
