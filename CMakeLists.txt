@@ -13,8 +13,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/")
 
 #dependancies
 set(SFML_STATIC_LIBRARIES TRUE)
-FIND_PACKAGE( SFML 2.4 COMPONENTS graphics window system)
-
+FIND_PACKAGE( SFML 2.5 COMPONENTS graphics window system)
 
 SET(IMGUI "../imgui" CACHE PATH "Path to imgui")
 add_definitions(-DIMGUI_USER_CONFIG="imconfig-SFML.h")
@@ -77,7 +76,6 @@ set(HDRS
   ${LUA}/lua.hpp
   ${LUA}/lualib.h
 )
-include_directories(${SFML_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 INCLUDE_DIRECTORIES(${IMGUI})
@@ -88,6 +86,6 @@ add_executable(${TARGET_NAME}
   ${EMBEDDED_HDRS} ${EMBEDDED_LIBS}
 )
 
-target_link_libraries(${TARGET_NAME}  ${SFML_LIBRARIES} ${SFML_DEPENDENCIES} ${LUA}/lua51.lib )
+target_link_libraries(${TARGET_NAME}  sfml-graphics sfml-window sfml-system ${LUA}/lua51.lib )
 install(TARGETS ${TARGET_NAME} DESTINATION .)
 install(DIRECTORY projects DESTINATION .)
