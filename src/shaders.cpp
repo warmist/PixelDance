@@ -292,7 +292,7 @@ static int draw_array_triangles(lua_State* L)
     if (pos_idx != -1)
     {
         glEnableVertexAttribArray(pos_idx);
-        glVertexAttribPointer(pos_idx, 2, GL_FLOAT, false, 0, data);
+        glVertexAttribPointer(pos_idx, float_count, GL_FLOAT, false, 0, data);
     }
     if (strip_type==0)
         glDrawArrays(GL_TRIANGLES, 0, count);

@@ -1,13 +1,19 @@
 require 'common'
-local tri_count=1
-tri_data=make_flt_buffer(tri_count*4,1)
-tri_buffer=buffer_data.Make()
+local tri_count=2
+point_count=tri_count*3 --each tri is 3 points
+tri_data=make_flt_buffer(point_count,1)
+byte_count=point_count*4*4 --*4 floats *4bytes each
+tri_buffer=tri_buffer or buffer_data.Make()
 function gen_tris(  )
+	tri_data:set(0,0,{-0.5,-0.5,0,1})
+	tri_data:set(1,0,{-0.5,0.5,0,1})
+	tri_data:set(2,0,{0.5,0.5,0,1})
+
+	tri_data:set(3,0,{0.5,0.5,0,1})
+	tri_data:set(4,0,{0.5,-0.5,0,1})
+	tri_data:set(5,0,{-0.5,-0.5,0,1})
 	tri_buffer:use()
-	tri_data:set(0,0,{-1,-1,0,1})
-	tri_data:set(1,0,{-1,1,0,1})
-	tri_data:set(2,0,{1,1,0,1})
-	tri_buffer:set(tri_data.d,tri_count*4*4)
+	tri_buffer:set(tri_data.d,byte_count)
 	__unbind_buffer()
 end
 gen_tris()
@@ -16,11 +22,12 @@ draw_shader=shaders.Make(
 #version 330
 
 layout(location = 0) in vec4 position;
-out vec4 pos_out;
+out vec4 pos;
 
 void main()
 {
-	pos_out=position;
+	gl_Position=position;
+	pos=position;
 }
 ]]
 ,
@@ -30,7 +37,7 @@ in vec4 pos;
 out vec4 color;
 void main()
 {
-	color=vec4(1,0,0,1);
+	color=vec4(1,abs(pos.y+0.5),abs(pos.x+0.5),1);
 }
 ]])
 
@@ -44,7 +51,7 @@ function update(  )
 		__clear()
 		need_clear=false
 	end
-	draw_shader:draw_points(0,tri_count,4)
+	draw_shader:draw_triangles(0,point_count,4,0)
 	__render_to_window()
 	__unbind_buffer()
 end
