@@ -1,16 +1,25 @@
 require 'common'
+require 'half_edge'
 --[[ IDEAS
 	* https://www.cse.wustl.edu/~taoju/research/dualContour.pdf
 	* halfedge/winged edge data and then manipulate (randomly?)
 	* plants growing?
 ]]
-local tri_count=2
-point_count=tri_count*3 --each tri is 3 points
-tri_data=make_flt_buffer(point_count,1)
-byte_count=point_count*4*4 --*4 floats *4bytes each
-tri_buffer=tri_buffer or buffer_data.Make()
+local max_tri_count=1000
+cube=model()
+cube:gen_disk(4,math.sqrt(0.5))
+local f=cube:extrude(next(cube.faces),1)
+cube:triangulate_simple()
 
-tri_normals=make_flt_buffer(point_count,1)
+max_point_count=max_tri_count*3 --each tri is 3 points
+tri_data=make_flt_buffer(max_point_count,1)
+tri_normals=make_flt_buffer(max_point_count,1)
+
+used_point_count=cube:export_triangles(tri_data,tri_normals)
+
+
+max_byte_count=max_point_count*4*4 --*4 floats *4bytes each
+tri_buffer=tri_buffer or buffer_data.Make()
 tri_normals_buffer=tri_normals_buffer or buffer_data.Make()
 
 world_view_matrix=make_ident_matrix(4,4)
@@ -56,7 +65,15 @@ function gen_tris(  )
 	__unbind_buffer()
 end
 --TODO: finish matrix library
-gen_tris()
+--gen_tris()
+function update_tri_buffers(  )
+	local byte_count=used_point_count*4*4
+	tri_buffer:use()
+	tri_buffer:set(tri_data.d,byte_count)
+	tri_normals_buffer:use()
+	tri_normals_buffer:set(tri_normals.d,byte_count)
+end
+update_tri_buffers()
 draw_shader=shaders.Make(
 [[
 #version 330
@@ -190,15 +207,15 @@ function update(  )
     world_view_matrix:set(2,2,c)
 	--]]
 	draw_shader:use()
-	
+	draw_shader:depth_test(true)
 	--draw_shader:set_m("world_view_matrix",world_view_matrix.d)
-	draw_shader:set("axis",1/math.sqrt(2),1/math.sqrt(2),0)
+	draw_shader:set("axis",1,0,0)
 	draw_shader:set("angle",time*0.01)
 	draw_shader:set("translate",0,0,-5)
 	tri_normals_buffer:use()
 	draw_shader:push_attribute(0,"normal",4)
 	tri_buffer:use()
-	draw_shader:draw_triangles(0,point_count,4,0)
+	draw_shader:draw_triangles(0,used_point_count,4,0)
 	__render_to_window()
 	__unbind_buffer()
 end

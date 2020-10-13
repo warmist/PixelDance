@@ -1,10 +1,39 @@
 require "common"
 we_mesh=class(
 function(self)
-	self.edges={}
-	self.verts={}
-	self.faces={}
+	--two sided tri init
+	self:init_tri()
 end
 )
 --TODO: meh...
 --https://pages.mtu.edu/~shene/PUBLICATIONS/2007/WE.pdf
+function we_mesh:init_tri(  )
+	self.edges={}
+	self.verts={}
+	self.faces={}
+
+	local r=1
+	for i=1,3 do
+		local v=(i-1)/3
+		table.insert(self.verts,{cos(math.pi*2*v)*r,sin(math.pi*2*v)*r,0})
+	end
+	for i=1,2 do
+		table.insert(self.faces,{})
+	end
+	local next_v={2,3,1}
+	for i=1,3 do
+		table.insert(self.edges,{
+		v_start=self.verts[i],v_end=self.verts[next_v[i]],
+		f_left=self.faces[1],f_right=self.faces[2]
+		})
+		self.faces[1].e=self.edges[i]
+		self.faces[2].e=self.edges[i]
+		self.verts[i].e=self.edges[i]
+	end
+	self.edges[1].e_left_cw=self.edges[3]
+	self.edges[1].e_left_ccw=self.edges[2]
+	for i=1,3 do
+		self.edges[i]
+		e_left_cw=??,e_left_ccw=??,e_right_cw=,e_right_ccw=
+	end
+end
