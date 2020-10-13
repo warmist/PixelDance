@@ -138,7 +138,7 @@ void main()
 {
 	vec4 light_dir=vec4(0,0,1,0);
 	float diff=max(dot(norm,light_dir),0);
-	float ambient=0.4;
+	float ambient=1;
 
 	float v=0;
 	/*for(int i=0;i<4;i++)
@@ -150,7 +150,7 @@ void main()
 		v+=g*value_inside(pos.x,xx,xx+0.25)*value_inside(pos.y,yy,yy+0.25);
 	}*/
 
-	color=vec4(1,abs(pos.y+0.5),abs(pos.x+0.5),1)*min(diff+ambient,1);
+	color=vec4(1,abs(pos.y+0.5),abs(pos.x+0.5),1)*mix(diff,ambient,0.5);
 }
 ]])
 --print(world_view_matrix:tostring_full())
@@ -190,15 +190,11 @@ function update(  )
 	draw_shader:use()
 	
 	--draw_shader:set_m("world_view_matrix",world_view_matrix.d)
-	draw_shader:set("axis",1/math.sqrt(3),1/math.sqrt(3),1/math.sqrt(3))
+	draw_shader:set("axis",1/math.sqrt(2),1/math.sqrt(2),0)
 	draw_shader:set("angle",time*0.01)
 	draw_shader:set("translate",0,0,-5)
-	--tri_normals_buffer:use()
-	--draw_shader:push_attribute(0,"normal",4)
-	if need_clear then
-		__clear()
-		need_clear=false
-	end
+	tri_normals_buffer:use()
+	draw_shader:push_attribute(0,"normal",4)
 	tri_buffer:use()
 	draw_shader:draw_triangles(0,point_count,4,0)
 	__render_to_window()

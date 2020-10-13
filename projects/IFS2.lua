@@ -4,7 +4,7 @@ require "colors"
 local luv=require "colors_luv"
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
-local size_mult=3
+local size_mult=0.5
 local ffi = require("ffi")
 --[[
 	TODO:
@@ -116,7 +116,7 @@ tick=tick or 0
 config=make_config({
 	{"draw",true,type="boolean"},
 	{"point_size",0,type="int",min=0,max=10},
-	{"size_mult",true,type="boolean"},
+	{"size_mult",false,type="boolean"},
 
 	{"v0",0,type="float",min=-1,max=1},
 	{"v1",0,type="float",min=-1,max=1},

@@ -139,7 +139,7 @@ function read_hd_png_buf( fname )
 	-- [[
 	for x=0,background_buf.w-1 do
 	for y=0,background_buf.h-1 do
-		--tonemap2(background_buf:get(x,y),background_minmax[1],background_minmax[2])
+		tonemap2(background_buf:get(x,y),background_minmax[1],background_minmax[2])
 		--tonemap(background_buf:get(x,y),lavg)
 		--[[
 		local iv=background_buf:get(x,y).r
@@ -168,7 +168,7 @@ function load_hd_png()
 		__unbind_buffer()
 	end
 end
-image_buf=read_hd_png_buf("waves_out.buf")
+image_buf=read_hd_png_buf("out.buf")
 --]]
 function safe_set_size( w,h )
 	if STATE.size[1]~=w or STATE.size[2]~=h then
@@ -735,7 +735,7 @@ vec3 eye_adapt_and_stuff(vec3 light)
 	else
     	Y = (Y*(1 + Y / lum_white)) / (Y + 1); //allow to burn out bright areas
 #else
-    //Y=Tonemap_ACES(Y);
+    Y=Tonemap_ACES(Y);
 #endif
     //transform back to cieXYZ
     light.y=Y;
