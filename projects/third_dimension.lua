@@ -137,7 +137,8 @@ float value_inside(float x,float a,float b)
 void main()
 {
 	vec4 light_dir=vec4(0,0,1,0);
-	float diff=max(dot(norm,light_dir),0);
+	float dprod=dot(norm,light_dir);
+	float diff=clamp(dprod,0,1);
 	float ambient=1;
 
 	float v=0;
@@ -150,7 +151,8 @@ void main()
 		v+=g*value_inside(pos.x,xx,xx+0.25)*value_inside(pos.y,yy,yy+0.25);
 	}*/
 
-	color=vec4(1,abs(pos.y+0.5),abs(pos.x+0.5),1)*mix(diff,ambient,0.5);
+	color=vec4(1,abs(pos.y+0.5),abs(pos.x+0.5),1)*mix(diff,ambient,0.5)*(1-step(norm.z,0))+
+		vec4(0.2)*ambient*(step(norm.z,0));
 }
 ]])
 --print(world_view_matrix:tostring_full())
