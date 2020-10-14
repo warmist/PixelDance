@@ -108,16 +108,16 @@ function model:clear()
 	self.edges={}
 	self.faces={}
 end
-function model:gen_disk(point_count,radius)
+function model:gen_disk(point_count,radius,offset)
 	radius=radius or 1
-
+	offset=offset or Point(0,0,0)
 	local points={}
 	local edges_f={}
 	local edges_r={}
 	local angle_step=2*math.pi/point_count
 	--place points
 	for i=1,point_count do
-		points[i]=Point(math.cos(angle_step*i)*radius,math.sin(angle_step*i)*radius,0)
+		points[i]=Point(math.cos(angle_step*i)*radius,math.sin(angle_step*i)*radius,0)+offset
 	end
 	print("Points placed")
 	--make faces
@@ -523,7 +523,9 @@ function model:export_triangles( tri_buffer,normal_buffer )
 	for v,_ in pairs(self.faces) do face_counter=face_counter+1 end
 	local face_count=face_counter
 	--if faces then face_count=#faces end
-
+	if tri_buffer.w<=face_count*3 or normal_buffer.w<=face_count*3 then
+		error(string.format("output too small: need %d supplied %d and %d",face_count*3,tri_buffer.w,normal_buffer.w))
+	end
 	local pt_mapping={} --point mapping for quick index lookup
 	--[[local count=1
 	for v,_ in pairs(mesh.points) do

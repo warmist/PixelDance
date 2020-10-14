@@ -5,18 +5,35 @@ require 'half_edge'
 	* halfedge/winged edge data and then manipulate (randomly?)
 	* plants growing?
 ]]
-local max_tri_count=1000
-cube=model()
-cube:gen_disk(4,math.sqrt(0.5))
-local f=cube:extrude(next(cube.faces),1)
-cube:triangulate_simple()
-
+local max_tri_count=10000
 max_point_count=max_tri_count*3 --each tri is 3 points
-tri_data=make_flt_buffer(max_point_count,1)
-tri_normals=make_flt_buffer(max_point_count,1)
+tri_data=tri_data or make_flt_buffer(max_point_count,1)
+tri_normals=tri_normals or make_flt_buffer(max_point_count,1)
 
-used_point_count=cube:export_triangles(tri_data,tri_normals)
+function gen_model(  )
+	local middle_part=0.4
+	local middle_width=0.96
 
+	local cube=model()
+	cube:gen_disk(5,math.sqrt(0.5),Point(0,0,0.5))
+	local f=next(cube.faces)
+	f=cube:extrude(f,(1-middle_part)/2)
+	f=cube:extrude(f,0.0)
+	for e in f:edges() do
+		e.point[1]=middle_width*e.point[1]
+		e.point[2]=middle_width*e.point[2]
+	end
+	f=cube:extrude(f,middle_part)
+	f=cube:extrude(f,0.0)
+	for e in f:edges() do
+		e.point[1]=e.point[1]/middle_width
+		e.point[2]=e.point[2]/middle_width
+	end
+	f=cube:extrude(f,(1-middle_part)/2)
+	cube:triangulate_simple()
+	used_point_count=cube:export_triangles(tri_data,tri_normals)
+end
+gen_model()
 
 max_byte_count=max_point_count*4*4 --*4 floats *4bytes each
 tri_buffer=tri_buffer or buffer_data.Make()
@@ -65,15 +82,19 @@ function gen_tris(  )
 	__unbind_buffer()
 end
 --TODO: finish matrix library
---gen_tris()
+
 function update_tri_buffers(  )
 	local byte_count=used_point_count*4*4
+	if byte_count>=max_byte_count then
+		error("Sorry buffer to small!")
+	end
 	tri_buffer:use()
 	tri_buffer:set(tri_data.d,byte_count)
 	tri_normals_buffer:use()
 	tri_normals_buffer:set(tri_normals.d,byte_count)
 end
 update_tri_buffers()
+
 draw_shader=shaders.Make(
 [[
 #version 330
@@ -99,7 +120,7 @@ mat4 gen_projection()
 	float aspect=1;
 
 	float near=0.1;
-	float far=5;
+	float far=2;
 	/*float right=0.5;
 	float top=0.5;*/
 
@@ -159,19 +180,14 @@ void main()
 	float ambient=1;
 
 	float v=0;
-	/*for(int i=0;i<4;i++)
-	for(int j=0;j<4;j++)
-	{
-		float xx=i/4.0-0.5;
-		float yy=j/4.0-0.5;
-		float g=world_view_matrix[i][j];
-		v+=g*value_inside(pos.x,xx,xx+0.25)*value_inside(pos.y,yy,yy+0.25);
-	}*/
-
-	color=vec4(1,abs(pos.y+0.5),abs(pos.x+0.5),1)*mix(diff,ambient,0.5)*(1-step(norm.z,0))+
+	//vec4 paint=vec4(1,abs(pos.y+0.5),abs(pos.x+0.5),1);
+	vec4 paint=vec4(0.89,0.86,0.84,1);
+	color=paint*mix(diff,ambient,0.5)*(1-step(norm.z,0))+
 		vec4(0.2)*ambient*(step(norm.z,0));
+	color.a=1;
 }
 ]])
+print("Used:",used_point_count)
 --print(world_view_matrix:tostring_full())
 time=time or 0
 function update(  )
@@ -209,7 +225,7 @@ function update(  )
 	draw_shader:use()
 	draw_shader:depth_test(true)
 	--draw_shader:set_m("world_view_matrix",world_view_matrix.d)
-	draw_shader:set("axis",1,0,0)
+	draw_shader:set("axis",math.cos(time*0.001),math.sin(time*0.001),0)
 	draw_shader:set("angle",time*0.01)
 	draw_shader:set("translate",0,0,-5)
 	tri_normals_buffer:use()

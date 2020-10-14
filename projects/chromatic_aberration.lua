@@ -88,7 +88,8 @@ function read_hd_png_buf( fname )
 	local old_version=false
 	if not old_version then
  		chan_count=b:u32()
- 		do_log_norm=b:u32()
+ 		do_log_norm=false --b:u32()
+ 		b:u32()
  	end
 	local background_buf=make_flt_buffer(sx,sy)
 	local background_minmax={}
@@ -139,8 +140,8 @@ function read_hd_png_buf( fname )
 	-- [[
 	for x=0,background_buf.w-1 do
 	for y=0,background_buf.h-1 do
-		tonemap2(background_buf:get(x,y),background_minmax[1],background_minmax[2])
-		--tonemap(background_buf:get(x,y),lavg)
+		--tonemap2(background_buf:get(x,y),background_minmax[1],background_minmax[2])
+		tonemap(background_buf:get(x,y),lavg)
 		--[[
 		local iv=background_buf:get(x,y).r
 		if log_norm then
