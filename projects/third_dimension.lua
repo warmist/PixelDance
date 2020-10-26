@@ -172,6 +172,21 @@ float value_inside(float x,float a,float b)
 {
 	return step(a,x)-step(b,x);
 }
+float WaveletNoise(vec2 p, float z, float k) {
+    // https://www.shadertoy.com/view/wsBfzK
+    float d=0.,s=1.,m=0., a;
+    for(float i=0.; i<4.; i++) {
+        vec2 q = p*s, g=fract(floor(q)*vec2(123.34,233.53));
+    	g += dot(g, g+23.234);
+		a = fract(g.x*g.y)*1e3;// +z*(mod(g.x+g.y, 2.)-1.); // add vorticity
+        q = (fract(q)-.5)*mat2(cos(a),-sin(a),sin(a),cos(a));
+        d += sin(q.x*10.+z)*smoothstep(.25, .0, dot(q,q))/s;
+        p = p*mat2(.54,-.84, .84, .54)+i;
+        m += 1./s;
+        s *= k; 
+    }
+    return d/m;
+}
 void main()
 {
 	vec4 light_dir=vec4(0,0,1,0);
@@ -181,7 +196,7 @@ void main()
 
 	float v=0;
 	//vec4 paint=vec4(1,abs(pos.y+0.5),abs(pos.x+0.5),1);
-	vec4 paint=vec4(0.89,0.86,0.84,1);
+	vec4 paint=vec4(0.89,0.86,0.84,1)*(WaveletNoise(vec2(pos.xy),pos.z*16,1.24)*0.5+0.5);
 	color=paint*mix(diff,ambient,0.5)*(1-step(norm.z,0))+
 		vec4(0.2)*ambient*(step(norm.z,0));
 	color.a=1;

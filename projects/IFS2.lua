@@ -41,7 +41,7 @@ local size=STATE.size
 local max_palette_size=50
 local need_clear=false
 local oversample=1
-local complex=false
+local complex=true
 local init_zero=false
 local sample_count=math.pow(2,20)
 
@@ -1231,13 +1231,51 @@ function random_math_power( steps,complications,seed )
 	cur_string=string.gsub(cur_string,"R",MT)
 	return cur_string
 end
+function rand_poly( degree )
+	local ret={}
+	for i=1,degree do
+		ret[i-1]=string.format("vec2(%g,%g)",1,0)--math.random()-0.5,math.random()-0.5)
+	end
+	return ret
+end
+function derivate( poly )
+	local ret={}
+	for i=2,#poly do
+		ret[i-2]=poly[i-1].."*"..i
+	end
+	return ret
+end
+function poly_to_string(poly)
+	local ret=""
+	local s_str="vec2(1,0)"
+	for i=0,#poly do
+		ret=ret..string.format("c_mul(%s,%s)",s_str,poly[i])
+		if i~=#poly then
+			ret=ret.."+"
+		end
+		s_str=string.format("c_mul(%s,s)",s_str)
+	end
+	return ret
+end
+function newton_fractal( degree )
+	local ret=""
+	local p=rand_poly(degree)
+	local pder=derivate(p)
+	local f1=poly_to_string(p)
+	local f2=poly_to_string(pder)
+	local fract=string.format("c_div(%s,%s)",f1,f2)
+	local prot="vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))"
+	ret=ret..string.format("s-c_mul(params.xy,%s)+c_mul(c_mul(params.zw,%s),p)",fract,prot)
+	return ret
+end
 animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
+	str_cmplx=newton_fractal(rand_complexity)
 	--str_cmplx=random_math_complex_const(rand_complexity,nil,{"s","p*vec2(move_dist,global_seed)","params.xy","params.zw"})
-	str_cmplx=random_math_complex_intervals(rand_complexity,2,nil,{"s","c_mul(p,vec2(move_dist,global_seed))","params.xy","params.zw"})
+	--str_cmplx=random_math_complex_intervals(rand_complexity,2,nil,{"s","c_mul(p,vec2(move_dist,global_seed))","params.xy","params.zw"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,15,"(R)/2+(R)*c_sin(vec2(2*M_PI,1)*(R)+R)")
 	--str_cmplx=random_math_fourier_complex(7,rand_complexity)
 	--str_cmplx=random_math_complex_series(4,random_math_complex_intervals(rand_complexity,5))
@@ -1313,8 +1351,8 @@ function rand_function(  )
 	--str_y="cos("..s.."-s.y*s.x)"
 	--str_x=random_math_centered(3,rand_complexity)
 	--str_y=random_math_centered(3,rand_complexity)
-	str_x=random_math(rand_complexity,nil,{"s.x/(1+global_seed)","p.y*move_dist","params.x","params.y"})
-	str_y=random_math(rand_complexity,nil,{"s.y/(1+global_seed*global_seed)","p.x*move_dist","params.z","params.w"})
+	str_x=random_math(rand_complexity,nil,{"s.x+cos(global_seed*M_PI*2)*(p.y+1.0)","p.y","params.x","params.y"})
+	str_y=random_math(rand_complexity,nil,{"s.y+sin(global_seed*M_PI*2)*(p.x-1.0)","p.x","params.z","params.w"})
 
 	--[[
 	local str1="p.x"
@@ -1370,6 +1408,15 @@ function rand_function(  )
 	str_preamble=""
 	str_postamble=""
 	--str_preamble="vec2 FT="..FT..";"
+	--[[
+	--str_preamble=str_preamble.."vec2 last_s=s;"
+	str_postamble=str_postamble.."s=mix(last_s,s,global_seed);"
+	--]]
+	--[[
+
+	--str_preamble=str_preamble.."p=p*0.8+vec2(cos(global_seed*M_PI*2)*p.x-sin(global_seed*M_PI*2)*p.y,cos(global_seed*M_PI*2)*p.y+sin(global_seed*M_PI*2)*p.x)*.2;"
+	str_preamble=str_preamble.."s=s*0.0+vec2(cos(global_seed*M_PI*2)*s.x-sin(global_seed*M_PI*2)*s.y,cos(global_seed*M_PI*2)*s.y+sin(global_seed*M_PI*2)*s.x)*0.6;"
+	--]]
 	--[[ gravity
 	str_preamble=str_preamble.."s*=1/move_dist;"
 	--]]
@@ -1417,15 +1464,17 @@ function rand_function(  )
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
 	--[[ polar gravity
+	--str_preamble=str_preamble.."vec2 np=p;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
+	--str_preamble=str_preamble.."float ang_xx=atan(last_s.y,last_s.x);vec2 np=s-p*vec2(cos(ang_xx),sin(ang_xx))/length(p);float npl=cos((sqrt(dot(np,np))-0.5)*M_PI*2)*0.5+1.25;npl*=npl;"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
-	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
+	str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
 	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seed*8))/(M_PI/2);s=last_s+ds*((global_seed*7)*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
-	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(p,p));s=last_s+ds*(move_dist*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/npl);s=last_s+ds*(move_dist*vv/ls);"
 	--]]
 	--[[ move towards circle
 	str_postamble=str_postamble.."vec2 tow_c=s+vec2(cos(normed_iter*M_PI*2),sin(normed_iter*M_PI*2))*move_dist;s=(dot(tow_c,s)*tow_c/length(tow_c));"
@@ -1447,8 +1496,8 @@ function rand_function(  )
 	str_preamble=str_preamble.."s=s-p;"
 	--]]
 	--[[ cosify
-	--str_preamble=str_preamble.."s=cos(s);"
-	str_preamble=str_preamble.."s=c_cos(s);"
+	str_preamble=str_preamble.."s=cos(s-p)*move_dist+p;"
+	--str_preamble=str_preamble.."s=c_cos(s);"
 	--]]
 	--[[ tanify
 	--str_preamble=str_preamble.."s=tan(s);"
@@ -1465,6 +1514,14 @@ function rand_function(  )
 	--[[ invert-ination
 	str_preamble=str_preamble.."s=c_inv(s);"
 	str_postamble=str_postamble.."s=c_inv(s);"
+	--]]
+	--[[ Chebyshev polynomial
+	str_preamble=str_preamble.."s=(move_dist+1)*acos(s+p);"
+	str_postamble=str_postamble.."s=cos(s)-p;"
+	--]]
+	--[[ Chebyshev polynomial
+	str_preamble=str_preamble.."s=(move_dist+1)*cos(s);"
+	str_postamble=str_postamble.."s=acos(s);"
 	--]]
 	--[[ Chebyshev polynomial
 	str_preamble=str_preamble.."s=floor(global_seed*move_dist+1)*c_acos(s);"
@@ -1499,10 +1556,10 @@ function rand_function(  )
 	--str_preamble=str_preamble.."s=vec2(cos(p.y)*s.x-sin(p.y)*s.y,cos(p.y)*s.y+sin(p.y)*s.x);"
 	str_preamble=str_preamble.."s=vec2(cos(normed_iter*M_PI*2)*s.x-sin(normed_iter*M_PI*2)*s.y,cos(normed_iter*M_PI*2)*s.y+sin(normed_iter*M_PI*2)*s.x);"
 	--]]
-	-- [[ const-delta-like
+	--[[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
-	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
-	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
+	str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seed*move_dist+1)/move_dist);"
@@ -1528,10 +1585,10 @@ function rand_function(  )
 	str_postamble=str_postamble.."s=from_polar(s)+p;"
 	--]]
 	--[[ logitify POST
-	str_postamble=str_postamble.."s=log(abs(s));"
+	str_postamble=str_postamble.."s=log(abs(s))*move_dist;"
 	--]]
 	--[[ exp post
-	str_postamble=str_postamble.."s=exp(s);"
+	str_preamble=str_preamble.."s=exp(s);"
 	--]]
 	--[[ unrotate POST
 	--str_postamble=str_postamble.."s=vec2(cos(-params.z)*s.x-sin(-params.z)*s.y,cos(-params.z)*s.y+sin(-params.z)*s.x);"
@@ -2655,7 +2712,7 @@ end
 function generate_shuffling( num_steps )
 	global_seed_shuffling={}
 	--[[ random centers with spread around
-	local spread=0.0005
+	local spread=0.00005
 	local num_spread=10
 	local id=1
 	for i=1,num_steps do
@@ -2688,7 +2745,7 @@ function generate_shuffling( num_steps )
 	end
 	--]=]
 	--]]
-	-- [[ add shufflings of the original
+	--[[ add shufflings of the original
 	local num_shuffles=5
 	local tmp=global_seed_shuffling
 	local ret={}
