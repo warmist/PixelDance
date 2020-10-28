@@ -20,6 +20,7 @@ IFS:
 	* Some way of guiding/drawing IFS target
 		* maybe flow/vector fields with random movement(?) functions or random physics
 		* maybe some sort of texture loading with texture being sdf
+	* zoom-regen-zoom-etc...
 
 Cellular automatton and stuff:
 	* want to grow plants like https://twitter.com/lorenschmidt/status/1069559544471273472

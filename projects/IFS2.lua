@@ -17,6 +17,7 @@ local ffi = require("ffi")
 			- do real (from chrom. abber.) tonemapping
 			- maybe 2d map of colors?
 			- multiplicative blending for "absorption" like thing
+		save hd buffer with tonemapping applied
 --]]
 
 win_w=win_w or 0
@@ -855,7 +856,7 @@ local normal_symbols={
 local terminal_symbols_complex={
 ["s"]=3,["p"]=3,
 ["params.xy"]=1,["params.zw"]=1,
-["(c_one()*normed_iter)"]=0.05,["(c_i()*normed_iter)"]=0.05,["c_one()"]=0.1,["c_i()"]=0.1,
+--["(c_one()*normed_iter)"]=0.05,["(c_i()*normed_iter)"]=0.05,["c_one()"]=0.1,["c_i()"]=0.1,
 }
 local terminal_symbols_complex_const={
 ["c_one()"]=1,["c_i()"]=0.1,
@@ -1234,7 +1235,20 @@ end
 function rand_poly( degree )
 	local ret={}
 	for i=1,degree do
-		ret[i-1]=string.format("vec2(%g,%g)",1,0)--math.random()-0.5,math.random()-0.5)
+		local x=1
+		local y=0
+		--[[
+		x=math.random()-0.5
+		y=math.random()-0.5
+		--]]
+		-- [[
+		x=math.random()-0.5
+		y=math.sqrt(1-x*x)
+		if math.random()>0.5 then
+			y=-y
+		end
+		--]]
+		ret[i-1]=string.format("vec2(%g,%g)",x,y)--math.random()-0.5,math.random()-0.5)
 	end
 	return ret
 end
@@ -1265,15 +1279,25 @@ function newton_fractal( degree )
 	local f2=poly_to_string(pder)
 	local fract=string.format("c_div(%s,%s)",f1,f2)
 	local prot="vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))"
-	ret=ret..string.format("s-c_mul(params.xy,%s)+c_mul(c_mul(params.zw,%s),p)",fract,prot)
+	--ret=ret..string.format("s-c_mul(c_mul(params.xy,%s),%s)+c_mul(params.zw,p)",prot,fract)
+	ret=ret..string.format("s-c_mul(params.xy,%s)+c_mul(params.zw,p)",fract)
 	return ret
 end
 animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
-	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
-	str_cmplx=newton_fractal(rand_complexity)
+	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
+	local tbl_insert={"s","p*vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"}
+	local point_count=7
+	for i=1,point_count do
+		local v=(i-1)/point_count
+		v=v*math.pi*2
+		local r=1
+		table.insert(tbl_insert,string.format("vec2(%g,%g)",math.cos(v)*r,math.sin(v)*r))
+	end
+	str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert)
+	--str_cmplx=newton_fractal(rand_complexity)
 	--str_cmplx=random_math_complex_const(rand_complexity,nil,{"s","p*vec2(move_dist,global_seed)","params.xy","params.zw"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,2,nil,{"s","c_mul(p,vec2(move_dist,global_seed))","params.xy","params.zw"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,15,"(R)/2+(R)*c_sin(vec2(2*M_PI,1)*(R)+R)")
@@ -1463,18 +1487,19 @@ function rand_function(  )
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	--[[ polar gravity
-	--str_preamble=str_preamble.."vec2 np=p;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
+	-- [[ polar gravity
+	--str_preamble=str_preamble.."vec2 np=s;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
+	str_preamble=str_preamble.."vec2 np=p;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."float ang_xx=atan(last_s.y,last_s.x);vec2 np=s-p*vec2(cos(ang_xx),sin(ang_xx))/length(p);float npl=cos((sqrt(dot(np,np))-0.5)*M_PI*2)*0.5+1.25;npl*=npl;"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
-	str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
+	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
 	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seed*8))/(M_PI/2);s=last_s+ds*((global_seed*7)*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
-	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/npl);s=last_s+ds*(move_dist*vv/ls);"
+	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/npl);s=last_s+ds*(move_dist*vv/ls);"
 	--]]
 	--[[ move towards circle
 	str_postamble=str_postamble.."vec2 tow_c=s+vec2(cos(normed_iter*M_PI*2),sin(normed_iter*M_PI*2))*move_dist;s=(dot(tow_c,s)*tow_c/length(tow_c));"
