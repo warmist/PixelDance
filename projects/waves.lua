@@ -1,5 +1,6 @@
 require "common"
 --basically implementing: http://hplgit.github.io/num-methods-for-PDEs/doc/pub/wave/html/._wave006.html
+-- more resource: https://www.nature.com/articles/s41598-018-29244-6
 --[[
 	TODO:
 		actually implement dx/dy that would help with bogus units problem
