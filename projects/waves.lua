@@ -182,7 +182,8 @@ void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float lv=texture(values,normed).x*mult;
 	lv=abs(lv);
-	//lv=1-exp(-lv*lv/25);
+	//lv=1-exp(-lv*lv/1);
+	//lv*=lv;
 	color=vec4(lv,lv,lv,1);
 }
 ]==]
@@ -379,6 +380,13 @@ float n4rand_inv( vec2 n )
 float sdCircle( vec2 p, float r )
 {
   return length(p) - r;
+}
+float sdCircle2( vec2 p, float r )
+{
+	float a=(atan(p.y,p.x)+M_PI)/(2*M_PI);
+	a*=8;
+	a=abs(mod(a,1)-0.5);
+  	return length(p) - r*(0.6+a*0.4);
 }
 float sdBox( in vec2 p, in vec2 b )
 {
@@ -703,7 +711,7 @@ float func(vec2 pos)
 		*/
 		return sin(time*fn1+val*fr2);
 	#endif
-	#if 1
+	#if 0
 	//if(time<max_time)
 		return (
 		ab_vec.x*sin(time*fn1
@@ -716,13 +724,27 @@ float func(vec2 pos)
 		)*cos(pos.y*M_PI*nm_vec.y)
 		);
 	#endif
-
 	#if 0
+		float r2=length(pos);
+		float a2=atan(pos.y,pos.x);
+	//if(time<max_time)
+		return (
+		ab_vec.x*sin(time*fn1
+		//+pos.x*M_PI*2*nm_vec.x
+		//+pos.y*M_PI*2*nm_vec.y
+		)*cos(r2*M_PI*nm_vec.x)+
+		ab_vec.y*sin(time*fn2
+		//+pos.x*M_PI*2*nm_vec.x
+		//+pos.y*M_PI*2*nm_vec.y
+		)*cos(a2*M_PI*nm_vec.y)
+		);
+	#endif
+	#if 1
 
 
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.3;
 	//if(time<max_time)
-	if(abs(length(pos)-0.8)<0.005)
+	if(abs(length(pos)-0.6)<0.005)
 		return ab_vec.x*sin(-time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y)+
 			   ab_vec.y*sin(-time*fr2*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
 	//if(length(pos+vec2(0,0.5)+p)<0.005)
@@ -733,7 +755,7 @@ float func(vec2 pos)
 	#if 0
 
 
-	if(  length(pos+vec2(0.97,0.00))<0.005
+	if(  length(pos+vec2(0,0.00))<0.005
 	  //|| length(pos+vec2(-0.1,0.2))<0.005
 	  )
 	//if(time<max_time)
@@ -969,7 +991,7 @@ void main(){
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
 	//float sh_v=1-damaged_circle(pos.xy);
 	//float sh_v=sh_wavy(pos.xy,max_d);
-	float sh_v=sdCircle(pos.xy,0.98);
+	float sh_v=sdCircle2(pos.xy,0.98);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=leaf(pos.xy,w);
 	//float sh_v=chalice(pos.xy,w);
