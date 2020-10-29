@@ -180,7 +180,8 @@ uniform float mult;
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float lv=texture(values,normed).x*mult;
-	lv=1-exp(-lv*lv/25);
+	lv=abs(lv);
+	//lv=1-exp(-lv*lv/25);
 	color=vec4(lv,lv,lv,1);
 }
 ]==]
@@ -650,24 +651,26 @@ float func(vec2 pos)
 	float rad=length(pos);
 	float fr=freq;
 	float fr2=freq2;
-	//fr*=mix(min_freq,max_freq,time/max_time);
+	float fn1=fr*M_PI/1000;
+	float fn2=fr2*M_PI/1000;
+
 	float max_a=5;
 	float r=0.08;
 	#if 0
-		if(time<max_time)
+		//if(time<max_time)
 			//if(pos.x<-0.35)
 				//return (hash(time*freq2)*hash(pos*freq))/2;
-				return ab_vec.x*n4rand(pos*fr);
+				return ab_vec.x*n4rand(pos*fr2);
 	#endif
 	#if 0
 		//if(time<max_time)
 		//if(pos.x<-0.35)
 			return (
-		ab_vec.x*sin(time*fr*M_PI/1000
+		ab_vec.x*sin(fn1
 		//+pos.x*M_PI*2*nm_vec.x
 		//+pos.y*M_PI*2*nm_vec.y
 		)*cos(pos.x*M_PI*nm_vec.x)+
-		ab_vec.y*sin(time*fr2*M_PI/1000
+		ab_vec.y*sin(fn2
 		//+pos.x*M_PI*2*nm_vec.x
 		//+pos.y*M_PI*2*nm_vec.y
 		)*cos(pos.y*M_PI*nm_vec.y)
@@ -682,9 +685,9 @@ float func(vec2 pos)
 		if(length(pos+dv)<0.005)
 		//if(time<max_time)
 			return (
-			ab_vec.x*sin(time*fr*M_PI/1000+ang)
-			+ab_vec.y*sin(time*fr2*M_PI/1000+ang)
-										);
+			ab_vec.x*sin(fn1*time+ang)
+			+ab_vec.y*sin(fn2*time+ang)
+			);
 	}
 	#endif
 	#if 0
@@ -697,23 +700,23 @@ float func(vec2 pos)
 		val=gain(val,v_gain);
 		val=pow(val,vec4(v_gamma));
 		*/
-		return sin(time*fr*M_PI/1000+val*fr2);
+		return sin(time*fn1+val*fr2);
 	#endif
-	#if 0
+	#if 1
 	//if(time<max_time)
 		return (
-		ab_vec.x*sin(time*fr*M_PI/1000
+		ab_vec.x*sin(time*fn1
 		//+pos.x*M_PI*2*nm_vec.x
 		//+pos.y*M_PI*2*nm_vec.y
 		)*cos(pos.x*M_PI*nm_vec.x)+
-		ab_vec.y*sin(time*fr2*M_PI/1000
+		ab_vec.y*sin(time*fn2
 		//+pos.x*M_PI*2*nm_vec.x
 		//+pos.y*M_PI*2*nm_vec.y
 		)*cos(pos.y*M_PI*nm_vec.y)
-		)*0.00005;
+		);
 	#endif
 
-	#if 1
+	#if 0
 
 
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.3;
@@ -727,11 +730,16 @@ float func(vec2 pos)
 
 	#endif
 	#if 0
-	if(  length(pos+vec2(0,0.00))<0.005
+
+
+	if(  length(pos+vec2(0.97,0.00))<0.005
 	  //|| length(pos+vec2(-0.1,0.2))<0.005
 	  )
 	//if(time<max_time)
-		return ab_vec.x*sin(time*freq*M_PI/1000);
+		return ab_vec.x*sin(time*fn1)+ab_vec.y*sin(time*fn2);
+		//return ab_vec.x*sin(time*fn1)/(time*fn1+1);
+		//return ab_vec.x*(n4rand(pos*fr+vec2(time*freq*M_PI/1000,0))*2-1);
+		//return ab_vec.x*sin(0.5*(fn2-fn1)*(time+cos(ab_vec.y*time)/ab_vec.y)+fn1*time);
 	#endif
 	//return 0.1;//0.0001*sin(time/1000)/(1+length(pos));
 	return 0;
@@ -960,7 +968,7 @@ void main(){
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
 	//float sh_v=1-damaged_circle(pos.xy);
 	//float sh_v=sh_wavy(pos.xy,max_d);
-	//float sh_v=sdCircle(pos.xy,1);
+	float sh_v=sdCircle(pos.xy,0.98);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=leaf(pos.xy,w);
 	//float sh_v=chalice(pos.xy,w);
@@ -970,7 +978,7 @@ void main(){
 	//float sh_v=sh_jaws(pos.xy,w);
 	//float sh_v=sh_polyhedron(pos.xy*vec2(0.2,1),4,0.2,0,w);
 	//float sh_v=ankh(pos.xy,w);
-	float sh_v=radial_shape(pos.xy);
+	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
 #if 0
 	vec4 sh_v2;
@@ -1225,7 +1233,7 @@ function draw_texture( id )
 	add_shader:set_i("values",0)
 	add_shader:set("mult",1)
 	local need_draw=false
-	if config.accumulate then
+	if config.accumulate and not config.pause then
 		add_shader:blend_add()
 		--add_shader:blend_default()
 		--draw_shader:set("in_col",config.color[1],config.color[2],config.color[3],config.color[4])
