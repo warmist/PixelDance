@@ -821,7 +821,11 @@ function save_img()
 	config_serial=config_serial..string.format("str_postamble=%q\n",str_postamble)
 	config_serial=config_serial..palette_serialize()
 	img_buf:read_frame()
-	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
+	if animate then
+		img_buf:save(string.format("video/saved_%d.png",os.time(os.date("!*t"))),config_serial)
+	else
+		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
+	end
 end
 
 
@@ -1288,14 +1292,17 @@ function rand_function(  )
 	local s=random_math(rand_complexity)
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
-	local tbl_insert={"s","length(p)*vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"}
-	local point_count=7
+	--local tbl_insert={"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seed)","vec2(cos(length(p)*M_PI*4+global_seed),sin(length(p)*M_PI*4+global_seed))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
+	local tbl_insert={"s","p","params.xy","params.zw","mix(vec2(s.x,p.y),vec2(p.x,s.y),global_seed)"}
+	-- [[
+	local point_count=15
 	for i=1,point_count do
 		local v=(i-1)/point_count
 		v=v*math.pi*2
-		local r=1
+		local r=0.1
 		table.insert(tbl_insert,string.format("vec2(%g,%g)",math.cos(v)*r,math.sin(v)*r))
 	end
+	--]]
 	str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert)
 	--str_cmplx=newton_fractal(rand_complexity)
 	--str_cmplx=random_math_complex_const(rand_complexity,nil,{"s","p*vec2(move_dist,global_seed)","params.xy","params.zw"})
@@ -1465,7 +1472,7 @@ function rand_function(  )
 
 	--]]
 
-	--[[ complex seriesize
+	-- [[ complex seriesize
 	local series_size=5
 	local rand_offset=0.01
 	local rand_size=0.025
@@ -3059,8 +3066,8 @@ function visit_iter()
 	__render_to_window()
 end
 
-local draw_frames=600
-local frame_count=30
+local draw_frames=1200
+local frame_count=300
 function update_scale( new_scale )
 	local old_scale=config.scale
 
@@ -3076,7 +3083,9 @@ end
 function lerp( x,y,v )
 	return x*(1-v)+y*v
 end
-
+function ncos( v )
+	return math.cos(v)*0.5+0.5
+end
 function update_animation_values( )
 	local a=config.animation*math.pi*2
 	--update_scale(math.cos(a)*0.25+0.75)
@@ -3090,8 +3099,18 @@ function update_animation_values( )
 	]]
 	--gen_palette()
 	--rand_function()
-	config.move_dist=lerp(0.0001,0.1,config.animation)
-	config.gamma=lerp(0.4,0.89,config.animation)
+	global_seed_shuffling[1]=ncos(a*1+12.8)*0.5+0.5
+	global_seed_shuffling[2]=ncos(a*2+31.1)*0.5
+	global_seed_shuffling[3]=ncos(a*3+1)*0.125
+	global_seed_shuffling[4]=ncos(a*4+77.014)*0.125
+	global_seed_shuffling[5]=ncos(a*1+1.34)*0.75+0.25
+	global_seed_shuffling[6]=ncos(a*2+3.4)*0.9+0.1
+	global_seed_shuffling[7]=ncos(a*3+0.97)*0.1+0.9
+	global_seed_shuffling[8]=ncos(a*2)*0.3+0.3
+	--config.move_dist=lerp(0.0001,2,config.animation)
+	--config.gamma=lerp(0.4,0.89,config.animation)
+	--config.IFS_steps=lerp(1,1000,config.animation)
+	--draw_frames=lerp(100,1000,config.animation)
 end
 
 function update_real(  )
