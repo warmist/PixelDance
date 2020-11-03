@@ -1,31 +1,4 @@
---[[ Example:
-imgui_config=make_config{
-	{"debug_display",false},
-	{"complexity",0.5,type="float"}, --implied min=0,max=1
-	{"shapes","3"},
-	{"w",3,type="int",min=1,max=5},
-}
-
-Begin
-End
-Bullet
-BulletText
-RadioButton
-CollapsingHeader
-SliderFloat
-SliderAngle
-SliderInt
-InputText
-]]
-function make_config(tbl,defaults)
-	local ret={}
-	defaults=defaults or {}
-	for i,v in ipairs(tbl) do
-		ret[v[1]]=defaults[v[1]] or v[2]
-		ret[i]=v
-	end
-	return ret
-end
+require "common"
 local max_size=math.min(STATE.size[1],STATE.size[2])/2
 img_buf=img_buf or buffers.Make("color")
 tick=tick or 0
@@ -37,55 +10,161 @@ config=make_config({
 	{"ticking",100,type="float",min=1,max=10000},
 	{"ticking2",100,type="float",min=1,max=10000},
 	{"dist",100,type="float",min=1,max=1000},
+	{"dim",1,type="int",min=1,max=40},
 },config)
 image_no=image_no or 0
-function draw_config( tbl )
-	for _,entry in ipairs(tbl) do
-		local name=entry[1]
-		local v=tbl[name]
-		local k=name
-		if type(v)=="boolean" then
-			if imgui.Button(k) then
-				tbl[k]=not tbl[k]
-			end
-		elseif type(v)=="string" then
-			local changing
-			changing,tbl[k]=imgui.InputText(k,tbl[k])
-			entry.changing=changing
-		else --if type(v)~="table" then
-			
-			if entry.type=="int" then
-				local changing
-				changing,tbl[k]=imgui.SliderInt(k,tbl[k],entry.min or 0,entry.max or 100)
-				entry.changing=changing
-			elseif entry.type=="float" then
-				local changing
-				changing,tbl[k]=imgui.SliderFloat(k,tbl[k],entry.min or 0,entry.max or 1)
-				entry.changing=changing
-			elseif entry.type=="angle" then
-				local changing
-				changing,tbl[k]=imgui.SliderAngle(k,tbl[k],entry.min or 0,entry.max or 360)
-				entry.changing=changing
-			elseif entry.type=="color" then
-				local changing
-				changing,tbl[k]=imgui.ColorEdit4(k,tbl[k],true)
-				entry.changing=changing
-			end
-		
+path =path or {}
+function midpoint( p1,p2 )
+	local ret={}
+	for i,v in ipairs(p1) do
+		ret[i]=(p1[i]+p2[i])/2
+	end
+	return ret
+end
+function lerp( p1,p2,v )
+	local ret={}
+	for i,_ in ipairs(p1) do
+		ret[i]=p1[i]*(1-v)+p2[i]*v
+	end
+	return ret
+end
+function dist( p1,p2 )
+	local s=0
+	for i,v in ipairs(p1) do
+		local d=p1[i]-p2[i]
+		s=s+d*d
+	end
+	return math.sqrt(s)
+end
+function path_len(  )
+	local l=0
+	for i,v in ipairs(path) do
+		local inext=i+1
+		if inext>#path then
+			inext=1
+		end
+		l=l+dist(path[i],path[inext])
+	end
+	return l
+end
+function pick_l_weighted( t )
+	local l=0
+	for i,v in ipairs(path) do
+		local inext=i+1
+		if inext>#path then
+			inext=1
+		end
+		l=l+dist(path[i],path[inext])
+	end
+	t=t*l
+	local nl=0
+	for i,v in ipairs(path) do
+		local inext=i+1
+		if inext>#path then
+			inext=1
+		end
+		nl=nl+dist(path[i],path[inext])
+		if t<nl then
+			return i
 		end
 	end
+	return #path
 end
-function pos( t )
-	local k=config.k
-	local l=config.l
-	return config.R*((1-k)*math.cos(t)+l*k*math.cos(((1-k)/k)*t)),
-		   config.R*((1-k)*math.sin(t)-l*k*math.sin(((1-k)/k)*t))
+local dimensionality=40
+function gen_path(  )
+	local num_dim=dimensionality
+	--local path_len=10
+	path={}
+	for i=1,4 do
+		local p={}
+		for j=1,num_dim do
+			p[j]=math.random()
+		end
+		path[i]=p
+	end
+	for i=1,50 do
+		local t=pick_l_weighted(math.random())
+		local p1=path[t]
+		local tn=t+1
+		if tn>#path then
+			tn=1
+		end
+		local p2=path[tn]
+		local np=midpoint(p1,p2)
+		for j=1,num_dim do
+			np[j]=np[j]+(math.random()-0.5)*0.05
+		end
+		table.insert(path,tn,np)
+	end
+	print(path_len())
+end
+
+
+function path_pos_org( t )
+	if #path<2 then return {0,0} end
+	local p_id=t*#path+1
+	local p_low=math.floor(p_id)
+	local p_high=p_low+1
+	if p_high>#path then p_high=1 end
+	return lerp(path[p_low],path[p_high],p_id-p_low)
+end
+function path_pos( t )
+	if #path<2 then return {0,0} end
+	local p_id=t*#path+1
+	local p_mid=math.floor(p_id)
+	local p_low=p_mid-1
+
+	if p_low<1 then p_low=#path end
+	local p_high=p_mid+1
+	if p_high>#path then p_high=1 end
+	--if math.random()>0.99999 then
+	--	print(t,p_id,p_low,p_mid,p_high)
+	--end
+	local p1=path[p_mid]
+	local p0=midpoint(path[p_low],p1)
+	local p2=midpoint(p1,path[p_high])
+	local v=p_id-p_mid
+	local pp=lerp(p0,p2,v)
+	return lerp(pp,p1,0.5-(4*v*v-4*v+1)*0.5)
+end
+step=0
+function draw_path(  )
+	local c_u8={config.color[1]*255,config.color[2]*255,config.color[3]*255,config.color[4]*255}
+	local c2={100,100,100,255}
+	for i=1,config.ticking2 do
+		step=step+1/config.ticking
+
+		if step>1 then step=step-1 end
+		local p
+		local x
+		local y
+		local dx = config.dim
+		local dy = config.dim+1
+		if dy> dimensionality then
+			dy=1
+		end
+		do
+
+			p=path_pos(step)
+			x=math.floor(p[dx]*STATE.size[1])
+			y=math.floor(p[dy]*STATE.size[2])
+			img_buf:set(x,y,c_u8)
+		end
+		--[[
+		do
+			p=path_pos_org(step)
+			x=math.floor(p[dx]*STATE.size[1])
+			y=math.floor(p[dy]*STATE.size[2])
+			img_buf:set(x,y,c2)
+		end
+		--]]
+	end
 end
 function update(  )
 	imgui.Begin("Hello")
 	local s=STATE.size
 	draw_config(config)
-	local c_u8={config.color[1]*255,config.color[2]*255,config.color[3]*255,config.color[4]*255}
+
 	if imgui.Button("Clear image") then
 		print("Clearing:"..s[1].."x"..s[2])
 		for x=0,s[1]-1 do
@@ -94,23 +173,11 @@ function update(  )
 			end
 		end
 	end
-	imgui.SameLine()
-	if imgui.Button("Save image") then
-		img_buf:save("saved_"..image_no..".png","Saved by PixelDance")
-		image_no=image_no+1
+	if imgui.Button("Gen") then
+		gen_path()
 	end
 	local eps=0.000001
 	imgui.End()
-	for i=1,config.ticking do
-		local x,y=pos(tick/config.ticking2);
-		local x2,y2=pos(tick/config.ticking2+eps);
-		local dx=x2-x
-		local dy=y2-y
-		local dl=math.sqrt(dx*dx+dy*dy)
-		local tx=dx/dl
-		local ty=dy/dl
-		img_buf:set(x+tx*config.dist+s[1]/2,y+ty*config.dist+s[2]/2,c_u8)
-		tick=tick+1
-	end
+	draw_path()
 	img_buf:present()
 end
