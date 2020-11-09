@@ -1,4 +1,5 @@
 require 'common'
+require 'splines'
 local size=STATE.size
 visits=visits or make_flt_buffer(size[1],size[2])
 
@@ -7,7 +8,6 @@ function resize( w,h )
 end
 
 pos=pos or {STATE.size[1]/2,STATE.size[2]/2}
-
 
 local log_shader=shaders.Make[==[
 #version 330
@@ -85,6 +85,9 @@ end
 function resize( w,h )
 	image=make_image_buffer(w,h)
 end
+cspline=Catmull(gen_points(10,3))
+current_spline_t=0
+local col={math.random(),math.random(),math.random()}
 function update(  )
 	__no_redraw()
 	__clear()
@@ -92,24 +95,25 @@ function update(  )
 	local y=pos[2]
 	local w=STATE.size[1]
 	local h=STATE.size[2]
-	local col={math.random(),math.random(),math.random()}
 	local rand_col=0.00001
-	for i=1,1000000 do
-		local c=visits:get(x,y)
-		for i=1,3 do
-			col[i]=col[i]+math.random()*rand_col-rand_col/2
-			if col[i] > 1 then col[i]=1 end
-			if col[i] < 0 then col[i]=0 end
-		end
-		c.r=c.r+col[1]
-		c.g=c.g+col[2]
-		c.b=c.b+col[3]
+	for i=1,100000 do
+		local c=visits:get(math.floor(x),math.floor(y))
+		local col
+		local step_angle=math.random()
+		--col,current_spline_t=step_along_spline(cspline,current_spline_t,0.000001,0.0000001)
+		col=cspline:get(current_spline_t)
+		--col=cspline:get(step_angle) -- :<
+		current_spline_t=current_spline_t+0.000001
+		if current_spline_t>1 then current_spline_t=current_spline_t-1 end
+		c.r=col[1]*255
+		c.g=col[2]*255
+		c.b=col[3]*255
 
 		c.a=1
-		if math.random()>0.5 then
-			x=x+math.random(-1,1)
+		if step_angle>0.5 then
+			x=x+math.random(-1,1)*0.3
 		else
-			y=y+math.random(-1,1)
+			y=y+math.random(-1,1)*0.3
 		end
 		if x<0 then x=w-2 end
 		if y<0 then y=h-2 end

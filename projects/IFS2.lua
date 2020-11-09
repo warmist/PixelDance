@@ -1472,7 +1472,7 @@ function rand_function(  )
 
 	--]]
 
-	-- [[ complex seriesize
+	--[[ complex seriesize
 	local series_size=5
 	local rand_offset=0.01
 	local rand_size=0.025
@@ -1494,9 +1494,10 @@ function rand_function(  )
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	--[[ polar gravity
+	-- [[ polar gravity
 	--str_preamble=str_preamble.."vec2 np=s;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
-	str_preamble=str_preamble.."vec2 np=p;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
+	--str_preamble=str_preamble.."vec2 np=p;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
+	str_preamble=str_preamble.."vec2 np=c_mul(p-s,last_s);float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."float ang_xx=atan(last_s.y,last_s.x);vec2 np=s-p*vec2(cos(ang_xx),sin(ang_xx))/length(p);float npl=cos((sqrt(dot(np,np))-0.5)*M_PI*2)*0.5+1.25;npl*=npl;"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"

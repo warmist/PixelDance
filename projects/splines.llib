@@ -1,0 +1,93 @@
+require "common"
+
+function gen_points( pcount, dim_count, offset)
+	local num_dim=dim_count
+	offset=offset or 0.07
+	pcount=pcount or 6
+	local path={}
+	for i=1,pcount do
+		local p={}
+		for j=1,num_dim do
+			p[j]=math.random()*(1-offset*2)+offset
+		end
+		path[i]=p
+	end
+	return path
+end
+Catmull = class(function(self,points,alpha)
+  	self.alpha=alpha or 0.5
+  	self.path=points
+ end)
+local function dist_sq( p1,p2 )
+	local s=0
+	for i,v in ipairs(p1) do
+		local d=p1[i]-p2[i]
+		s=s+d*d
+	end
+	return s
+end
+local function dist( p1,p2 )
+	return math.sqrt(dist_sq(p1,p2))
+end
+local function catmull_gett( t,alpha,p0,p1 )
+	local a=dist_sq(p0,p1)
+	local b=math.pow(a,alpha*0.5)
+	return b + t
+end
+local function mult_add_points( a0,p0,a1,p1 )
+	local ret={}
+	for i,_ in ipairs(p0) do
+		ret[i]=p0[i]*a0+p1[i]*a1
+	end
+	return ret
+end
+local function apply_catmull( p0,p1,p2,p3,t,alpha )
+	local t0=0
+	local t1=catmull_gett(t0,alpha,p0,p1)
+	local t2=catmull_gett(t1,alpha,p1,p2)
+	local t3=catmull_gett(t2,alpha,p2,p3)
+
+	t=t1*(1-t)+t2*t
+
+	local A1=mult_add_points((t1-t)/(t1-t0),p0,(t-t0)/(t1-t0),p1)
+	local A2=mult_add_points((t2-t)/(t2-t1),p1,(t-t1)/(t2-t1),p2)
+	local A3=mult_add_points((t3-t)/(t3-t2),p2,(t-t2)/(t3-t2),p3)
+
+	local B1=mult_add_points((t2-t)/(t2-t0),A1,(t-t0)/(t2-t0),A2)
+	local B2=mult_add_points((t3-t)/(t3-t1),A2,(t-t1)/(t3-t1),A3)
+
+	local C=mult_add_points((t2-t)/(t2-t1),B1,(t-t1)/(t2-t1),B2)
+
+	return C
+end
+function Catmull:get( t )
+	if #self.path<3 then return {0,0} end
+	local path_step_count=#self.path
+	local p_id=t*(path_step_count)
+	local p_low=math.floor(p_id)
+	local v=p_id-p_low
+	return apply_catmull(
+		self.path[(p_low)%path_step_count+1],
+		self.path[(p_low+1)%path_step_count+1],
+		self.path[(p_low+2)%path_step_count+1],
+		self.path[(p_low+3)%path_step_count+1],v,self.alpha)
+end
+
+function step_along_spline(spline,start, min_dist, eps)
+	local max_iter=1000
+	local cur_dist=0
+	local p=spline:get(start)
+	for i=1,max_iter do
+		local old_p=p
+
+		start=start+eps
+		if start>1 then start=start-1 end
+
+		p=spline:get(start)
+		cur_dist=cur_dist+dist(old_p,p)
+		if cur_dist>min_dist then
+			return p,start,i
+		end
+	end
+	return p,start,max_iter
+end
