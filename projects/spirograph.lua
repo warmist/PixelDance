@@ -1,6 +1,9 @@
 require "common"
+require "splines"
+local luv=require "colors_luv"
 local max_size=math.min(STATE.size[1],STATE.size[2])/2
 img_buf=img_buf or buffers.Make("color")
+depth_buf=depth_buf or make_float_buffer(STATE.size[1],STATE.size[2])
 tick=tick or 0
 config=make_config({
 	{"color",{0.5,0,0,1},type="color"},
@@ -204,117 +207,10 @@ function path_pos( t )
 	local pp=lerp(p0,p2,v)
 	return lerp(pp,p1,0.5-(4*v*v-4*v+1)*0.5)
 end
-function catmull_gett( t,alpha,p0,p1 )
-	local a=dist_sq(p0,p1)
-	local b=math.pow(a,alpha*0.5)
-	return b + t
-end
-function mult_add_points( a0,p0,a1,p1 )
-	local ret={}
-	for i,_ in ipairs(p0) do
-		ret[i]=p0[i]*a0+p1[i]*a1
-	end
-	return ret
-end
-function apply_catmull( p0,p1,p2,p3,t,alpha )
-	local t0=0
-	local t1=catmull_gett(t0,alpha,p0,p1)
-	local t2=catmull_gett(t1,alpha,p1,p2)
-	local t3=catmull_gett(t2,alpha,p2,p3)
 
-	t=t1*(1-t)+t2*t
 
-	local A1=mult_add_points((t1-t)/(t1-t0),p0,(t-t0)/(t1-t0),p1)
-	local A2=mult_add_points((t2-t)/(t2-t1),p1,(t-t1)/(t2-t1),p2)
-	local A3=mult_add_points((t3-t)/(t3-t2),p2,(t-t2)/(t3-t2),p3)
-
-	local B1=mult_add_points((t2-t)/(t2-t0),A1,(t-t0)/(t2-t0),A2)
-	local B2=mult_add_points((t3-t)/(t3-t1),A2,(t-t1)/(t3-t1),A3)
-
-	local C=mult_add_points((t2-t)/(t2-t1),B1,(t-t1)/(t2-t1),B2)
-
-	return C
-end
-function path_pos_camull_rom( t )
-	if #path<3 then return {0,0} end
-	local path_step_count=#path
-	local p_id=t*(path_step_count)
-	local p_low=math.floor(p_id)
-	local v=p_id-p_low
-	return apply_catmull(
-		path[(p_low)%path_step_count+1],
-		path[(p_low+1)%path_step_count+1],
-		path[(p_low+2)%path_step_count+1],
-		path[(p_low+3)%path_step_count+1],v,0.5)
-end
-steps_in_loop=0
 step=0
-function draw_path(  )
-	local dist_min=0.0001
-	local eps=0.00001
-	local c_u8={config.color[1]*255,config.color[2]*255,config.color[3]*255,config.color[4]*255}
-	local c2={100,100,100,255}
-	for i=1,config.ticking2 do
-		--step=step+1/config.ticking
-		steps_in_loop=steps_in_loop+1
-		if step>1 then
-			step=step-1
 
-			print(steps_in_loop)
-			steps_in_loop=0
-			--gen_path()
-		end
-		local p
-		local x
-		local y
-		local dx = config.dim
-		local dy = config.dim+1
-		if dy> dimensionality then
-			dy=1
-		end
-
-		p=path_pos_camull_rom(step,0.5)
-		local cur_step=0
-		local imax=10
-		for i=1,imax do
-			if cur_step>dist_min then
-				--print(dist(start_pos,p))
-				for j=1,3 do
-					config.color[j]=i/imax
-				end
-				c_u8={config.color[1]*255,config.color[2]*255,config.color[3]*255,config.color[4]*255}
-				break
-			end
-			step=step+eps
-
-			if step>1 then
-				step=step-1
-				
-				print(steps_in_loop)
-				steps_in_loop=0
-			end
-			local old_pos=p
-			p=path_pos_camull_rom(step,0.5)
-			cur_step=cur_step+dist(old_pos,p)
-		end
-
-		do
-			x=math.floor(p[dx]*STATE.size[1])
-			y=math.floor(p[dy]*STATE.size[2])
-			if x>0 and y>0 and x<STATE.size[1] and y<STATE.size[2] then
-				img_buf:set(x,y,c_u8)
-			end
-		end
-		--[[
-		do
-			p=path_pos_org(step)
-			x=math.floor(p[dx]*STATE.size[1])
-			y=math.floor(p[dy]*STATE.size[2])
-			img_buf:set(x,y,c2)
-		end
-		--]]
-	end
-end
 
 function draw_path_bez(  )
 	local dist_min=0.0001
@@ -376,6 +272,96 @@ function draw_path_bez(  )
 		--]]
 	end
 end
+color=color or {1,1,1}
+local first_path_size=7
+local second_path_size=3
+cat_path=cat_path or Catmull(gen_points(first_path_size,3))
+path_step=path_step or 0
+cat_path_next=cat_path_next or Catmull(gen_points(second_path_step,first_path_size*3+3,0))
+second_path_step=second_path_step or 0
+function update_path( p )
+	for i=1,#p-3 do
+		local trg=cat_path.path[math.floor((i-1)/3)+1]
+		--print(math.floor((i-1)/2)+1,(i-1)%2+1,trg,#trg)
+		trg[i%3+1]=p[i]
+	end
+	for i=#p-3,#p do
+		color[i-#p+3]=p[i]
+	end
+end
+function step_second_path( )
+	local p
+	p,second_path_step=step_along_spline(cat_path_next,second_path_step, 0.000125, 0.00001)
+	update_path(p)
+end
+function draw_path(  )
+	local p
+	local step=config.ticking
+	for i=1,config.ticking2 do
+		local x
+		local y
+		local old_step=path_step
+		p,path_step=step_along_spline(cat_path,path_step, 1/step, 1/(step*10))
+		if old_step>path_step then
+			step_second_path()
+		end
+		x=math.floor(p[1]*STATE.size[1])
+		y=math.floor(p[2]*STATE.size[2])
+		if x>0 and y>0 and x<STATE.size[1] and y<STATE.size[2] then
+			if p[3]>depth_buf:get(x,y) then
+				local v=config.color[4]
+				local s=img_buf:get(x,y)
+				local a=1
+				local r2=luv.hsluv_to_rgb{color[1]*360,color[2]*100,color[3]*100}
+				s[1]=r2[1]*255
+				s[2]=r2[2]*255
+				s[3]=r2[3]*255
+				s[4]=255
+				img_buf:set(x,y,s)
+				depth_buf:set(x,y,p[3])
+			end
+		end
+	end
+end
+function func( t,args )
+	local rt=t*math.pi*2*4
+	-- [[
+	return math.cos(args[9]*rt+args[1])*args[2]+math.cos(args[10]*rt+args[3])*args[4],
+			math.sin(args[9]*rt+args[5])*args[6]+math.sin(args[10]*rt+args[7])*args[8]
+	--]]
+end
+global_args={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+global_step=0
+function draw_spirals()
+
+	local step=config.ticking
+	for i=1,config.ticking2 do
+		local x
+		local y
+
+		x,y=func(global_step,global_args)
+		global_step=global_step+1/step
+		if global_step>1 then
+			global_step=global_step-1
+			global_args,path_step=step_along_spline(cat_path,path_step,1/step,1/(step*10))
+			color[1]=global_args[9]
+			color[2]=global_args[10]
+			color[3]=global_args[11]
+		end
+		x=math.floor((x)*STATE.size[1]*0.25+STATE.size[1]/2)
+		y=math.floor((y)*STATE.size[2]*0.25+STATE.size[2]/2)
+		if x>0 and y>0 and x<STATE.size[1] and y<STATE.size[2] then
+			local s=img_buf:get(x,y)
+			local r2=luv.hsluv_to_rgb{color[1]*360,color[2]*100,color[3]*100}
+			s[1]=r2[1]*255
+			s[2]=r2[2]*255
+			s[3]=r2[3]*255
+			s[4]=255
+			img_buf:set(x,y,s)
+				--depth_buf:set(x,y,p[3])
+		end
+	end
+end
 function update(  )
 	imgui.Begin("Hello")
 	local s=STATE.size
@@ -385,15 +371,24 @@ function update(  )
 		print("Clearing:"..s[1].."x"..s[2])
 		for x=0,s[1]-1 do
 			for y=0,s[2]-1 do
+				local dx=(x-s[1]/2)/s[1]
+				local dy=(y-s[2]/2)/s[2]
 				img_buf:set(x,y,{0,0,0,0})
+				local d=-10000--math.sqrt(dx*dx+dy*dy)/10
+				depth_buf:set(x,y,d)
 			end
 		end
 	end
 	if imgui.Button("Gen") then
-		gen_path()
+		cat_path_next=Catmull(gen_points(second_path_size,first_path_size*3+3))
+		--cat_path=Catmull(gen_points(first_path_size,11))
+	end
+	if imgui.Button("Save") then
+		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))))
 	end
 	local eps=0.000001
 	imgui.End()
+	--draw_spirals()
 	draw_path()
 	img_buf:present()
 end
