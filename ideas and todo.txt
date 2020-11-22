@@ -42,3 +42,6 @@ Cellular automatton and stuff:
 	* slimes
 	* light transfer from my dfhack work
 	* experiment with different pixels (e.g. split physics/image) for perf
+
+* Lavalamp
+* vector drawing thingy, but instead of crisp lines, you get fluid simmed ink (or just fluid simmed stuff)

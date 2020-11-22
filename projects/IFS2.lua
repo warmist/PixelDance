@@ -1293,9 +1293,9 @@ function rand_function(  )
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
 	--local tbl_insert={"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seed)","vec2(cos(length(p)*M_PI*4+global_seed),sin(length(p)*M_PI*4+global_seed))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
-	local tbl_insert={"s","p","params.xy","params.zw","mix(vec2(s.x,p.y),vec2(p.x,s.y),global_seed)"}
+	local tbl_insert={"s","p","params.xy","params.zw","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","vec2(cos(move_dist*2*M_PI),sin(move_dist*2*M_PI))"}
 	-- [[
-	local point_count=15
+	local point_count=5
 	for i=1,point_count do
 		local v=(i-1)/point_count
 		v=v*math.pi*2
@@ -1516,8 +1516,8 @@ function rand_function(  )
 	str_preamble=str_preamble.."s*=move_dist;"
 	--]]
 	--[[ boost less with distance
-	--str_preamble=str_preamble.."s*=move_dist*exp(-1/dot(s,s));"
-	str_preamble=str_preamble.."s*=global_seed*exp(-1/dot(s,s));"
+	str_preamble=str_preamble.."s*=move_dist*exp(-1/dot(s,s));"
+	--str_preamble=str_preamble.."s*=global_seed*exp(-1/dot(s,s));"
 	--]]
 	--[[SINK!
 	str_postamble=str_postamble.."p=p*(2-normed_iter);"
