@@ -1,4 +1,5 @@
 require "common"
+require "splines"
 --basically implementing: http://hplgit.github.io/num-methods-for-PDEs/doc/pub/wave/html/._wave006.html
 -- more resource: https://www.nature.com/articles/s41598-018-29244-6
 --[[
@@ -284,6 +285,7 @@ uniform sampler2D values_old;
 
 uniform sampler2D input_map;
 uniform vec2 input_map_swing;
+uniform vec2 source_pos;
 uniform float v_gamma;
 uniform float v_gain;
 
@@ -739,7 +741,7 @@ float func(vec2 pos)
 		)*cos(a2*M_PI*nm_vec.y)
 		);
 	#endif
-	#if 1
+	#if 0
 
 
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.3;
@@ -763,6 +765,10 @@ float func(vec2 pos)
 		//return ab_vec.x*sin(time*fn1)/(time*fn1+1);
 		//return ab_vec.x*(n4rand(pos*fr+vec2(time*freq*M_PI/1000,0))*2-1);
 		//return ab_vec.x*sin(0.5*(fn2-fn1)*(time+cos(ab_vec.y*time)/ab_vec.y)+fn1*time);
+	#endif
+	#if 1
+	if(length(pos-source_pos)<0.005)
+		return ab_vec.x*sin(time*fn1)+ab_vec.y*sin(time*fn2);
 	#endif
 	//return 0.1;//0.0001*sin(time/1000)/(1+length(pos));
 	return 0;
@@ -1158,10 +1164,16 @@ function update( )
 	gui()
 	update_real()
 end
+spline=spline or Catmull(gen_points(6,2))
+spline_step=spline_step or 0
+
 solver_iteration=solver_iteration or 0
 current_time=current_time or 0
 function waves_solve(  )
-
+	local spline_p
+	spline_p,spline_step=step_along_spline(spline,spline_step,0.0001,0.00001)
+	spline_p[1]=spline_p[1]-0.5
+	spline_p[2]=spline_p[2]-0.5
 	solver_iteration=solver_iteration+1
 	if solver_iteration>2 then solver_iteration=0 end
 
@@ -1183,7 +1195,7 @@ function waves_solve(  )
 
 	solver_shader:set("v_gamma",config.gamma)
 	solver_shader:set("v_gain",config.gain)
-
+	solver_shader:set("source_pos",spline_p[1],spline_p[2])
 	if current_time==0 then
 		solver_shader:set("init",1);
 	else
