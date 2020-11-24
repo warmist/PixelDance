@@ -1,0 +1,43 @@
+# Waves
+$n$ is time. $b_0$ and $b_1$ are dissipation terms.
+$$D_x=c^2/\Delta x^2$$
+
+$$D_y=c^2/\Delta y^2$$
+
+$$
+\frac{u^{n+1}-2u^n+u^{n-1}}{\Delta t^2}+
+\frac{b_0}{\Delta t}(u^{n+1}-u^{n-1})+
+\frac{b_1}{2\Delta t^3}(u^{n+2}-2u^{n+1}+2u^{n-1}-u^{n-2})=
+D_x(u_{x+1}-2u+u_{x-1})+D_y(u_{y+1}-2u+u_{y-1})
+$$
+
+$$A=\frac{b_1}{2\Delta t^3}$$
+$$B=\frac{1}{\Delta t^2}$$
+$$C=\frac{b_0}{\Delta t}$$
+
+$$
+B(u^{n+1}-2u^n+u^{n-1})+
+C(u^{n+1}-u^{n-1})+
+A(u^{n+2}-2u^{n+1}+2u^{n-1}-u^{n-2})=
+D_x(u_{x+1}-2u+u_{x-1})+D_y(u_{y+1}-2u+u_{y-1})
+$$
+
+$$
+Au^{n+2}=
+$$
+$$
+=u^{n+1}(-B-C+2A)+
+$$
+$$
++u^{n}(2B-2D_x-2D_y)+
+$$
+$$
++u^{n-1}(-B+C-2A)+
+$$
+$$
++u^{n-2}(A)+
+$$
+$$
++D_x(u_{x+1}+u_{x-1})+D_y(u_{y+1}+u_{y-1})
+$$
+<!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
