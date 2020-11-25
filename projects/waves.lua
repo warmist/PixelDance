@@ -128,7 +128,7 @@ function make_sand_buffer()
 	t.t:set(size[1]*oversample,size[2]*oversample,2)
 	texture_buffers.sand=t
 end
-NUM_BUFFERS=3
+NUM_BUFFERS=5
 function make_textures()
 	if #texture_buffers==0 or
 		texture_buffers[1].w~=size[1]*oversample or
@@ -622,7 +622,7 @@ float grid(in vec2 st,float fw)
 	float r=leaf(st,fw);
 	return r;
 }
-#define DX(dx,dy,NOTUSED) textureOffset(values[1],normed,ivec2(dx,dy)).x
+#define DX(dx,dy,NOTUSED) textureOffset(values[2],normed,ivec2(dx,dy)).x
 /*
 float DX(int dx,int dy,vec2 normed)
 {
@@ -743,7 +743,7 @@ float func(vec2 pos)
 		)*cos(a2*M_PI*nm_vec.y)
 		);
 	#endif
-	#if 0
+	#if 1
 
 
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.3;
@@ -756,7 +756,7 @@ float func(vec2 pos)
 
 
 	#endif
-	#if 1
+	#if 0
 
 
 	if(  length(pos+vec2(0,0.00))<0.005
@@ -822,7 +822,6 @@ float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 	float Dy=dcsqr/(dtex.y*dtex.y);
 #endif
 
-	float B=1/(dt*dt);
 #if 0
 	float dec1=dot(pos,pos)*decay.x;
 	float dec2=dot(pos,pos)*decay.y;
@@ -830,11 +829,17 @@ float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 	float dec1=decay.x;
 	float dec2=decay.y;
 #endif
-	float C=dec1/dt;
+
 	float A=dec2/(2*dt*dt*dt);
+	float B=1/(dt*dt);
+	float C=dec1/dt;
 
+	float BdA=2*dt/dec2;
+	float CdA=2*dec1*dt*dt/dec2;
+	float DxdA=Dx/A;
+	float DydA=Dy/A;
 
-	///*
+	/*
 	float ret=(0.5*dec1*dt-1)*texture(values[0],normed).x+
 		2*DX(0,0,normed)+
 		dt*dt*Dx*(DX(1,0,normed)-2*DX(0,0,normed)+DX(-1,0,normed))+
@@ -845,7 +850,19 @@ float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 	//*/
 	/*
 	float ret=0;
-	ret+=texture(values[3],normed).x*(-B-C+2*A);
+	ret+=texture(values[3],normed).x*(-BdA-CdA+2);
+	ret+=texture(values[2],normed).x*(2*BdA-2*DxdA-2*DydA);
+	ret+=texture(values[1],normed).x*(-BdA+CdA-2);
+	ret+=texture(values[0],normed).x*;
+	ret+=DxdA*(DX(1,0,normed)+DX(-1,0,normed));
+	ret+=DydA*(DX(0,1,normed)+DX(0,-1,normed));
+	ret+=func(pos)/A;
+
+	return ret;
+	//*/
+	/*
+	float ret=0;
+	ret+=texture(values[3],normed).x*(-B-C+2);
 	ret+=texture(values[2],normed).x*(2*B-2*Dx-2*Dy);
 	ret+=texture(values[1],normed).x*(-B+C-2*A);
 	ret+=texture(values[0],normed).x*(A);
@@ -854,7 +871,23 @@ float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 	ret+=func(pos);
 
 	return ret/A;
-	*/
+	//*/
+
+
+	///*
+	float divisor=B+C+3*A;
+
+	float ret=0;
+	ret+=texture(values[3],normed).x*(2*B+10*C-2*Dx-2*Dy);
+	ret+=texture(values[2],normed).x*(-B+C-12*A);
+	ret+=texture(values[1],normed).x*(6*A);
+	ret+=texture(values[0],normed).x*(-A);
+	ret+=Dx*(DX(1,0,normed)+DX(-1,0,normed));
+	ret+=Dy*(DX(0,1,normed)+DX(0,-1,normed));
+	ret+=func(pos);
+
+	return ret/divisor;
+	//*/
 }
 float calc_init_value(vec2 pos,vec2 c_sqr_avg)
 {
@@ -1014,11 +1047,11 @@ void main(){
 	float w=0.005;
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	float sh_v=0;
+	//float sh_v=0;
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
 	//float sh_v=1-damaged_circle(pos.xy);
 	//float sh_v=sh_wavy(pos.xy,max_d);
-	//float sh_v=sdCircle(pos.xy,0.98);
+	float sh_v=sdCircle(pos.xy,0.98);
 	//float sh_v=sdCircle2(pos.xy,0.98);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=leaf(pos.xy,w);
@@ -1226,7 +1259,7 @@ function waves_solve(  )
 		solver_shader:set("init",0);
 	end
 	solver_shader:set("dt",config.dt);
-	solver_shader:set("c_const",0.0001);
+	solver_shader:set("c_const",0.00001);
 	solver_shader:set("time",current_time);
 	solver_shader:set("decay",config.decay1,config.decay2);
 	solver_shader:set("freq",config.freq)
@@ -1234,6 +1267,7 @@ function waves_solve(  )
 	solver_shader:set("nm_vec",config.n,config.m)
 	solver_shader:set("ab_vec",config.a,config.b)
 	local trg_tex=texture_buffers[id_next];
+	trg_tex.t:use(NUM_BUFFERS)
 	solver_shader:set("tex_size",trg_tex.w,trg_tex.h)
 	if not trg_tex.t:render_to(trg_tex.w,trg_tex.h) then
 		error("failed to set framebuffer up")
@@ -1275,8 +1309,10 @@ function calc_range_value( tex )
 	for x=0,io_buffer.w-1 do
 		for y=0,io_buffer.h-1 do
 			local v=io_buffer:get(x,y)
-			if v>m2 then m2=v end
-			if v<m1 then m1=v end
+			if v~= math.huge and v~=-math.huge then
+				if v>m2 then m2=v end
+				if v<m1 then m1=v end
+			end
 		end
 	end
 	return m1,m2
@@ -1345,7 +1381,7 @@ function draw_texture( id )
 			if single_shot_value==true then
 				minv,maxv=calc_range_value(src_tex)
 				single_shot_value={minv,maxv}
-
+				print(minv,maxv)
 			elseif type(single_shot_value)=="table" then
 				minv,maxv=single_shot_value[1],single_shot_value[2]
 			else
