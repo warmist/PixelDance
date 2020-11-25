@@ -8,7 +8,7 @@ $$
 \frac{u^{n+1}-2u^n+u^{n-1}}{\Delta t^2}+
 \frac{b_0}{\Delta t}(u^{n+1}-u^{n-1})+
 \frac{b_1}{2\Delta t^3}(u^{n+2}-2u^{n+1}+2u^{n-1}-u^{n-2})=
-D_x(u_{x+1}-2u+u_{x-1})+D_y(u_{y+1}-2u+u_{y-1})
+D_x(u_{x+1}-2u+u_{x-1})+D_y(u_{y+1}-2u+u_{y-1})+f(x,y,t)
 $$
 
 $$A=\frac{b_1}{2\Delta t^3}$$
@@ -19,7 +19,7 @@ $$
 B(u^{n+1}-2u^n+u^{n-1})+
 C(u^{n+1}-u^{n-1})+
 A(u^{n+2}-2u^{n+1}+2u^{n-1}-u^{n-2})=
-D_x(u_{x+1}-2u+u_{x-1})+D_y(u_{y+1}-2u+u_{y-1})
+D_x(u_{x+1}-2u+u_{x-1})+D_y(u_{y+1}-2u+u_{y-1})+f(x,y,t)
 $$
 
 $$
@@ -38,12 +38,17 @@ $$
 +u^{n-2}(A)+
 $$
 $$
-+D_x(u_{x+1}+u_{x-1})+D_y(u_{y+1}+u_{y-1})
++D_x(u_{x+1}+u_{x-1})+D_y(u_{y+1}+u_{y-1})+f(x,y,t)
 $$
 # Intial conditions
 $$
-\delta u=0, n=0
+\partial u=0, n=0
 $$
+Note: this probably needs more like 
+$$
+\frac{\partial^n u}{\partial t^n}=0, n < S
+$$
+
 Then
 $$
 \frac{u^{n+1}-u^{n-1}}{2 \Delta t}=0, n=0
@@ -53,4 +58,8 @@ $$
 u^{1}=u^{-1}
 $$
 
+umm... assume:
+$$
+u^n=0, n<5
+$$
 <!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
