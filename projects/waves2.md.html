@@ -62,4 +62,75 @@ umm... assume:
 $$
 u^n=0, n<5
 $$
+
+# New idea: backwards thingy for the third degree
+$$
+\frac{u^{n+1}-2u^n+u^{n-1}}{\Delta t^2}+
+\frac{b_0}{\Delta t}(u^{n+1}-u^{n-1})+\\+
+\frac{b_1}{2\Delta t^3}(3u^{n+1}-10u^{n}+12u^{n-1}-6u^{n-2}+u^{n-3})=
+D_x(u_{x+1}-2u+u_{x-1})+D_y(u_{y+1}-2u+u_{y-1})+f(x,y,t)
+$$
+
+$$
+u^{n+1}(1/ \Delta t^2+\frac{b_0}{\Delta t}+\frac{3b_1}{2\Delta t^3})=
+$$
+
+$$
+=u^{n}(2/ \Delta t^2+\frac{5b_1}{\Delta t^3}-2D_x-2D_y)+
+$$
+$$
++u^{n-1}(-1/ \Delta t^2+\frac{b_0}{\Delta t}-\frac{6b_1}{\Delta t^3})+
+$$
+
+$$
++u^{n-2}\frac{3b_1}{\Delta t^3}+
+$$
+$$
++u^{n-3}\frac{b_1}{2\Delta t^3}+
+$$
+$$
++D_x(u_{x+1}+u_{x-1})+D_y(u_{y+1}+u_{y-1})+f(x,y,t)
+$$
+
+
+$$
+u^{n+1}(1/ \Delta t+b_0+\frac{3b_1}{2\Delta t^2})=
+$$
+
+$$
+=u^{n}(2/ \Delta t+\frac{5b_1}{\Delta t^2}-\Delta t 2D_x-\Delta t 2D_y)+
+$$
+$$
++u^{n-1}(-1/ \Delta t+b_0-\frac{6b_1}{\Delta t^2})+
+$$
+
+$$
++u^{n-2}\frac{3b_1}{\Delta t^2}+
+$$
+$$
++u^{n-3}\frac{b_1}{2\Delta t^2}+
+$$
+$$
++\Delta t (D_x(u_{x+1}+u_{x-1})+D_y(u_{y+1}+u_{y-1})+f(x,y,t))
+$$
+# Ideas and Todo
+
+* Explicit vs Implicit
+* Bigger x/y stencil
+* why so unstable?
+* $u_{tt}=cu_{xxt}+f(x,t)$ strongly dampened wave equation
+* https://en.wikipedia.org/wiki/Zakharov%E2%80%93Schulman_system
+* Dispersive Long wave equation: https://www.hindawi.com/journals/isrn/2014/967176/
+* https://en.wikipedia.org/wiki/Nonlinear_Schr%C3%B6dinger_equation
+
+# Refs
+
+* https://www.geometrictools.com/Documentation/FiniteDifferences.pdf
+* http://hplgit.github.io/num-methods-for-PDEs/doc/pub/wave/html/._wave006.html
+* https://wiki.seg.org/wiki/Mathematical_foundation_of_elastic_wave_propagation
+* https://www.hindawi.com/journals/jcmp/2014/108713/
+* https://www.degruyter.com/view/journals/phys/15/1/article-p300.xml#j_phys-2017-0033_ref_008_w2aab3b8e3654b1b7b1ab2ab8Aa
+* https://www.math.ucdavis.edu/~temple/MAT22C/LecturesMat22CW15/7-Nonlinear_Wave_Equation-22C-W15.pdf
+* https://arxiv.org/pdf/1911.00899.pdf
+
 <!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
