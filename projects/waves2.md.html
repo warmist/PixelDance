@@ -83,10 +83,10 @@ $$
 $$
 
 $$
-+u^{n-2}\frac{3b_1}{\Delta t^3}+
++u^{n-2}\frac{3b_1}{\Delta t^3}-
 $$
 $$
-+u^{n-3}\frac{b_1}{2\Delta t^3}+
+-u^{n-3}\frac{b_1}{2\Delta t^3}+
 $$
 $$
 +D_x(u_{x+1}+u_{x-1})+D_y(u_{y+1}+u_{y-1})+f(x,y,t)
@@ -105,20 +105,60 @@ $$
 $$
 
 $$
-+u^{n-2}\frac{3b_1}{\Delta t^2}+
++u^{n-2}\frac{3b_1}{\Delta t^2}-
 $$
 $$
-+u^{n-3}\frac{b_1}{2\Delta t^2}+
+-u^{n-3}\frac{b_1}{2\Delta t^2}+
 $$
 $$
 +\Delta t (D_x(u_{x+1}+u_{x-1})+D_y(u_{y+1}+u_{y-1})+f(x,y,t))
 $$
+# Strongly dampened waves
+
+$$Au_{tt}-B\Delta u-C\Delta u_t-f(x,t)=0$$
+$$u_{tt}-{B\over A}\Delta u-{C\over A}\Delta u_t-f(x,t)=0$$
+$$u_{tt}-D\Delta u-E\Delta u_t-f(x,t)=0$$
+$$\frac{\partial^2 u}{ \partial t^2} - D\frac{\partial^2 u}{ \partial x^2}-D\frac{\partial^2 u}{ \partial y^2}-E\frac{\partial^3 u}{\partial t \partial x^2}-E\frac{\partial^3 u}{\partial t \partial y^2}-f(x,t)=0$$
+
+If $E=0$ we go back to first equation.
+
+$$\frac{u^{n+1}-2u^n+u^{n-1}}{\Delta t^2}-\frac{D}{\Delta x^2}(u^n_{x+1}-2u^n+u^n_{x-1})-\frac{D}{\Delta y^2}(u^n_{y+1}-2u^n+u^n_{y-1})-\\
+\frac{E}{2\Delta x^2\Delta t}(u^{n+1}_{x+1}-2u^{n+1}+u^{n+1}_{x-1})+\frac{E}{2\Delta x^2\Delta t}(u^{n-1}_{x+1}-2u^{n-1}+u^{n-1}_{x-1})-\\
+\frac{E}{2\Delta y^2\Delta t}(u^{n+1}_{y+1}-2u^{n+1}+u^{n+1}_{y-1})+
+\frac{E}{2\Delta y^2\Delta t}(u^{n-1}_{y+1}-2u^{n-1}+u^{n-1}_{y-1})-f(x,y)=0$$
+
+$$u^{n+1}(1+\frac{E\Delta t}{\Delta y^2}+\frac{E\Delta t}{\Delta x^2})$$
+
+Implicit methods need ALL THE CELLS. So lets not do that...
+
+$$\frac{u^{n+1}-2u^n+u^{n-1}}{\Delta t^2}-\frac{D}{\Delta x^2}(u^n_{x+1}-2u^n+u^n_{x-1})-\frac{D}{\Delta y^2}(u^n_{y+1}-2u^n+u^n_{y-1})-\\
+\frac{E}{\Delta x^2\Delta t}(u^{n}_{x+1}-2u^{n}+u^{n}_{x-1})+\frac{E}{\Delta x^2\Delta t}(u^{n-1}_{x+1}-2u^{n-1}+u^{n-1}_{x-1})-\\
+\frac{E}{\Delta y^2\Delta t}(u^{n}_{y+1}-2u^{n}+u^{n}_{y-1})+
+\frac{E}{\Delta y^2\Delta t}(u^{n-1}_{y+1}-2u^{n-1}+u^{n-1}_{y-1})-f(x,y)=0$$
+
+Mark
+$$G_x=\frac{\Delta t^2 D}{\Delta x^2},G_y=\frac{\Delta t^2 D}{\Delta y^2}\\
+H_x=\frac{\Delta t E}{\Delta x^2},H_y=\frac{\Delta t E}{\Delta y^2}$$
+
+$$u^{n+1}=2u^n-u^{n-1}+G_x(u^n_{x+1}-2u^n+u^n_{x-1})+G_y(u^n_{y+1}-2u^n+u^n_{y-1})+\\
+H_x(u^{n}_{x+1}-2u^{n}+u^{n}_{x-1})-H_x(u^{n-1}_{x+1}-2u^{n-1}+u^{n-1}_{x-1})+\\
+H_y(u^{n}_{y+1}-2u^{n}+u^{n}_{y-1})-
+H_y(u^{n-1}_{y+1}-2u^{n-1}+u^{n-1}_{y-1})-\Delta t^2 f(x,y)$$
+
+$$u^{n+1}=2u^n-u^{n-1}+\\
+(G_x+H_x)(u^n_{x+1}-2u^n+u^n_{x-1})+\\
+-H_x(u^{n-1}_{x+1}-2u^{n-1}+u^{n-1}_{x-1})+\\
+(G_y+H_y)(u^n_{y+1}-2u^n+u^n_{y-1})-\\
+H_y(u^{n-1}_{y+1}-2u^{n-1}+u^{n-1}_{y-1})-\\
+\Delta t^2 f(x,y)$$
+
 # Ideas and Todo
 
 * Explicit vs Implicit
 * Bigger x/y stencil
 * why so unstable?
 * $u_{tt}=cu_{xxt}+f(x,t)$ strongly dampened wave equation
+* $u_{tt}-\Delta u-\Delta u_t-f(x,t)=0$ strongly dampened wave equation
 * https://en.wikipedia.org/wiki/Zakharov%E2%80%93Schulman_system
 * Dispersive Long wave equation: https://www.hindawi.com/journals/isrn/2014/967176/
 * https://en.wikipedia.org/wiki/Nonlinear_Schr%C3%B6dinger_equation

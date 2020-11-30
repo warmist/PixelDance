@@ -128,7 +128,7 @@ function make_sand_buffer()
 	t.t:set(size[1]*oversample,size[2]*oversample,2)
 	texture_buffers.sand=t
 end
-NUM_BUFFERS=5
+NUM_BUFFERS=3
 function make_textures()
 	if #texture_buffers==0 or
 		texture_buffers[1].w~=size[1]*oversample or
@@ -622,7 +622,7 @@ float grid(in vec2 st,float fw)
 	float r=leaf(st,fw);
 	return r;
 }
-#define DX(dx,dy,NOTUSED) textureOffset(values[2],normed,ivec2(dx,dy)).x
+
 /*
 float DX(int dx,int dy,vec2 normed)
 {
@@ -669,11 +669,22 @@ float func(vec2 pos)
 
 	float max_a=5;
 	float r=0.08;
-	#if 0
+	#if 1
 		//if(time<max_time)
 			//if(pos.x<-0.35)
 				//return (hash(time*freq2)*hash(pos*freq))/2;
-				return ab_vec.x*n4rand(pos*fr2);
+				//return ab_vec.x*n4rand(pos*fr2);
+		float ret=0;
+
+		if(length(pos+vec2(0.9,0.0))<0.005)
+			for(int i=1;i<10;i++)
+			{
+				ret+=ab_vec.x*cos(time*fr+pos.x*hash(pos.y))+
+					 ab_vec.y*cos(time*fr2+pos.y*hash(pos.x));
+				fr=fr/2.0;
+				fr2=fr2/2.0;
+			}
+		return ret/10;
 	#endif
 	#if 0
 		//if(time<max_time)
@@ -743,12 +754,12 @@ float func(vec2 pos)
 		)*cos(a2*M_PI*nm_vec.y)
 		);
 	#endif
-	#if 1
+	#if 0
 
 
-	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.3;
+	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.1;
 	//if(time<max_time)
-	if(abs(length(pos)-0.6)<0.005)
+	if(abs(length(pos)-0.3)<0.005)
 		return ab_vec.x*sin(-time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y)+
 			   ab_vec.y*sin(-time*fr2*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
 	//if(length(pos+vec2(0,0.5)+p)<0.005)
@@ -759,7 +770,7 @@ float func(vec2 pos)
 	#if 0
 
 
-	if(  length(pos+vec2(0,0.00))<0.005
+	if(  length(pos+vec2(0,0.0))<0.005
 	  //|| length(pos+vec2(-0.1,0.2))<0.005
 	  )
 	//if(time<max_time)
@@ -810,6 +821,8 @@ float func_init(vec2 pos)
 	return 0;
 }
 #define IDX(dx,dy) func_init(pos+vec2(dx,dy)*dtex)
+#define DX(dx,dy,NOTUSED) textureOffset(values[3],normed,ivec2(dx,dy)).x
+#define ST(id,dx,dy) textureOffset(values[id],normed,ivec2(dx,dy)).x
 float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -830,6 +843,7 @@ float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 	float dec2=decay.y;
 #endif
 
+#if 0
 	float A=dec2/(2*dt*dt*dt);
 	float B=1/(dt*dt);
 	float C=dec1/dt;
@@ -875,19 +889,39 @@ float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 
 
 	///*
-	float divisor=B+C+3*A;
+	float divisor=1/(B+C+3*A);
 
 	float ret=0;
-	ret+=texture(values[3],normed).x*(2*B+10*C-2*Dx-2*Dy);
-	ret+=texture(values[2],normed).x*(-B+C-12*A);
-	ret+=texture(values[1],normed).x*(6*A);
-	ret+=texture(values[0],normed).x*(-A);
-	ret+=Dx*(DX(1,0,normed)+DX(-1,0,normed));
-	ret+=Dy*(DX(0,1,normed)+DX(0,-1,normed));
-	ret+=func(pos);
+	ret+=texture(values[3],normed).x*(2*B+10*C-2*Dx-2*Dy)*divisor;
+	ret+=texture(values[2],normed).x*(-B+C-12*A)*divisor;
+	ret+=texture(values[1],normed).x*(6*A)*divisor;
+	ret+=texture(values[0],normed).x*(-A)*divisor;
+	ret+=Dx*(DX(1,0,normed)+DX(-1,0,normed))*divisor;
+	ret+=Dy*(DX(0,1,normed)+DX(0,-1,normed))*divisor;
+	ret+=func(pos)*divisor;
 
-	return ret/divisor;
+	return ret;
 	//*/
+#else
+	float c_const2=2;
+	float GX=dcsqr*dt*dt*c_const2/(dtex.x*dtex.x);
+	float GY=dcsqr*dt*dt*c_const2/(dtex.y*dtex.y);
+
+	float HX=dcsqr*dt*dec2/(dtex.x*dtex.x);
+	float HY=dcsqr*dt*dec2/(dtex.y*dtex.y);
+
+	float ret=0;
+
+	ret+=ST(1,0,0)*2;
+	ret+=ST(0,0,0)*(-1);
+
+	ret+=(GX+HX)*(ST(1,1,0)-2*ST(1,0,0)+ST(1,-1,0));
+	ret+=(-1)*HX*(ST(0,1,0)-2*ST(0,0,0)+ST(0,-1,0));
+	ret+=(GY+HY)*(ST(1,0,1)-2*ST(1,0,0)+ST(1,0,-1));
+	ret+=(-1)*HY*(ST(0,0,1)-2*ST(0,0,0)+ST(0,0,-1));
+	ret+=dt*dt*func(pos);
+#endif
+	return ret;
 }
 float calc_init_value(vec2 pos,vec2 c_sqr_avg)
 {
@@ -1051,17 +1085,17 @@ void main(){
 	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
 	//float sh_v=1-damaged_circle(pos.xy);
 	//float sh_v=sh_wavy(pos.xy,max_d);
-	float sh_v=sdCircle(pos.xy,0.98);
+	//float sh_v=sdCircle(pos.xy,0.98);
 	//float sh_v=sdCircle2(pos.xy,0.98);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=leaf(pos.xy,w);
-	//float sh_v=1-chalice(pos.xy,w);
+	float sh_v=chalice(pos.xy,w);
 	//float sh_v=slit_experiment(pos.xy,w);
 	//float sh_v=flower(pos.xy,w);
-	//float sh_v=balance(pos.xy,w);
+	//float sh_v=1-balance(pos.xy,w);
 	//float sh_v=sh_jaws(pos.xy,w);
 	//float sh_v=sh_polyhedron(pos.xy*vec2(0.2,1),4,0.2,0,w);
-	//float sh_v=ankh(pos.xy,w);
+	//float sh_v=1-ankh(pos.xy,w);
 	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
 #if 0
@@ -1259,7 +1293,7 @@ function waves_solve(  )
 		solver_shader:set("init",0);
 	end
 	solver_shader:set("dt",config.dt);
-	solver_shader:set("c_const",0.00001);
+	solver_shader:set("c_const",0.0001);
 	solver_shader:set("time",current_time);
 	solver_shader:set("decay",config.decay1,config.decay2);
 	solver_shader:set("freq",config.freq)
