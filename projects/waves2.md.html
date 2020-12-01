@@ -154,7 +154,8 @@ H_y(u^{n-1}_{y+1}-2u^{n-1}+u^{n-1}_{y-1})-\\
 
 # Ideas and Todo
 
-* Explicit vs Implicit
+* Explicit vs Implicit -> implicit needs to calculate ALL the cells thus no gpu. Mixed might be possible
+	* e.g. we can do implicit "Strongly dampened waves" and then put in explicit formula for fun
 * Bigger x/y stencil
 * why so unstable?
 * $u_{tt}=cu_{xxt}+f(x,t)$ strongly dampened wave equation
@@ -172,5 +173,7 @@ H_y(u^{n-1}_{y+1}-2u^{n-1}+u^{n-1}_{y-1})-\\
 * https://www.degruyter.com/view/journals/phys/15/1/article-p300.xml#j_phys-2017-0033_ref_008_w2aab3b8e3654b1b7b1ab2ab8Aa
 * https://www.math.ucdavis.edu/~temple/MAT22C/LecturesMat22CW15/7-Nonlinear_Wave_Equation-22C-W15.pdf
 * https://arxiv.org/pdf/1911.00899.pdf
+* https://mathworld.wolfram.com/PartialDifferentialEquation.html
+* https://www.eijst.org.uk/images/frontImages/articles/Vol.7No.1/2.Exact_solutions_of_some_transonic_gas_flows_equations.pdf
 
 <!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
