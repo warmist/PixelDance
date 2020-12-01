@@ -670,6 +670,11 @@ float func(vec2 pos)
 	float max_a=5;
 	float r=0.08;
 	#if 1
+		if(length(pos+vec2(0,0.9))<0.005)
+			return ab_vec.x*(fract(fn1*time)*2-1)
+			+ab_vec.y*(fract(fn2*time)*2-1);
+	#endif
+	#if 0
 		//if(time<max_time)
 			//if(pos.x<-0.35)
 				//return (hash(time*freq2)*hash(pos*freq))/2;
@@ -1432,7 +1437,7 @@ function draw_texture( id )
 		need_save=nil
 	end
 end
-local frame_count=600
+local frame_count=60
 local tick_skip=9
 
 --480/100 452
@@ -1440,8 +1445,8 @@ local tick_skip=9
 --1000/1  877
 --1000/3  322
 --1000/9  620
-local tick_count=10000
-local tick_wait=1--tick_count*0.75
+local tick_count=20000
+local tick_wait=1000--tick_count*0.75
 
 
 current_frame=current_frame or 0
@@ -1452,21 +1457,33 @@ end
 function nsin(t)
 	return (math.sin(t*math.pi*2)+1)/2
 end
+function lerp( st,en,v )
+	return (1-v)*st+v*en
+end
+anim_spline=anim_spline or Catmull(gen_points(3,3))
+anim_spline_step=anim_spline_step or 0
+
+
 function animate_step(  )
 	local t=current_frame/frame_count
 	if t>=1 then
 		config.animate=false
 	end
 
-	local start_frq=2.5
-	local end_frq=3.5
+	local spline_p
+	--spline_p,anim_spline_step=step_along_spline(anim_spline,anim_spline_step,1/frame_count,1/(10*frame_count))
+	spline_p=anim_spline:get(t)
 
-	local start_frq2=1
-	local end_frq2=0
-	--config.freq=t*(end_frq-start_frq)+start_frq--ncos(t)*(end_frq-start_frq)+start_frq
-	--config.freq2=--nsin(t)*(end_frq2-start_frq2)+start_frq2
+
+	local fr1={0.5,1.05}
+	local fr2={2.0,2.5}
+	local decay2={0.01,0.1}
+	config.freq=lerp(fr1[1],fr1[2],spline_p[1])
+	config.freq2=lerp(fr2[1],fr2[2],spline_p[2])
+	config.decay2=lerp(decay2[1],decay2[2],spline_p[3])
+
 	current_frame=current_frame+1
-	print(config.freq,config.freq2)
+	print(string.format("%.3g %.3g %.3g %.3g || %.3g %.3g %.3g",t,config.freq,config.freq2,config.decay2,spline_p[1],spline_p[2],spline_p[3]))
 end
 
 last_animate=false
@@ -1492,7 +1509,7 @@ function update_real(  )
 				draw_texture(current_frame)
 
 				current_tick=0
-				--reset_state()
+				reset_state()
 				clear_sand()
 			elseif current_tick>=tick_wait then
 				__clear()
@@ -1548,3 +1565,4 @@ function update_real(  )
 	end
 	]]
 end
+
