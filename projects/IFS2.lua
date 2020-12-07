@@ -26,7 +26,7 @@ win_h=win_h or 0
 aspect_ratio=aspect_ratio or 1
 function update_size()
 	local trg_w=2560*size_mult
-	local trg_h=1440*size_mult
+	local trg_h=2560*size_mult
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
 	if win_w~=trg_w or win_h~=trg_h then
@@ -1293,14 +1293,28 @@ function rand_function(  )
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
 	--local tbl_insert={"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seed)","vec2(cos(length(p)*M_PI*4+global_seed),sin(length(p)*M_PI*4+global_seed))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
-	local tbl_insert={"s","p","params.xy","params.zw","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","vec2(cos(move_dist*2*M_PI),sin(move_dist*2*M_PI))"}
-	-- [[
+	local tbl_insert={"s","p*vec2(global_seed,1-global_seed)","params.xy","params.zw"}
+	--[[
 	local point_count=5
 	for i=1,point_count do
 		local v=(i-1)/point_count
 		v=v*math.pi*2
 		local r=0.1
 		table.insert(tbl_insert,string.format("vec2(%g,%g)",math.cos(v)*r,math.sin(v)*r))
+	end
+	--]]
+	-- [[
+	local tex_variants={
+		"tex_p.xy","tex_p.yz","tex_p.zx",
+		"tex_s.xy","tex_s.yz","tex_s.zx",
+		"vec2(tex_s.x,tex_p.x)","vec2(tex_s.y,tex_p.y)","vec2(tex_s.z,tex_p.z)",
+		"vec2(tex_s.x,tex_p.y)","vec2(tex_s.y,tex_p.z)","vec2(tex_s.z,tex_p.x)",
+		"vec2(tex_s.x,tex_p.z)","vec2(tex_s.y,tex_p.x)","vec2(tex_s.z,tex_p.y)",
+
+	}
+	local num_tex=5
+	for i=1,num_tex do
+		table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
 	end
 	--]]
 	str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert)
@@ -1497,7 +1511,8 @@ function rand_function(  )
 	-- [[ polar gravity
 	--str_preamble=str_preamble.."vec2 np=s;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."vec2 np=p;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
-	str_preamble=str_preamble.."vec2 np=c_mul(p-s,last_s);float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
+	str_preamble=str_preamble.."vec2 np=tex_s.yz;float npl=abs(sqrt(dot(np,np)))+0.5;npl*=npl;"
+	--str_preamble=str_preamble.."vec2 np=c_mul(p-s,last_s);float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."float ang_xx=atan(last_s.y,last_s.x);vec2 np=s-p*vec2(cos(ang_xx),sin(ang_xx))/length(p);float npl=cos((sqrt(dot(np,np))-0.5)*M_PI*2)*0.5+1.25;npl*=npl;"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
@@ -1785,6 +1800,8 @@ uniform vec4 params;
 uniform float normed_iter;
 uniform float gen_radius;
 
+uniform sampler2D tex_img;
+
 float value_inside(float x,float a,float b){return step(a,x)-step(b,x);}
 
 float rand1(float n){return fract(sin(n) * 43758.5453123);}
@@ -2016,6 +2033,10 @@ vec2 from_polar(vec2 p)
 
 vec3 func_actual(vec2 s,vec2 p)
 {
+	vec4 tex_p=texture(tex_img,p);
+	vec4 tex_s=texture(tex_img,s);
+	tex_s=tex_s/(length(tex_s)+1);
+	tex_p=tex_p/(length(tex_p)+1);
 	//init condition
 	vec2 last_s=s;
 	float e=1;
@@ -2238,7 +2259,7 @@ vec2 tReflect(vec2 p,float a){
 }
 vec2 mapping(vec2 p)
 {
-	return p; //normal - do nothing
+	//return p; //normal - do nothing
 	//return abs(p)-vec2(1);
 	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
 	/*
@@ -3025,7 +3046,8 @@ function visit_iter()
 		so:bind_to_feedback()
 
 		samples:get_current():use()
-
+		visit_tex.t:use(1)
+		transform_shader:set_i("img_tex",1)
 		transform_shader:set("global_seed",global_seed)
 		transform_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
 		transform_shader:set("gen_radius",config.gen_radius or 2)
