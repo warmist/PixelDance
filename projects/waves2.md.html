@@ -152,6 +152,17 @@ $$u^{n+1}=2u^n-u^{n-1}+\\
 H_y(u^{n-1}_{y+1}-2u^{n-1}+u^{n-1}_{y-1})-\\
 \Delta t^2 f(x,y)$$
 
+# Some equation list
+
+This assumes $f:=f(x,y,t)$, $u_s=u_x+u_y$
+
+1. $u_t+a_0f=0$
+2. $u_t+a_0u_s+a_1f=0$
+3. $u_t+a_0u_s+a_1u_{xy}+a_2f=0$
+4. $u_t+a_0u_s+a_1u_{xy}+a_2f+a_3u_{ss}=0$
+5. $u_{tt}+a_0u_s+a_1f=0$
+6. $u_{tt}+a_0u_{st}+a_1f=0$
+
 # Ideas and Todo
 
 * Explicit vs Implicit -> implicit needs to calculate ALL the cells thus no gpu. Mixed might be possible
