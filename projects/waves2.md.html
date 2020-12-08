@@ -156,15 +156,42 @@ H_y(u^{n-1}_{y+1}-2u^{n-1}+u^{n-1}_{y-1})-\\
 
 This assumes $f:=f(x,y,t)$, $u_s=u_x+u_y$
 
-1. $u_t+a_0f=0$
+1. $u_t+a_0f=0$ - boring, nothing depends on neighbors
 2. $u_t+a_0u_s+a_1f=0$
 3. $u_t+a_0u_s+a_1u_{xy}+a_2f=0$
 4. $u_t+a_0u_s+a_1u_{xy}+a_2f+a_3u_{ss}=0$
 5. $u_{tt}+a_0u_s+a_1f=0$
 6. $u_{tt}+a_0u_{st}+a_1f=0$
 
+# Random diff eq no 4
+
+$$u_t+a_0u_s+a_1u_{xy}+a_2f+a_3u_{ss}=0\\
+  u_t+a_0u_x+a_0u_y+a_1u_{xy}+a_2f+a_3u_{xx}+a_3u_{yy}=0$$
+$$u(x,y,0)=I(x,y), (x,y)\in \Omega,\\
+u(x,y,0)=0, (x,y)\in \partial\Omega$$
+
+$$\frac{u^{n+1}-u^n}{ \Delta t}\\
+  +a_0\frac{u_{x+1}-u_{x-1}}{2 \Delta x}\\
+  +a_0\frac{u_{y+1}-u_{y-1}}{2 \Delta y}\\
+  +a_3\frac{u_{x+1}-2u_{x}+u_{x-1}}{ \Delta x}\\
+  +a_3\frac{u_{y+1}-2u_{y}+u_{y-1}}{ \Delta y}\\
+  +a_1\frac{u_{x+1,y+1}-u_{x+1,y-1}-u_{x-1,y+1}+u_{x-1,y-1}}{4 \Delta x\Delta y}\\
+  +a_2f=0$$
+$$u^{n+1}=\\
+u\\
+-\frac{\Delta t}{ \Delta x}(u_{x+1}({a_0\over 2}+a_3)-2a_3u+u_{x-1}(a_3-{a_0\over 2}))\\
+-\frac{\Delta t}{ \Delta y}(u_{y+1}({a_0\over 2}+a_3)-2a_3u+u_{y-1}(a_3-{a_0\over 2}))\\
+-\frac{a_1\Delta t}{{4 \Delta x\Delta y}}(u_{x+1,y+1}-u_{x+1,y-1}-u_{x-1,y+1}+u_{x-1,y-1})\\
+-a_2\Delta t f=0$$
+
+
 # Ideas and Todo
 
+* Make a nice list (with images) of diff equations
+    - images
+    - equation
+    - why fun
+* Limit equations to "bounded" i.e. $\lim_{t\to \infty} u(x,y,t)<\infty$
 * Explicit vs Implicit -> implicit needs to calculate ALL the cells thus no gpu. Mixed might be possible
 	* e.g. we can do implicit "Strongly dampened waves" and then put in explicit formula for fun
 * Bigger x/y stencil
@@ -179,7 +206,7 @@ This assumes $f:=f(x,y,t)$, $u_s=u_x+u_y$
 * http://web.cse.ohio-state.edu/~wang.3602/Mao-2017-SBS/Mao-2017-SBS.pdf
 
 # Refs
-
+* Meta: https://math.meta.stackexchange.com/questions/5020/mathjax-basic-tutorial-and-quick-reference
 * https://www.geometrictools.com/Documentation/FiniteDifferences.pdf
 * http://hplgit.github.io/num-methods-for-PDEs/doc/pub/wave/html/._wave006.html
 * https://wiki.seg.org/wiki/Mathematical_foundation_of_elastic_wave_propagation
@@ -189,5 +216,6 @@ This assumes $f:=f(x,y,t)$, $u_s=u_x+u_y$
 * https://arxiv.org/pdf/1911.00899.pdf
 * https://mathworld.wolfram.com/PartialDifferentialEquation.html
 * https://www.eijst.org.uk/images/frontImages/articles/Vol.7No.1/2.Exact_solutions_of_some_transonic_gas_flows_equations.pdf
+* https://hplgit.github.io/fdm-book/doc/pub/diffu/pdf/diffu-4print.pdf
 
 <!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
