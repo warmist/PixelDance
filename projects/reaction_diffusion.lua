@@ -9,6 +9,8 @@ require "common"
 config=make_config({
 	{"pause",false,type="boolean"},
 	{"clamp_edges",false,type="boolean"},
+	{"do_sum",false,type="boolean"},
+	{"do_norm",false,type="boolean"},
 	{"diff_a",0.024,type="float",min=0,max=1},
 	{"diff_b",0.024,type="float",min=0,max=1},
 	{"diff_c",2.5,type="float",min=0,max=1},
@@ -16,14 +18,14 @@ config=make_config({
 	{"kill",0.2,type="float",min=0,max=1},
 	{"feed",4.5,type="float",min=0,max=1},
 	{"k3",0.2,type="float",min=0,max=1},
-	{"k4",0.0,type="float",min=0,max=1},
+	{"k4",0.1,type="float",min=0,max=1},
 	{"region_size",0.5,type="float",min=0.01,max=1},
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"gain",1,type="float",min=-5,max=5},
 	{"draw_comp",0,type="int",min=0,max=3},
 	{"animate",false,type="boolean"},
 },config)
-local oversample=0.05 --TODO: not working correctly
+local oversample=0.25 --TODO: not working correctly
 function update_size()
 	local trg_w=1280
 	local trg_h=1280
@@ -92,7 +94,7 @@ uniform sampler2D tex_main;
 uniform float dt;
 
 uniform vec4 map_region;
-vec4 laplace_sm1(vec2 pos) //with laplacian kernel (cnt -1,near .2,diag 0.05)
+vec4 laplace(vec2 pos) //with laplacian kernel (cnt -1,near .2,diag 0.05)
 {
 	vec4 ret=vec4(0);
 	ret+=textureOffset(tex_main,pos,ivec2(-1,-1))*0.05;
@@ -108,7 +110,7 @@ vec4 laplace_sm1(vec2 pos) //with laplacian kernel (cnt -1,near .2,diag 0.05)
 	ret+=textureOffset(tex_main,pos,ivec2(0,0))*(-1);
 	return ret;
 }
-vec4 laplace(vec2 pos)
+vec4 laplace_h(vec2 pos)
 {
 	vec4 ret=vec4(0);
 
@@ -229,6 +231,8 @@ vec3 rossler(vec4 cnt,vec2 normed)
 	float k1=kill_feed.x;
 	float k2=kill_feed.y;
 	float k3=kill_feed.z;
+
+	float k4=kill_feed.w;
 #ifdef MAPPING
 	if (map_region.x>=0)
 	{
@@ -241,7 +245,7 @@ vec3 rossler(vec4 cnt,vec2 normed)
 		-(cnt.y+cnt.z),
 		cnt.x+k1*cnt.y,
 		cnt.x*cnt.z-k2*cnt.z+k3
-	);
+	)*k4;
 }
 vec3 two_reacts(vec4 cnt,vec2 normed)
 {
@@ -314,8 +318,8 @@ uniform sampler2D tex_main;
 uniform float v_gamma;
 uniform float v_gain;
 uniform int draw_comp;
-uniform float value_scale;
-uniform float value_offset;
+uniform vec4 value_scale;
+uniform vec4 value_offset;
 float gain(float x, float k)
 {
     float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
@@ -330,6 +334,8 @@ void main(){
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec4 cnt=texture(tex_main,normed);
+	cnt+=value_offset;
+	cnt*=value_scale;
 	//cnt=clamp(cnt,0,1);
 	float lv=cnt.x;
 	if(draw_comp==1)
@@ -338,13 +344,15 @@ void main(){
 		lv=cnt.z;
 	else if(draw_comp==3)
 		lv=cnt.w;
-	lv+=value_offset;
-	lv*=value_scale;
+
+	//lv+=value_offset;
+	//lv*=value_scale;
+	
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
-
-	color=vec4(lv,lv,lv,1);
-	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.25,0.25,0.25),vec3(2,0.5,0.5),vec3(1.5,0.25,0.25)),1);
+	//color=vec4(cnt.xyz,1);
+	//color=vec4(lv,lv,lv,1);
+	color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(0.6,0.5,0.5),vec3(0.125,0.25,0.25)),1);
 	/* accent
 	float accent_const=0.5;
 	if(lv<accent_const)
@@ -506,7 +514,7 @@ function random_math_transfers( steps,seed,count_transfers )
 	return rstr
 end
 function sim_tick(  )
-	local dt=0.0125
+	local dt=0.05
 	react_diffuse:use()
 	react_diffuse:blend_default()
 	react_diffuse:set("diffusion",config.diff_a,config.diff_b,config.diff_c,config.diff_d)
@@ -557,7 +565,7 @@ function reset_buffers(rnd  )
 	if not rnd then
 		local cx=math.floor(b.w/2)
 		local cy=math.floor(b.h/2)
-		local s=math.random(1,200)
+		local s=math.random(1,b.w*0.25)
 		local v = {math.random(),math.random(),math.random(),math.random()}
 		for x=cx-s,cx+s do
 			for y=cy-s,cy+s do
@@ -754,6 +762,7 @@ function gui(  )
 end
 function save_img( id )
 	--make_image_buffer()
+	img_buf=make_image_buffer(size[1],size[2])
 	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
 	for k,v in pairs(config) do
 		if type(v)~="table" then
@@ -793,16 +802,16 @@ function find_min_max( buf )
 	end
 	return lmin,lmax
 end
-local draw_sum_texture=true
+
 
 function draw_texture( id )
 	draw_shader:use()
 	local buf=react_buffer:get()
-	if draw_sum_texture then
+	if config.do_sum then
 		buf=collect_buffer:get()
 	end
 
-	if do_normalize or global_mm==nil then
+	if do_normalize or global_mm==nil or config.do_norm then
 		global_mm,global_mx=find_min_max(buf)
 		if do_normalize=="single" then
 			do_normalize=false
@@ -825,7 +834,7 @@ function draw_texture( id )
 
 	local mm=global_mm
 	local mx=global_mx
-	--[[
+	-- [[
 	local mmin=math.min(mm[1],mm[2])
 	mmin=math.min(mmin,mm[3])
 	mmin=math.min(mmin,mm[4])
@@ -833,11 +842,12 @@ function draw_texture( id )
 	mmax=math.max(mmax,mm[3])
 	mmax=math.max(mmax,mm[4])
 	--]]
-
+	--[[
 	local mmin=mm[config.draw_comp+1]
 	local mmax=mx[config.draw_comp+1]
-	draw_shader:set("value_offset",-mmin)
-	draw_shader:set("value_scale",1/(mmax-mmin))
+	--]]
+	draw_shader:set("value_offset",-mm[1],-mm[2],-mm[3],0)
+	draw_shader:set("value_scale",1/(mx[1]-mm[1]),1/(mx[2]-mm[2]),1/(mx[3]-mm[3]),1)
 	draw_shader:draw_quad()
 	if need_save or id then
 		save_img(id)

@@ -1,0 +1,32 @@
+# Reaction diffusion thoughts
+
+First we have [Rössler system](https://en.wikipedia.org/wiki/R%C3%B6ssler_attractor) and then we add diffusion.
+
+$$\begin{cases}
+\frac{du}{dt}=-v-w\\
+\frac{dv}{dt}=u+Av\\
+\frac{dw}{dt}=uw-Cw+B
+\end{cases}
+$$
+
+$$\begin{cases}
+\frac{du}{dt}=-(v+w)+D_u\nabla u\\
+\frac{dv}{dt}=u+Av+D_v\nabla v\\
+\frac{dw}{dt}=uw-Cw+B+D_w\nabla w
+\end{cases}
+$$
+
+Discretization of $t$ and $u$ and friends:
+
+$$\frac{du}{dt}\approx\frac{u^n-u^{n-1}}{\Delta t}\\
+
+\nabla u\approx\frac{u_{x+1}-2u+u_{x-1}}{\Delta x^2}+\frac{u_{y+1}-2u+u_{y-1}}{\Delta y^2}$$
+
+Then system is:
+$$\begin{cases}
+\frac{u^n-u^{n-1}}{\Delta t}=-(v+w)+D_u(\frac{u_{x+1}-2u+u_{x-1}}{\Delta x^2}+\frac{u_{y+1}-2u+u_{y-1}}{\Delta y^2})\\
+\frac{v^n-v^{n-1}}{\Delta t}=u+Av+D_v(\frac{v_{x+1}-2v+v_{x-1}}{\Delta x^2}+\frac{v_{y+1}-2v+v_{y-1}}{\Delta y^2})\\
+\frac{v^n-v^{n-1}}{\Delta t}=uw-Cw+B+D_w(\frac{w_{x+1}-2w+w_{x-1}}{\Delta x^2}+\frac{w_{y+1}-2w+w_{y-1}}{\Delta y^2})
+\end{cases}
+$$
+<!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
