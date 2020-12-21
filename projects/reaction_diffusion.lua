@@ -2,23 +2,40 @@ require "common"
 --[[
 	TODO:
 		* add oversample
+		* add MAX Over T for some T
 ]]
 config=make_config({
 	{"pause",false,type="boolean"},
 	{"clamp_edges",false,type="boolean"},
-	{"diff_a",1.0,type="float",min=0,max=1},
-	{"diff_b",0.5,type="float",min=0,max=1},
-	{"diff_c",0.25,type="float",min=0,max=1},
+	{"diff_a",0.024,type="float",min=0,max=1},
+	{"diff_b",0.024,type="float",min=0,max=1},
+	{"diff_c",2.5,type="float",min=0,max=1},
 	{"diff_d",0.125,type="float",min=0,max=1},
-	{"kill",0.062,type="float",min=0,max=1},
-	{"feed",0.055,type="float",min=0,max=1},
+	{"kill",0.2,type="float",min=0,max=1},
+	{"feed",4.5,type="float",min=0,max=1},
+	{"k3",0.2,type="float",min=0,max=1},
+	{"k4",0.0,type="float",min=0,max=1},
 	{"region_size",0.5,type="float",min=0.01,max=1},
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"gain",1,type="float",min=-5,max=5},
 	{"draw_comp",0,type="int",min=0,max=3},
 	{"animate",false,type="boolean"},
 },config)
-__set_window_size(1080,1080)
+
+function update_size()
+	local trg_w=1080
+	local trg_h=1080
+	--this is a workaround because if everytime you save
+	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
+	if win_w~=trg_w or win_h~=trg_h then
+		win_w=trg_w
+		win_h=trg_h
+		aspect_ratio=win_w/win_h
+		__set_window_size(win_w,win_h)
+	end
+end
+update_size()
+
 local size=STATE.size
 img_buf=img_buf or make_image_buffer(size[1],size[2])
 react_buffer=react_buffer or multi_texture(size[1],size[2],2,1)
@@ -29,12 +46,14 @@ thingy_string=thingy_string or "-c.x*c.y*c.y,0,0,+c.x*c.y*c.y"
 
 --feed_kill_string=feed_kill_string or "feed_rate*(1-c.x),-(kill_rate)*c.y,-(kill_rate)*(c.z),-(kill_rate)*c.w"
 feed_kill_string="-kill_rate,-kill_rate,-kill_rate,feed_rate"
-
+local oversample=1
 function resize( w,h )
-	img_buf=make_image_buffer(w,h)
+	local ww=w*oversample
+	local hh=h*oversample
+	img_buf=make_image_buffer(ww,hh)
 	size=STATE.size
-	react_buffer:update_size(w,h)
-	io_buffer=make_flt_buffer(w,h);
+	react_buffer:update_size(ww,hh)
+	io_buffer=make_flt_buffer(ww,hh);
 end
 
 function count_lines( s )
@@ -61,7 +80,7 @@ out vec4 color;
 in vec3 pos;
 
 uniform vec4 diffusion;
-uniform vec2 kill_feed;
+uniform vec4 kill_feed;
 
 uniform sampler2D tex_main;
 uniform float dt;
@@ -92,11 +111,61 @@ vec2 gray_scott(vec4 cnt,vec2 normed)
 	float kill_rate=kill_feed.x;
 	float feed_rate=kill_feed.y;
 #ifdef MAPPING
-	kill_rate=mix(0.0,0.08,normed.x);
-	feed_rate=mix(0.0,0.2,normed.y);
+	if (map_region.x>=0)
+	{
+		kill_rate=mix(map_region.x,map_region.y,normed.x);
+		feed_rate=mix(map_region.z,map_region.w,normed.y);
+	}
 #endif
 	float abb=cnt.x*cnt.y*cnt.y;
 	return vec2(-abb,abb)+vec2(feed_rate*(1-cnt.x),-(kill_rate+feed_rate)*cnt.y);
+}
+vec2 schnakenberk_reaction_kinetics(vec4 cnt,vec2 normed)
+{
+#if 0
+	float k1=kill_feed.x;
+	float k2=kill_feed.y;
+	float k3=kill_feed.z;
+	float k4=kill_feed.w;
+#ifdef MAPPING
+	if (map_region.x>=0)
+	{
+		k3=mix(map_region.x,map_region.y,normed.x);
+		k4=mix(map_region.z,map_region.w,normed.y);
+	}
+#endif
+	float aab=cnt.x*cnt.x*cnt.y;
+	return vec2(k1,k4)-vec2(k2*cnt.x,0)+vec2(k3*aab,-k3*aab);
+#endif
+	float k1=kill_feed.x;
+	float k2=kill_feed.y;
+	float k3=kill_feed.z;
+	float k4=kill_feed.w;
+#ifdef MAPPING
+	if (map_region.x>=0)
+	{
+		k1=mix(map_region.x,map_region.y,normed.x);
+		k2=mix(map_region.z,map_region.w,normed.y);
+	}
+#endif
+
+	return k3*vec2(k1-cnt.x-cnt.x*cnt.x*cnt.y,k2-cnt.x*cnt.x*cnt.y);
+}
+vec2 gierer_meinhard(vec4 cnt,vec2 normed)
+{
+	//not dimensional
+	float k1=kill_feed.x;
+	float k2=kill_feed.y;
+	float k3=kill_feed.z;
+#ifdef MAPPING
+	if (map_region.x>=0)
+	{
+		k1=mix(map_region.x,map_region.y,normed.x);
+		k2=mix(map_region.z,map_region.w,normed.y);
+	}
+#endif
+
+	return k3*vec2(k1-k2*cnt.x+cnt.x*cnt.x/cnt.y,cnt.x*cnt.x-cnt.y);
 }
 vec3 ruijgrok(vec4 cnt,vec2 normed)
 {
@@ -136,6 +205,25 @@ vec3 ruijgrok(vec4 cnt,vec2 normed)
 		pos_x1+pos_x2-neg_x1-neg_x2+feed_rate*(1-cnt.x),
 		pos_y1+pos_y2-neg_y1-neg_y2-(kill_rate+feed_rate)*cnt.y,
 		pos_z1+pos_z2-neg_z1-neg_z2);
+}
+vec3 rossler(vec4 cnt,vec2 normed)
+{
+	float k1=kill_feed.x;
+	float k2=kill_feed.y;
+	float k3=kill_feed.z;
+#ifdef MAPPING
+	if (map_region.x>=0)
+	{
+		k1=mix(map_region.x,map_region.y,normed.x);
+		k2=mix(map_region.z,map_region.w,normed.y);
+	}
+#endif
+
+	return vec3(
+		-(cnt.y+cnt.z),
+		cnt.x+k1*cnt.y,
+		cnt.x*cnt.z-k2*cnt.z+k3
+	);
 }
 vec3 two_reacts(vec4 cnt,vec2 normed)
 {
@@ -186,10 +274,13 @@ void main(){
 		//+vec4(gray_scott(cnt,normed),0,0)
 		//+vec4(ruijgrok(cnt,normed),0)
 		//+vec4(two_reacts(cnt,normed),0)
-		+thingy_formulas(cnt,normed)
+		//+thingy_formulas(cnt,normed)
+		//+vec4(schnakenberk_reaction_kinetics(cnt,normed),0,0)
+		//+vec4(gierer_meinhard(cnt,normed),0,0)
+		+vec4(rossler(cnt,normed),0)
 		)*dt;
 
-	ret=clamp(ret,0,1);
+	//ret=clamp(ret,0,1);
 
 	color=ret;
 }
@@ -232,14 +323,21 @@ void main(){
 	lv=pow(lv,v_gamma);
 
 	//color=vec4(lv,lv,lv,1);
-	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.25,0.25,0.25),vec3(2,0.5,0.5),vec3(1.5,0.25,0.25)),1);
-	///* accent
+	color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.25,0.25,0.25),vec3(2,0.5,0.5),vec3(1.5,0.25,0.25)),1);
+	/* accent
 	float accent_const=0.9;
 	if(lv<accent_const)
 		color=vec4(vec3(1)*(lv/accent_const),1);
 	else
 		color=mix(vec4(1),vec4(0.05,0.1,0.3,1),(lv-accent_const)/(1-accent_const));
 	//*/
+	/*
+	if(lv>0)
+		color.xyz=vec3(lv,0,0);
+	else
+		color.xyz=vec3(0,0,lv);
+	color.w=1;
+	*/
 }
 ]==]
 
@@ -370,11 +468,11 @@ function random_math_transfers( steps,seed,count_transfers )
 	return rstr
 end
 function sim_tick(  )
-	local dt=0.25
+	local dt=0.0025
 	react_diffuse:use()
 	react_diffuse:blend_default()
 	react_diffuse:set("diffusion",config.diff_a,config.diff_b,config.diff_c,config.diff_d)
-	react_diffuse:set("kill_feed",config.kill,config.feed)
+	react_diffuse:set("kill_feed",config.kill,config.feed,config.k3,config.k4)
 	react_diffuse:set("dt",dt)
 	react_diffuse:set("map_region",map_region[1],map_region[2],map_region[3],map_region[4])
 	local cur_buff=react_buffer:get()
@@ -658,13 +756,23 @@ function update( )
 		end
 		local xx=(x/size[1])*scale_x+offset_x
 		local yy=(1-y/size[2])*scale_y+offset_y
+
 		print(xx,",",yy)
-		config.kill=xx
-		config.feed=yy
+		config.k1=xx
+		config.k2=yy
+
+		-- [[
 		local low_x=math.max(0,xx-config.region_size)
 		local low_y=math.max(0,yy-config.region_size)
 		local high_x=math.min(1,xx+config.region_size)
 		local high_y=math.min(1,yy+config.region_size)
+		--]]
+		--[[
+		local low_x=xx-config.region_size
+		local low_y=yy-config.region_size
+		local high_x=xx+config.region_size
+		local high_y=yy+config.region_size
+		--]]
 		map_region={low_x,high_x,low_y,high_y}
 		reset_buffers(true)
 		config.region_size=config.region_size/2
