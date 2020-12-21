@@ -3,6 +3,7 @@ require "common"
 	TODO:
 		* add oversample
 		* add MAX Over T for some T
+		* multi scale turing patterns: https://faculty.ac/image-story/a-machine-in-motion/
 ]]
 config=make_config({
 	{"pause",false,type="boolean"},
