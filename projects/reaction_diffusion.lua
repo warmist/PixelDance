@@ -23,13 +23,13 @@ config=make_config({
 	{"draw_comp",0,type="int",min=0,max=3},
 	{"animate",false,type="boolean"},
 },config)
-
+local oversample=0.05 --TODO: not working correctly
 function update_size()
-	local trg_w=1080
-	local trg_h=1080
+	local trg_w=1280
+	local trg_h=1280
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
-	if win_w~=trg_w or win_h~=trg_h then
+	if win_w~=trg_w or win_h~=trg_h or (img_buf==nil or img_buf.w~=trg_w*oversample) then
 		win_w=trg_w
 		win_h=trg_h
 		aspect_ratio=win_w/win_h
@@ -41,6 +41,7 @@ update_size()
 local size=STATE.size
 img_buf=img_buf or make_image_buffer(size[1],size[2])
 react_buffer=react_buffer or multi_texture(size[1],size[2],2,1)
+collect_buffer=collect_buffer or multi_texture(size[1],size[2],2,1)
 io_buffer=io_buffer or make_flt_buffer(size[1],size[2])
 
 map_region=map_region or {-1,0,0,0}
@@ -48,16 +49,19 @@ thingy_string=thingy_string or "-c.x*c.y*c.y,0,0,+c.x*c.y*c.y"
 
 --feed_kill_string=feed_kill_string or "feed_rate*(1-c.x),-(kill_rate)*c.y,-(kill_rate)*(c.z),-(kill_rate)*c.w"
 feed_kill_string="-kill_rate,-kill_rate,-kill_rate,feed_rate"
-local oversample=1
+
 function resize( w,h )
 	local ww=w*oversample
 	local hh=h*oversample
 	img_buf=make_image_buffer(ww,hh)
 	size=STATE.size
 	react_buffer:update_size(ww,hh)
+	collect_buffer:update_size(ww,hh)
 	io_buffer=make_flt_buffer(ww,hh);
 end
-
+if img_buf.w~=win_w*oversample then
+	resize(win_w,win_h)
+end
 function count_lines( s )
 	local n=0
 	for i in s:gmatch("\n") do n=n+1 end
@@ -88,7 +92,7 @@ uniform sampler2D tex_main;
 uniform float dt;
 
 uniform vec4 map_region;
-vec4 laplace(vec2 pos) //with laplacian kernel (cnt -1,near .2,diag 0.05)
+vec4 laplace_sm1(vec2 pos) //with laplacian kernel (cnt -1,near .2,diag 0.05)
 {
 	vec4 ret=vec4(0);
 	ret+=textureOffset(tex_main,pos,ivec2(-1,-1))*0.05;
@@ -100,6 +104,18 @@ vec4 laplace(vec2 pos) //with laplacian kernel (cnt -1,near .2,diag 0.05)
 	ret+=textureOffset(tex_main,pos,ivec2(-1,0))*.2;
 	ret+=textureOffset(tex_main,pos,ivec2(1,0))*.2;
 	ret+=textureOffset(tex_main,pos,ivec2(0,1))*.2;
+
+	ret+=textureOffset(tex_main,pos,ivec2(0,0))*(-1);
+	return ret;
+}
+vec4 laplace(vec2 pos)
+{
+	vec4 ret=vec4(0);
+
+	ret+=textureOffset(tex_main,pos,ivec2(0,-1))*.25;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,0))*.25;
+	ret+=textureOffset(tex_main,pos,ivec2(1,0))*.25;
+	ret+=textureOffset(tex_main,pos,ivec2(0,1))*.25;
 
 	ret+=textureOffset(tex_main,pos,ivec2(0,0))*(-1);
 	return ret;
@@ -298,6 +314,8 @@ uniform sampler2D tex_main;
 uniform float v_gamma;
 uniform float v_gain;
 uniform int draw_comp;
+uniform float value_scale;
+uniform float value_offset;
 float gain(float x, float k)
 {
     float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
@@ -312,7 +330,7 @@ void main(){
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec4 cnt=texture(tex_main,normed);
-
+	//cnt=clamp(cnt,0,1);
 	float lv=cnt.x;
 	if(draw_comp==1)
 		lv=cnt.y;
@@ -320,7 +338,8 @@ void main(){
 		lv=cnt.z;
 	else if(draw_comp==3)
 		lv=cnt.w;
-
+	lv+=value_offset;
+	lv*=value_scale;
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
 
@@ -343,7 +362,24 @@ void main(){
 }
 ]==]
 
+local sum_texture = shader_make[==[
+out vec4 color;
+in vec3 pos;
 
+uniform sampler2D tex_main;
+uniform sampler2D tex_old;
+
+void main(){
+
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	vec4 cnt=texture(tex_main,normed);
+	vec4 cnt_old=texture(tex_old,normed);
+
+	color=max(cnt,cnt_old);
+	//color=sqrt(cnt*cnt+cnt_old*cnt_old)/2;
+	color.a=1;
+}
+]==]
 local terminal_symbols={["c.x"]=10,["c.y"]=10,["c.z"]=10,["c.w"]=10,["1.0"]=0.1,["0.0"]=0.1}
 local normal_symbols={["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,["log(R+1.0)"]=1,["(R)/(R+1)"]=5,["(R)*(R)"]=5,["(R)-(R)"]=5,["(R)+(R)"]=5}
 
@@ -470,7 +506,7 @@ function random_math_transfers( steps,seed,count_transfers )
 	return rstr
 end
 function sim_tick(  )
-	local dt=0.0025
+	local dt=0.0125
 	react_diffuse:use()
 	react_diffuse:blend_default()
 	react_diffuse:set("diffusion",config.diff_a,config.diff_b,config.diff_c,config.diff_d)
@@ -507,11 +543,11 @@ function reset_buffers(rnd  )
 			local dy=y-b.h/2
 			local dist=math.sqrt(dx*dx+dy*dy)
 			if rnd then
-				if dist<b.w/2 then
-					b:set(x,y,{math.random(),math.random(),math.random(),math.random()})
-				else
-					b:set(x,y,{0,0,0,0})
-				end
+				--if dist<b.w/8 then
+					b:set(x,y,{math.random()*0.2,math.random()*0.2,math.random()*0.2,math.random()*0.2})
+				--else
+				--	b:set(x,y,{0,0,0,0})
+				--end
 			else
 				b:set(x,y,{1,0,0,0})
 			end
@@ -540,6 +576,24 @@ function reset_buffers(rnd  )
 	react_buffer:advance()
 
 	buf=react_buffer:get()
+	buf:use(0)
+	b:write_texture(buf)
+
+	reset_collect()
+end
+function reset_collect()
+	local b=io_buffer
+	for x=0,b.w-1 do
+		for y=0,b.h-1 do
+			b:set(x,y,{0,0,0,0})
+		end
+	end
+	local buf=collect_buffer:get()
+	buf:use(0)
+	b:write_texture(buf)
+	collect_buffer:advance()
+
+	buf=collect_buffer:get()
 	buf:use(0)
 	b:write_texture(buf)
 end
@@ -654,6 +708,7 @@ anim_state={
 	frame_skip=10,
 	max_frame=12000,
 	}
+local do_normalize=false
 function gui(  )
 	imgui.Begin("GrayScott")
 	draw_config(config)
@@ -673,6 +728,10 @@ function gui(  )
 		reset_buffers(true)
 	end
 	imgui.SameLine()
+	if imgui.Button("ClearCollec") then
+		reset_collect()
+	end
+	imgui.SameLine()
 	if imgui.Button("NotMapping") then
 		map_region={-1,0,0,0}
 	end
@@ -682,6 +741,10 @@ function gui(  )
 	end
 	if imgui.Button("Save image") then
 		need_save=true
+	end
+	imgui.SameLine()
+	if imgui.Button("norm") then
+		do_normalize="single"
 	end
 	if imgui.Button("Start animate") then
 		anim_state.current_frame=0
@@ -706,14 +769,75 @@ function save_img( id )
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 	end
 end
+function find_min_max( buf )
+	buf:use(0,0,0)
+	local lmin={math.huge,math.huge,math.huge,math.huge}
+	local lmax={-math.huge,-math.huge,-math.huge,-math.huge}
+
+	io_buffer:read_texture(buf)
+	
+	local count=0
+	for x=0,io_buffer.w-1 do
+	for y=0,io_buffer.h-1 do
+		local v=io_buffer:get(x,y)
+		if v.r<lmin[1] then lmin[1]=v.r end
+		if v.g<lmin[2] then lmin[2]=v.g end
+		if v.b<lmin[3] then lmin[3]=v.b end
+		if v.a<lmin[4] then lmin[4]=v.a end
+
+		if v.r>lmax[1] then lmax[1]=v.r end
+		if v.g>lmax[2] then lmax[2]=v.g end
+		if v.b>lmax[3] then lmax[3]=v.b end
+		if v.a>lmax[4] then lmax[4]=v.a end
+	end
+	end
+	return lmin,lmax
+end
+local draw_sum_texture=true
+
 function draw_texture( id )
 	draw_shader:use()
 	local buf=react_buffer:get()
+	if draw_sum_texture then
+		buf=collect_buffer:get()
+	end
+
+	if do_normalize or global_mm==nil then
+		global_mm,global_mx=find_min_max(buf)
+		if do_normalize=="single" then
+			do_normalize=false
+		end
+		--[[
+		print("=======================")
+		for i,v in ipairs(global_mm) do
+			print(i,v)
+		end
+		for i,v in ipairs(global_mx) do
+			print(i,v)
+		end
+		--]]
+	end
 	buf:use(0,0,0)
 	draw_shader:set_i('tex_main',0)
 	draw_shader:set("v_gamma",config.gamma)
 	draw_shader:set("v_gain",config.gain)
 	draw_shader:set_i("draw_comp",config.draw_comp)
+
+	local mm=global_mm
+	local mx=global_mx
+	--[[
+	local mmin=math.min(mm[1],mm[2])
+	mmin=math.min(mmin,mm[3])
+	mmin=math.min(mmin,mm[4])
+	local mmax=math.max(mx[1],mm[2])
+	mmax=math.max(mmax,mm[3])
+	mmax=math.max(mmax,mm[4])
+	--]]
+
+	local mmin=mm[config.draw_comp+1]
+	local mmax=mx[config.draw_comp+1]
+	draw_shader:set("value_offset",-mmin)
+	draw_shader:set("value_scale",1/(mmax-mmin))
 	draw_shader:draw_quad()
 	if need_save or id then
 		save_img(id)
@@ -722,6 +846,33 @@ function draw_texture( id )
 		end
 		need_save=nil
 	end
+end
+function apply_sum_texture()
+	sum_texture:use()
+	local buf=react_buffer:get()
+	buf:use(0,0,0)
+	sum_texture:set_i('tex_main',0)
+
+	local cur_buff=collect_buffer:get()
+	local do_clamp
+	if config.clamp_edges then
+		do_clamp=1
+	else
+		do_clamp=0
+	end
+	cur_buff:use(1,0,do_clamp)
+	sum_texture:set_i("tex_old",1)
+
+	local next_buff=collect_buffer:get_next()
+	next_buff:use(2,0,do_clamp)
+	if not next_buff:render_to(collect_buffer.w,collect_buffer.h) then
+		error("failed to set framebuffer up")
+	end
+
+	sum_texture:draw_quad()
+
+	__render_to_window()
+	collect_buffer:advance()
 end
 function is_mouse_down(  )
 	return __mouse.clicked1 and not __mouse.owned1, __mouse.x,__mouse.y
@@ -735,6 +886,7 @@ function update( )
 		draw_texture()
 	else
 		sim_tick()
+		apply_sum_texture()
 		local save_id
 		if config.animate then
 			anim_state.current_frame=anim_state.current_frame+1
