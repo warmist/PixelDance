@@ -4,6 +4,7 @@ require "common"
 		* add oversample
 		* add MAX Over T for some T
 		* multi scale turing patterns: https://faculty.ac/image-story/a-machine-in-motion/
+		* https://elifesciences.org/articles/14022
 ]]
 config=make_config({
 	{"pause",false,type="boolean"},
@@ -323,10 +324,10 @@ void main(){
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
 
-	//color=vec4(lv,lv,lv,1);
-	color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.25,0.25,0.25),vec3(2,0.5,0.5),vec3(1.5,0.25,0.25)),1);
+	color=vec4(lv,lv,lv,1);
+	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.25,0.25,0.25),vec3(2,0.5,0.5),vec3(1.5,0.25,0.25)),1);
 	/* accent
-	float accent_const=0.9;
+	float accent_const=0.5;
 	if(lv<accent_const)
 		color=vec4(vec3(1)*(lv/accent_const),1);
 	else
@@ -502,8 +503,15 @@ function reset_buffers(rnd  )
 	local b=io_buffer
 	for x=0,b.w-1 do
 		for y=0,b.h-1 do
+			local dx=x-b.w/2
+			local dy=y-b.h/2
+			local dist=math.sqrt(dx*dx+dy*dy)
 			if rnd then
-				b:set(x,y,{math.random(),math.random(),math.random(),math.random()})
+				if dist<b.w/2 then
+					b:set(x,y,{math.random(),math.random(),math.random(),math.random()})
+				else
+					b:set(x,y,{0,0,0,0})
+				end
 			else
 				b:set(x,y,{1,0,0,0})
 			end
