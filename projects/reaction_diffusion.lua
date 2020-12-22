@@ -15,8 +15,8 @@ config=make_config({
 	{"diff_b",0.024,type="float",min=0,max=1},
 	{"diff_c",2.5,type="float",min=0,max=1},
 	{"diff_d",0.125,type="float",min=0,max=1},
-	{"kill",0.2,type="float",min=0,max=1},
-	{"feed",4.5,type="float",min=0,max=1},
+	{"k1",0.2,type="float",min=0,max=1},
+	{"k2",4.5,type="float",min=0,max=1},
 	{"k3",0.2,type="float",min=0,max=1},
 	{"k4",0.1,type="float",min=0,max=1},
 	{"region_size",0.5,type="float",min=0.01,max=1},
@@ -532,7 +532,7 @@ function sim_tick(  )
 	react_diffuse:use()
 	react_diffuse:blend_default()
 	react_diffuse:set("diffusion",config.diff_a,config.diff_b,config.diff_c,config.diff_d)
-	react_diffuse:set("kill_feed",config.kill,config.feed,config.k3,config.k4)
+	react_diffuse:set("kill_feed",config.k1,config.k2,config.k3,config.k4)
 	react_diffuse:set("dt",dt)
 	react_diffuse:set("map_region",map_region[1],map_region[2],map_region[3],map_region[4])
 	local cur_buff=react_buffer:get()
