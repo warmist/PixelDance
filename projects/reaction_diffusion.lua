@@ -25,7 +25,7 @@ config=make_config({
 	{"draw_comp",0,type="int",min=0,max=3},
 	{"animate",false,type="boolean"},
 },config)
-local oversample=0.25 --TODO: not working correctly
+local oversample=0.125 --TODO: not working correctly
 function update_size()
 	local trg_w=1280
 	local trg_h=1280
@@ -351,8 +351,8 @@ void main(){
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
 	//color=vec4(cnt.xyz,1);
-	//color=vec4(lv,lv,lv,1);
-	color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(0.6,0.5,0.5),vec3(0.125,0.25,0.25)),1);
+	color=vec4(lv,lv,lv,1);
+	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.25),vec3(1.0,1.05,0.2)),1);
 	/* accent
 	float accent_const=0.5;
 	if(lv<accent_const)
@@ -376,7 +376,18 @@ in vec3 pos;
 
 uniform sampler2D tex_main;
 uniform sampler2D tex_old;
-
+vec4 smooth_max_p_norm(vec4 a,vec4 b,float alpha)
+{
+	return pow(pow(a,vec4(alpha))+pow(b,vec4(alpha)),vec4(1/alpha));
+}
+vec4 smooth_max_2(vec4 a,vec4 b,float alpha)
+{
+	return ((a+b)+sqrt((a+b)*(a+b)+alpha))/2;
+}
+vec4 smooth_max(vec4 a,vec4 b,float alpha)
+{
+	return (a*exp(alpha*a)+b*exp(alpha*b))/(exp(alpha*a)+exp(alpha*b));
+}
 void main(){
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -384,7 +395,10 @@ void main(){
 	vec4 cnt_old=texture(tex_old,normed);
 
 	color=max(cnt,cnt_old);
-	//color=sqrt(cnt*cnt+cnt_old*cnt_old)/2;
+	//color=abs(cnt)+abs(cnt_old);
+	//color=cnt+cnt_old;
+	//color=smooth_max(cnt,cnt_old,5);
+	//color=smooth_max_p_norm(cnt,cnt_old,5);
 	color.a=1;
 }
 ]==]
@@ -551,7 +565,7 @@ function reset_buffers(rnd  )
 			local dy=y-b.h/2
 			local dist=math.sqrt(dx*dx+dy*dy)
 			if rnd then
-				--if dist<b.w/8 then
+				--if dist<b.w/3 then
 					b:set(x,y,{math.random()*0.2,math.random()*0.2,math.random()*0.2,math.random()*0.2})
 				--else
 				--	b:set(x,y,{0,0,0,0})
