@@ -29,9 +29,9 @@ function tonemap( light,avg_lum )
 	else
     	Y = (Y*(1 + Y / lum_white)) / (Y + 1); --allow to burn out bright areas
     end
-	if math.random()>0.9999 then
+	--[[if math.random()>0.9999 then
 		print(Y)
-	end
+	end]]
 
     --transform back to cieXYZ
     light.g=Y;
@@ -125,7 +125,7 @@ function read_hd_png_buf( fname )
 			--end
 		else
 			local v=b:f32()
-			v=background_minmax[2]-v
+			--v=background_minmax[2]-v
 			background_buf:set(x,y,{v,v,v,1})
 		end
 	end
@@ -139,7 +139,7 @@ function read_hd_png_buf( fname )
 		lavg=math.log(lavg+2.8)
 	end
 	print("Loaded:",background_minmax[1],background_minmax[2])
-	-- [[
+	--[=[
 	for x=0,background_buf.w-1 do
 	for y=0,background_buf.h-1 do
 		tonemap2(background_buf:get(x,y),background_minmax[1],background_minmax[2])
@@ -158,7 +158,7 @@ function read_hd_png_buf( fname )
 		--]]
 	end
 	end
-	--]]
+	--]=]
 	return background_buf,background_minmax
 end
 function load_hd_png()
@@ -171,7 +171,7 @@ function load_hd_png()
 		__unbind_buffer()
 	end
 end
-image_buf=read_hd_png_buf("out.buf")
+image_buf=read_hd_png_buf("waves_out.buf")
 --]]
 function safe_set_size( w,h )
 	if STATE.size[1]~=w or STATE.size[2]~=h then
@@ -179,6 +179,7 @@ function safe_set_size( w,h )
 	end
 end
 safe_set_size(image_buf.w,image_buf.h)
+--safe_set_size(1024,1024)
 function resize( w,h )
 	size=STATE.size
 end
@@ -188,9 +189,9 @@ config=make_config({
 	{"bulge_r",0.1,type="float",max=0.5},
 	{"bulge_radius_offset",0,type="float",max=1},
 	{"gamma",2.2,type="float",min=0.01,max=5},
-	{"whitepoint",0.33,type="float",min=-0.01,max=1},
+	{"whitepoint",0.3,type="float",min=-0.01,max=1},
 	{"exposure",0.004,type="floatsci",min=0.0001,max=1},
-	{"temperature",5778,type="float",min=0.001,max=10000},
+	{"temperature",6503.5,type="float",min=0.001,max=10000},
 	{"image_is_intensity",true,type="boolean"},
 },config)
 
@@ -228,18 +229,20 @@ function load_csv_pigments( path )
 				local s=string.sub(line,pos,startp-1)
 				if first_line then
 					ret[s]={}
+					--print("NAME:",s)
 					table.insert(names,s)
 				elseif id>1 then
-
+					--print("INSERT:",names[id],s)
 					table.insert(ret[names[id]],{wavelen,tonumber(s)})
 				else
-					print(wavelen)
 					wavelen=tonumber(s)
+					--print("Wavelen:",wavelen)
 				end
 				pos = endp + 1
 				id=id+1
 			else
 				local s=string.sub(line,pos)
+				--print("END:",names[id],s)
 				if first_line then
 					ret[s]={}
 					table.insert(names,s)
@@ -557,7 +560,9 @@ uniform float iteration;
 uniform float iteration_step;
 uniform float input_temp;
 uniform float do_intensity;
-uniform float wave_reflect;
+uniform vec4 wave_reflect;
+uniform vec4 pigment_K;
+uniform vec4 pigment_S;
 float black_body_spectrum(float l,float temperature )
 {
 	/*float h=6.626070040e-34; //Planck constant
@@ -573,6 +578,54 @@ float black_body_spectrum(float l,float temperature )
 float black_body(float iter,float temp)
 {
 	return black_body_spectrum(mix(380*1e-9,740*1e-9,iter),temp);
+}
+float D65_approx(float iter)
+{
+	//3rd order fit on D65
+	float wl=mix(380,740,iter);
+	//return (-1783+9.98*wl-(0.0171)*wl*wl+(9.51e-06)*wl*wl*wl)*1e12;
+	return (-1783.1047729784+9.977734354*wl-(0.0171304983)*wl*wl+(0.0000095146)*wl*wl*wl);
+}
+float D65_blackbody(float iter,float temp)
+{
+	float wl=mix(380,740,iter);
+	/*
+	float mod=-5754+27.3*wl-0.043*wl*wl+(2.26e-05)*wl*wl*wl;
+	return black_body(wl*1e-9,temp)-mod;
+	*/
+	//6th order poly fit on black_body/D65
+	/*
+	float mod=6443-67.8*wl*(
+			1-0.004365781*wl*(
+				1-(2.31e-3)*wl*(
+					1-(1.29e-03)*wl*(
+						1-(6.68e-04)*wl*(
+							1-(2.84e-04)*wl
+										)
+									)
+								)
+						  	 )
+						  	);
+	*/
+	//float mod=6443-67.8*wl+0.296*wl*wl-(6.84E-04)*wl*wl*wl+(8.84E-07)*wl*wl*wl*wl-
+	//	6.06E-10*wl*wl*wl*wl*wl+1.72E-13*wl*wl*wl*wl*wl*wl;
+
+	/*float mod=6449.3916465248
+	+wl*(
+		-67.868524542
+		+wl*(0.2960426028
+			+wl*((-0.0006846726)
+				+wl*((8.852e-7)+
+					wl*((-6e-10)+0*wl)
+					)
+				)
+			)
+		);
+
+	return black_body(wl*1e-9,temp)*mod*1e-8;*/
+	float b65=black_body(wl*1e-9,6503.5);
+	return D65_approx(iter)*(black_body(wl*1e-9,temp)/b65);
+
 }
 vec2 tangent_distort(vec2 p,vec2 arg)
 {
@@ -649,83 +702,190 @@ vec4 sample_22(vec2 pos)
 	ret+=textureOffset(tex_main,pos,ivec2(0,0))*(1-4*w);
 	return ret;
 }
+float cotangh(float v)
+{
+	return (exp(2*v)+1)/(exp(2*v)-1);
+}
+float reflectivity(float SX,float Rg,float Rinf)
+{
+	//SX is scatter*thickness
+	//Rg reflectance of backing layer
+	//Rinf reflectance of infinite layer of pigment
+	float a=0.5*(1/Rinf+Rinf);
+	float b=0.5*(1/Rinf-Rinf);
+	float ctb=b*cotangh(b*SX);
+
+	return (1-Rg*(a-ctb))/(a+ctb-Rg);
+}
+float kubelka_munk(float K,float S)
+{
+#if 1
+	float KS=K/S;
+ 	return 1+KS-sqrt(KS*KS+2*KS);
+#elif 0
+ 	//modified KM theory
+ 	float layer_size=0.1;
+ 	float temp=S+K-K*layer_size*S-K*K*layer_size*0.5;
+ 	float ret=0;
+ 	ret+=2*temp;
+ 	ret-=2*sqrt(temp*temp-S*S);
+ 	ret/=2*S;
+ 	return ret;
+#else
+	return (sqrt(2*K*S)-S)/(2*K-S);
+#endif
+}
+float mixture(float k1,float k2,float s1,float s2,float c1)
+{
+	float K=mix(k1,k2,c1);
+	float S=mix(s1,s2,c1);
+	return kubelka_munk(K,S);
+}
+float reflectivity_KS(float k,float s,float height,float Rg)
+{
+	float R_inf=kubelka_munk(k,s);
+	if(height<0.02)
+		return Rg;
+#if 0
+	float eterm=exp(s*height*(1/R_inf-R_inf));
+	float rterm=(Rg-1/R_inf);
+
+	float ret=0;
+	ret+=(Rg-R_inf)/R_inf;
+	ret-=R_inf*rterm*eterm;
+	ret/=(Rg-R_inf-rterm*eterm);
+	return ret;
+#else
+	float a=0.5*(1/R_inf+R_inf);
+	float b=0.5*(1/R_inf-R_inf);
+
+	if(b*s*height>3) 
+		return R_inf;
+	float bctg=b*cotangh(b*s*height);
+
+	float top=1-Rg*(a-bctg);
+	float bottom=a+bctg-Rg;
+	return top/bottom;
+#endif
+}
+vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
+
+float snoise(vec2 v){
+  const vec4 C = vec4(0.211324865405187, 0.366025403784439,
+           -0.577350269189626, 0.024390243902439);
+  vec2 i  = floor(v + dot(v, C.yy) );
+  vec2 x0 = v -   i + dot(i, C.xx);
+  vec2 i1;
+  i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+  vec4 x12 = x0.xyxy + C.xxzz;
+  x12.xy -= i1;
+  i = mod(i, 289.0);
+  vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
+  + i.x + vec3(0.0, i1.x, 1.0 ));
+  vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy),
+    dot(x12.zw,x12.zw)), 0.0);
+  m = m*m ;
+  m = m*m ;
+  vec3 x = 2.0 * fract(p * C.www) - 1.0;
+  vec3 h = abs(x) - 0.5;
+  vec3 ox = floor(x + 0.5);
+  vec3 a0 = x - ox;
+  m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+  vec3 g;
+  g.x  = a0.x  * x0.x  + h.x  * x0.y;
+  g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+  return 130.0 * dot(m, g);
+}
+float sdBox( in vec2 p, in vec2 b )
+{
+    vec2 d = abs(p)-b;
+    return length(max(d,0.0)) + min(max(d.x,d.y),0.0);
+}
+float sminCubic( float a, float b, float k )
+{
+    float h = max( k-abs(a-b), 0.0 )/k;
+    return min( a, b ) - h*h*h*k*(1.0/6.0);
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec2 offset=vec2(0,0);
 	vec2 dist_pos=pos.xy;
-	dist_pos=Distort(dist_pos,offset,barrel_power*iteration+1);
+	//dist_pos=Distort(dist_pos,offset,barrel_power*iteration+1);
 	//dist_pos=tangent_distort(dist_pos,vec2(barrel_power*iteration,barrel_power*iteration)*0.1);
 	//dist_pos=distort_x(dist_pos,offset,barrel_power*iteration);
 	//dist_pos=distort_y(dist_pos,offset,barrel_power*iteration);
 	//dist_pos=distort_y2(dist_pos,offset,barrel_power*iteration);
 	//dist_pos=distort_spiral(dist_pos,offset,barrel_power*iteration);
 	dist_pos=(dist_pos+vec2(1))/2;
-	//vec2 dist_pos=normed+vec2(barrel_power)*iteration;
 
 
-	/*TODO
-		another way to do this: calculate spectrum of point, distort by it's
-		wave length. Needs some sort of smoothing/reverse interpolation?
-		Another idea: get wavelength sort of like this: https://www.semrock.com/Data/Sites/1/semrockpdfs/whitepaper_howtocalculateluminositywavelengthandpurity.pdf
-		and then shift it somewhat
-		Another idea: calculate something like a lightsource (i.e. spectrum) is
-		falling down and image is distorting it by it's VALUE.
-	*/
-
-	//float c=sample_22(dist_pos*vec2(1,-1)).y;
 	float c=texture(tex_main,dist_pos*vec2(1,-1)).y;
-	//c=clamp(c/10,0,1);
-	//c=exp(c);
-	//vec3 nv=rgb2xyz(texture(tex_main,dist_pos*vec2(1,-1)).xyz);
+	
 	vec3 nv=texture(tex_main,dist_pos*vec2(1,-1)).xyz;
 
-	//vec3 nv=texture(tex_main,dist_pos*vec2(1,-1)).xyz;
 
-	//nv=gain(nv,v_gain);
-	//nv=pow(nv,v_gamma);
+	float v=clamp(length(pos.xy)-0.1,0,1);
 
-	float v=clamp(length(pos.xy),0,1);
-	//color = vec4(xyz2rgb(xyzFromWavelength(mix(3800,7400,v))*85),1);
-	//color.xyz=pow(color.xyz,vec3(2.2));
-	//color = vec4(Rc,1);//vec4(v,v,v,1);//vec4(0.2,0,0,1);
 	vec3 ss;
-	float spread=barrel_offset;
-	float power=1e-2;
 
-	//ss=xyz2rgb(sample_thing(v,spread))*power;
-
-	//color=vec4(ss,1);
-	//vec3 rcol=xyz2rgb(sample_circle_w(normed));
-	//color=vec4(rcol,1);
-
-	//color.x=log(black_body(normed.x))*power;
+	float scale_height=20;
+	//float h=v*scale_height;
+	vec3 h=pow(nv,vec3(2.5))*scale_height;
+	vec3 cnorm=clamp(nv*4,0,1);
+	//h=clamp(h,0.01,100);
 	float T=input_temp;
 	//float T=5778;//Sun
 	//float T=4500;
 	//float T=8000;
 	//float T=6503.6; //D65 illiuminant
-	#if 1
-	nv.xyz=vec3(pos.x+1)/2;
+
+	//nv.xyz=vec3(pos.xy+1,0)/2;
+	float sw=0.0125;
+	float back_v=smoothstep(sw,-sw,
+		sminCubic(sdBox(pos.xy,vec2(0.12,4)),sdBox(pos.xy,vec2(4,0.12)),0.05)
+		);//smoothstep(-sw,sw,0.5-abs(pos.x))*smoothstep(-sw,sw,0.5-abs(pos.y));
+	/*float back=kubelka_munk(pigment_K.x,pigment_S.x)*back_v+
+			   kubelka_munk(pigment_K.y,pigment_S.y)*(1-back_v);
+			   */
+	float back_k=mix(pigment_K.x,pigment_K.y,back_v);
+	float back_s=mix(pigment_S.x,pigment_S.y,back_v);
+
+	float back=kubelka_munk(back_k,back_s);
+	float vv=clamp(abs(pos.y)+0.1,0,1);//step((pos.x+pos.y)/2,0);
+	//float vv=0;
+	//float r=reflectivity(nv.x,reflectivity(nv.y,vv,wave_reflect.y),wave_reflect.x);
+	//float r=mixture(pigment_K.z,pigment_K.w,pigment_S.z,pigment_S.w,v);
+	//float r=reflectivity_KS(pigment_K.y,pigment_S.y,nv.x*2,kubelka_munk(pigment_K.x,pigment_S.x))*vv+
+	//	mixture(pigment_K.x,pigment_K.y,pigment_S.x,pigment_S.y,nv.x)*(1-vv);
+	//float r=reflectivity_KS(pigment_K.z,pigment_S.z,abs(pos.y*scale_height),back)*vv+
+	//		reflectivity_KS(pigment_K.w,pigment_S.w,abs(pos.y*scale_height),back)*(1-vv);
+	//float r=reflectivity_KS(pigment_K.w,pigment_S.w,h.y,
+	//		reflectivity_KS(pigment_K.z,pigment_S.z,h.x,back));
+
+	//*
+	float mix_v=clamp(length(pos.xy),0,1);
+	float mix_k=mix(pigment_K.z,pigment_K.w,mix_v);
+	float mix_s=mix(pigment_S.z,pigment_S.w,mix_v);
+	float r=reflectivity_KS(mix_k,mix_s,h.x,back);
+
+	//float r=kubelka_munk(mix_k,mix_s);
+	//*/
+	//float border=step(abs(pos.x)-0.9,0)*step(abs(pos.y)-0.9,0);
+	//r=r*border+back*(1-border);
 	if(do_intensity==1)
-		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,T)*nv*iteration_step*wave_reflect;
+	{
+		//float illuminant=black_body(iteration,T);
+		//float illuminant=D65_approx(iteration);
+		float illuminant=D65_blackbody(iteration,T);
+		//if(pos.x>0)
+		//	illuminant=D65_approx(iteration);
+		color.xyz=xyz_from_normed_waves(iteration)*illuminant*iteration_step*r;
+	}
 	else
-		//color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,c))*iteration_step;
-		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,easyInOutQuad(c)))*iteration_step;
-	#else //film interference... not looking great...
-	//c is depth
-		//c*=2-length(pos);
-		//c=clamp(1-length(pos),0,1);
-		//c*=c;
-		//c=pow(c,1.5);
-		//c=c*1000+50;
-		float depth=mix(10,1000,c);
-		float inteference=interference_spectrum(iteration,depth,0)*mix(1,0.0,c);
-		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,T)*inteference*iteration_step;
-	#endif
-	//
-	//color.xyz=nv;
-	//color.xyz=vec3(1,0.1,0.1);
-	//color.xyz=nv*iteration_step;
+	{
+		float illuminant=black_body(iteration,mix(2000,T,easyInOutQuad(c)));
+		color.xyz=xyz_from_normed_waves(iteration)*illuminant*iteration_step;
+	}
 	color.a=1;
 }
 ]]
@@ -743,6 +903,7 @@ uniform float v_gamma;
 uniform float whitepoint;
 uniform float exposure;
 uniform float avg_lum;
+
 vec3 xyz2rgb( vec3 c ) {
     vec3 v =  c / 100.0 * mat3(
         3.2406, -1.5372, -0.4986,
@@ -875,9 +1036,10 @@ function find_min_max(  )
 	end
 	return lmin,lmax,avg_lum
 end
-local lmin,lmax,avg_lum
+--lmin,lmax,avg_lum
 local done
-function sample_pigment(p, iter )
+function sample_pigment(p, iter ,w)
+	local w=w or 0.01
 	local min_wl=380
 	local max_wl=740
 
@@ -887,17 +1049,66 @@ function sample_pigment(p, iter )
 		if v[1]>wl then
 			local before=p[i-1]
 			local weight=(wl-before[1])/(v[1]-before[1])
-			return ((1-weight)*before[2]+weight*v[2])*0.01
+			local ret=((1-weight)*before[2]+weight*v[2])*w
+			return math.max(math.min(ret,1),0)
 		end
 	end
 	return 0
 end
+function calculate_KS(p_base,p_powder,p_m,iter,c )
+	--assume S_base=1
+	local r_base=sample_pigment(p_base,iter)
+	local k_base=(1-r_base)*(1-r_base)/(2*r_base)
+
+	local r_mix=sample_pigment(p_m,iter)
+	local r_pow=sample_pigment(p_powder,iter)
+
+
+	local s=(k_base*(1-c)-r_mix*(1+c))/(c*(r_mix-r_pow))
+	local k=r_pow*s
+	return k,s
+end
+oil_part_volume={
+	lampblaxk=0.75,
+	rawumber=0.66,
+	burntsienna=0.61,
+	rawsienna=0.55,
+	prussianblue=0.45,
+	titaniumwhite=0.46
+}
+function calculate_KS_byname(name,iter)
+	return calculate_KS(pigments_oil.Linseedoil,pigments[name],pigments_oil[name],iter,oil_part_volume[name])
+end
+
+function set_samples(  )
+	pigment_inputs={
+	"titanium_white",
+	"bone_black",
+	"titanium_white",
+	"bone_black",
+}
+	local names={}
+	for k,v in pairs(pigments_K) do
+		if k~="titanium_white" and k~="bone_black" and k~="A" then
+			table.insert(names,k)
+		end
+	end
+	for i=3,4 do
+		local n=names[math.random(1,#names)]
+		pigment_inputs[i]=n
+	end
+	for i=1,4 do
+		print(i,pigment_inputs[i])
+	end
+end
 function update(  )
+
+
 	__no_redraw()
 	__clear()
 	imgui.Begin("Image")
 	draw_config(config)
-	
+
 
 	make_compute_buf()
 	make_compute_texture()
@@ -916,8 +1127,40 @@ function update(  )
 		main_shader:set("whitepoint",config.whitepoint)
 		main_shader:set("iteration",iteration)
 		main_shader:set("iteration_step",config.iteration_step)
-		if pigments then
-			main_shader:set("wave_reflect",sample_pigment(pigments.eggtempera,iteration))
+		if pigments_K then
+			if pigment_inputs==nil then
+				set_samples()
+			end
+			--[[local sample_pigments={
+				"prussianblue",
+				"burntsienna",
+				"titaniumwhite",
+				"rawumber"
+			}
+			local w={}
+			local K={}
+			local S={}
+			for i=1,4 do
+				local name=sample_pigments[i]
+				w[i]=sample_pigment(pigments[name],iteration)
+				local k,s=calculate_KS_byname(name,iteration)
+				K[i]=k
+				S[i]=s
+			end
+
+			main_shader:set("wave_reflect",unpack(w))
+			]]
+
+			local K={}
+			local S={}
+			for i=1,4 do
+				local name=pigment_inputs[i]
+				K[i]=sample_pigment(pigments_K[name],iteration,1)
+				S[i]=sample_pigment(pigments_S[name],iteration,1)
+			end
+			--print(iteration,K[1],S[1])
+			main_shader:set("pigment_K",unpack(K))
+			main_shader:set("pigment_S",unpack(S))
 		end
 		if config.image_is_intensity then
 			main_shader:set("do_intensity",1)
@@ -940,7 +1183,7 @@ function update(  )
 		done=false
 	end
 
-	if imgui.Button("snap max") or lmin==nil or (not done and iteration>1)then
+	if imgui.Button("snap max") or lmin==nil --[[or (not done and iteration>1)]]then
 		lmin,lmax,avg_lum=find_min_max()
 		done=true
 	end
@@ -967,12 +1210,16 @@ function update(  )
 	if imgui.Button("clear") then
 		need_clear=true
 	end
+	imgui.SameLine()
+	if imgui.Button("rand pigments") then
+		set_samples()
+	end
 	if imgui.Button("Load CSV") then
-		pigments=load_csv_pigments("../assets/FORS spectra/egg tempera.csv")
-		for i,v in ipairs(pigments.ultramarine) do
-			print(v[1],v[2])
-		end
+		--pigments_oil=load_csv_pigments("../assets/FORS spectra/linseed oil.csv")
+		--pigments=load_csv_pigments("../assets/FORS spectra/powder.csv")
 
+		pigments_K=load_csv_pigments("../assets/Artist Paint Spectral Database/k_values.csv")
+		pigments_S=load_csv_pigments("../assets/Artist Paint Spectral Database/s_values.csv")
 	end
 	imgui.End()
 	

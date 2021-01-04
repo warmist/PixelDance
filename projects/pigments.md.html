@@ -1,0 +1,51 @@
+# Simulation of pigments
+
+## General
+
+Any material has reflection, absorption and transmittance which obey $r+a+t=1$
+
+## Kubelka Munk
+
+$$
+R_\infty=1+\frac{K}{S}-\sqrt{\frac{K}{S}^2+2\frac{K}{S}}\\
+\frac{K}{S}=\frac{(1-R_\infty)^2}{2R_\infty}
+$$
+### Mixing
+$$
+K_m=\sum_{i=1}^n K_ic_i\\
+S_m=\sum_{i=1}^n S_ic_i
+$$
+
+## Rozenberg Solutions
+$R_0$ reflectance of medium. $Q$ is relative contribution of higher multiplicities and does not depend on colorant.
+$$
+\frac{R_0}{R}\approx\frac{(1+\beta)^2}{1+\frac{\beta}{Q}}\\
+\beta=\frac{a}{r+t}\\
+Q=1+\frac{t}{r+t}
+$$
+
+## Statistical
+
+$$
+R_\infty=\frac{1+r^2-t^2}{2r}-\sqrt{(\frac{1+r^2-t^2}{2r})^2-1}\\
+R_\infty=\frac{K+S-\sqrt{(K+S)^2-S^2}}{S}
+$$
+
+### Modified Kubleka Munk
+
+$l$ here is layer height. We assume it can't be infinitely small dues to particle size.
+
+$$
+S=\frac{r}{l}\\
+K=\frac{(1-r-t)}{l}=\frac{a}{l}\\
+F(R_\infty)=\frac{K}{S}-K-\frac{K^2l}{2S}=a(\frac{1}{r}-1)-\frac{a^2}{2r}
+$$
+
+## Resources
+
+* [FORS spectral database](http://www.e-conservation.org/issue-2/36-FORS-spectral-database)
+* [Interpretation of diffuse reflectance spectra](https://nvlpubs.nist.gov/nistpubs/jres/80A/jresv80An4p567_A1b.pdf)
+* [Modeling pigment materials for realistic image synthesis](https://www-users.cs.umn.edu/~gmeyer/papers/haase-meyer-tog-1992.pdf)
+* [Computer generated watercolor](https://grail.cs.washington.edu/projects/watercolor/paper_small.pdf)
+* [Abstract modeling and rendering of metal patinas](https://www.researchgate.net/publication/2462187_Abstract_Modeling_and_Rendering_of_Metallic_Patinas)
+<!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>

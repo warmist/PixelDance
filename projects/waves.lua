@@ -54,6 +54,20 @@ local bread = require "blobreader"
 	f:write(b:tostring())
 	f:close()
 	]]
+
+function gain( x, k)
+	local b=x
+	if x>=0.5 then
+		x=1.0-x
+	end
+	local a = 0.5*math.pow(2.0*b, k);
+	if x<0.5 then
+		return a
+	else
+		return 1.0-a
+	end
+end
+local apply_norm_stuff_on_save=true
 function buffer_save(buf,min,max, name )
 	local b=bwrite()
 	b:u32(buf.w)
@@ -66,7 +80,14 @@ function buffer_save(buf,min,max, name )
 	for x=0,buf.w-1 do
 	for y=0,buf.h-1 do
 		local v=buf:get(x,y)
-		b:f32(v)
+		if apply_norm_stuff_on_save then
+			local normed=(v-min)/(max-min)
+			normed=gain(normed,config.gain);
+			normed=math.pow(normed,config.gamma);
+			b:f32(normed)
+		else
+			b:f32(v)
+		end
 	end
 	end
 	local f=io.open(name,"wb")
@@ -160,6 +181,8 @@ config=make_config({
 	{"freq2",0.5,type="float",min=0,max=1},
 	{"decay1",0.00001,type="floatsci",min=0,max=0.01,power=10},
 	{"decay2",0.00001,type="floatsci",min=0,max=0.01,power=10},
+	{"decay3",0.00001,type="floatsci",min=0,max=0.01,power=10},
+	{"decay4",0.00001,type="floatsci",min=0,max=0.01,power=10},
 	{"n",1,type="int",min=0,max=15},
 	{"m",1,type="int",min=0,max=15},
 	{"a",1,type="float",min=-1,max=1},
@@ -294,7 +317,7 @@ uniform float init;
 uniform float dt;
 uniform float c_const;
 uniform float time;
-uniform vec2 decay;
+uniform vec4 decay;
 uniform float freq;
 uniform float freq2;
 uniform vec2 tex_size;
@@ -417,6 +440,39 @@ float sdTriangle( in vec2 p, in vec2 p0, in vec2 p1, in vec2 p2 )
                      vec2(dot(pq1,pq1), s*(v1.x*e1.y-v1.y*e1.x))),
                      vec2(dot(pq2,pq2), s*(v2.x*e2.y-v2.y*e2.x)));
     return -sqrt(d.x)*sign(d.y);
+}
+float sdPoly2(in vec2 st,in float num,in float size,in float rot)
+{
+	float a=atan(st.x,st.y)+rot;
+	float b=6.28319/num;
+	return cos(floor(0.5+a/b)*b-a)*length(st.xy);
+}
+float sdStar(in vec2 p, in float r, in int n, in float m)
+{
+    // next 4 lines can be precomputed for a given shape
+    float an = 3.141593/float(n);
+    float en = 3.141593/m;  // m is between 2 and n
+    vec2  acs = vec2(cos(an),sin(an));
+    vec2  ecs = vec2(cos(en),sin(en)); // ecs=vec2(0,1) for regular polygon,
+
+    float bn = mod(atan(p.x,p.y),2.0*an) - an;
+    p = length(p)*vec2(cos(bn),abs(sin(bn)));
+    p -= r*acs;
+    p += ecs*clamp( -dot(p,ecs), 0.0, r*acs.y/ecs.y);
+    return length(p)*sign(p.x);
+}
+float sdPoly(in vec2 p, in float r, in int n)
+{
+    // next 4 lines can be precomputed for a given shape
+    float an = 3.141593/float(n);
+    vec2  acs = vec2(cos(an),sin(an));
+    vec2 ecs=vec2(0,1);
+
+    float bn = mod(atan(p.x,p.y),2.0*an) - an;
+    p = length(p)*vec2(cos(bn),abs(sin(bn)));
+    p -= r*acs;
+    p += ecs*clamp( -dot(p,ecs), 0.0, r*acs.y/ecs.y);
+    return length(p)*sign(p.x);
 }
 //sdops
 float opUnion( float d1, float d2 ) {  return min(d1,d2); }
@@ -559,6 +615,26 @@ float ankh_sdf(in vec2 st)
 
 	return step(v,0);//max(max(ret,h1),max(d,h2));
 }
+float damaged_circle2(in vec2 st)
+{
+	//sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,8,0.2,0,w)
+	float ret=-sdPoly(st.xy,0.8,12);
+	ret=opUnion(ret,sdPoly(st.xy,0.1,8));
+	/*
+	ret=opSubtraction(sdCircle(st+vec2(0.55,0),0.15),ret);
+	ret=opSubtraction(sdCircle(st+vec2(-0.55,0),0.15),ret);
+	ret=opSubtraction(sdCircle(st+vec2(0,0.55),0.15),ret);
+	ret=opSubtraction(sdCircle(st+vec2(0,-0.55),0.15),ret);
+	*/
+
+	/*
+	ret=opSubtraction(sdCircle(st+vec2(0.55,0.55),0.05),ret);
+	ret=opSubtraction(sdCircle(st+vec2(-0.55,-0.55),0.05),ret);
+	ret=opSubtraction(sdCircle(st+vec2(-0.55,0.55),0.05),ret);
+	ret=opSubtraction(sdCircle(st+vec2(0.55,-0.55),0.05),ret);
+	*/
+	return step(ret-0.05,0);
+}
 float damaged_circle(in vec2 st)
 {
 	float ret=sdCircle(st,0.8);
@@ -669,7 +745,7 @@ float func(vec2 pos)
 
 	float max_a=5;
 	float r=0.08;
-	#if 1
+	#if 0
 		if(length(pos+vec2(0,0.9))<0.005)
 			return ab_vec.x*(fract(fn1*time)*2-1)
 			+ab_vec.y*(fract(fn2*time)*2-1);
@@ -764,7 +840,7 @@ float func(vec2 pos)
 
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.1;
 	//if(time<max_time)
-	if(abs(length(pos)-0.3)<0.005)
+	if(abs(length(pos)-0.5)<0.005)
 		return ab_vec.x*sin(-time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y)+
 			   ab_vec.y*sin(-time*fr2*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
 	//if(length(pos+vec2(0,0.5)+p)<0.005)
@@ -772,10 +848,10 @@ float func(vec2 pos)
 
 
 	#endif
-	#if 0
+	#if 1
 
 
-	if(  length(pos+vec2(0,0.0))<0.005
+	if(  length(pos+vec2(0.0,0.3))<0.005
 	  //|| length(pos+vec2(-0.1,0.2))<0.005
 	  )
 	//if(time<max_time)
@@ -907,7 +983,7 @@ float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 
 	return ret;
 	//*/
-#else
+#elif 1
 	float c_const2=2;
 	float GX=dcsqr*dt*dt*c_const2/(dtex.x*dtex.x);
 	float GY=dcsqr*dt*dt*c_const2/(dtex.y*dtex.y);
@@ -925,12 +1001,33 @@ float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 	ret+=(GY+HY)*(ST(1,0,1)-2*ST(1,0,0)+ST(1,0,-1));
 	ret+=(-1)*HY*(ST(0,0,1)-2*ST(0,0,0)+ST(0,0,-1));
 	ret+=dt*dt*func(pos);
+#else
+	vec4 arg=decay;
+
+	float xstep=dcsqr*dt/dtex.x;
+	float ystep=dcsqr*dt/dtex.y;
+	float mixed_step=dcsqr*dt/(dtex.x*dtex.y);
+
+	float ret=0;
+	ret+=ST(0,0,0);
+
+	ret+=arg.x*0.5*xstep*(ST(0,1,0)-ST(0,-1,0));
+	ret+=arg.x*0.5*ystep*(ST(0,0,1)-ST(0,0,-1));
+
+	//ret-=0.5*arg.y*mixed_step*(ST(0,1,1)-ST(0,1,0)-ST(0,0,0)+ST(0,0,-1)+ST(0,0,1)-ST(0,0,0)-ST(0,-1,0)+ST(0,-1,-1));
+
+	ret-=0.25*arg.y*mixed_step*(ST(0,1,1)-ST(0,1,-1)-ST(0,-1,1)+ST(0,-1,-1));
+
+	ret+=xstep*arg.z*(ST(0,1,0)-2*ST(0,0,0)+ST(0,-1,0));
+	ret+=ystep*arg.z*(ST(0,0,1)-2*ST(0,0,0)+ST(0,0,-1));
+
+	ret+=arg.w*dt*func(pos);
 #endif
 	return ret;
 }
 float calc_init_value(vec2 pos,vec2 c_sqr_avg)
 {
-	//return 0;
+	return 0;
 	//TODO?
 	#if 1
 	vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -1082,22 +1179,24 @@ float c_shape(vec2 pos)
 #define DRAW_FORM 0
 void main(){
 	float v=0;
-	float max_d=2;
+	float max_d=1;
 	float w=0.005;
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	//float sh_v=0;
-	//float sh_v=max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,6,0.2,0,w),0);
+	//float sh_v=1-max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
+	//float sh_v=1-max(1-sdCircle(pos.xy,0.98)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
 	//float sh_v=1-damaged_circle(pos.xy);
+	float sh_v=damaged_circle2(pos.xy);
 	//float sh_v=sh_wavy(pos.xy,max_d);
 	//float sh_v=sdCircle(pos.xy,0.98);
 	//float sh_v=sdCircle2(pos.xy,0.98);
 	//float sh_v=dagger(pos.xy,w);
-	//float sh_v=leaf(pos.xy,w);
-	float sh_v=chalice(pos.xy,w);
+	//float sh_v=1-leaf(pos.xy,w);
+	//float sh_v=chalice(pos.xy,w);
 	//float sh_v=slit_experiment(pos.xy,w);
 	//float sh_v=flower(pos.xy,w);
-	//float sh_v=1-balance(pos.xy,w);
+	//float sh_v=balance(pos.xy,w)-0.5;
 	//float sh_v=sh_jaws(pos.xy,w);
 	//float sh_v=sh_polyhedron(pos.xy*vec2(0.2,1),4,0.2,0,w);
 	//float sh_v=1-ankh(pos.xy,w);
@@ -1300,7 +1399,7 @@ function waves_solve(  )
 	solver_shader:set("dt",config.dt);
 	solver_shader:set("c_const",0.0001);
 	solver_shader:set("time",current_time);
-	solver_shader:set("decay",config.decay1,config.decay2);
+	solver_shader:set("decay",config.decay1,config.decay2,config.decay3,config.decay4);
 	solver_shader:set("freq",config.freq)
 	solver_shader:set("freq2",config.freq2)
 	solver_shader:set("nm_vec",config.n,config.m)

@@ -6,6 +6,8 @@ local size=STATE.size
 	TODO:
 		defocus aberration
 		thin film interference
+		ref: real lens distortion?
+		https://www.osapublishing.org/DirectPDFAccess/101E1C8A-E1F7-4ED8-90D6F581926F24BF_269193/ETOP-2013-EThA6.pdf?da=1&id=269193&uri=ETOP-2013-EThA6&seq=0&mobile=no
 --]]
 local image_buf
 image_buf=load_png("saved_1596619752.png")
@@ -124,6 +126,7 @@ function read_hd_png_buf( fname )
 			--end
 		else
 			local v=b:f32()
+			v=background_minmax[2]-v
 			background_buf:set(x,y,{v,v,v,1})
 		end
 	end
@@ -526,6 +529,19 @@ float black_body(float iter,float temp)
 {
 	return black_body_spectrum(mix(380*1e-9,740*1e-9,iter),temp);
 }
+float D65_approx(float iter)
+{
+	//3rd order fit on D65
+	float wl=mix(380,740,iter);
+	return (-1783.1047729784+9.977734354*wl-(0.0171304983)*wl*wl+(0.0000095146)*wl*wl*wl);
+}
+float D65_blackbody(float iter,float temp)
+{
+	float wl=mix(380,740,iter);
+	float b65=black_body(wl*1e-9,6503.5);
+	return D65_approx(iter)*(black_body(wl*1e-9,temp)/b65);
+
+}
 vec2 tangent_distort(vec2 p,vec2 arg)
 {
 	float r=dot(p,p);
@@ -564,6 +580,16 @@ float easeOutQuad(float x)
 {
 	return 1 - (1 - x) * (1 - x);
 }
+float easeInQuad(float x)
+{
+	return x*x;
+}
+float easyInOutQuad(float x)
+{
+	float p=(-2 * x + 2);
+	p*=p;
+	return x < 0.5 ? 2 * x * x : 1 - p / 2;
+}
 //how much the interference happens 
 //if v is int then it's 1 and if v-0.5 is int then it's 0
 float interfere(float v ) 
@@ -593,13 +619,13 @@ vec4 sample_22(vec2 pos)
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	vec2 offset=vec2(-0.5,-.5);
+	vec2 offset=vec2(0,0);
 	vec2 dist_pos=pos.xy;
-	//dist_pos=Distort(dist_pos,offset,barrel_power*iteration+1);
+	dist_pos=Distort(dist_pos,offset,barrel_power*iteration+1);
 	//dist_pos=tangent_distort(dist_pos,vec2(barrel_power*iteration,barrel_power*iteration)*0.1);
 	//dist_pos=distort_x(dist_pos,offset,barrel_power*iteration);
 	//dist_pos=distort_y(dist_pos,offset,barrel_power*iteration);
-	dist_pos=distort_y2(dist_pos,offset,barrel_power*iteration);
+	//dist_pos=distort_y2(dist_pos,offset,barrel_power*iteration);
 	//dist_pos=distort_spiral(dist_pos,offset,barrel_power*iteration);
 	dist_pos=(dist_pos+vec2(1))/2;
 	//vec2 dist_pos=normed+vec2(barrel_power)*iteration;
@@ -648,10 +674,14 @@ void main(){
 	//float T=6503.6; //D65 illiuminant
 	#if 1
 	if(do_intensity==1)
-		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,T)*nv*iteration_step;
+	{
+		float light_source=D65_blackbody(iteration,T);
+		//float light_source=black_body(iteration,T);
+		color.xyz=xyz_from_normed_waves(iteration)*light_source*nv*iteration_step;
+	}
 	else
 		//color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,c))*iteration_step;
-		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,easeOutQuad(c)))*iteration_step;
+		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,easyInOutQuad(c)))*iteration_step;
 	#else //film interference... not looking great...
 	//c is depth
 		//c*=2-length(pos);
@@ -730,7 +760,7 @@ vec3 eye_adapt_and_stuff(vec3 light)
 	//Y=(llog(Y)-llog(min_v.y))/(llog(max_v.y)-llog(min_v.y));
 	//Y=exp(Y);
 	Y = (Y* exposure )/avg_lum;
-#if 0
+#if 1
 	if(whitepoint<0)
     	Y = Y / (1 + Y); //simple compression
 	else

@@ -26,7 +26,7 @@ win_h=win_h or 0
 aspect_ratio=aspect_ratio or 1
 function update_size()
 	local trg_w=2560*size_mult
-	local trg_h=2560*size_mult
+	local trg_h=1440*size_mult
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
 	if win_w~=trg_w or win_h~=trg_h then
@@ -452,9 +452,11 @@ end
 function draw_visits(  )
 
 	make_visits_texture()
-	local lmin,lmax,lavg=find_min_max(visit_tex.t,visit_buf)
-
-	visits_minmax={lmin,lmax}
+	local lmin,lmax,lavg=unpack(visits_minmax)
+	if config.draw or need_buffer_save or lmin==nil then
+		lmin,lmax,lavg=find_min_max(visit_tex.t,visit_buf)
+		visits_minmax={lmin,lmax,lavg}
+	end
 
 	if need_buffer_save then
 		buffer_save(need_buffer_save,visits_minmax[1],visits_minmax[2],lavg)
@@ -1293,14 +1295,14 @@ function rand_function(  )
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
 	--local tbl_insert={"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seed)","vec2(cos(length(p)*M_PI*4+global_seed),sin(length(p)*M_PI*4+global_seed))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
-	local tbl_insert={"s","p*vec2(global_seed,1-global_seed)","params.xy","params.zw"}
-	--[[
-	local point_count=5
+	local tbl_insert={"p","s","params.xy","params.zw"}
+	-- [[
+	local point_count=3
 	for i=1,point_count do
 		local v=(i-1)/point_count
-		v=v*math.pi*2
+		local vr=v*math.pi*2
 		local r=0.1
-		table.insert(tbl_insert,string.format("vec2(%g,%g)",math.cos(v)*r,math.sin(v)*r))
+		table.insert(tbl_insert,string.format("vec2(%g,%g)",math.cos(vr)*r,math.sin(vr)*r))
 	end
 	--]]
 	-- [[
@@ -1312,9 +1314,9 @@ function rand_function(  )
 		"vec2(tex_s.x,tex_p.z)","vec2(tex_s.y,tex_p.x)","vec2(tex_s.z,tex_p.y)",
 
 	}
-	local num_tex=5
+	local num_tex=1
 	for i=1,num_tex do
-		table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
+		table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)].."*global_seed")
 	end
 	--]]
 	str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert)
@@ -1371,9 +1373,9 @@ function rand_function(  )
 	str_cmplx=random_math_complex(rand_complexity,"c_div(c_mul(R,s)+R,c_mul(R,s)+R)")
 	--]=]
 	--mandelbrot?
-	--[=[
+	-- [=[
 	--str_cmplx="c_mul(s,s)*value_inside(global_seed,0,0.5)+c_mul(s,c_mul(s,s))*value_inside(global_seed,0.5,1)+p"
-	str_cmplx="c_mul(s,s)+p"
+	str_cmplx="mix(c_mul(s,s)+p,c_mul(c_mul(s,s)+p,vec2(cos(M_PI),sin(M_PI))),tex_p.y*global_seed)"
 	--]=]
 
 	--[[ julia
@@ -1508,7 +1510,7 @@ function rand_function(  )
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	-- [[ polar gravity
+	--[[ polar gravity
 	--str_preamble=str_preamble.."vec2 np=s;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."vec2 np=p;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	str_preamble=str_preamble.."vec2 np=tex_s.yz;float npl=abs(sqrt(dot(np,np)))+0.5;npl*=npl;"
@@ -2033,10 +2035,14 @@ vec2 from_polar(vec2 p)
 
 vec3 func_actual(vec2 s,vec2 p)
 {
-	vec4 tex_p=texture(tex_img,p);
-	vec4 tex_s=texture(tex_img,s);
+	vec4 tex_p=texture(tex_img,p*scale);
+	vec4 tex_s=texture(tex_img,s*scale);
 	tex_s=tex_s/(length(tex_s)+1);
 	tex_p=tex_p/(length(tex_p)+1);
+	//tex_s=tex_s/(exp(-length(tex_s))+1);
+	//tex_p=tex_p/(exp(-length(tex_p))+1);
+	//tex_s=1/(exp(-tex_s)+1);
+	//tex_p=1/(exp(-tex_p)+1);
 	//init condition
 	vec2 last_s=s;
 	float e=1;
@@ -2259,10 +2265,12 @@ vec2 tReflect(vec2 p,float a){
 }
 vec2 mapping(vec2 p)
 {
+	//float aspect_ratio=scale.y/scale.x;
+	//return tRotate(p,M_PI/2)*vec2(1,aspect_ratio);
 	//return p; //normal - do nothing
 	//return abs(p)-vec2(1);
 	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
-	/*
+	///*
 	if(length(p)<50) //modulo, but no artifacts because far away points are far away
 	{
 		float size=2.005; //0.005 overdraw as it smooths the tiling when using non 1 sized points
@@ -3156,9 +3164,9 @@ function update_real(  )
 		end
 	else
 		__clear()
-		if config.draw then
+		--if config.draw then
 			draw_visits()
-		end
+		--end
 	end
 	auto_clear()
 	visit_iter()

@@ -153,14 +153,18 @@ function fill_buffer(  )
     end
     io_buffer:write_texture(t)
 end
-function set_pixel( x,y )
+function start_set_pixel(  )
 	local t=texture_particles:get_cur().t
 	t:use(0)
 	io_buffer:read_texture(t)
+end
+function set_pixel( x,y )
 	io_buffer:set(x,y,1)
+end
+function end_set_pixel(  )
+	local t=texture_particles:get_cur().t
     io_buffer:write_texture(t)
 end
-
 
 --[===[ DOES NOT WORK
 reduce_shader=shader_make[==[
@@ -457,8 +461,8 @@ float func(vec2 pos)
 	vec2 p=vec2(0.2,0.4);
 	//vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.65;
 	if(time<max_time)
-	if(length(pos+p)<0.005)
-		return sin(time*fr*M_PI/1000);
+	//if(length(pos+p)<0.005)
+		return 1;//sin(time*fr*M_PI/1000);
 	#endif
 	//return 0.1;//0.0001*sin(time/1000)/(1+length(pos));
 	return 0;
@@ -640,12 +644,16 @@ function gui()
     if imgui.Button("WaveCollapse") or current_tick>3000 then
     	local trg_tex=texture_buffers:get_cur().t
     	trg_tex:use(0,1)
-    	local x,y=wave_collapse(trg_tex)
-    	print(x,y)
+    	local pixels=wave_collapse(trg_tex)
+
     	reset_state()
 		current_tick=0
 		current_frame=0
-		set_pixel(x,y)
+		start_set_pixel()
+		for i,v in ipairs(pixels) do
+			set_big_pixel(v[1],v[2],8)
+		end
+		end_set_pixel()
     end
 	imgui.End()
 end
@@ -704,7 +712,16 @@ function save_img( id )
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 	end
 end
+function set_big_pixel( x,y,s )
+	for dx=-s,s do
+		local s2=math.floor(math.sqrt(s*s-dx*dx))
+		for dy=-s2,s2 do
+			set_pixel(x+dx,y+dy)
+		end
+	end
+end
 function wave_collapse( tex )
+	local ret={}
 	make_io_buffer()
 	io_buffer:read_texture(tex)
 	local m1=0;
@@ -715,17 +732,24 @@ function wave_collapse( tex )
 			m1=m1+math.abs(v)
 		end
 	end
-	local r=math.random()
-	local m2=0
-	for x=0,io_buffer.w-1 do
-		for y=0,io_buffer.h-1 do
-			local v=io_buffer:get(x,y)
-			m2=m2+math.abs(v)
-			if m2/m1>r then
-				return x,y
+	for i=1,1 do
+		local r=math.random()
+		local m2=0
+		local done=false
+		for x=0,io_buffer.w-1 do
+			for y=0,io_buffer.h-1 do
+				local v=io_buffer:get(x,y)
+				m2=m2+math.abs(v)
+				if m2/m1>r then
+					table.insert(ret,{x,y})
+					done=true
+				end
+				if done then break end
 			end
+			if done then break end
 		end
 	end
+	return ret
 end
 function calc_abs_sum( tex )
 	make_io_buffer()
@@ -814,7 +838,7 @@ function draw_texture( id )
 		need_save=nil
 	end
 end
-local tick_refill=10000
+local tick_refill=1000
 current_particle_tick=current_particle_tick or 0
 function update_real(  )
 	__no_redraw()
