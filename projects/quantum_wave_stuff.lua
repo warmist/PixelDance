@@ -4,6 +4,7 @@
 --[[
 	TODO:
 		* refill particles everyonce a while
+		* https://en.wikipedia.org/wiki/Maximal_entropy_random_walk
 ]]
 require "common"
 -- see waves.lua
