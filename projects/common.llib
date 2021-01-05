@@ -82,11 +82,11 @@ F_PIX=2
 FL_PIX=3
 U8_PIX=4
 
-make_image_buffer= make_buffer("rgba_pixel",0,{0,0,0,255})
-make_flt_buffer= make_buffer("float_pixel",1,{0,0,0,1})
-make_float_buffer=make_buffer("float",2,0)
-make_flt_half_buffer=make_buffer("float_half_pixel",3,{0,0})
-make_char_buffer=make_buffer("uint8_t",4,0)
+make_image_buffer= make_buffer("rgba_pixel",RGBA_PIX,{0,0,0,255})
+make_flt_buffer= make_buffer("float_pixel",FLTA_PIX,{0,0,0,1})
+make_float_buffer=make_buffer("float",F_PIX,0)
+make_flt_half_buffer=make_buffer("float_half_pixel",FL_PIX,{0,0})
+make_char_buffer=make_buffer("uint8_t",U8_PIX,0)
 
 make_matrix=make_float_buffer
 function make_ident_matrix( w,h )

@@ -6,6 +6,7 @@ require "common"
 
 config=make_config({
 	{"pause",false,type="boolean"},
+	{"scale",0.1,type="float"},
 },config)
 
 local oversample=1
@@ -27,75 +28,32 @@ local size=STATE.size
 img_buf=img_buf or make_image_buffer(size[1],size[2]) --output display buffer
 io_buffer=io_buffer or make_flt_buffer(size[1],size[2])
 
-buf_water_speed=buf_water_speed or multi_texture(size[1],size[2],2,FL_PIX)
-buf_water_pressure=buf_water_pressure or multi_texture(size[1],size[2],2,FL_PIX)
+--format: speed:(u,v), pressure,bonus(?)
+buf_water_speed=buf_water_speed or multi_texture(size[1],size[2],2,FLTA_PIX)
 
-function reset_pressure(  )
-	local b=io_buffer
-	local min_value=0
-	local max_value=1
-	for x=0,b.w-1 do
-		for y=0,b.h-1 do
-			local dx=x-b.w/2
-			local dy=y-b.h/2
-			local dist=math.sqrt(dx*dx+dy*dy)
-			-- [[
 
-			-- [=[ circle
-				if dist<b.w/4 then
-					b:set(x,y,{
-					math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value})
-				else
-					b:set(x,y,{0,0})
-				end
-			--]=]
-			--[=[
-				b:set(x,y,{
-				math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value,
-					math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value})
-			--]=]
-
-			--]]
-			--[[ chaos check
-			local v=(x+y)/(b.w+b.h-2)
-			b:set(x,y,{
-					(x/(b.w-1)+0.1)*(max_value-min_value)+min_value,
-					(y/(b.h-1)+0.1)*(max_value-min_value)+min_value,
-					--dist/10,
-					--dist/10,
-					--dist/10,
-					0,
-					0})
-			--]]
-		end
-	end
-
-	local buf=buf_water_pressure:get()
-	buf:use(0)
-	b:write_texture(buf)
-	buf_water_pressure:advance()
-
-	buf=buf_water_pressure:get()
-	buf:use(0)
-	b:write_texture(buf)
-end
 function reset_buffers( )
 	local b=io_buffer
-	local min_value=-0.05
-	local max_value=0.05
+	local min_value=-500
+	local max_value=500
+	local p_min=0
+	local p_max=0.1
 	for x=0,b.w-1 do
 		for y=0,b.h-1 do
 			local dx=x-b.w/2
 			local dy=y-b.h/2
-			local dist=math.sqrt(dx*dx+dy*dy)
+			local dist=math.sqrt(dx*dx+dy*dy)/b.w
 			-- [[
 
 			-- [=[ circle
 				if dist<b.w/4 then
 					b:set(x,y,{
-					math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value})
+					math.random()*(max_value-min_value)+min_value,
+					math.random()*(max_value-min_value)+min_value,
+					math.max(math.min(0.1-dist,1),0),
+					0})
 				else
-					b:set(x,y,{0,0})
+					b:set(x,y,{0,0,0,0})
 				end
 			--]=]
 			--[=[
@@ -128,7 +86,6 @@ function reset_buffers( )
 	buf:use(0)
 	b:write_texture(buf)
 
-	reset_pressure()
 end
 
 function count_lines( s )
@@ -177,7 +134,7 @@ float paper_texture(vec2 p)
 void main(){
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	vec4 cnt=texture(tex_main,normed);
+	vec4 cnt=abs(texture(tex_main,normed));
 	cnt+=value_offset;
 	cnt*=value_scale;
 
@@ -188,7 +145,7 @@ void main(){
 
 	//color=vec4(cnt.xyz,1);
 	//color.a=1;
-	color=vec4(cnt.x,cnt.y,lv,1);
+	color=vec4(cnt.xyz,1);
 	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,1.5,1.25),vec3(1.0,1.05,1.4)),1);
 }
 ]==]
@@ -196,7 +153,7 @@ void main(){
 function draw_texture( id )
 	draw_shader:use()
 	draw_shader:blend_default()
-	local buf=buf_water_pressure:get()
+	local buf=buf_water_speed:get()
 
 	--[=[
 	if do_normalize or global_mm==nil or config.do_norm then
@@ -239,8 +196,10 @@ function draw_texture( id )
 	draw_shader:set("value_offset",-mm[1],-mm[2],-mm[3],0)
 	draw_shader:set("value_scale",1/(mx[1]-mm[1]),1/(mx[2]-mm[2]),1/(mx[3]-mm[3]),1)
 	--]]
-	draw_shader:set("value_offset",0.5,0.5,0,0)
-	draw_shader:set("value_scale",1,1,0,0)
+	--draw_shader:set("value_offset",0.5,0.5,0,0)
+	draw_shader:set("value_offset",0,0,0,0)
+	local s=config.scale
+	draw_shader:set("value_scale",s,s,s,0)
 	--draw_shader:blend_disable()
 	draw_shader:draw_quad()
 	if need_save or id then
@@ -267,7 +226,8 @@ void main()
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec2 g=paper_grad(pos.xy);
-	color.xy=texture(velocity,normed).xy -g;
+	color.xyz=texture(velocity,normed).xyz -vec3(g,0);
+	color.a=1;
 }
 ]==]
 local shader_update_velocities=shader_make[==[
@@ -275,8 +235,6 @@ out vec4 color;
 in vec3 pos;
 
 uniform sampler2D velocity;
-//uniform sampler2D paper_height;
-uniform sampler2D water_pressure;
 
 uniform float viscosity;
 uniform float drag;
@@ -297,8 +255,7 @@ u_i-0.5j
 void main()
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-
-	vec2 vel_out=texture(velocity,normed).xy;
+	vec2 vel_out;//=texture(velocity,normed).xy;
 
 	/* index in name is doubled and offset i.e:
 		u00-> (u(-1,0)+u(0,0))/2
@@ -317,36 +274,34 @@ void main()
 		v01-> v(0,0)
 	*/
 
-	float u00=(textureOffset(velocity,normed,ivec2(-1,0)).x+textureOffset(velocity,normed,ivec2(0,0)).x)/2;
-	float u20=(textureOffset(velocity,normed,ivec2(0,0)).x+textureOffset(velocity,normed,ivec2(1,0)).x)/2;
-
-	float u11=(textureOffset(velocity,normed,ivec2(0,0)).x+textureOffset(velocity,normed,ivec2(0,1)).x)/2;
-	float u1_1=(textureOffset(velocity,normed,ivec2(0,-1)).x+textureOffset(velocity,normed,ivec2(0,0)).x)/2;
-
-	float v11=(textureOffset(velocity,normed,ivec2(0,0)).y+textureOffset(velocity,normed,ivec2(1,0)).y)/2;
-	float v1_1=(textureOffset(velocity,normed,ivec2(0,-1)).y+textureOffset(velocity,normed,ivec2(1,-1)).y)/2;
-
-	float u30=textureOffset(velocity,normed,ivec2(1,0)).x;
 	float u_10=textureOffset(velocity,normed,ivec2(-1,0)).x;
-	float u12=textureOffset(velocity,normed,ivec2(0,1)).x;
-	float u1_2=textureOffset(velocity,normed,ivec2(0,-1)).x;
-	float u10=textureOffset(velocity,normed,ivec2(0,0)).x; //same as input
-
-	float p00=textureOffset(water_pressure,normed,ivec2(0,0)).x;
-	float p10=textureOffset(water_pressure,normed,ivec2(1,0)).x;
-	float p01=textureOffset(water_pressure,normed,ivec2(0,1)).x;
-
-	float v00=(textureOffset(velocity,normed,ivec2(0,-1)).y+textureOffset(velocity,normed,ivec2(0,0)).y)/2;
-	float v02=(textureOffset(velocity,normed,ivec2(0,0)).y+textureOffset(velocity,normed,ivec2(0,1)).y)/2;
-
 	float u_11=(textureOffset(velocity,normed,ivec2(-1,0)).x+textureOffset(velocity,normed,ivec2(-1,1)).x)/2;
-	float v_11=(textureOffset(velocity,normed,ivec2(-1,0)).y+textureOffset(velocity,normed,ivec2(0,0)).y)/2;
+	float u00=(textureOffset(velocity,normed,ivec2(-1,0)).x+textureOffset(velocity,normed,ivec2(0,0)).x)/2;
+	float u1_2=textureOffset(velocity,normed,ivec2(0,-1)).x;
+	float u1_1=(textureOffset(velocity,normed,ivec2(0,-1)).x+textureOffset(velocity,normed,ivec2(0,0)).x)/2;
+	float u10=textureOffset(velocity,normed,ivec2(0,0)).x; //same as input
+	float u11=(textureOffset(velocity,normed,ivec2(0,0)).x+textureOffset(velocity,normed,ivec2(0,1)).x)/2;
+	float u12=textureOffset(velocity,normed,ivec2(0,1)).x;
+	float u20=(textureOffset(velocity,normed,ivec2(0,0)).x+textureOffset(velocity,normed,ivec2(1,0)).x)/2;
+	float u30=textureOffset(velocity,normed,ivec2(1,0)).x;
 
-	float v21=textureOffset(velocity,normed,ivec2(1,0)).y;
-	float v_21=textureOffset(velocity,normed,ivec2(-1,0)).y;
-	float v03=textureOffset(velocity,normed,ivec2(0,1)).y;
+
 	float v0_1=textureOffset(velocity,normed,ivec2(0,-1)).y;
+	float v1_1=(textureOffset(velocity,normed,ivec2(0,-1)).y+textureOffset(velocity,normed,ivec2(1,-1)).y)/2;
+	float v00=(textureOffset(velocity,normed,ivec2(0,-1)).y+textureOffset(velocity,normed,ivec2(0,0)).y)/2;
+	float v_21=textureOffset(velocity,normed,ivec2(-1,0)).y;
+	float v_11=(textureOffset(velocity,normed,ivec2(-1,0)).y+textureOffset(velocity,normed,ivec2(0,0)).y)/2;
 	float v01=textureOffset(velocity,normed,ivec2(0,0)).y; //same as input
+	float v11=(textureOffset(velocity,normed,ivec2(0,0)).y+textureOffset(velocity,normed,ivec2(1,0)).y)/2;
+	float v21=textureOffset(velocity,normed,ivec2(1,0)).y;
+	float v02=(textureOffset(velocity,normed,ivec2(0,0)).y+textureOffset(velocity,normed,ivec2(0,1)).y)/2;
+	float v03=textureOffset(velocity,normed,ivec2(0,1)).y;
+
+
+	float p00=textureOffset(velocity,normed,ivec2(0,0)).z;
+	float p10=textureOffset(velocity,normed,ivec2(1,0)).z;
+	float p01=textureOffset(velocity,normed,ivec2(0,1)).z;
+
 	{
 		float A=u00*u00-u20*u20+u1_1*v1_1-u11*v11;
 		float B=u30+u_10+u12+u1_2-4*u10;
@@ -360,19 +315,97 @@ void main()
 		vel_out.y=v01+dt*(A-viscosity*B+p00-p01-drag*v01);
 	}
 	color.xy=vel_out;
+
+	color.z=p00;
 	color.a=1;
 }
 ]==]
---TODO: shaderify this
+local shader_relax_divergence=shader_make[==[
+out vec4 color;
+in vec3 pos;
+
+uniform float step_size;
+uniform sampler2D velocity;
+
+void main()
+{
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	vec4 state=texture(velocity,normed);
+	float del00=step_size*(
+		textureOffset(velocity,normed,ivec2(0,0)).x-textureOffset(velocity,normed,ivec2(1,0)).x+
+		textureOffset(velocity,normed,ivec2(0,0)).y-textureOffset(velocity,normed,ivec2(0,1)).y);
+
+	float del10=step_size*(
+		textureOffset(velocity,normed,ivec2(-1,0)).x-textureOffset(velocity,normed,ivec2(0,0)).x+
+		textureOffset(velocity,normed,ivec2(-1,0)).y-textureOffset(velocity,normed,ivec2(-1,1)).y);
+
+	float del01=step_size*(
+		textureOffset(velocity,normed,ivec2(0,-1)).x-textureOffset(velocity,normed,ivec2(1,-1)).x+
+		textureOffset(velocity,normed,ivec2(0,-1)).y-textureOffset(velocity,normed,ivec2(0,0)).y);
+
+	state.xyz+=vec3(-del00+del10,-del00+del01,del00);
+	color=state;
+}
+]==]
+function calculate_divergence(  )
+	local b=io_buffer
+	local buf=buf_water_speed:get()
+	buf:use(0)
+	b:read_texture(buf)
+	local max_div=0
+	local avg_div=0
+	local mxy={0,0}
+	for i=0,b.w-1 do
+	for j=0,b.h-1 do
+		local p00=b:get(i,j)
+		local ni=i+1
+		if ni==buf.w then ni=0 end
+		local nj=j+1
+		if nj==buf.h then nj=0 end
+		local p10=b:get(ni,j)
+		local p01=b:get(i,nj)
+
+		local d=math.abs((p00.r-p10.r)+(p00.g-p01.g))
+		if d>max_div then max_div=d end
+		avg_div=avg_div+d
+		if mxy[1]<math.abs(p00.r) then mxy[1]=math.abs(p00.r) end
+		if mxy[2]<math.abs(p00.g) then mxy[2]=math.abs(p00.g) end
+	end
+	end
+	avg_div=avg_div/(b.w*b.h)
+	local step=1/math.max(mxy[1],mxy[2])
+	print("MAX D:",max_div,avg_div,step)
+end
 function relax_divergence(  )
 
+	local step_count=50
+	local min_div=0.01
+	local step_size=0.1
+
+	for i=1,step_count do
+		shader_relax_divergence:use()
+		shader_relax_divergence:set("step_size",step_size)
+		buf_water_speed:get():use(0);
+		shader_relax_divergence:set_i("velocity",0);
+		local next_buff=buf_water_speed:get_next()
+		next_buff:use(2,0,0)
+		if not next_buff:render_to(buf_water_speed.w,buf_water_speed.h) then
+			error("failed to set framebuffer up")
+		end
+
+		shader_relax_divergence:draw_quad()
+
+		buf_water_speed:advance()
+		__render_to_window()
+	end
+	calculate_divergence()
 end
 function remove_grad(  )
 	shader_remove_grad:use()
 	buf_water_speed:get():use(0);
 	shader_update_velocities:set_i("velocity",0);
 	local next_buff=buf_water_speed:get_next()
-	next_buff:use(1,0,0)
+	next_buff:use(2,0,0)
 	if not next_buff:render_to(buf_water_speed.w,buf_water_speed.h) then
 		error("failed to set framebuffer up")
 	end
@@ -384,13 +417,13 @@ function remove_grad(  )
 end
 
 function velocity_update(  )
-	local step_size=0.01;
+	local step_size=0.0001;
 	local step_count=50;
 	for i=1,step_count do
 		shader_update_velocities:use()
 		shader_update_velocities:set("viscosity",0.1);
 		shader_update_velocities:set("drag",0.01);
-		shader_update_velocities:set("dt",0.01);
+		shader_update_velocities:set("dt",step_size);
 
 		buf_water_speed:get():use(0);
 		shader_update_velocities:set_i("velocity",0);
@@ -409,7 +442,7 @@ function velocity_update(  )
 end
 function sim_tick(  )
 	remove_grad()
-	velocity_update()
+	--velocity_update()
 	relax_divergence()
 	--flow_outward
 end
