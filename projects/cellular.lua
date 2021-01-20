@@ -75,7 +75,66 @@ function draw_visits(  )
 		need_save=nil
 	end
 end
+function relax_flowfield( step_count,step_size )
+	local tmp=make_flt_half_buffer(size[1],size[2])
+	local tmp2=vectorfield
+	for x=0,size[1]-1 do
+	for y=0,size[2]-1 do
+		tmp:set(x,y,tmp2:get(x,y))
+	end
+	end
+	for step=1,step_count do
+		local max_del=-math.huge
+		for x=0,size[1]-1 do
+		for y=0,size[2]-1 do
+			local nx=x+1
+			if nx==size[1]-1 then nx=0 end
+			local px=x-1
+			if px<0 then px=size[1]-1 end
 
+			local ny=y+1
+			if ny==size[2]-1 then ny=0 end
+			local py=y-1
+			if py<0 then py=size[2]-1 end
+
+			local t00=tmp:get(x,y)
+			local t10=tmp:get(nx,y)
+			local t01=tmp:get(x,ny)
+
+			local t20=tmp:get(px,y)
+			local t02=tmp:get(x,py)
+			local t21=tmp:get(px,ny)
+			local t12=tmp:get(nx,py)
+			local del00=step_size*(
+				t00.r-t10.r+
+				t00.g-t01.g);
+
+			if max_del<math.abs(del00) then
+				max_del=math.abs(del00)
+			end
+
+			local del10=step_size*(
+				t20.r-t00.r+
+				t20.g-t21.g);
+
+			local del01=step_size*(
+				t02.r-t12.r+
+				t02.g-t00.g);
+
+			local out_p=tmp2:get(x,y)
+			out_p.r=out_p.r-del00+del10
+			out_p.g=out_p.g-del00+del01
+		end
+		end
+		if step==1 or step==step_count then
+			print("S:",step," d:",max_del)
+		end
+		local t=tmp
+		tmp=tmp2
+		tmp2=t
+	end
+	vectorfield=tmp
+end
 function resize( w,h )
 	image=make_image_buffer(w,h)
 end
@@ -91,33 +150,52 @@ local cy=math.floor(size[2]/2)
 local wavefront={}
 function reset_buffer(  )
 	local cdx=0
-	local cdy=0.9
+	local cdy=0
+	local scale=2
+	local scale_out=0.4
 	for x=0,size[1]-1 do
 	for y=0,size[2]-1 do
 		local c=visits:get(x,y)
-		c.r=math.random()*0.1
-		c.g=math.random()*0.1
-		c.b=math.random()*0.1
+		local vvv=math.random()*0
+		c.r=vvv
+		c.g=vvv
+		c.b=vvv
 		local vc=vectorfield:get(x,y)
-		local dx=math.random()-0.5+cdx
-		local dy=math.random()-0.5+cdy
-		local l=math.sqrt(dx*dx+dy*dy)
+		local tcx=x-cx
+		local tcy=y-cy
+		local tcl=math.sqrt(tcx*tcx+tcy*tcy)
+
+		local dx=math.random()-0.5+cdx+tcx*scale_out/tcl
+		local dy=math.random()-0.5+cdy+tcy*scale_out/tcl
+		--[[local l=math.sqrt(dx*dx+dy*dy)
 		vc.r=dx/l
-		vc.g=dy/l
+		vc.g=dy/l]]
+		vc.r=dx*scale
+		vc.g=dy*scale
 	end
 	end
+	relax_flowfield(20,0.001)
 	-- [[
 	for x=0,size[1]-1 do
 		local c=visits:get(x,0)
 		c.r=math.random()
 		c.g=math.random()
 		c.b=math.random()
-		table.insert(wavefront,{x,0})
+		
 	end
 	--table.insert(wavefront,{size[1]/4,0})
 	--table.insert(wavefront,{math.floor(size[1]*3/4),0})
 
 	--]]
+	wavefront={}
+	local r=100
+	local count=12
+	for i=0,count-1 do
+		local phi=(i/count)*(math.pi*2)
+		local x=cx+math.cos(phi)*r
+		local y=cy+math.sin(phi)*r
+		table.insert(wavefront,{math.floor(x),math.floor(y)})
+	end
 	--[[
 	local radius=min_r
 	for r=0,radius do
@@ -168,6 +246,48 @@ function get_rule( pts )
 	end
 	return CA_rule[ret] or 0
 end
+function sample_visits( x,y )
+	local lx=math.floor(x)
+	local hx=lx+1
+	local ly=math.floor(y)
+	local hy=ly+1
+
+	local frx=x-lx
+	local fry=y-ly
+
+	lx,ly=fix_coord(lx,ly)
+	hx,hy=fix_coord(hx,hy)
+
+	local ll=visits:get(lx,ly).r
+	local lh=visits:get(lx,hy).r
+	local hl=visits:get(hx,ly).r
+	local hh=visits:get(hx,hy).r
+
+	local xl=ll*(1-frx)+hl*frx
+	local xh=lh*(1-frx)+hh*frx
+
+	return xl*(1-fry)+xh*fry
+end
+function do_rule( ox,oy,x,y )
+	local dx=x-ox
+	local dy=y-oy
+	local tx,ty
+	tx=math.floor(ox)
+	ty=math.floor(oy)
+	local p=visits:get(tx,ty)
+	local sx,sy
+	sx=ox-dx
+	sy=oy-dy
+	local vv=sample_visits(sx,sy)
+	local l=vv+math.random()*0.05--math.sqrt(dx*dx+dy*dy)*4
+	--l=l*l
+	if l>1 then l=1 end
+	--if math.random()>0.5 then
+		p.r=l
+		p.g=l
+		p.b=l
+	--end
+end
 do_step=false
 function gui(  )
 	imgui.Begin("CA")
@@ -178,6 +298,9 @@ function gui(  )
 	end
 	if imgui.Button("step") then
 		do_step=true
+	end
+	if imgui.Button("fx") then
+		first=3
 	end
 	imgui.End()
 end
@@ -194,23 +317,24 @@ function draw_wavefront( clear )
 	end
 end
 function fix_coord( x,y )
-	if x<0 then x=size[1]+x end
-	if y<0 then y=size[2]+y end
-	if x>size[1]-1 then x=size[1]-x end
-	if y>size[2]-1 then y=size[2]-y end
+	if math.floor(x)<0 then x=size[1]+x end
+	if math.floor(y)<0 then y=size[2]+y end
+	if math.floor(x)>size[1]-1 then x=x-size[1] end
+	if math.floor(y)>size[2]-1 then y=y-size[2] end
 	return x,y
 end
 function fix_coord_delta( x,y,nx,ny )
 	local hw=size[1]/2
-	local hh=size[1]/2
+	local hh=size[2]/2
+
 	local dx=nx-x
-	local dy=ny-y
 	if dx>hw then
 		dx=dx-size[1]
 	elseif dx<-hw then
 		dx=dx+size[1]
 	end
 
+	local dy=ny-y
 	if dy>hh then
 		dy=dy-size[2]
 	elseif dy<-hh then
@@ -220,57 +344,94 @@ function fix_coord_delta( x,y,nx,ny )
 	return dx,dy
 end
 
-first=100
+first=4
 function fix_wavefront(  )
+	local min_dist=math.sqrt(2)
 	local ret={}
+	local count=1
 	local tt={wavefront[1][1],wavefront[1][2]}
 	--print(i,tt[1],tt[2])
-	table.insert(ret,tt)
-	for i=2,#wavefront do
+	for i=2,#wavefront+1 do
 		local np=wavefront[i]
-		--if i==#wavefront+1 then
-		--	np=wavefront[1]
-		--end
-		local dx,dy=fix_coord_delta(tt[1],tt[2],np[1],np[2])
+		if i==#wavefront+1 then
+			np=wavefront[1]
+		end
+		local dx,dy=fix_coord_delta(tt[1]/count,tt[2]/count,np[1],np[2])
 		local dist=math.sqrt(dx*dx+dy*dy)
 		--print(i,dx,dy,dist)
-		if dist>1 then
+		if dist>min_dist then --if distance too great, add pixels
+			--print("A:",tt[1]/count,tt[2]/count)
+			--table.insert(ret,{tt[1]/count,tt[2]/count})
 			local tdx=dx/dist
 			local tdy=dy/dist
-			local step=math.max(math.abs(tdx),math.abs(tdy))
-			tdx=tdx/step
-			tdy=tdy/step
+			--local step=math.max(math.abs(tdx),math.abs(tdy))
+			--tdx=tdx/step
+			--tdy=tdy/step
 			--print(tdx,tdy)
-			local tot=tt
-			for i=1,dist do
-				local x=math.floor(tot[1]+tdx*i)
-				local y=math.floor(tot[2]+tdy*i)
+			local tot={tt[1]/count,tt[2]/count}
+			for i=1,dist-0.5,min_dist do
+				table.insert(ret,{tt[1]/count,tt[2]/count})
+				local x=tot[1]+tdx*i
+				local y=tot[2]+tdy*i
 				x,y=fix_coord(x,y)
-				--print("A:",x,y)
 				tt={x,y}
-				table.insert(ret,tt)
+				count=1
 			end
+		else --if distance is small average points
+			tt[1]=tt[1]+np[1]
+			tt[2]=tt[2]+np[2]
+			count=count+1
 		end
 	end
+	--print("A:",tt[1]/count,tt[2]/count)
+	table.insert(ret,{tt[1]/count,tt[2]/count})
 	print("wavefront2:",#ret)
-	if first>2 then
+	--if first>2 then
 		wavefront=ret
-	end
+	--end
 	if first>1 then
 		first=first-1
 	end
+end
+function sample_flowfield( x,y )
+	local lx=math.floor(x)
+	local hx=lx+1
+	local ly=math.floor(y)
+	local hy=ly+1
+
+	local frx=x-lx
+	local fry=y-ly
+
+	lx,ly=fix_coord(lx,ly)
+	hx,hy=fix_coord(hx,hy)
+
+	local ll=vectorfield:get(lx,ly)
+	local lh=vectorfield:get(lx,hy)
+	local hl=vectorfield:get(hx,ly)
+	local hh=vectorfield:get(hx,hy)
+
+	local xl_x=ll.r*(1-frx)+hl.r*frx
+	local xl_y=ll.g*(1-frx)+hl.g*frx
+	local xh_x=lh.r*(1-frx)+hh.r*frx
+	local xh_y=lh.g*(1-frx)+hh.g*frx
+
+	return {xl_x*(1-fry)+xh_x*fry,xl_y*(1-fry)+xh_y*fry}
 end
 function advance_wavefront(  )
 	for i,v in ipairs(wavefront) do
 		local x=v[1]
 		local y=v[2]
-		local vec=vectorfield:get(x,y)
-		local step_size=math.max(math.abs(vec.r),math.abs(vec.g))
-		x=x+vec.r/step_size
-		y=y+vec.g/step_size
+		local vec=sample_flowfield(x,y)
+		local step_size=math.max(math.abs(vec[1]),math.abs(vec[2]))
+		local old_x,old_y
+		old_x=x
+		old_y=y
+		x=x+vec[1]--/step_size
+		y=y+vec[2]--/step_size
 		x,y=fix_coord(x,y)
-		v[1]=math.floor(x)
-		v[2]=math.floor(y)
+		do_rule(old_x,old_y,x,y)
+		v[1]=x
+		v[2]=y
 	end
 	print("wavefront1:",#wavefront)
 	fix_wavefront()
@@ -329,7 +490,7 @@ function update(  )
 		if current_y>=size[2] then current_y=0 end
 		--]]
 		--if do_step then
-			draw_wavefront(true)
+			--draw_wavefront(true)
 			advance_wavefront()
 			draw_wavefront()
 			do_step=false
