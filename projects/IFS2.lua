@@ -1296,7 +1296,7 @@ function rand_function(  )
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
 	--local tbl_insert={"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seed)","vec2(cos(length(p)*M_PI*4+global_seed),sin(length(p)*M_PI*4+global_seed))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
 	local tbl_insert={"p","s","params.xy","params.zw"}
-	-- [[
+	--[[
 	local point_count=3
 	for i=1,point_count do
 		local v=(i-1)/point_count
@@ -1314,9 +1314,9 @@ function rand_function(  )
 		"vec2(tex_s.x,tex_p.z)","vec2(tex_s.y,tex_p.x)","vec2(tex_s.z,tex_p.y)",
 
 	}
-	local num_tex=1
+	local num_tex=8
 	for i=1,num_tex do
-		table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)].."*global_seed")
+		table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
 	end
 	--]]
 	str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert)
@@ -1373,7 +1373,7 @@ function rand_function(  )
 	str_cmplx=random_math_complex(rand_complexity,"c_div(c_mul(R,s)+R,c_mul(R,s)+R)")
 	--]=]
 	--mandelbrot?
-	-- [=[
+	--[=[
 	--str_cmplx="c_mul(s,s)*value_inside(global_seed,0,0.5)+c_mul(s,c_mul(s,s))*value_inside(global_seed,0.5,1)+p"
 	str_cmplx="mix(c_mul(s,s)+p,c_mul(c_mul(s,s)+p,vec2(cos(M_PI),sin(M_PI))),tex_p.y*global_seed)"
 	--]=]

@@ -9,7 +9,7 @@ config=make_config({
 	{"scale",0.1,type="float"},
 },config)
 
-local oversample=1
+local oversample=0.25
 function update_size()
 	local trg_w=1280
 	local trg_h=1280
@@ -34,8 +34,8 @@ buf_water_speed=buf_water_speed or multi_texture(size[1],size[2],2,FLTA_PIX)
 
 function reset_buffers( )
 	local b=io_buffer
-	local min_value=-500
-	local max_value=500
+	local min_value=-0.01
+	local max_value=0.01
 	local p_min=0
 	local p_max=0.1
 	for x=0,b.w-1 do
@@ -50,7 +50,7 @@ function reset_buffers( )
 					b:set(x,y,{
 					math.random()*(max_value-min_value)+min_value,
 					math.random()*(max_value-min_value)+min_value,
-					math.max(math.min(0.1-dist,1),0),
+					math.max(math.min(0.4-dist,1),0),
 					0})
 				else
 					b:set(x,y,{0,0,0,0})
@@ -218,8 +218,12 @@ uniform sampler2D velocity;
 
 vec2 paper_grad(vec2 pos)
 {
+	float len=length(pos);
 	//TODO: we use it for u, and it needs to be offset at 0.5
-	return vec2(0,0);
+	if(len<1)
+		return vec2(pos.x/len,pos.y/len)*0.0001;
+	else
+		return vec2(0,0);
 }
 
 void main()
@@ -442,7 +446,7 @@ function velocity_update(  )
 end
 function sim_tick(  )
 	remove_grad()
-	--velocity_update()
+	velocity_update()
 	relax_divergence()
 	--flow_outward
 end

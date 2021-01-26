@@ -31,6 +31,14 @@ function make_buffer( typename,type_id,default_pixel )
 		img.get=function ( t,x,y )
 			return t.d[x+t.w*y]
 		end
+		img.sget=function ( t,x,y )
+			if x<0 then error(string.format("x negative: %g",x)) end
+			if y<0 then error(string.format("y negative: %g",y)) end
+			if x>=t.w then error(string.format("x too large: %g vs %g",x,t.w)) end
+			if y>=t.h then error(string.format("y too large: %g vs %g",y,t.h)) end
+			if x+t.w*y>=t.w*t.h then error("data index too large") end
+			return t.d[x+t.w*y]
+		end
 		if type_id==0 then
 			img.present=function ( t )
 				__present(t)

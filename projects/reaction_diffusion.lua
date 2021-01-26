@@ -27,8 +27,8 @@ config=make_config({
 },config)
 local oversample=1 --TODO: not working correctly
 function update_size()
-	local trg_w=1280
-	local trg_h=1280
+	local trg_w=1024
+	local trg_h=1024
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
 	if win_w~=trg_w or win_h~=trg_h or (img_buf==nil or img_buf.w~=trg_w*oversample) then
@@ -378,7 +378,7 @@ vec4 chen_attractor(vec4 c,vec2 normed)
 vec4 actual_function(vec4 c,vec2 normed)
 {
 	return
-		//gray_scott(c,normed)
+		gray_scott(c,normed)
 		//ruijgrok(c,normed)
 		//two_reacts(c,normed)
 		//thingy_formulas(c,normed)
@@ -386,7 +386,7 @@ vec4 actual_function(vec4 c,vec2 normed)
 		//gierer_meinhard(c,normed)
 		//rossler(c,normed)
 		//hyper_chaos(c,normed)
-		lorenz_system(c,normed)
+		//lorenz_system(c,normed)
 		//chen_attractor(c,normed)
 		;
 }
@@ -481,8 +481,8 @@ void main(){
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
 	//color=vec4(cnt.xyz,1);
-	//color=vec4(lv,lv,lv,1);
-	color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,1.5,1.25),vec3(1.0,1.05,1.4)),1);
+	color=vec4(lv,lv,lv,1);
+	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,1.5,1.25),vec3(1.0,1.05,1.4)),1);
 	/* accent
 	float accent_const=0.5;
 	if(lv<accent_const)
@@ -667,8 +667,8 @@ end
 function sim_tick(  )
 	local dt=0.1
 	react_diffuse:use()
-	react_diffuse:blend_disable()
-	--react_diffuse:blend_default()
+--	react_diffuse:blend_disable()
+	react_diffuse:blend_default()
 	react_diffuse:set("diffusion",config.diff_a,config.diff_b,config.diff_c,config.diff_d)
 	react_diffuse:set("kill_feed",config.k1,config.k2,config.k3,config.k4)
 	react_diffuse:set("dt",dt)
@@ -1025,7 +1025,8 @@ function draw_texture( id )
 	--]]
 	draw_shader:set("value_offset",-mm[1],-mm[2],-mm[3],0)
 	draw_shader:set("value_scale",1/(mx[1]-mm[1]),1/(mx[2]-mm[2]),1/(mx[3]-mm[3]),1)
-	draw_shader:blend_disable()
+	--draw_shader:blend_disable()
+	draw_shader:blend_default()
 	draw_shader:draw_quad()
 	if need_save or id then
 		save_img(id)
@@ -1056,7 +1057,8 @@ function apply_sum_texture()
 	if not next_buff:render_to(collect_buffer.w,collect_buffer.h) then
 		error("failed to set framebuffer up")
 	end
-	sum_texture:blend_disable()
+	--sum_texture:blend_disable()
+	sum_texture:blend_default()
 	sum_texture:draw_quad()
 
 	__render_to_window()

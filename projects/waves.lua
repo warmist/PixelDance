@@ -28,6 +28,7 @@ end
 --update_size()
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
+
 --[[
 	local b=bwrite()
 	b:u32(visit_buf.w)
@@ -111,7 +112,9 @@ function read_visits_buf( fname )
 	end
 	end
 end
+local force_reload_image=true
 function make_visits_texture()
+	--[[
 	if visit_tex==nil then
 		print("making tex")
 		read_visits_buf("out.buf")
@@ -119,8 +122,15 @@ function make_visits_texture()
 		visit_tex.t:use(0,1)
 		visit_buf:write_texture(visit_tex.t)
 	end
+	--]]
+	if force_reload_image or visit_tex==nil then
+		local image_mask=load_png("saved_1611143854.png")
+		visit_tex={t=textures:Make(),w=image_mask.w,h=image_mask.h}
+		visit_tex.t:use(0,1)
+		image_mask:write_texture(visit_tex.t)
+ 	end
 end
---make_visits_texture()
+make_visits_texture()
 function count_lines( s )
 	local n=0
 	for i in s:gmatch("\n") do n=n+1 end
@@ -242,6 +252,14 @@ float gain(float x, float k)
     float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
     return (x<0.5)?a:1.0-a;
 }
+vec3 isoline_color (in float d) {
+    vec3 col = vec3(1.0) - sign(d)*vec3(0.1,0.4,0.7);
+    col *= 1.0 - exp(-3.0*abs(d));
+    float c = cos(150.0*d);
+    col *= 0.8 + 0.2*c*c*c;
+    col = mix( col, vec3(1.0), 1.0-smoothstep(0.0,0.01,abs(d)) );
+    return col;
+  }
 //#define RG
 void main(){
 
@@ -270,7 +288,8 @@ void main(){
 	float q=7;
 	lv=clamp(floor(lv*q)/q,0,1);
 	//*/
-	color.xyz=vec3(lv);
+	//color.xyz=vec3(lv);
+	//color.xyz=isoline_color((lv-0.5)*2);
 	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,2.0,2.0),vec3(3.0,2.0,1.0)),1);
 	color.a=1;
 	vec3 col_back=vec3(0);
@@ -278,7 +297,7 @@ void main(){
 	float break_pos=0.5;
 	float break_inv=1/break_pos;
 	///* color with a down to dark break
-	
+	//lv=1-lv;
 	if(lv>break_pos)
 		color.xyz=mix(col_back,col_top,(lv-break_pos)/(1-break_pos));
 	else
@@ -743,8 +762,8 @@ float func(vec2 pos)
 	float fn1=fr*M_PI/1000;
 	float fn2=fr2*M_PI/1000;
 
-	float max_a=5;
-	float r=0.08;
+	float max_a=4;
+	float r=0.4;
 	#if 0
 		if(length(pos+vec2(0,0.9))<0.005)
 			return ab_vec.x*(fract(fn1*time)*2-1)
@@ -757,7 +776,7 @@ float func(vec2 pos)
 				//return ab_vec.x*n4rand(pos*fr2);
 		float ret=0;
 
-		if(length(pos+vec2(0.9,0.0))<0.005)
+		if(length(pos+vec2(0.0,0.0))<0.005)
 			for(int i=1;i<10;i++)
 			{
 				ret+=ab_vec.x*cos(time*fr+pos.x*hash(pos.y))+
@@ -790,8 +809,8 @@ float func(vec2 pos)
 		if(length(pos+dv)<0.005)
 		//if(time<max_time)
 			return (
-			ab_vec.x*sin(fn1*time+ang)
-			+ab_vec.y*sin(fn2*time+ang)
+			ab_vec.x*sin(fn1*time+ang*nm_vec.x)
+			+ab_vec.y*sin(fn2*time+ang*nm_vec.y)
 			);
 	}
 	#endif
@@ -984,6 +1003,7 @@ float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 	return ret;
 	//*/
 #elif 1
+
 	float c_const2=2;
 	float GX=dcsqr*dt*dt*c_const2/(dtex.x*dtex.x);
 	float GY=dcsqr*dt*dt*c_const2/(dtex.y*dtex.y);
@@ -1187,21 +1207,24 @@ void main(){
 	//float sh_v=1-max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
 	//float sh_v=1-max(1-sdCircle(pos.xy,0.98)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
 	//float sh_v=1-damaged_circle(pos.xy);
-	float sh_v=damaged_circle2(pos.xy);
+	//float sh_v=damaged_circle2(pos.xy);
 	//float sh_v=sh_wavy(pos.xy,max_d);
-	//float sh_v=sdCircle(pos.xy,0.98);
+	//float sh_v=sdCircle(pos.xy,0.6);
 	//float sh_v=sdCircle2(pos.xy,0.98);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=1-leaf(pos.xy,w);
 	//float sh_v=chalice(pos.xy,w);
 	//float sh_v=slit_experiment(pos.xy,w);
-	//float sh_v=flower(pos.xy,w);
-	//float sh_v=balance(pos.xy,w)-0.5;
+	//float sh_v=1-flower(pos.xy,w);
+	//float sh_v=1-balance(pos.xy,w);
 	//float sh_v=sh_jaws(pos.xy,w);
-	//float sh_v=sh_polyhedron(pos.xy*vec2(0.2,1),4,0.2,0,w);
+	//float sh_v=1-sh_polyhedron(pos.xy,4,0.4,0,w);
 	//float sh_v=1-ankh(pos.xy,w);
 	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
+	normed.y=1-normed.y;
+	float sh_v=step(texture(input_map,normed).x,0.6);
+	float sh_v3=sdCircle(pos.xy,0.98);
 #if 0
 	vec4 sh_v2;
 	sh_v2.x=TDX(0,0);
@@ -1251,14 +1274,14 @@ void main(){
 	v=1-smoothstep(-w,w,v);
 #else
 
-	if(sh_v<=0)
+	/*if(sh_v<=0)
 	{
 		if(init==1)
 			v=calc_init_value(pos.xy,avg_c);
 		else
 			v=calc_new_value(pos.xy,avg_c);
 	}
-	else if(sh_v>0)
+	else if(sh_v>0)*/
 	{
 		//todo: derivate
 		/*vec2 dir=-normalize(pos.xy);
@@ -1266,9 +1289,17 @@ void main(){
 			v=boundary_condition_init(pos.xy,dir);
 		else
 			v=boundary_condition(pos.xy,dir);*/
-		v=0;
-
 	}
+	float l=clamp(length(pos.xy),0,1);
+	float radiation=0.999;
+	if(sh_v<=0)
+		v=calc_new_value(pos.xy,avg_c);
+	else if(sh_v3<=0)
+	//else
+		v=calc_new_value(pos.xy,avg_c)*radiation;
+	else
+		v=calc_new_value(pos.xy,avg_c)*mix(radiation,radiation*radiation*radiation,l);
+	//else v=0;
 #endif
 	color=vec4(v,0,0,1);
 }
@@ -1379,7 +1410,8 @@ function waves_solve(  )
 	if visit_tex then
 		visit_tex.t:use(7)
 		solver_shader:set_i("input_map",7)
-		solver_shader:set("input_map_swing",visits_minmax[1],visits_minmax[2])
+		--solver_shader:set("input_map_swing",visits_minmax[1],visits_minmax[2])
+		solver_shader:set("input_map_swing",0,1)
 	end
 	for i=0,NUM_BUFFERS-2 do
 		local id=(solver_iteration+i) % NUM_BUFFERS +1
@@ -1537,7 +1569,7 @@ function draw_texture( id )
 	end
 end
 local frame_count=60
-local tick_skip=9
+local tick_skip=1000
 
 --480/100 452
 --4800/10 99
@@ -1571,6 +1603,7 @@ function animate_step(  )
 
 	local spline_p
 	--spline_p,anim_spline_step=step_along_spline(anim_spline,anim_spline_step,1/frame_count,1/(10*frame_count))
+	--[[
 	spline_p=anim_spline:get(t)
 
 
@@ -1581,8 +1614,9 @@ function animate_step(  )
 	config.freq2=lerp(fr2[1],fr2[2],spline_p[2])
 	config.decay2=lerp(decay2[1],decay2[2],spline_p[3])
 
-	current_frame=current_frame+1
 	print(string.format("%.3g %.3g %.3g %.3g || %.3g %.3g %.3g",t,config.freq,config.freq2,config.decay2,spline_p[1],spline_p[2],spline_p[3]))
+	--]]
+	current_frame=current_frame+1
 end
 
 last_animate=false
@@ -1626,6 +1660,7 @@ function update_real(  )
 				if current_frame>frame_count then
 					config.animate_simple=false
 				end
+				clear_sand()
 			else
 				__clear()
 				draw_texture()

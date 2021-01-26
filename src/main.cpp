@@ -378,7 +378,9 @@ struct project {
 			is_errored = true;
 			return;
 		}
-        if (luaL_dofile(L, path.c_str()) != 0)
+        //(luaL_loadfile(L, fn) || lua_pcall(L, 0, LUA_MULTRET, 0))
+        
+        if (luaL_loadfile(L,path.c_str()) || docall(L, 0, LUA_MULTRET) != 0)
         {
             size_t len;
             const char* err=lua_tolstring(L, 1, &len);

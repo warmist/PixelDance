@@ -377,10 +377,16 @@ function sample_visits_out( x,y ,col)
 	lx,ly=fix_coord(lx,ly)
 	hx,hy=fix_coord(hx,hy)
 	--TODO: actual out-sampling
-	visits2:set(lx,ly,col)
-	visits2:set(lx,hy,col)
-	visits2:set(hx,ly,col)
-	visits2:set(hx,hy,col)
+
+	local ll=visits:sget(lx,ly)
+	local lh=visits:sget(lx,hy)
+	local hl=visits:sget(hx,ly)
+	local hh=visits:sget(hx,hy)
+
+	visits2:set(lx,ly,lerp(col,ll,frx*fry))
+	visits2:set(lx,hy,lerp(col,lh,frx*(1-fry)))
+	visits2:set(hx,ly,lerp(col,hl,(1-frx)*fry))
+	visits2:set(hx,hy,lerp(col,hh,(1-frx)*(1-fry)))
 
 end
 function do_rule( x,y,dx,dy )
@@ -442,16 +448,17 @@ function gui(  )
 end
 
 function draw_wavefront( clear )
+	local vv={r=0,g=1,b=0}
+	if clear then
+		vv.g=0
+	end
 	for i,v in ipairs(wavefront) do
 		local x,y=fix_coord(v[1],v[2])
-		local c_out=visits:sget(math.floor(x),math.floor(y))
-		c_out.r=0
+		sample_visits_out(x,y,vv)
+
 		if clear then
-			c_out.g=0
-		else
-			c_out.g=1
+			visits:set(math.floor(v[1]),math.floor(v[2]),vv)
 		end
-		c_out.b=0
 	end
 end
 
@@ -574,6 +581,7 @@ function advance_wavefront(  )
 	fix_wavefront()
 	--print("wavefront2:",#wavefront)
 end
+local global_tick=0
 function update(  )
 	__no_redraw()
 	__clear()
@@ -627,14 +635,16 @@ function update(  )
 		if current_y>=size[2] then current_y=0 end
 		--]]
 		--if do_step then
-
-			--draw_wavefront(true)
+			if global_tick%20~=0 then
+				draw_wavefront(true)
+			end
 			advance_wavefront()
-			--draw_wavefront()
+			draw_wavefront()
 			do_step=false
 			local w=visits
 			visits=visits2
 			visits2=w
+			global_tick=global_tick+1
 		--end
 	end
 	draw_visits()
