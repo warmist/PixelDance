@@ -5,26 +5,31 @@ require "common"
 		* add MAX Over T for some T
 		* multi scale turing patterns: https://faculty.ac/image-story/a-machine-in-motion/
 		* https://elifesciences.org/articles/14022
+		* https://examples.pyviz.org/attractors/attractors.html
+
 ]]
 config=make_config({
 	{"pause",false,type="boolean"},
 	{"clamp_edges",false,type="boolean"},
 	{"do_sum",false,type="boolean"},
 	{"do_norm",false,type="boolean"},
-	{"diff_a",0.024,type="float",min=0,max=1},
-	{"diff_b",0.024,type="float",min=0,max=1},
-	{"diff_c",2.5,type="float",min=0,max=1},
+	{"diff_a",1,type="float",min=0,max=1},
+	{"diff_b",0.5,type="float",min=0,max=1},
+	{"diff_c",0.25,type="float",min=0,max=1},
 	{"diff_d",0.125,type="float",min=0,max=1},
-	{"k1",-2,type="float",min=0,max=1},
-	{"k2",1,type="float",min=0,max=1},
-	{"k3",0.2,type="float",min=0,max=1},
-	{"k4",1,type="float",min=0,max=1},
+	{"k1",0.5,type="float",min=0,max=1},
+	{"k2",0.5,type="float",min=0,max=1},
+	{"k3",0.5,type="float",min=0,max=1},
+	{"k4",0.5,type="float",min=0,max=1},
 	{"region_size",0.5,type="float",min=0.01,max=1},
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"gain",1,type="float",min=-5,max=5},
 	{"draw_comp",0,type="int",min=0,max=3},
 	{"animate",false,type="boolean"},
 },config)
+
+mapping_parameters={3,4}
+
 local oversample=1 --TODO: not working correctly
 function update_size()
 	local trg_w=1024
@@ -123,8 +128,9 @@ vec4 laplace_h(vec2 pos)
 	return ret;
 }
 #define MAPPING
-vec4 gray_scott(vec4 cnt,vec2 normed)
+vec4 gray_scott(vec4 c,vec2 normed)
 {
+	//NOTE: can increase the dt somewhat generally...
 	//x=0;0.5
 	//y=0;0.25
 	/*
@@ -132,14 +138,20 @@ vec4 gray_scott(vec4 cnt,vec2 normed)
 	*/
 	float kill_rate=kill_feed.x*0.07;
 	float feed_rate=kill_feed.y*0.1;
+
+	vec4 scale=vec4(0.07,0.1,0,0);
+	vec4 offset=vec4(0);
+
+	vec4 k=kill_feed;
 #ifdef MAPPING
 	if (map_region.x>=0)
 	{
-		kill_rate=mix(map_region.x,map_region.y,normed.x)*0.07;
-		feed_rate=mix(map_region.z,map_region.w,normed.y)*0.1;
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		k.y=mix(map_region.z,map_region.w,normed.y);
 	}
 #endif
-#if 1
+	k=k*scale+offset;
+#if 0
 	vec2 kcenter=vec2(0.861682,0.439294);
 	float w=0.0625;
 	//0.861682,0.439294), width:0.0625
@@ -149,8 +161,8 @@ vec4 gray_scott(vec4 cnt,vec2 normed)
 	kill_rate=(kcenter.x-w*0.5+dist*w)*0.07;
 	feed_rate=(kcenter.y-w*0.5+dist*w)*0.1;
 #endif
-	float abb=cnt.x*cnt.y*cnt.y;
-	return vec4(-abb,abb,0,0)+vec4(feed_rate*(1-cnt.x),-(kill_rate+feed_rate)*cnt.y,0,0);
+	float abb=c.x*c.y*c.y;
+	return vec4(-abb,abb,0,0)+vec4(k.x*(1-c.x),-(k.y+k.x)*c.y,0,0);
 }
 vec4 schnakenberk_reaction_kinetics(vec4 cnt,vec2 normed)
 {
@@ -269,6 +281,30 @@ vec4 rossler(vec4 cnt,vec2 normed)
 		0
 	)*k4;
 }
+vec4 rossler4(vec4 c,vec2 normed)
+{
+	//http://www.scholarpedia.org/article/Hyperchaos
+	//explodes very fast
+	vec4 scale=vec4(0.125,1.5,0.25,0.025);
+	vec4 offset=vec4(0.25,3,0.5,0.05);
+
+	vec4 k=kill_feed;
+#ifdef MAPPING
+	if (map_region.x>=0)
+	{
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		k.y=mix(map_region.z,map_region.w,normed.y);
+	}
+#endif
+	k=k*scale+offset;
+
+	return vec4(
+		-c.y-c.z,
+		c.x+k.x*c.y+c.w,
+		k.y+c.x*c.z,
+		-k.z*c.z+k.w*c.w
+	);
+}
 vec4 two_reacts(vec4 cnt,vec2 normed)
 {
 	/*
@@ -314,22 +350,24 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 }
 vec4 hyper_chaos(vec4 c,vec2 normed)
 {
-	float k1=kill_feed.x;
-	float k2=kill_feed.y;
-	float k3=kill_feed.z;
-	float k4=kill_feed.w;
+	//BROKEN SOURCE?
+	vec4 scale=vec4(1);
+	vec4 offset=vec4(0);
+
+	vec4 k=kill_feed;
 #ifdef MAPPING
 	if (map_region.x>=0)
 	{
-		k1=mix(map_region.x,map_region.y,normed.x);
-		k2=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		k.y=mix(map_region.z,map_region.w,normed.y);
 	}
 #endif
+	k=k*scale+offset;
 	return vec4(
-		c.x*(1-c.y)+k1*c.z,
-		k2*(c.x*c.x-1)*c.y,
-		k3*(1-c.y)*c.w,
-		k4*c.z
+		c.x*(1-c.y)+k.x*c.z,
+		k.y*(c.x*c.x-1)*c.y,
+		k.z*(1-c.y)*c.w,
+		k.w*c.z
 	);
 }
 vec4 lorenz_system(vec4 c,vec2 normed)
@@ -337,42 +375,143 @@ vec4 lorenz_system(vec4 c,vec2 normed)
 	//k1=10
 	//k2=28
 	//k3=8/3
-	float k1=kill_feed.x*10+5;
-	float k2=kill_feed.y*28+10;
-	float k3=kill_feed.z*(8.0/3.0);
+
+	vec4 scale=vec4(2,2,1,0);
+	vec4 offset=vec4(9,27,8/3-0.5,0);
+
+	vec4 k=kill_feed;
 #ifdef MAPPING
 	if (map_region.x>=0)
 	{
-		k1=mix(map_region.x,map_region.y,normed.x)*10+5;
-		k2=mix(map_region.z,map_region.w,normed.y)*28+10;
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		k.y=mix(map_region.z,map_region.w,normed.y);
 	}
 #endif
+	k=k*scale+offset;
+
 	return vec4(
-		k1*(c.y-c.x),
-		c.x*(k2-c.z)-c.y,
-		c.x*c.y-k3*c.z,
+		k.x*(c.y-c.x),
+		c.x*(k.y-c.z)-c.y,
+		c.x*c.y-k.z*c.z,
 		0
 	);
 }
 vec4 chen_attractor(vec4 c,vec2 normed)
 {
+	//BROKEN?
 	//chaos at: a = 40, b = 3, c = 28
-	float k1=kill_feed.x*40+20;
-	float k2=kill_feed.y*6;
-	float k3=kill_feed.z*56;
+	//k.x=36,k.y=20,k.z=0 (and k.z=3)
+	//float k1=kill_feed.x*40+20;
+	//float k2=kill_feed.y*6;
+	//float k3=kill_feed.z*56;
+
+	vec4 scale=vec4(2,2,3,0);
+	vec4 offset=vec4(35,19,0,0);
+
+	vec4 k=kill_feed;
 #ifdef MAPPING
 	if (map_region.x>=0)
 	{
-		//k1=mix(map_region.x,map_region.y,normed.x)*40+20;
-		k2=mix(map_region.z,map_region.w,normed.y)*6;
-		k3=mix(map_region.x,map_region.y,normed.x)*56;
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		k.y=mix(map_region.z,map_region.w,normed.y);
+		//k.z=mix(map_region.x,map_region.y,normed.x);
+	}
+#endif
+
+	k=k*scale+offset;
+
+	return vec4(
+		k.x*(c.y-c.x),
+		(k.z-k.x)*c.x-c.x*c.z+k.z*c.y,
+		c.x*c.y-k.y*c.z,
+		0
+	);
+}
+vec4 clifford_attractor(vec4 c, vec2 normed)
+{
+	vec4 scale=vec4(2,2,4,4);
+	vec4 offset=vec4(0,0,-2,-2);
+	vec4 k=kill_feed*scale+offset;
+
+#ifdef MAPPING
+	if (map_region.x>=0)
+	{
+		//k.x=mix(map_region.x,map_region.y,normed.x)*scale.x+offset.x;
+		//k.y=mix(map_region.z,map_region.w,normed.y)*scale.y+offset.y;
+		k.z=mix(map_region.x,map_region.y,normed.x)*scale.z+offset.z;
+		k.w=mix(map_region.z,map_region.w,normed.y)*scale.w+offset.w;
 	}
 #endif
 	return vec4(
-		k1*(c.y-c.x),
-		(k3-k1)*c.x-c.x*c.z+k3*c.y,
-		c.x*c.y-k2*c.z,
-		0
+			sin(k.x*c.y)+k.z*cos(k.x*c.x),
+			sin(k.y*c.x)+k.w*cos(k.y*c.y),
+			0,
+			0
+	);
+}
+vec4 hopalong_attractor1(vec4 c,vec2 normed)
+{
+	vec4 k=kill_feed*8-vec4(4);
+
+#ifdef MAPPING
+	if (map_region.x>=0)
+	{
+		k.x=mix(map_region.x,map_region.y,normed.x)*4-2;
+		k.y=mix(map_region.z,map_region.w,normed.y)*4-2;
+	}
+#endif
+	return vec4(
+			c.y-sqrt(abs(k.y*c.x-k.z))*sign(c.x),
+			k.x-c.x,
+			0,
+			0
+	);
+}
+vec4 hopalong_attractor2(vec4 c,vec2 normed)
+{
+	vec4 k=kill_feed*8-vec4(4);
+
+#ifdef MAPPING
+	if (map_region.x>=0)
+	{
+		k.x=mix(map_region.x,map_region.y,normed.x)*8-4;
+		k.y=mix(map_region.z,map_region.w,normed.y)*8-4;
+	}
+#endif
+	return vec4(
+			c.y-1.0-sqrt(abs(k.y*c.x-1.0-k.z))*sign(c.x-1.0),
+			k.x-c.x-1.0,
+			0,
+			0
+	);
+}
+float GM_helper(float x,float mu)
+{
+	return mu*x+2*(1-mu)*x*x/(1+x*x);
+}
+vec4 gumowski_mira_attractor(vec4 c,vec2 normed)
+{
+	//NB: probably broken
+	//http://kgdawiec.bplaced.net/badania/pdf/cacs_2010.pdf
+	//3 param
+	vec4 scale=vec4(0.001,1,0.05,0);
+	vec4 offset=vec4(0.001,-.5,0,0);
+
+	vec4 k=kill_feed*scale+offset;
+
+#ifdef MAPPING
+	if (map_region.x>=0)
+	{
+		k.x=mix(map_region.x,map_region.y,normed.x)*scale.x+offset.x;
+		k.y=mix(map_region.z,map_region.w,normed.y)*scale.y+offset.y;
+	}
+#endif
+	float xn=c.y+k.x*(1-k.y*c.y*c.y)*c.y+GM_helper(c.x,k.z);
+	return vec4(
+			xn,
+			-c.x+GM_helper(xn,k.z),
+			0,
+			0
 	);
 }
 vec4 actual_function(vec4 c,vec2 normed)
@@ -385,9 +524,14 @@ vec4 actual_function(vec4 c,vec2 normed)
 		//schnakenberk_reaction_kinetics(c,normed)
 		//gierer_meinhard(c,normed)
 		//rossler(c,normed)
+		//rossler4(c,normed)
 		//hyper_chaos(c,normed)
 		//lorenz_system(c,normed)
 		//chen_attractor(c,normed)
+		clifford_attractor(c,normed)
+		//hopalong_attractor1(c,normed)
+		//hopalong_attractor2(c,normed)
+		//gumowski_mira_attractor(c,normed)
 		;
 }
 vec4 runge_kutta_4(vec4 c,vec2 normed,float step_dt)
@@ -400,6 +544,7 @@ vec4 runge_kutta_4(vec4 c,vec2 normed,float step_dt)
 
 	return c+(k1+2*k2+2*k3+k4)/6.0;
 }
+
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 
@@ -665,7 +810,7 @@ function random_math_transfers( steps,seed,count_transfers )
 	return rstr
 end
 function sim_tick(  )
-	local dt=0.1
+	local dt=0.05
 	react_diffuse:use()
 --	react_diffuse:blend_disable()
 	react_diffuse:blend_default()
@@ -705,21 +850,18 @@ function reset_buffers(rnd  )
 			local dy=y-b.h/2
 			local dist=math.sqrt(dx*dx+dy*dy)
 			-- [[
-			if rnd then
-				-- [=[ circle
-					if dist<b.w/4 then
-						b:set(x,y,{
-						math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value,
-						math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value})
-					else
-						b:set(x,y,{1,0,0,0})
-					end
-				--]=]
-				--[=[
+			if rnd=="circle" then
+				if dist<b.w/4 then
 					b:set(x,y,{
 					math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value,
-						math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value})
-				--]=]
+					math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value})
+				else
+					b:set(x,y,{1,0,0,0})
+				end
+			elseif rnd=="noise" then
+				b:set(x,y,{
+				math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value,
+					math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value})
 			else
 				b:set(x,y,{1,0,0,0})
 			end
@@ -737,8 +879,8 @@ function reset_buffers(rnd  )
 			--]]
 		end
 	end
-	-- [[
-	if not rnd then
+
+	if rnd=="square" then
 		local cx=math.floor(b.w/2)
 		local cy=math.floor(b.h/2)
 		local s=math.random(1,b.w*0.25)
@@ -753,7 +895,7 @@ function reset_buffers(rnd  )
 			end
 		end
 	end
-	--]]
+
 	local buf=react_buffer:get()
 	buf:use(0)
 	b:write_texture(buf)
@@ -897,31 +1039,55 @@ function gui(  )
 	imgui.Begin("GrayScott")
 	draw_config(config)
 	if imgui.Button("Reset") then
-		reset_buffers()
+		reset_buffers("noise")
 	end
 	imgui.SameLine()
-	if imgui.Button("ResetRand") then
-		reset_buffers(true)
+	if imgui.Button("Reset Square") then
+		reset_buffers("square")
 	end
 	imgui.SameLine()
+	if imgui.Button("Reset Circle") then
+		reset_buffers("circle")
+	end
+
 	if imgui.Button("RandMath") then
 		thingy_string=random_math_balanced(5)
 		print(thingy_string)
 		eval_thingy_string()
 		update_diffuse()
-		reset_buffers(true)
+		reset_buffers("noise")
 	end
 	imgui.SameLine()
 	if imgui.Button("ClearCollec") then
 		reset_collect()
 	end
-	imgui.SameLine()
+
 	if imgui.Button("NotMapping") then
 		map_region={-1,0,0,0}
 	end
 	imgui.SameLine()
 	if imgui.Button("FullMap") then
 		map_region={0,1,0,1}
+		config.region_size=0.5
+	end
+	imgui.SameLine()
+	if imgui.Button("Zoom in") then
+		config.region_size=config.region_size/2
+		local low_x=math.max(0,map_region[1]-config.region_size)
+		local low_y=math.max(0,map_region[2]-config.region_size)
+		local high_x=math.min(1,map_region[3]+config.region_size)
+		local high_y=math.min(1,map_region[4]+config.region_size)
+
+		map_region={low_x,high_x,low_y,high_y}
+	end
+	imgui.SameLine()
+	if imgui.Button("Zoom out") then
+		config.region_size=config.region_size*2
+		local low_x=math.max(0,map_region[1]-config.region_size)
+		local low_y=math.max(0,map_region[2]-config.region_size)
+		local high_x=math.min(1,map_region[3]+config.region_size)
+		local high_y=math.min(1,map_region[4]+config.region_size)
+		map_region={low_x,high_x,low_y,high_y}
 	end
 	if imgui.Button("Save image") then
 		need_save=true
@@ -1031,7 +1197,7 @@ function draw_texture( id )
 	if need_save or id then
 		save_img(id)
 		if need_save=="r" then
-			reset_buffers()
+			reset_buffers("noise")
 		end
 		need_save=nil
 	end
@@ -1115,8 +1281,8 @@ function update( )
 
 		print(string.format("Center(%g,%g), width:%g",xx,yy,config.region_size))
 		if c then
-			config.k1=xx
-			config.k2=yy
+			config["k"..mapping_parameters[1]]=xx
+			config["k"..mapping_parameters[2]]=yy
 			--config.k3=xx
 
 			-- [[
@@ -1132,7 +1298,7 @@ function update( )
 			local high_y=yy+config.region_size
 			--]]
 			map_region={low_x,high_x,low_y,high_y}
-			reset_buffers(true)
+			reset_buffers("noise")
 			config.region_size=config.region_size/2
 		end
 	end
