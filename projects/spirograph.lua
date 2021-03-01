@@ -2,7 +2,7 @@ require "common"
 require "splines"
 local luv=require "colors_luv"
 local max_size=math.min(STATE.size[1],STATE.size[2])/2
-img_buf=img_buf or buffers.Make("color")
+img_buf=img_buf or make_image_buffer(STATE.size[1],STATE.size[2])--buffers.Make("color")
 depth_buf=depth_buf or make_float_buffer(STATE.size[1],STATE.size[2])
 tick=tick or 0
 config=make_config({
@@ -313,10 +313,10 @@ function draw_path(  )
 				local s=img_buf:get(x,y)
 				local a=1
 				local r2=luv.hsluv_to_rgb{color[1]*360,color[2]*100,color[3]*100}
-				s[1]=r2[1]*255
-				s[2]=r2[2]*255
-				s[3]=r2[3]*255
-				s[4]=255
+				s.r=r2[1]*255
+				s.g=r2[2]*255
+				s.b=r2[3]*255
+				s.a=255
 				img_buf:set(x,y,s)
 				depth_buf:set(x,y,p[3])
 			end
@@ -362,6 +362,38 @@ function draw_spirals()
 		end
 	end
 end
+
+gif_state=gif_state or {
+	current_frame=0,
+	frame_skip=10,
+	no_frames_to_save=0
+}
+function clear_gif_state()
+	__gif_end()
+	gif_state={
+		current_frame=0,
+		frame_skip=10,
+		no_frames_to_save=0
+	}
+end
+function gif_frame(  )
+	gif_state.current_frame=gif_state.current_frame+1
+	if gif_state.current_frame % gif_state.frame_skip==0 then
+		gif_state.no_frames_to_save=gif_state.no_frames_to_save-1
+		print("GIF FRAME, Left:",gif_state.no_frames_to_save)
+		__gif_frame(img_buf)
+		if gif_state.no_frames_to_save==0 then
+			__gif_end()
+		end
+	end
+end
+function gif_start( fname,frame_skip )
+	clear_gif_state()
+	__gif_start(img_buf,fname)
+	gif_state.no_frames_to_save=100
+	gif_state.frame_skip=frame_skip or 10
+	gif_state.current_frame=0
+end
 function update(  )
 	imgui.Begin("Hello")
 	local s=STATE.size
@@ -385,6 +417,16 @@ function update(  )
 	end
 	if imgui.Button("Save") then
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))))
+	end
+	if imgui.Button("Save Gif") then
+		gif_start("out.gif")
+	end
+	imgui.SameLine()
+	if imgui.Button("Stop Gif") then
+		clear_gif_state()
+	end
+	if gif_state.no_frames_to_save>0 then
+		gif_frame()
 	end
 	local eps=0.000001
 	imgui.End()
