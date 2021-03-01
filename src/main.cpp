@@ -26,6 +26,8 @@
 #ifndef NO_EMBEDS
 #include "asset_cp437_12x12.hpp"
 #endif
+#include "gif.h"
+
 struct emb_text
 {
 	unsigned char* data;
@@ -165,6 +167,61 @@ static int save_image(lua_State* L)
     }
     lua_pushinteger(L, ret);
     return 1;
+}
+GifWriter gif_writer = { 0 };
+struct addition_gif_state {
+    uint32_t w, h;
+    bool dither;
+    uint32_t delay;
+}gif_state;
+static int gif_start(lua_State* L)
+{
+    luaL_checktype(L, 1, LUA_TTABLE);
+
+    lua_getfield(L, 1, "w");
+    uint32_t w = lua_tonumber(L, -1);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "h");
+    uint32_t h = lua_tonumber(L, -1);
+    lua_pop(L, 1);
+
+    const char* path = luaL_checkstring(L, 2);
+
+    uint32_t delay = luaL_optint(L, 3, 3);
+    bool do_dither = luaL_optint(L, 4, 0);
+    GifBegin(&gif_writer, path, w, h, delay);
+    gif_state.delay = delay;
+    gif_state.w = w;
+    gif_state.h = h;
+    gif_state.dither = do_dither;
+    return 0;
+}
+static int gif_frame(lua_State* L)
+{
+    luaL_checktype(L, 1, LUA_TTABLE);
+
+    lua_getfield(L, 1, "w");
+    int w = lua_tonumber(L, -1);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "h");
+    int h = lua_tonumber(L, -1);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "d");
+    auto data = reinterpret_cast<const sf::Uint8*>(lua_topointer(L, -1));
+    lua_pop(L, 1);
+
+    uint32_t delay = luaL_optint(L,2, gif_state.delay);
+
+    GifWriteFrame(&gif_writer, data, gif_state.w, gif_state.h, delay, 8, gif_state.dither);
+    return 0;
+}
+static int gif_end(lua_State* L)
+{
+    GifEnd(&gif_writer);
+    return 0;
 }
 extern "C" __declspec(dllexport) void free_image(char* data)
 {
@@ -369,7 +426,21 @@ struct project {
 		lua_pushcfunction(L, set_window_size);
 		lua_setglobal(L, "__set_window_size");
 
+        lua_pushcfunction(L, gif_start);
+        lua_setglobal(L, "__gif_start");
+
+        lua_pushcfunction(L, gif_frame);
+        lua_setglobal(L, "__gif_frame");
+
+        lua_pushcfunction(L, gif_end);
+        lua_setglobal(L, "__gif_end");
+        
 		state.write(L);
+
+        if (gif_writer.f)
+        {
+            gif_end(L);
+        }
     }
     void reload_file()
     {
