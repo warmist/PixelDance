@@ -135,8 +135,8 @@ void main(){
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec4 cnt=abs(texture(tex_main,normed));
-	cnt+=value_offset;
-	cnt*=value_scale;
+	cnt.z+=value_offset.z;
+	cnt.z*=value_scale.z;
 
 	float lv=cnt.x;//paper_texture(pos.xy);
 
@@ -145,7 +145,8 @@ void main(){
 
 	//color=vec4(cnt.xyz,1);
 	//color.a=1;
-	color=vec4(cnt.xyz,1);
+	float a=(atan(cnt.y,cnt.x)/3.1459+1)/2;
+	color=vec4(sqrt(dot(cnt.xy,cnt.xy))*value_scale.x,a,cnt.z,1);
 	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,1.5,1.25),vec3(1.0,1.05,1.4)),1);
 }
 ]==]
@@ -421,8 +422,8 @@ function remove_grad(  )
 end
 
 function velocity_update(  )
-	local step_size=0.0001;
-	local step_count=50;
+	local step_size=0.0005;
+	local step_count=10;
 	for i=1,step_count do
 		shader_update_velocities:use()
 		shader_update_velocities:set("viscosity",0.1);

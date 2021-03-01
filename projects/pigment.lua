@@ -846,6 +846,16 @@ float draw_permutation(float back,int a,int b,int c,vec2 pos)
 	float cdist=1-smoothstep(-sw,sw,sdBox(pos.xy-vec2(0.5),vec2(0.35,0.35)));
 	float height=cdist*8;
 	return reflectivity_KS(mix(m1,m2,1-vv),height,back);
+float saturate(float x)
+{
+	return clamp(x,0,1);
+}
+float mix3(float a,float b,float c,float v)
+{
+	float w0=fract(saturate(1-abs(v-0.0)*2));
+	float w1=fract(saturate(1-abs(v-0.5)*2));
+	float w2=fract(saturate(1-abs(v-1.0)*2));
+	return w0*a+w1*b+w2*c;
 }
 void main(){
 

@@ -28,9 +28,9 @@ config=make_config({
 	{"animate",false,type="boolean"},
 },config)
 
-mapping_parameters={3,4}
+mapping_parameters={1,2}
 
-local oversample=1 --TODO: not working correctly
+local oversample=0.25 --TODO: not working correctly
 function update_size()
 	local trg_w=1024
 	local trg_h=1024
@@ -55,7 +55,9 @@ map_region=map_region or {-1,0,0,0}
 thingy_string=thingy_string or "-c.x*c.y*c.y,0,0,+c.x*c.y*c.y"
 
 --feed_kill_string=feed_kill_string or "feed_rate*(1-c.x),-(kill_rate)*c.y,-(kill_rate)*(c.z),-(kill_rate)*c.w"
-feed_kill_string="-kill_rate,-kill_rate,-kill_rate,feed_rate"
+feed_kill_string="-k.y,-k.y,-k.y,k.x"
+
+--cos(c.z),cos((k.z)-(((c.z)*((k.w)-(k.x)))-(c.x))),cos((c.y)-((c.w)+((k.y)*(c.x)))),cos((c.w)*(c.x))
 
 function resize( w,h )
 	local ww=w*oversample
@@ -136,9 +138,6 @@ vec4 gray_scott(vec4 c,vec2 normed)
 	/*
 		X+2Y=3Y
 	*/
-	float kill_rate=kill_feed.x*0.07;
-	float feed_rate=kill_feed.y*0.1;
-
 	vec4 scale=vec4(0.07,0.1,0,0);
 	vec4 offset=vec4(0);
 
@@ -181,19 +180,19 @@ vec4 schnakenberk_reaction_kinetics(vec4 cnt,vec2 normed)
 	float aab=cnt.x*cnt.x*cnt.y;
 	return vec2(k1,k4)-vec2(k2*cnt.x,0)+vec2(k3*aab,-k3*aab);
 #endif
-	float k1=kill_feed.x;
-	float k2=kill_feed.y;
-	float k3=kill_feed.z;
-	float k4=kill_feed.w;
+	vec4 k=kill_feed;
+	vec4 scale=vec4(4,4,4,4);
+	vec4 offset=vec4(0,0,0,0);
+
 #ifdef MAPPING
 	if (map_region.x>=0)
 	{
-		k1=mix(map_region.x,map_region.y,normed.x);
-		k2=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		k.y=mix(map_region.z,map_region.w,normed.y);
 	}
 #endif
-
-	return k3*vec4(k1-cnt.x-cnt.x*cnt.x*cnt.y,k2-cnt.x*cnt.x*cnt.y,0,0);
+	k=k*scale+offset;
+	return k.z*vec4(k.x-cnt.x-cnt.x*cnt.x*cnt.y,k.y-cnt.x*cnt.x*cnt.y,0,0);
 }
 vec4 gierer_meinhard(vec4 cnt,vec2 normed)
 {
@@ -334,19 +333,24 @@ vec4 two_reacts(vec4 cnt,vec2 normed)
 }
 vec4 thingy_formulas(vec4 c,vec2 normed)
 {
-	float kill_rate=kill_feed.x;
-	float feed_rate=kill_feed.y;
-	float k3=kill_feed.z;
-	float k4=kill_feed.w;
+	vec4 scale=vec4(20);
+	vec4 offset=vec4(-10);
+	vec4 k=kill_feed;
+
 #ifdef MAPPING
 	if (map_region.x>=0)
 	{
-		kill_rate=mix(map_region.x,map_region.y,normed.x);
-		feed_rate=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		k.y=mix(map_region.z,map_region.w,normed.y);
 	}
 #endif
-	return vec4(%s)*k3+
-		vec4(%s)*k4;
+	k=k*scale+offset;
+	vec4 r=vec4(%s);
+	//float l=length(c+r);
+	//r=r/(l);
+	//return r*exp(-l*l/100);
+	//*k.y+vec4(%s)*k.w;
+	return r;
 }
 vec4 hyper_chaos(vec4 c,vec2 normed)
 {
@@ -376,8 +380,8 @@ vec4 lorenz_system(vec4 c,vec2 normed)
 	//k2=28
 	//k3=8/3
 
-	vec4 scale=vec4(2,2,1,0);
-	vec4 offset=vec4(9,27,8/3-0.5,0);
+	vec4 scale=vec4(6,6,1,0);
+	vec4 offset=vec4(7,22,8/3-0.5,0);
 
 	vec4 k=kill_feed;
 #ifdef MAPPING
@@ -412,9 +416,9 @@ vec4 chen_attractor(vec4 c,vec2 normed)
 #ifdef MAPPING
 	if (map_region.x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
+		//k.x=mix(map_region.x,map_region.y,normed.x);
 		k.y=mix(map_region.z,map_region.w,normed.y);
-		//k.z=mix(map_region.x,map_region.y,normed.x);
+		k.z=mix(map_region.x,map_region.y,normed.x);
 	}
 #endif
 
@@ -429,19 +433,21 @@ vec4 chen_attractor(vec4 c,vec2 normed)
 }
 vec4 clifford_attractor(vec4 c, vec2 normed)
 {
-	vec4 scale=vec4(2,2,4,4);
-	vec4 offset=vec4(0,0,-2,-2);
-	vec4 k=kill_feed*scale+offset;
+	vec4 scale=vec4(2,2,2,2);
+	vec4 offset=vec4(0,0,-1,-1);
+	vec4 k=kill_feed;
 
 #ifdef MAPPING
 	if (map_region.x>=0)
 	{
-		//k.x=mix(map_region.x,map_region.y,normed.x)*scale.x+offset.x;
-		//k.y=mix(map_region.z,map_region.w,normed.y)*scale.y+offset.y;
-		k.z=mix(map_region.x,map_region.y,normed.x)*scale.z+offset.z;
-		k.w=mix(map_region.z,map_region.w,normed.y)*scale.w+offset.w;
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		k.y=mix(map_region.z,map_region.w,normed.x);
+		//k.z=mix(map_region.z,map_region.w,normed.y);
+		//k.w=mix(map_region.z,map_region.w,normed.y);
 	}
 #endif
+
+	k=k*scale+offset;
 	return vec4(
 			sin(k.x*c.y)+k.z*cos(k.x*c.x),
 			sin(k.y*c.x)+k.w*cos(k.y*c.y),
@@ -467,6 +473,7 @@ vec4 hopalong_attractor1(vec4 c,vec2 normed)
 			0
 	);
 }
+
 vec4 hopalong_attractor2(vec4 c,vec2 normed)
 {
 	vec4 k=kill_feed*8-vec4(4);
@@ -474,15 +481,66 @@ vec4 hopalong_attractor2(vec4 c,vec2 normed)
 #ifdef MAPPING
 	if (map_region.x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x)*8-4;
-		k.y=mix(map_region.z,map_region.w,normed.y)*8-4;
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		k.y=mix(map_region.z,map_region.w,normed.y);
 	}
 #endif
+
+	//k=k*scale+offset;
+
 	return vec4(
 			c.y-1.0-sqrt(abs(k.y*c.x-1.0-k.z))*sign(c.x-1.0),
 			k.x-c.x-1.0,
 			0,
 			0
+	);
+}
+vec4 coullet_attractor(vec4 c, vec2 normed)
+{
+	
+	vec4 scale=vec4(2,2,2,2);
+	vec4 offset=vec4(0.8,-1.1,-0.45,-1);
+	vec4 k=kill_feed;
+
+#ifdef MAPPING
+	if (map_region.x>=0)
+	{
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		k.y=mix(map_region.z,map_region.w,normed.x);
+		//k.z=mix(map_region.z,map_region.w,normed.y);
+		//k.w=mix(map_region.z,map_region.w,normed.y);
+	}
+#endif
+
+	k=k*scale+offset;
+	return vec4(
+			c.y,
+			c.z,
+			dot(vec4(c.x,c.y,c.z,c.x*c.x*c.x),k),
+			0
+	);
+}
+vec4 chaos_4d(vec4 c, vec2 normed)
+{
+	//https://www.sciencedirect.com/science/article/pii/S209044791730014X
+	//EXPLODES VERY FAST
+	vec4 scale=vec4(4,4,0,0);
+	vec4 offset=vec4(21,7,0,0);
+
+	vec4 k=kill_feed;
+#ifdef MAPPING
+	if (map_region.x>=0)
+	{
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		k.y=mix(map_region.z,map_region.w,normed.y);
+	}
+#endif
+	k=k*scale+offset;
+	return vec4(
+			k.x*(c.x-c.w),
+			k.y*c.w-c.w*c.y,
+			c.w*c.x-c.x*c.z,
+			c.y*(c.x-1)
 	);
 }
 float GM_helper(float x,float mu)
@@ -497,15 +555,16 @@ vec4 gumowski_mira_attractor(vec4 c,vec2 normed)
 	vec4 scale=vec4(0.001,1,0.05,0);
 	vec4 offset=vec4(0.001,-.5,0,0);
 
-	vec4 k=kill_feed*scale+offset;
+	vec4 k=kill_feed;
 
 #ifdef MAPPING
 	if (map_region.x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x)*scale.x+offset.x;
-		k.y=mix(map_region.z,map_region.w,normed.y)*scale.y+offset.y;
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		k.z=mix(map_region.z,map_region.w,normed.y);
 	}
 #endif
+	k=k*scale+offset;
 	float xn=c.y+k.x*(1-k.y*c.y*c.y)*c.y+GM_helper(c.x,k.z);
 	return vec4(
 			xn,
@@ -514,13 +573,66 @@ vec4 gumowski_mira_attractor(vec4 c,vec2 normed)
 			0
 	);
 }
+vec4 rampe1_modded(vec4 c,vec2 normed)
+{
+	//https://softologyblog.wordpress.com/2009/10/19/3d-strange-attractors/
+
+	vec4 scale=vec4(2,2,2,2);
+	vec4 offset=vec4(-1,-1,-1,-1);
+
+	vec4 k=kill_feed;
+	float ke=-0.8;
+	float kf=0.7;
+#ifdef MAPPING
+	if (map_region.x>=0)
+	{
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		k.y=mix(map_region.z,map_region.w,normed.y);
+	}
+#endif
+	k=k*scale+offset;
+	vec4 r=vec4(
+			cos(k.x*c.x)+cos(k.y*c.y),
+			cos(k.z*c.y)+cos(k.w*c.z),
+			cos(ke*c.z)+cos(kf*c.x),
+			0
+	);
+	float l=length(r);
+	l=max(l,0.00001);
+	return r/l;
+}
+vec4 coupled_attractors(vec4 c,vec2 normed)
+{
+	//AGiga-StableOscillatorwithHiddenandSelf-ExcitedAttractorsAMegastableOscillatorForcedbyHisTwin.pdf
+	vec4 scale=vec4(0.2,0.5,0.75,0);
+	vec4 offset=vec4(0.1,2.77,0,0);
+
+	vec4 k=kill_feed;
+
+#ifdef MAPPING
+	if (map_region.x>=0)
+	{
+		k.x=mix(map_region.x,map_region.y,normed.x);
+		//k.y=mix(map_region.z,map_region.w,normed.y);
+		k.z=mix(map_region.z,map_region.w,normed.y);
+	}
+#endif
+	k=k*scale+offset;
+	vec4 r=vec4(
+			c.y,
+			-k.x*k.x*c.x+c.y*cos(c.x)+k.z*c.z,
+			k.y*c.w,
+			k.y*(-k.x*k.x*c.z+c.w*cos(c.z))
+	);
+	return r;
+}
 vec4 actual_function(vec4 c,vec2 normed)
 {
 	return
 		gray_scott(c,normed)
 		//ruijgrok(c,normed)
 		//two_reacts(c,normed)
-		//thingy_formulas(c,normed)
+		thingy_formulas(c,normed)
 		//schnakenberk_reaction_kinetics(c,normed)
 		//gierer_meinhard(c,normed)
 		//rossler(c,normed)
@@ -528,10 +640,14 @@ vec4 actual_function(vec4 c,vec2 normed)
 		//hyper_chaos(c,normed)
 		//lorenz_system(c,normed)
 		//chen_attractor(c,normed)
-		clifford_attractor(c,normed)
+		//clifford_attractor(c,normed)
 		//hopalong_attractor1(c,normed)
 		//hopalong_attractor2(c,normed)
 		//gumowski_mira_attractor(c,normed)
+		//chaos_4d(c,normed)
+		//coullet_attractor(c,normed)
+		//rampe1_modded(c,normed)
+		//coupled_attractors(c,normed)
 		;
 }
 vec4 runge_kutta_4(vec4 c,vec2 normed,float step_dt)
@@ -546,12 +662,16 @@ vec4 runge_kutta_4(vec4 c,vec2 normed,float step_dt)
 }
 
 void main(){
+	vec4 diffusion_value=diffusion;
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 
+	float dist=clamp(length(pos.xy)+0.5,0.5,1.5);
+
+	//diffusion_value.xy*=dist;
 	vec4 L=laplace(normed);
 	vec4 cnt=texture(tex_main,normed);
-#if 0
-	vec4 ret=cnt+(diffusion*L
+#if 1
+	vec4 ret=cnt+(diffusion_value*L
 		+actual_function(cnt,normed)
 		)*dt;
 #elif 0
@@ -563,9 +683,9 @@ void main(){
 		{
 			ret+=actual_function(ret,normed)*step_dt;
 		}
-	ret+=diffusion*L*dt;
+	ret+=diffusion_value*L*dt;
 #elif 1
-	vec4 ret=diffusion*L*dt+runge_kutta_4(cnt,normed,dt);
+	vec4 ret=diffusion_value*L*dt+runge_kutta_4(cnt,normed,dt);
 #else
 	int step_count=10;
 	float step_dt=dt/float(step_count);
@@ -575,11 +695,12 @@ void main(){
 		{
 			ret=runge_kutta_4(ret,normed,step_dt);
 		}
-	ret+=diffusion*L*dt;
+	ret+=diffusion_value*L*dt;
 #endif
 	//ret=clamp(ret,0,1);
-
-	color=ret;
+	//float l=length(ret);
+	//l=max(l,0.0001);
+	color=ret;///l;
 }
 ]==],thingy_string,feed_kill_string))
 end
@@ -682,10 +803,10 @@ void main(){
 local terminal_symbols={["c.x"]=10,["c.y"]=10,["c.z"]=10,["c.w"]=10,["1.0"]=0.1,["0.0"]=0.1}
 local normal_symbols={
 --["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,
---["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,
---["cos(R)"]=1,
+["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,
+["cos(R)"]=3,
 --["log(R+1.0)"]=1,
-["(R)/(R+1)"]=0.01,["(R)*(R)"]=5,["(R)-(R)"]=5,["(R)+(R)"]=5}
+["(R)/(R+1)"]=0.01,["(R)*(R)"]=2,["(R)-(R)"]=2,["(R)+(R)"]=2}
 
 
 function normalize( tbl )
@@ -722,7 +843,11 @@ function replace_random( s,substr,rep )
 	function rep_one(  )
 		if num_rep==0 then
 			num_rep=num_rep-1
-			return rep()
+			if type(rep)=="function" then
+				return rep()
+			else
+				return rep
+			end
 		else
 			num_rep=num_rep-1
 			return false
@@ -731,22 +856,31 @@ function replace_random( s,substr,rep )
 	local ret=string.gsub(s,substr,rep_one)
 	return ret
 end
-function random_math( steps,seed )
-	local cur_string=seed or "R,R,R,R"
+function make_rand_math(def_seed, normal_s,terminal_s,forced_s )
+	forced_s=forced_s or {}
+	return function ( steps,seed,force_values)
+		local cur_string=seed or def_seed
+		force_values=force_values or forced_s
+		function M(  )
+			return rand_weighted(normal_s)
+		end
+		function MT(  )
+			return rand_weighted(terminal_s)
+		end
 
-	function M(  )
-		return rand_weighted(normal_symbols)
+		for i=1,steps do
+			cur_string=replace_random(cur_string,"R",M)
+		end
+		for i,v in ipairs(force_values) do
+			cur_string=replace_random(cur_string,"R",v)
+		end
+		cur_string=string.gsub(cur_string,"R",MT)
+		return cur_string
 	end
-	function MT(  )
-		return rand_weighted(terminal_symbols)
-	end
-
-	for i=1,steps do
-		cur_string=replace_random(cur_string,"R",M)
-	end
-	cur_string=string.gsub(cur_string,"R",MT)
-	return cur_string
 end
+random_math=make_rand_math("R,R,R,R",normal_symbols,terminal_symbols)
+random_math_cos=make_rand_math("cos(R),cos(R),cos(R),cos(R)",normal_symbols,terminal_symbols)
+
 function random_math_balanced( steps,seed )
 	function M(  )
 		return rand_weighted(normal_symbols)
@@ -840,10 +974,22 @@ function sim_tick(  )
 	react_buffer:advance()
 end
 init_size=1
-function reset_buffers(rnd  )
+function reset_buffers(rnd,do_rand)
 	local b=io_buffer
-	local min_value=0
+
+	local center=1
+	local scale=1
+	local min_value=center-scale/2
+	local max_value=center+scale/2
+	--[[
+	local min_value=-1
 	local max_value=1
+	]]
+	do_rand=false
+	local v = {math.random()*(max_value-min_value)+min_value,
+		math.random()*(max_value-min_value)+min_value,
+		math.random()*(max_value-min_value)+min_value,
+		math.random()*(max_value-min_value)+min_value}
 	for x=0,b.w-1 do
 		for y=0,b.h-1 do
 			local dx=x-b.w/2
@@ -852,9 +998,15 @@ function reset_buffers(rnd  )
 			-- [[
 			if rnd=="circle" then
 				if dist<b.w/4 then
-					b:set(x,y,{
-					math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value,
-					math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value})
+					if do_rand then
+						b:set(x,y,{
+						math.random()*(max_value-min_value)+min_value,
+						math.random()*(max_value-min_value)+min_value,
+						math.random()*(max_value-min_value)+min_value,
+					math.random()*(max_value-min_value)+min_value})
+					else
+						b:set(x,y,v)
+					end
 				else
 					b:set(x,y,{1,0,0,0})
 				end
@@ -862,20 +1014,22 @@ function reset_buffers(rnd  )
 				b:set(x,y,{
 				math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value,
 					math.random()*(max_value-min_value)+min_value,math.random()*(max_value-min_value)+min_value})
-			else
-				b:set(x,y,{1,0,0,0})
-			end
-			--]]
-			--[[ chaos check
+			elseif rnd=="chaos" then
+
 			local v=(x+y)/(b.w+b.h-2)
 			b:set(x,y,{
 					(x/(b.w-1)+0.1)*(max_value-min_value)+min_value,
-					(y/(b.h-1)+0.1)*(max_value-min_value)+min_value,
+					(1-y/(b.h-1)-0.1)*(max_value-min_value)+min_value,
 					--dist/10,
 					--dist/10,
 					--dist/10,
-					0,
-					0})
+					(x/(b.w-1)+0.1)*(max_value-min_value)+min_value,
+					(y/(b.w-1)+0.1)*(max_value-min_value)+min_value})
+
+			else
+				b:set(x,y,{1,0,0,0})
+
+			end
 			--]]
 		end
 	end
@@ -884,13 +1038,22 @@ function reset_buffers(rnd  )
 		local cx=math.floor(b.w/2)
 		local cy=math.floor(b.h/2)
 		local s=math.random(1,b.w*0.25)
-		local v = {math.random(),math.random(),math.random(),math.random()}
+
 		for x=cx-s,cx+s do
 			for y=cy-s,cy+s do
 				local dx=x-cx
 				local dy=y-cy
 				--if math.sqrt(dx*dx+dy*dy)<s then
+				if do_rand then
+					b:set(x,y,{
+						math.random()*(max_value-min_value)+min_value,
+						math.random()*(max_value-min_value)+min_value,
+						math.random()*(max_value-min_value)+min_value,
+						math.random()*(max_value-min_value)+min_value
+					})
+				else
 					b:set(x,y,v)
+				end
 				--end
 			end
 		end
@@ -1049,13 +1212,16 @@ function gui(  )
 	if imgui.Button("Reset Circle") then
 		reset_buffers("circle")
 	end
-
+	imgui.SameLine()
+	if imgui.Button("Reset Chaos") then
+		reset_buffers("chaos")
+	end
 	if imgui.Button("RandMath") then
-		thingy_string=random_math_balanced(5)
+		thingy_string=random_math(15,nil,{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
 		print(thingy_string)
-		eval_thingy_string()
+		--eval_thingy_string()
 		update_diffuse()
-		reset_buffers("noise")
+		reset_buffers("chaos")
 	end
 	imgui.SameLine()
 	if imgui.Button("ClearCollec") then
@@ -1063,31 +1229,53 @@ function gui(  )
 	end
 
 	if imgui.Button("NotMapping") then
-		map_region={-1,0,0,0}
+		if map_region[1]>=0 then
+			map_region={-1,0,0,0}
+		else
+			local cx=config["k"..mapping_parameters[1]]
+			local cy=config["k"..mapping_parameters[2]]
+
+			local low_x=math.max(0,cx-config.region_size)
+			local low_y=math.max(0,cy-config.region_size)
+			local high_x=math.min(1,cx+config.region_size)
+			local high_y=math.min(1,cy+config.region_size)
+
+			map_region={low_x,high_x,low_y,high_y}
+		end
 	end
 	imgui.SameLine()
 	if imgui.Button("FullMap") then
 		map_region={0,1,0,1}
 		config.region_size=0.5
+		reset_buffers("noise")
 	end
 	imgui.SameLine()
 	if imgui.Button("Zoom in") then
 		config.region_size=config.region_size/2
-		local low_x=math.max(0,map_region[1]-config.region_size)
-		local low_y=math.max(0,map_region[2]-config.region_size)
-		local high_x=math.min(1,map_region[3]+config.region_size)
-		local high_y=math.min(1,map_region[4]+config.region_size)
+		local cx=(map_region[2]-map_region[1])/2
+		local cy=(map_region[4]-map_region[3])/2
+
+		local low_x=math.max(0,cx-config.region_size)
+		local low_y=math.max(0,cy-config.region_size)
+		local high_x=math.min(1,cx+config.region_size)
+		local high_y=math.min(1,cy+config.region_size)
 
 		map_region={low_x,high_x,low_y,high_y}
+		reset_buffers("noise")
 	end
 	imgui.SameLine()
 	if imgui.Button("Zoom out") then
 		config.region_size=config.region_size*2
-		local low_x=math.max(0,map_region[1]-config.region_size)
-		local low_y=math.max(0,map_region[2]-config.region_size)
-		local high_x=math.min(1,map_region[3]+config.region_size)
-		local high_y=math.min(1,map_region[4]+config.region_size)
+
+		local cx=(map_region[2]-map_region[1])/2
+		local cy=(map_region[4]-map_region[3])/2
+
+		local low_x=math.max(0,cx-config.region_size)
+		local low_y=math.max(0,cy-config.region_size)
+		local high_x=math.min(1,cx+config.region_size)
+		local high_y=math.min(1,cy+config.region_size)
 		map_region={low_x,high_x,low_y,high_y}
+		reset_buffers("noise")
 	end
 	if imgui.Button("Save image") then
 		need_save=true
@@ -1189,10 +1377,9 @@ function draw_texture( id )
 	local mmin=mm[config.draw_comp+1]
 	local mmax=mx[config.draw_comp+1]
 	--]]
-	draw_shader:set("value_offset",-mm[1],-mm[2],-mm[3],0)
-	draw_shader:set("value_scale",1/(mx[1]-mm[1]),1/(mx[2]-mm[2]),1/(mx[3]-mm[3]),1)
-	--draw_shader:blend_disable()
-	draw_shader:blend_default()
+	draw_shader:set("value_offset",-mm[1],-mm[2],-mm[3],-mm[4])
+	draw_shader:set("value_scale",1/(mx[1]-mm[1]),1/(mx[2]-mm[2]),1/(mx[3]-mm[3]),1/(mx[4]-mm[4]))
+	draw_shader:blend_disable()
 	draw_shader:draw_quad()
 	if need_save or id then
 		save_img(id)
