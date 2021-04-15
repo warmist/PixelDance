@@ -36,7 +36,7 @@ function update_size()
 	local trg_h=1024
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
-	if win_w~=trg_w or win_h~=trg_h or (img_buf==nil or img_buf.w~=trg_w*oversample) then
+	if win_w~=trg_w or win_h~=trg_h or (img_buf==nil or img_buf.w~=trg_w) then
 		win_w=trg_w
 		win_h=trg_h
 		aspect_ratio=win_w/win_h
@@ -62,13 +62,13 @@ feed_kill_string="-k.y,-k.y,-k.y,k.x"
 function resize( w,h )
 	local ww=w*oversample
 	local hh=h*oversample
-	img_buf=make_image_buffer(ww,hh)
+	img_buf=make_image_buffer(w,h)
 	size=STATE.size
 	react_buffer:update_size(ww,hh)
 	collect_buffer:update_size(ww,hh)
 	io_buffer=make_flt_buffer(ww,hh);
 end
-if img_buf.w~=win_w*oversample then
+if react_buffer.w~=win_w*oversample then
 	resize(win_w,win_h)
 end
 function count_lines( s )
@@ -345,8 +345,12 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 	}
 #endif
 	k=k*scale+offset;
-	vec4 r=vec4(%s);
-	//float l=length(c+r);
+
+	float max_len=1;
+	float l=length(c);
+	float nl=clamp(l/max_len,0,1);
+
+	vec4 r=mix(vec4(%s),-c,nl);
 	//r=r/(l);
 	//return r*exp(-l*l/100);
 	//*k.y+vec4(%s)*k.w;
@@ -629,7 +633,7 @@ vec4 coupled_attractors(vec4 c,vec2 normed)
 vec4 actual_function(vec4 c,vec2 normed)
 {
 	return
-		gray_scott(c,normed)
+		//gray_scott(c,normed)
 		//ruijgrok(c,normed)
 		//two_reacts(c,normed)
 		thingy_formulas(c,normed)
@@ -749,6 +753,7 @@ void main(){
 	//color=vec4(cnt.xyz,1);
 	color=vec4(lv,lv,lv,1);
 	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,1.5,1.25),vec3(1.0,1.05,1.4)),1);
+	//color=vec4(palette(lv,vec3(0.6,0,0.3),vec3(.4,0,0.7),vec3(1,1,1),vec3(0,0.33,0.66)),1);
 	/* accent
 	float accent_const=0.5;
 	if(lv<accent_const)
@@ -802,11 +807,11 @@ void main(){
 ]==]
 local terminal_symbols={["c.x"]=10,["c.y"]=10,["c.z"]=10,["c.w"]=10,["1.0"]=0.1,["0.0"]=0.1}
 local normal_symbols={
---["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,
+["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,
 ["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,
-["cos(R)"]=3,
---["log(R+1.0)"]=1,
-["(R)/(R+1)"]=0.01,["(R)*(R)"]=2,["(R)-(R)"]=2,["(R)+(R)"]=2}
+["cos(R)"]=1,
+["log(R+1.0)"]=1,
+["(R)/(R+1)"]=0.1,["(R)*(R)"]=20,["(R)-(R)"]=20,["(R)+(R)"]=20}
 
 
 function normalize( tbl )
@@ -1217,7 +1222,7 @@ function gui(  )
 		reset_buffers("chaos")
 	end
 	if imgui.Button("RandMath") then
-		thingy_string=random_math(15,nil,{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
+		thingy_string=random_math(12,nil,{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
 		print(thingy_string)
 		--eval_thingy_string()
 		update_diffuse()
@@ -1281,6 +1286,25 @@ function gui(  )
 		need_save=true
 	end
 	imgui.SameLine()
+	if imgui.Button("Save Gif") then
+		print(img_buf.w,img_buf.h)
+		if giffer~=nil then
+			giffer:stop()
+		end
+		giffer=gif_saver(string.format("saved_%d.gif",os.time(os.date("!*t"))),
+			img_buf,500,15)
+	end
+	imgui.SameLine()
+	if imgui.Button("Stop Gif") then
+		if giffer then
+			giffer:stop()
+			giffer=nil
+		end
+	end
+	imgui.SameLine()
+	if imgui.Button("Print math") then
+		print(thingy_string)
+	end
 	if imgui.Button("norm") then
 		do_normalize="single"
 	end
@@ -1292,7 +1316,7 @@ function gui(  )
 end
 function save_img( id )
 	--make_image_buffer()
-	img_buf=make_image_buffer(size[1],size[2])
+	--img_buf=make_image_buffer(size[1],size[2])
 	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
 	for k,v in pairs(config) do
 		if type(v)~="table" then
@@ -1308,6 +1332,8 @@ function save_img( id )
 		img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 	end
 end
+
+
 function find_min_max( buf )
 	buf:use(0,0,0)
 	local lmin={math.huge,math.huge,math.huge,math.huge}
@@ -1340,8 +1366,12 @@ function draw_texture( id )
 	if config.do_sum then
 		buf=collect_buffer:get()
 	end
-
-	if do_normalize or global_mm==nil or config.do_norm then
+	local need_normalize=
+		do_normalize or
+		(global_mm==nil) or
+		(config.do_norm) or
+		(giffer and giffer:want_frame() and not config.pause)
+	if need_normalize then
 		global_mm,global_mx=find_min_max(buf)
 		if do_normalize=="single" then
 			do_normalize=false
@@ -1387,6 +1417,12 @@ function draw_texture( id )
 			reset_buffers("noise")
 		end
 		need_save=nil
+	end
+	if giffer and not config.pause then
+		if giffer:want_frame() then
+			img_buf:read_frame()
+		end
+		giffer:frame(img_buf)
 	end
 end
 function apply_sum_texture()

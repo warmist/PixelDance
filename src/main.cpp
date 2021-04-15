@@ -26,6 +26,7 @@
 #ifndef NO_EMBEDS
 #include "asset_cp437_12x12.hpp"
 #endif
+#define GIF_FLIP_VERT
 #include "gif.h"
 
 struct emb_text

@@ -1295,7 +1295,7 @@ function rand_function(  )
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
 	--local tbl_insert={"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seed)","vec2(cos(length(p)*M_PI*4+global_seed),sin(length(p)*M_PI*4+global_seed))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
-	local tbl_insert={"p","s","params.xy","params.zw"}
+	local tbl_insert={"params.xy","params.zw"}
 	--[[
 	local point_count=3
 	for i=1,point_count do
@@ -1305,7 +1305,7 @@ function rand_function(  )
 		table.insert(tbl_insert,string.format("vec2(%g,%g)",math.cos(vr)*r,math.sin(vr)*r))
 	end
 	--]]
-	-- [[
+	--[[
 	local tex_variants={
 		"tex_p.xy","tex_p.yz","tex_p.zx",
 		"tex_s.xy","tex_s.yz","tex_s.zx",
@@ -1314,12 +1314,13 @@ function rand_function(  )
 		"vec2(tex_s.x,tex_p.z)","vec2(tex_s.y,tex_p.x)","vec2(tex_s.z,tex_p.y)",
 
 	}
-	local num_tex=8
+	local num_tex=1
 	for i=1,num_tex do
 		table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
 	end
 	--]]
-	str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert)
+	str_cmplx=random_math_complex(rand_complexity,"c_mul(c_sqrt(R*global_seed+s),p)+R",tbl_insert)
+	--str_cmplx="c_tan(c_sqrt(c_sqrt((params.zw)+(c_sin(((c_inv(s*global_seed))+(p))+(params.xy))))))"
 	--str_cmplx=newton_fractal(rand_complexity)
 	--str_cmplx=random_math_complex_const(rand_complexity,nil,{"s","p*vec2(move_dist,global_seed)","params.xy","params.zw"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,2,nil,{"s","c_mul(p,vec2(move_dist,global_seed))","params.xy","params.zw"})
@@ -2267,7 +2268,7 @@ vec2 mapping(vec2 p)
 {
 	//float aspect_ratio=scale.y/scale.x;
 	//return tRotate(p,M_PI/2)*vec2(1,aspect_ratio);
-	//return p; //normal - do nothing
+	return p; //normal - do nothing
 	//return abs(p)-vec2(1);
 	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
 	///*

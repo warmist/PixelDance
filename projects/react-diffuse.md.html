@@ -45,5 +45,24 @@ $$
 
 The params $k_1=0.2, k_2=4.5, k_3=0.2$ are fixed. One example uses $D_u=D_v=0.024, D_w=4.5$.
 
+## Generic chaotic attractor(s)
+Given $X=(u_0,u_1,u_2,u_3)$
+$$\frac{dX}{dt}=G(X)
+$$
+
+Now we can make it discretized:
+
+$$X^n=X^{n-1}+{\Delta t}G(X^{n-1})
+$$
+
+We ask then:
+
+$$|X^n|< D$$
+### Gravity towards 0
+We construct $G(x)$ such that: $|X^{n-1}+{\Delta t}G(X^{n-1})|\rightarrow 0$ as $|X|\rightarrow D$. Then one solution is $G(X)=-X$ when $|X|=D$ with a lerp/step/smoothstep or any other interpolation function.
+
+### Gravity towards $P_n$
+
+First we divide the space into points $P_n$. Then if $|G(X)|$ approaches $D$ we lerp/step/smoothstep towards some specific $P_n$. E.g. $P_n$ could be a point in disk that is a polygons opposite vertex.
 
 <!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>

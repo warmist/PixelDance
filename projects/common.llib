@@ -500,3 +500,41 @@ end
 function multi_texture:get_prev()
 	return self:get(self.count-1)
 end
+
+gif_saver=class(
+function(gs,fname,buffer,frames,frame_skip)
+	gif_saver.start(gs,fname,buffer,frames,frame_skip)
+end
+)
+function gif_saver:start(fname,buffer,frames,frame_skip )
+	self:stop()
+	__gif_start(buffer,fname)
+	self.no_frames_to_save=frames
+	self.frame_skip=frame_skip or 1
+	self.current_frame=0
+end
+function gif_saver:stop()
+	__gif_end()
+	self.current_frame=0
+	self.no_frames_to_save=0
+end
+--TODO: save frame only if change is >some value
+function gif_saver:want_frame(  )
+	if self.no_frames_to_save<=0 then
+		return false
+	end
+	return ((self.current_frame+1) % self.frame_skip)==0
+end
+function gif_saver:frame( buffer,delay )
+	--delay is optional
+	self.current_frame=self.current_frame+1
+	if self.current_frame % self.frame_skip==0 then
+		self.no_frames_to_save=self.no_frames_to_save-1
+		print("GIF FRAME, Left:",self.no_frames_to_save)
+		__gif_frame(buffer,delay)
+		if self.no_frames_to_save==0 then
+			__gif_end()
+		end
+	end
+end
+
