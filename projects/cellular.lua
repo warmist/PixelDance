@@ -10,18 +10,42 @@ some ideas:
 --]===]
 require "common"
 require "perlin"
-local size=STATE.size
+
+__set_window_size(1024,1024)
+local scale_factor=0.25
+local size={STATE.size[1]*scale_factor,STATE.size[2]*scale_factor}
 --size[1]=size[1]*0.125
 --size[2]=size[2]*0.125
+local global_tick=0
 visits=visits or make_flt_buffer(size[1],size[2])
 visits2=visits2 or make_flt_buffer(size[1],size[2])
 vectorfield=vectorfield or make_flt_half_buffer(size[1],size[2])
 function resize( w,h )
+	size={STATE.size[1]*scale_factor,STATE.size[2]*scale_factor}
 	visits=make_flt_buffer(size[1],size[2])
 	visits2=make_flt_buffer(size[1],size[2])
 	vectorfield=make_flt_half_buffer(size[1],size[2])
 end
+local max_vertex_count=10000
+wavefront_vertices=wavefront_vertices or make_flt_half_buffer(max_vertex_count,1)
 
+local wavefront=wavefront or {
+	buf=wavefront_vertices,
+	count=0,
+	count_mirror=0,
+}
+
+function wavefront:insert( x,y )
+	self.buf:set(self.count,0,{x,y})
+	self.count=self.count+1
+end
+function wavefront:insert_mirror( x,y )
+	self.buf:set(self.count+self.count_mirror,0,{x,y})
+	self.count_mirror=self.count_mirror+1
+end
+function wavefront:clear_mirror()
+	self.count_mirror=0
+end
 pos=pos or {size[1]/2,size[2]/2}
 
 local draw_shader=shaders.Make[==[
@@ -34,11 +58,22 @@ in vec3 pos;
 uniform sampler2D tex_main;
 
 uniform float current_y;
-
+vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
+{
+    return a + b*cos( 6.28318*(c*t+d) );
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	normed.y=1-normed.y;
 	vec3 col=texture(tex_main,normed).xyz;
+	//col*=(1-col.b*5);
+	//col*=clamp(col.g*10,0.3,1);
+	float value=col.y;
+	value=clamp(value,0,1);
+	value=pow(value,1.5);
+	//value+=col.x*0.05;
+	col=palette(clamp(value,0,1),vec3(0.31),vec3(0.3),vec3(0,1,1),vec3(0.5,0.4,0.3));
+	//col=vec3(col.x);
 	//float min_v=0.9;
 	//float d=clamp(1-max(-normed.y+current_y,0),min_v,1);
 	//if(current_y<normed.y)
@@ -48,8 +83,41 @@ void main(){
 	color = vec4(col*d,1);
 }
 ]==]
+
+local draw_wavefront_shader=shaders.Make(
+--Vertex shader
+[==[
+#version 330
+
+layout(location = 0) in vec2 pos_line;
+
+out vec2 pos;
+void main()
+{
+	//vec2 mpos=mod(pos_line,vec2(1));
+	vec2 mpos=pos_line;
+    gl_Position.xy = (mpos-vec2(0.5))*2;
+    gl_Position.z=0;
+    gl_Position.w = 1.0;
+    pos.xy=pos_line;
+}
+]==],
+--Pixel shader
+[==[
+#version 330
+in vec2 pos;
+out vec4 color;
+
+void main()
+{
+	color= vec4(0.5,0.01,0.1,1);
+}
+]==]
+)
 local need_save
-local visit_tex = textures.Make()
+visit_tex =visit_tex or textures.Make()
+visit_tex:use(0)
+visits:write_texture(visit_tex)
 last_pos=last_pos or {0,0}
 function save_img(tile_count)
 	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
@@ -58,7 +126,7 @@ function save_img(tile_count)
 			config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
 		end
 	end]]
-	img_buf=make_image_buffer(size[1],size[2])
+	img_buf=make_image_buffer(size[1]*scale_factor,size[2]*scale_factor)
 	img_buf:read_frame()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
@@ -69,9 +137,12 @@ function draw_visits(  )
 
 	draw_shader:use()
 	visit_tex:use(0)
-	visits2:write_texture(visit_tex)
+	if global_tick %2==0 then
+		visits2:write_texture(visit_tex)
+	else
+		visits:write_texture(visit_tex)
+	end
 	draw_shader:set_i("tex_main",0)
-	draw_shader:set("current_y",current_r/size[2])
 	draw_shader:draw_quad()
 	if need_save then
 		save_img(tile_count)
@@ -142,17 +213,32 @@ end
 function resize( w,h )
 	image=make_image_buffer(w,h)
 end
-CA_rule={
-	[1]=1,
+CA_rule_dead={
+	[0]=0,
+	[1]=0,
 	[2]=1,
 	[3]=1,
 	[4]=0,
-	[5]=1,
+	[5]=0,
+	[6]=0,
+	[7]=0,
+	[8]=0,
+	[9]=0,
+}
+CA_rule_alive={
+	[0]=0,
+	[1]=0,
+	[2]=1,
+	[3]=1,
+	[4]=0,
+	[5]=0,
 	[6]=1,
+	[7]=0,
+	[8]=0,
+	[9]=0,
 }
 local cx=math.floor(size[1]/2)
 local cy=math.floor(size[2]/2)
-local wavefront={}
 function fix_coord( x,y )
 	x=x%(size[1])
 	y=y%(size[2])
@@ -190,19 +276,25 @@ function reset_buffer(  )
 	}
 	for x=0,size[1]-1 do
 	for y=0,size[2]-1 do
-		--[[
-		local p=visits:get(x,y)
-		p.r=math.random()*0
-		p.g=math.random()*0
-		p.b=math.random()*0
-		visits2:set(x,y,p)
+		-- [[
+		local dx=x-size[1]/2
+		local dy=y-size[2]/2
+		local d=math.sqrt(dx*dx+dy*dy)
+		if d<size[1]/3 then
+			local p=visits:get(x,y)
+			p.r=1
+			p.g=0
+			p.b=0
+			visits2:set(x,y,p)
+		end
 		--]]
+		--[===[
 		local vc=vectorfield:sget(x,y)
 		local tcx=x-cx
 		local tcy=y-cy
 		local tcl=math.sqrt(tcx*tcx+tcy*tcy)
 
-		local curl_scale=0--0.002*tcl/(size[1]/2)
+		local curl_scale=0.002*tcl/(size[1]/2)
 		local dx=cdx+
 			perlin:noise(x*per_scale+per_offset_x[1],y*per_scale+per_offset_x[2])-
 			tcy*curl_scale/(tcl+1)
@@ -233,9 +325,12 @@ function reset_buffer(  )
 		vc.g=dy/l]]
 		vc.r=dx*scale
 		vc.g=dy*scale
+		--]===]
 	end
 	end
-	relax_flowfield(20,0.001)
+	visit_tex:use(0)
+	visits2:write_texture(visit_tex)
+	--relax_flowfield(20,0.001)
 	--[[
 	for x=0,size[1]-1 do
 		local c=visits:sget(x,0)
@@ -248,8 +343,9 @@ function reset_buffer(  )
 	--table.insert(wavefront,{math.floor(size[1]*3/4),0})
 
 	--]]
-	wavefront={}
-	local count=12
+	--wavefront={}
+	wavefront.count=0
+	local count=100
 	--[[
 	local r=50
 	for i=0,count-1 do
@@ -260,11 +356,19 @@ function reset_buffer(  )
 		table.insert(wavefront,{math.floor(x),math.floor(y)})
 	end
 	--]]
-	local h=math.random()*size[2]
-	for i=0,count-1 do
+	local h=math.random()
+	for i=0,count do
 		local v=i/count
-		table.insert(wavefront,{v*size[1],h})
+		local vn=(i+1)/count
+		--table.insert(wavefront,{v*size[1],h})
+		wavefront:insert(v,h)
+		if i~=0 and i~=count then
+			wavefront:insert(v,h)
+		end
+		--insert_to_wavefront(vn,h)
 	end
+	print("Vertex after reset:",wavefront.count)
+	wavefront.buf:update_buffer_data(wavefront.count)
 	--[[
 	local radius=min_r
 	for r=0,radius do
@@ -280,7 +384,26 @@ function reset_buffer(  )
 	end
 	--]]
 end
-reset_buffer()
+--reset_buffer()
+function get_points_around(x,y)
+	local x=math.floor(x)
+	local y=math.floor(y)
+	local count=0
+	local count_s=0
+	for dx=-1,1 do
+	for dy=-1,1 do
+		local tx,ty=fix_coord(x+dx,y+dy)
+		local v=visits:sget(tx,ty).r
+		if v>0.5 then
+			count=count+1
+			if dx==0 and dy==0 then
+				count_s=count_s+1
+			end
+		end
+	end
+	end
+	return count,count_s
+end
 function get_points_rect(x,y)
 	local ret={}
 	local nx=x+1
@@ -389,21 +512,37 @@ function sample_visits_out( x,y ,col)
 	visits2:set(hx,hy,lerp(col,hh,(1-frx)*(1-fry)))
 
 end
-function do_rule( x,y,dx,dy )
-	local ox=x-dx
-	local oy=y-dy
+function do_rule( x,y,dx,dy ,id)
+	-- [[
+	if math.abs(visits:sget(x,y).b*255-id)<15 then
+		return
+	end
+	--]]
+	local v,vs=get_points_around(x,y)
+	local rule_res
+	if vs==0 then
+		rule_res=CA_rule_dead[v] or 0
+	else
+		rule_res=CA_rule_alive[v] or 0
+	end
+	--[[
+	local scale=10
+	local ox=x-dx*scale
+	local oy=y-dy*scale
+	--]]
 	--local tx,ty=fix_coord(ox,oy)
 	--tx=math.floor(tx)
 	--ty=math.floor(ty)
 	--local p=visits:sget(tx,ty)
-
+	--[==[
 	local dist=math.sqrt(dx*dx+dy*dy)
 	local vv=sample_visits(ox,oy)
-	--local vv2=sample_visits(ox-dy,oy+dx)
-	--local vv3=sample_visits(ox+dy,oy+dx)
-	--local rr=get_rules({vv2,vv,vv3})
+	local vv2=sample_visits(ox-dy,oy+dx)
+	local vv3=sample_visits(ox+dy,oy+dx)
+	local rr=get_rules({vv2,vv,vv3})
+	--]==]
 
-	-- [[
+	--[[
 	local noise_scale=0.1
 	vv.r=vv.r+math.random()*noise_scale-noise_scale/2
 	vv.g=vv.g+math.random()*noise_scale-noise_scale/2
@@ -422,21 +561,36 @@ function do_rule( x,y,dx,dy )
 	--end
 	--]]
 	--[[
-	rr.g=rr.r
+	rr={r=rule_res}
+	rr.g=id
 	rr.b=rr.r
-	sample_visits_out(x,y,rr)
+	--sample_visits_out(x,y,rr)
+	--]]
+	local tr=visits2:sget(x,y)
+	tr.r=rule_res
+	if rule_res>0.5 then
+		tr.g=tr.g+0.02
+		if tr.g<0.5 then tr.g=0.5 end
+		if tr.g>1 then tr.g=1 end
+	else
+		tr.g=tr.g-0.01
+		if tr.g<0 then tr.g=0 end
+		if tr.g>0.5 then tr.g=0.5 end
+	end
+	tr.b=id/255
 	--]]
 end
-do_step=false
+do_step=1
 function gui(  )
 	imgui.Begin("CA")
 	if imgui.Button("Reset") then
 		reset_buffer()
 		current_y=1
 		current_r=min_r
+		wavefront_step=0
 	end
 	if imgui.Button("step") then
-		do_step=true
+		do_step=150
 	end
 	if imgui.Button("fx") then
 		first=3
@@ -448,7 +602,7 @@ function gui(  )
 end
 
 function draw_wavefront( clear )
-	local vv={r=0,g=1,b=0}
+	--[[local vv={r=0,g=1,b=0}
 	if clear then
 		vv.g=0
 	end
@@ -459,7 +613,28 @@ function draw_wavefront( clear )
 		if clear then
 			visits:set(math.floor(v[1]),math.floor(v[2]),vv)
 		end
+	end]]
+	
+	draw_wavefront_shader:use()
+	--draw_wavefront_shader:blend_add()
+	visit_tex:use(1)
+	--visits2:write_texture(visit_tex)
+	--
+	--local bd=wavefront.buf:buffer_data()
+	--bd:use()
+	draw_wavefront_shader:push_attribute(wavefront.buf.d,"pos_line",2,nil,2*4)
+
+	if not visit_tex:render_to(size[1],size[2]) then
+		__unbind_buffer()
+		__render_to_window()
+		error("failed to set framebuffer up")
 	end
+	__clear()
+	draw_wavefront_shader:draw_lines(nil,wavefront.count+wavefront.count_mirror,false)
+	--draw_wavefront_shader:draw_points(nil,wavefront.count,true)
+	draw_wavefront_shader:blend_default()
+	__unbind_buffer()
+	__render_to_window()
 end
 
 function fix_coord_delta( x,y,nx,ny )
@@ -490,8 +665,94 @@ function fix_coord_delta( x,y,nx,ny )
 end
 
 first=4
+function wrap_coords_noop(p)
+	local dx=0
+	local dy=0
+	if p.r<0 then dx=1 end
+	if p.r>1 then dx=-1 end
+	if p.g<0 then dy=1 end
+	if p.g>1 then dy=-1 end
+	return dx,dy
+end
+function wrap_coords(p)
+	local dx=0
+	local dy=0
+	if p.r<0 then p.r=p.r+1;dx=1 end
+	if p.r>1 then p.r=p.r-1;dx=-1 end
+	if p.g<0 then p.g=p.g+1;dy=1 end
+	if p.g>1 then p.g=p.g-1;dy=-1 end
+	return dx,dy
+end
+function line_len(p1,p2 )
+	local dx=p1.r-p2.r
+	local dy=p1.g-p2.g
+	return math.sqrt(dx*dx+dy*dy)
+end
 function fix_wavefront(  )
-	local min_dist=1
+	if first<1 then
+		return
+	end
+
+	wavefront:clear_mirror()
+	local max_len=0.1
+	local cur_wv_count=wavefront.count
+	for i=0,cur_wv_count,2 do
+		local v1=wavefront.buf:get(i,0)
+		local v2=wavefront.buf:get(i+1,0)
+		local L=line_len(v1,v2)
+		if L> max_len and wavefront.count+2<max_vertex_count then
+			local ox=v2.r
+			local oy=v2.g
+			local mx=(v1.r+v2.r)/2
+			local my=(v1.g+v2.g)/2
+			v2.r=mx
+			v2.g=my
+			wavefront:insert(mx,my)
+			wavefront:insert(ox,oy)
+		end
+	end
+	for i=0,wavefront.count-1,2 do
+		local v1=wavefront.buf:get(i,0)
+		local v2=wavefront.buf:get(i+1,0)
+		local count_outside=0
+		if v1.r<0 or v1.r>1 or v1.g<0 or v1.g>1 then
+			count_outside=count_outside+1
+		end
+		if v2.r<0 or v2.r>1 or v2.g<0 or v2.g>1 then
+			count_outside=count_outside+1
+		end
+		if count_outside==2 then
+			local len_bef=line_len(v1,v2)
+			local pts_bef={v1.r,v1.g,v2.r,v2.g}
+			local dx,dy=wrap_coords(v1)
+			v2.r=v2.r+dx
+			v2.g=v2.g+dy
+			dx,dy=wrap_coords(v2)
+			v1.r=v1.r+dx
+			v1.g=v1.g+dy
+			local len_after=line_len(v1,v2)
+			if len_after-len_bef>0.1 then
+				print("WTF:",i,len_bef,len_after)
+				for i,v in ipairs(pts_bef) do
+					print(v)
+				end
+				do_step=0
+			end
+			--wavefront.buf:set(i,0,v1)
+			--wavefront.buf:set(i+1,0,v2)
+		elseif count_outside==1 then
+			local dx,dy=wrap_coords_noop(v1)
+			if dx==0 and dy==0 then
+				wrap_coords_noop(v2)
+			end
+			if wavefront.count+wavefront.count_mirror+2<max_vertex_count then
+				wavefront:insert_mirror(v1.r+dx,v1.g+dy)
+				wavefront:insert_mirror(v2.r+dx,v2.g+dy)
+			end
+		end
+	end
+
+	--[==[local min_dist=1
 	local ret={}
 	local count=1
 	local last_t={wavefront[1][1],wavefront[1][2]}
@@ -539,6 +800,7 @@ function fix_wavefront(  )
 	--if first>2 then
 		wavefront=ret
 	--end
+	--]==]
 	if first>1 then
 		first=first-1
 	end
@@ -564,24 +826,129 @@ function sample_flowfield( x,y )
 	local xh=lerp2(lh,hh,frx)
 	return lerp2(xl,xh,fry)
 end
-function advance_wavefront(  )
-	for i,v in ipairs(wavefront) do
-		local x=v[1]
-		local y=v[2]
+wavefront_step=0
+front_id=0
+function advance_wavefront()
+	wavefront_step=wavefront_step+1.61803398875
+	if wavefront_step>math.sqrt(2)*size[1]/2 then
+	 	wavefront_step=wavefront_step-math.sqrt(2)*size[1]/2
+	 	front_id=front_id+1
+	 	if front_id>255 then front_id=0 end
+	end
+	local radius=wavefront_step
+
+	function set_pixel( tx,ty )
+		if tx>=0 and ty>=0 and tx<size[1] and ty<size[2] then
+			do_rule(tx,ty,0,0,front_id)
+		end
+	end
+	function set_pixels( x,y )
+		local cx=size[1]/2
+		local cy=size[2]/2
+		set_pixel(cx+x,cy+y)
+		set_pixel(cx-x,cy+y)
+		set_pixel(cx+x,cy-y)
+		set_pixel(cx-x,cy-y)
+
+		set_pixel(cx+y,cy+x)
+		set_pixel(cx-y,cy+x)
+		set_pixel(cx+y,cy-x)
+		set_pixel(cx-y,cy-x)
+	end
+	local x=radius
+	local y=0
+	local err=1-radius
+	while x>y do
+		set_pixels(math.floor(x),math.floor(y))
+		y=y+1
+		if err<0 then
+			err=err+2*y+1
+		else
+			x=x-1
+			err=err+2*(y-x)+1
+		end
+	end
+end
+function advance_wavefront_ex(  )
+	--[==[
+	for i=0,wavefront.count-1 do
+		local v=wavefront.buf:get(i,0)
+		local x=v.r*size[1]
+		local y=v.g*size[2]
 		local vec=sample_flowfield(x,y)
 		--local step_size=math.max(math.abs(vec[1]),math.abs(vec[2]))
+		-- [[
 		x=x+vec.r--/step_size
 		y=y+vec.g--/step_size
+		--]]
+		--[[
+		local vv=v.r
+		if vv>1 then vv=1 end
+		if vv<0 then vv=0 end
+		x=x+0.3
+		y=y+(0.3)*vv+(0.8)*(1-vv)
+		--]]
 		--x,y=fix_coord(x,y)
 		do_rule(x,y,vec.r,vec.g)
-		v[1]=x
-		v[2]=y
+		wavefront.buf:set(i,0,{x/size[1],y/size[2]})
+	end
+	--]==]
+	local step=1/size[1]
+
+	for i=0,wavefront.count-1,2 do
+		local v1=wavefront.buf:get(i,0)
+		local v2=wavefront.buf:get(i+1,0)
+
+		local len=line_len(v1,v2)
+		local vec1={0,0}
+		local w1=0
+		local vec2={0,0}
+		local w2=0
+		for dt=0,len,step do
+			local it=dt/len
+			local x=(v1.r*(1-it)+v2.r*it)*size[1]
+			local y=(v1.g*(1-it)+v2.g*it)*size[2]
+			local vec=sample_flowfield(x,y)
+
+			do_rule(x,y,vec.r,vec.g)
+			-- [[
+			local ww1=(1-it)*(1-it)
+			local ww2=it*it
+			vec1[1]=vec1[1]+vec.r*ww1
+			vec1[2]=vec1[2]+vec.g*ww1
+			w1=w1+ww1
+			vec2[1]=vec2[1]+vec.r*ww2
+			vec2[2]=vec2[2]+vec.g*ww2
+			w2=w2+ww2
+			--]]
+			--[[
+			if dt==0 then
+				vec1=vec
+				w1=1
+				vec2=vec
+				w2=1
+			else
+				vec2=vec
+				w2=1
+			end
+			--]]
+		end
+		--[[
+		v1.r=v1.r+(vec1.r/w1)/size[1]
+		v1.g=v1.g+(vec1.g/w1)/size[2]
+		v2.r=v2.r+(vec2.r/w2)/size[1]
+		v2.g=v2.g+(vec2.g/w2)/size[2]
+		--]]
+		v1.r=v1.r+(vec1[1]/w1)/size[1]
+		v1.g=v1.g+(vec1[2]/w1)/size[2]
+		v2.r=v2.r+(vec2[1]/w2)/size[1]
+		v2.g=v2.g+(vec2[2]/w2)/size[2]
 	end
 	--print("wavefront1:",#wavefront)
 	fix_wavefront()
 	--print("wavefront2:",#wavefront)
 end
-local global_tick=0
+
 function update(  )
 	__no_redraw()
 	__clear()
@@ -634,18 +1001,19 @@ function update(  )
 		current_y=current_y+1
 		if current_y>=size[2] then current_y=0 end
 		--]]
-		--if do_step then
+		if do_step>0 then
 			if global_tick%20~=0 then
 				draw_wavefront(true)
 			end
 			advance_wavefront()
-			draw_wavefront()
-			do_step=false
+			--draw_wavefront()
+
 			local w=visits
 			visits=visits2
 			visits2=w
 			global_tick=global_tick+1
-		--end
+			--do_step=do_step-1
+		end
 	end
 	draw_visits()
 end
