@@ -80,6 +80,20 @@ function make_buffer( typename,type_id,default_pixel )
 			end
 			return ret
 		end
+		img.buffer_data=function ( t )
+			if t.buf_data==nil then
+				t.buf_data=buffer_data.Make()
+			end
+			return t.buf_data
+		end
+		img.update_buffer_data=function ( t,count )
+			count=count or t.w*t.h
+			local b=t:buffer_data()
+			b:use()
+			b:set(t.d,count*size_of_data[type_id])
+			__unbind_buffer()
+		end
+
 		return img
 	end
 end
@@ -89,6 +103,14 @@ FLTA_PIX=1
 F_PIX=2
 FL_PIX=3
 U8_PIX=4
+
+size_of_data={
+	[RGBA_PIX]=4*1,
+	[FLTA_PIX]=4*4,
+	[F_PIX]=4*1,
+	[FL_PIX]=4*2,
+	[U8_PIX]=1,
+}
 
 make_image_buffer= make_buffer("rgba_pixel",RGBA_PIX,{0,0,0,255})
 make_flt_buffer= make_buffer("float_pixel",FLTA_PIX,{0,0,0,1})
