@@ -29,6 +29,15 @@ end
 local max_vertex_count=10000
 wavefront_vertices=wavefront_vertices or make_flt_half_buffer(max_vertex_count,1)
 
+
+config=make_config({
+	{"gamma",2.2,type="float",min=-5,max=5},
+	{"wave_step_size",1.61803398875,type="float",min=0.01,max=5},
+	{"update_dist",25,type="int",min=0,max=125},
+	{"value_grow",0.001,type="floatsci",min=0,max=1,power=10},
+	{"value_shrink",0.002,type="floatsci",min=0,max=1,power=10},
+},config)
+
 local wavefront=wavefront or {
 	buf=wavefront_vertices,
 	count=0,
@@ -56,8 +65,9 @@ in vec3 pos;
 
 
 uniform sampler2D tex_main;
-
+uniform float gamma_value;
 uniform float current_y;
+uniform float current_age;
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
     return a + b*cos( 6.28318*(c*t+d) );
@@ -68,11 +78,17 @@ void main(){
 	vec3 col=texture(tex_main,normed).xyz;
 	//col*=(1-col.b*5);
 	//col*=clamp(col.g*10,0.3,1);
+	//float value=abs(current_age/255-col.z);//col.y;
 	float value=col.y;
 	value=clamp(value,0,1);
-	value=pow(value,1.5);
+	if(gamma_value<0)
+		value=1-pow(1-value,-gamma_value);
+	else
+		value=pow(value,gamma_value);
+
 	//value+=col.x*0.05;
-	col=palette(clamp(value,0,1),vec3(0.31),vec3(0.3),vec3(0,1,1),vec3(0.5,0.4,0.3));
+	col=palette(value,vec3(0.31),vec3(0.3),vec3(0,1,1),vec3(0.5,0.4,0.3));
+	//col.r=pow(col.g,1.2);
 	//col=vec3(col.x);
 	//float min_v=0.9;
 	//float d=clamp(1-max(-normed.y+current_y,0),min_v,1);
@@ -126,7 +142,7 @@ function save_img(tile_count)
 			config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
 		end
 	end]]
-	img_buf=make_image_buffer(size[1]*scale_factor,size[2]*scale_factor)
+	img_buf=make_image_buffer(size[1]/scale_factor,size[2]/scale_factor)
 	img_buf:read_frame()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
@@ -143,6 +159,8 @@ function draw_visits(  )
 		visits:write_texture(visit_tex)
 	end
 	draw_shader:set_i("tex_main",0)
+	draw_shader:set("gamma_value",config.gamma)
+	draw_shader:set('current_age',front_id or 0)
 	draw_shader:draw_quad()
 	if need_save then
 		save_img(tile_count)
@@ -221,16 +239,16 @@ CA_rule_dead={
 	[4]=0,
 	[5]=0,
 	[6]=0,
-	[7]=0,
+	[7]=1,
 	[8]=0,
 	[9]=0,
 }
 CA_rule_alive={
 	[0]=0,
 	[1]=0,
-	[2]=1,
+	[2]=0,
 	[3]=1,
-	[4]=0,
+	[4]=1,
 	[5]=0,
 	[6]=1,
 	[7]=0,
@@ -514,7 +532,7 @@ function sample_visits_out( x,y ,col)
 end
 function do_rule( x,y,dx,dy ,id)
 	-- [[
-	if math.abs(visits:sget(x,y).b*255-id)<15 then
+	if math.abs(visits:sget(x,y).b*255-id)<config.update_dist then
 		return
 	end
 	--]]
@@ -568,14 +586,15 @@ function do_rule( x,y,dx,dy ,id)
 	--]]
 	local tr=visits2:sget(x,y)
 	tr.r=rule_res
+
 	if rule_res>0.5 then
-		tr.g=tr.g+0.02
-		if tr.g<0.5 then tr.g=0.5 end
+		tr.g=tr.g+config.value_grow
+		--if tr.g<0.5 then tr.g=0.5 end
 		if tr.g>1 then tr.g=1 end
 	else
-		tr.g=tr.g-0.01
+		tr.g=tr.g-config.value_shrink
 		if tr.g<0 then tr.g=0 end
-		if tr.g>0.5 then tr.g=0.5 end
+		--if tr.g>0.5 then tr.g=0.5 end
 	end
 	tr.b=id/255
 	--]]
@@ -583,6 +602,7 @@ end
 do_step=1
 function gui(  )
 	imgui.Begin("CA")
+	draw_config(config)
 	if imgui.Button("Reset") then
 		reset_buffer()
 		current_y=1
@@ -829,7 +849,7 @@ end
 wavefront_step=0
 front_id=0
 function advance_wavefront()
-	wavefront_step=wavefront_step+1.61803398875
+	wavefront_step=wavefront_step+config.wave_step_size
 	if wavefront_step>math.sqrt(2)*size[1]/2 then
 	 	wavefront_step=wavefront_step-math.sqrt(2)*size[1]/2
 	 	front_id=front_id+1
@@ -1003,7 +1023,7 @@ function update(  )
 		--]]
 		if do_step>0 then
 			if global_tick%20~=0 then
-				draw_wavefront(true)
+				--draw_wavefront(true)
 			end
 			advance_wavefront()
 			--draw_wavefront()
