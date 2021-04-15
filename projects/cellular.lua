@@ -87,7 +87,8 @@ void main(){
 		value=pow(value,gamma_value);
 
 	//value+=col.x*0.05;
-	col=palette(value,vec3(0.31),vec3(0.3),vec3(0,1,1),vec3(0.5,0.4,0.3));
+	//col=palette(value,vec3(0.5),vec3(0.5),vec3(0,1.5,1.05),vec3(0.5,0.25,0.7));
+	col=vec3(value);
 	//col.r=pow(col.g,1.2);
 	//col=vec3(col.x);
 	//float min_v=0.9;
@@ -231,14 +232,40 @@ end
 function resize( w,h )
 	image=make_image_buffer(w,h)
 end
+--[[ maze 
 CA_rule_dead={
 	[0]=0,
 	[1]=0,
-	[2]=1,
+	[2]=0,
 	[3]=1,
 	[4]=0,
 	[5]=0,
 	[6]=0,
+	[7]=0,
+	[8]=0,
+	[9]=0,
+}
+CA_rule_alive={
+	[0]=0,
+	[1]=1,
+	[2]=1,
+	[3]=1,
+	[4]=1,
+	[5]=1,
+	[6]=0,
+	[7]=0,
+	[8]=0,
+	[9]=0,
+}
+--]]
+CA_rule_dead={
+	[0]=0,
+	[1]=0,
+	[2]=0,
+	[3]=1,
+	[4]=0,
+	[5]=1,
+	[6]=1,
 	[7]=1,
 	[8]=0,
 	[9]=0,
@@ -246,11 +273,11 @@ CA_rule_dead={
 CA_rule_alive={
 	[0]=0,
 	[1]=0,
-	[2]=0,
+	[2]=1,
 	[3]=1,
-	[4]=1,
+	[4]=0,
 	[5]=0,
-	[6]=1,
+	[6]=0,
 	[7]=0,
 	[8]=0,
 	[9]=0,
@@ -298,12 +325,15 @@ function reset_buffer(  )
 		local dx=x-size[1]/2
 		local dy=y-size[2]/2
 		local d=math.sqrt(dx*dx+dy*dy)
-		if d<size[1]/3 then
+		if d<size[1]/2.2 then
 			local p=visits:get(x,y)
 			p.r=1
 			p.g=0
 			p.b=0
 			visits2:set(x,y,p)
+		else
+			visits:set(x,y,{0,0,0,0})
+			visits2:set(x,y,{0,0,0,0})
 		end
 		--]]
 		--[===[
@@ -854,6 +884,7 @@ function advance_wavefront()
 	 	wavefront_step=wavefront_step-math.sqrt(2)*size[1]/2
 	 	front_id=front_id+1
 	 	if front_id>255 then front_id=0 end
+	 	config.wave_step_size=math.random()+0.2
 	end
 	local radius=wavefront_step
 
