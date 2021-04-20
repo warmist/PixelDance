@@ -31,9 +31,12 @@ wavefront_vertices=wavefront_vertices or make_flt_half_buffer(max_vertex_count,1
 
 
 config=make_config({
-	{"gamma",2.2,type="float",min=-5,max=5},
+	{"gamma",1,type="float",min=-5,max=5},
+	{"step_count",1,type="int",min=0,max=25},
+	{"diffusion",0,type="floatsci",min=0,max=1,power=2},
 	{"wave_step_size",1.61803398875,type="float",min=0.01,max=5},
-	{"update_dist",25,type="int",min=0,max=125},
+	{"update_dist",0,type="int",min=0,max=125},
+	{"avg_influence",0.5,type="float",min=0,max=1},
 	{"value_grow",0.001,type="floatsci",min=0,max=1,power=10},
 	{"value_shrink",0.002,type="floatsci",min=0,max=1,power=10},
 },config)
@@ -72,6 +75,11 @@ vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
     return a + b*cos( 6.28318*(c*t+d) );
 }
+float gain(float x, float k)
+{
+    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
+    return (x<0.5)?a:1.0-a;
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	normed.y=1-normed.y;
@@ -79,15 +87,19 @@ void main(){
 	//col*=(1-col.b*5);
 	//col*=clamp(col.g*10,0.3,1);
 	//float value=abs(current_age/255-col.z);//col.y;
-	float value=col.y;
+	vec3 value=col.xyz;
 	value=clamp(value,0,1);
+	/*
 	if(gamma_value<0)
 		value=1-pow(1-value,-gamma_value);
 	else
 		value=pow(value,gamma_value);
-
+	*/
+	value.x=gain(value.x,gamma_value);
+	value.y=gain(value.y,gamma_value);
+	value.z=gain(value.z,gamma_value);
 	//value+=col.x*0.05;
-	//col=palette(value,vec3(0.5),vec3(0.5),vec3(0,1.5,1.05),vec3(0.5,0.25,0.7));
+	//col=palette(value,vec3(0.5),vec3(0.5),vec3(0.4,0.35,0.30),vec3(0.5,0.45,0.3));
 	col=vec3(value);
 	//col.r=pow(col.g,1.2);
 	//col=vec3(col.x);
@@ -264,9 +276,9 @@ CA_rule_dead={
 	[2]=0,
 	[3]=1,
 	[4]=0,
-	[5]=1,
-	[6]=1,
-	[7]=1,
+	[5]=0,
+	[6]=0,
+	[7]=0,
 	[8]=0,
 	[9]=0,
 }
@@ -277,7 +289,7 @@ CA_rule_alive={
 	[3]=1,
 	[4]=0,
 	[5]=0,
-	[6]=0,
+	[6]=1,
 	[7]=0,
 	[8]=0,
 	[9]=0,
@@ -325,11 +337,11 @@ function reset_buffer(  )
 		local dx=x-size[1]/2
 		local dy=y-size[2]/2
 		local d=math.sqrt(dx*dx+dy*dy)
-		if d<size[1]/2.2 then
+		if d<size[1]/3.5 then
 			local p=visits:get(x,y)
 			p.r=1
-			p.g=0
-			p.b=0
+			p.g=1
+			p.b=1
 			visits2:set(x,y,p)
 		else
 			visits:set(x,y,{0,0,0,0})
@@ -436,21 +448,56 @@ end
 function get_points_around(x,y)
 	local x=math.floor(x)
 	local y=math.floor(y)
-	local count=0
-	local count_s=0
+
+	local count={0,0,0}
+	local count_s={0,0,0}
+	local avg={0,0,0}
+	local names={"r","g","b"}
 	for dx=-1,1 do
 	for dy=-1,1 do
 		local tx,ty=fix_coord(x+dx,y+dy)
-		local v=visits:sget(tx,ty).r
-		if v>0.5 then
-			count=count+1
-			if dx==0 and dy==0 then
-				count_s=count_s+1
+		local v=visits:sget(tx,ty)
+		for i=1,3 do
+			local value=v[names[i]]
+			avg[i]=avg[i]+value
+			if value>0.5 then
+				count[i]=count[i]+1
+				if dx==0 and dy==0 then
+					count_s[i]=count_s[i]+1
+				end
 			end
 		end
 	end
 	end
-	return count,count_s
+	for i=1,3 do
+		avg[i]=avg[i]/9
+	end
+	
+	return count,count_s,avg
+end
+function laplace_pos( x,y ) --with laplacian kernel (cnt -1,near .2,diag 0.05)
+	local cnt
+	local sum=0
+
+	for dx=-1,1 do
+	for dy=-1,1 do
+		local w=0
+		local tx,ty=fix_coord(x+dx,y+dy)
+		local v=visits:sget(tx,ty).g
+		if dx==0 and dy==0 then
+			cnt=v
+			w=-1
+		elseif dx==0 or dy==0 then
+			w=0.2
+		else
+			w=0.05
+		end
+
+		sum=sum+v*w
+	end
+	end
+
+	return sum,cnt
 end
 function get_points_rect(x,y)
 	local ret={}
@@ -561,18 +608,21 @@ function sample_visits_out( x,y ,col)
 
 end
 function do_rule( x,y,dx,dy ,id)
-	-- [[
+	--[[
 	if math.abs(visits:sget(x,y).b*255-id)<config.update_dist then
 		return
 	end
 	--]]
-	local v,vs=get_points_around(x,y)
-	local rule_res
-	if vs==0 then
-		rule_res=CA_rule_dead[v] or 0
-	else
-		rule_res=CA_rule_alive[v] or 0
+	local v,vs,avg=get_points_around(x,y)
+	local rule_res={0,0,0}
+	for i=1,3 do
+		if vs[i]==0 then
+			rule_res[i]=CA_rule_dead[v[i]] or 0
+		else
+			rule_res[i]=CA_rule_alive[v[i]] or 0
+		end
 	end
+	
 	--[[
 	local scale=10
 	local ox=x-dx*scale
@@ -615,18 +665,26 @@ function do_rule( x,y,dx,dy ,id)
 	--sample_visits_out(x,y,rr)
 	--]]
 	local tr=visits2:sget(x,y)
-	tr.r=rule_res
+	--tr.r=rule_res
+	local trgs={"r","g","b"}
 
-	if rule_res>0.5 then
-		tr.g=tr.g+config.value_grow
-		--if tr.g<0.5 then tr.g=0.5 end
-		if tr.g>1 then tr.g=1 end
-	else
-		tr.g=tr.g-config.value_shrink
-		if tr.g<0 then tr.g=0 end
-		--if tr.g>0.5 then tr.g=0.5 end
+	local value_g_offsets={0,0,-1e-3}
+	local value_s_offsets={0,1e-3,0}
+	for i=1,3 do
+		local avg_influence=config.avg_influence
+		local ai=((1-avg_influence)+avg[i]*avg_influence)
+		if rule_res[i]>0.5 then
+			tr[trgs[i]]=tr[trgs[i]]+(config.value_grow+value_g_offsets[i])*ai
+			--if tr.g<0.5 then tr.g=0.5 end
+			if tr[trgs[i]]>1 then tr[trgs[i]]=1 end
+		else
+			tr[trgs[i]]=tr[trgs[i]]-(config.value_shrink+value_s_offsets[i])*ai
+			if tr[trgs[i]]<0 then tr[trgs[i]]=0 end
+			--if tr.g>0.5 then tr.g=0.5 end
+		end
 	end
-	tr.b=id/255
+	--tr.b=id/255
+
 	--]]
 end
 do_step=1
@@ -639,11 +697,12 @@ function gui(  )
 		current_r=min_r
 		wavefront_step=0
 	end
-	if imgui.Button("step") then
-		do_step=150
-	end
-	if imgui.Button("fx") then
-		first=3
+	if imgui.Button("RandRules") then
+		for i=0,9 do
+			CA_rule_alive[i]=math.random(0,1)
+			CA_rule_dead[i]=math.random(0,1)
+		end
+		
 	end
 	if imgui.Button("Save") then
 		need_save=true
@@ -878,21 +937,51 @@ function sample_flowfield( x,y )
 end
 wavefront_step=0
 front_id=0
+wavefront_complete=false
 function advance_wavefront()
+	local max_wavefront_step=math.sqrt(2)*size[1]/2 --circle
+	--local max_wavefront_step=(size[2]-1)*2
 	wavefront_step=wavefront_step+config.wave_step_size
-	if wavefront_step>math.sqrt(2)*size[1]/2 then
-	 	wavefront_step=wavefront_step-math.sqrt(2)*size[1]/2
-	 	front_id=front_id+1
-	 	if front_id>255 then front_id=0 end
-	 	config.wave_step_size=math.random()+0.2
-	end
-	local radius=wavefront_step
 
+	if wavefront_step>max_wavefront_step then
+	 	wavefront_step=wavefront_step-max_wavefront_step
+	 	front_id=front_id+1
+	 	wavefront_complete=true
+	 	if front_id>255 then front_id=0 end
+	 	--config.wave_step_size=math.random()+0.2
+	end
 	function set_pixel( tx,ty )
 		if tx>=0 and ty>=0 and tx<size[1] and ty<size[2] then
 			do_rule(tx,ty,0,0,front_id)
 		end
 	end
+	function set_line(x0, y0, x1, y1)
+	    local dx =  math.abs(x1-x0);
+    	local sx
+    	if x0<x1 then sx= 1 else sx= -1 end
+    	local dy = -math.abs(y1-y0);
+    	local sy
+    	if y0<y1 then sy= 1 else sy= -1 end
+    	local err = dx+dy
+    	while (true) do
+        	set_pixel(x0, y0);
+        	if (x0 == x1 and y0 == y1) then break end
+        	local e2 = 2*err
+        	if (e2 >= dy) then
+            	err = err+dy
+            	x0 =x0+ sx
+            end
+        	if (e2 <= dx) then
+            	err =err+ dx;
+            	y0 =y0+ sy;
+        	end
+    	end
+    end
+	local radius=wavefront_step
+
+
+	--[==[
+
 	function set_pixels( x,y )
 		local cx=size[1]/2
 		local cy=size[2]/2
@@ -917,6 +1006,78 @@ function advance_wavefront()
 		else
 			x=x-1
 			err=err+2*(y-x)+1
+		end
+	end
+	--]==]
+	--[==[ regular polygon 
+	local count_sides=3
+	local angle_step=math.pi*2/count_sides
+	local angle_offset=wavefront_step*0.01
+	for i=0,count_sides-1 do
+
+		local dx0=math.cos(i*angle_step+angle_offset)*wavefront_step+size[1]/2
+		local dy0=math.sin(i*angle_step+angle_offset)*wavefront_step+size[2]/2
+		local dx1=math.cos((i+1)*angle_step+angle_offset)*wavefront_step+size[1]/2
+		local dy1=math.sin((i+1)*angle_step+angle_offset)*wavefront_step+size[2]/2
+		set_line(math.floor(dx0),math.floor(dy0),math.floor(dx1),math.floor(dy1))
+	end
+	--]==]
+	--[==[ line (top to bottom)
+	for x=0,size[1]-1 do
+		set_pixel(x,math.floor(wavefront_step))
+	end
+	--]==]
+	-- [==[ full screen update
+
+	for x=0,size[1]-1 do
+		for y=0,size[2]-1 do
+			set_pixel(x,y)
+		end
+	end
+	wavefront_complete=true
+	--]==]
+	--[==[ line diagonal
+	
+	for x=0,wavefront_step,1 do
+		local y=math.floor(wavefront_step-x)
+		if x>=0 and x<size[1] and y>=0 and y<size[2] then --inefficient but i'm too tired to think of a better solution
+			set_pixel(x,y)
+		end
+	end
+	--]==]
+end
+function do_diffusion(  )
+	local d=config.diffusion
+
+	
+	for x=0,size[1]-1 do
+		for y=0,size[2]-1 do
+			local L,v_old=laplace_pos(x,y)
+			local v=visits2:get(x,y)
+			v.g=v_old+L*d
+		end
+	end
+end
+function do_depth_diffusion(  )
+	local d=config.diffusion
+
+	
+	for x=0,size[1]-1 do
+		for y=0,size[2]-1 do
+			--local v,vs,avg=get_points_around(x,y)
+			--if v[1]>=3 or v[2]>=3 or v[3]>=3 then
+				local in_v=visits2:get(x,y)
+				local v=visits2:get(x,y)
+				local avg=(in_v.r+in_v.g+in_v.b)/3
+				local dr=in_v.r-avg
+				local dg=in_v.g-avg
+				local db=in_v.b-avg
+				if dr*dr+dg*dg+db*db>0.05 then
+					v.r=in_v.r*(1-d)+avg*d
+					v.g=in_v.g*(1-d)+avg*d
+					v.b=in_v.b*(1-d)+avg*d
+				end
+			--end
 		end
 	end
 end
@@ -999,12 +1160,16 @@ function advance_wavefront_ex(  )
 	fix_wavefront()
 	--print("wavefront2:",#wavefront)
 end
-
+function copy_buffer( a,b )
+	for i=0,a.w*a.h-1 do
+		b.d[i]=a.d[i]
+	end
+end
 function update(  )
 	__no_redraw()
 	__clear()
 	gui()
-	for step=1,1 do
+	for step=1,config.step_count do
 		--[[
 		local step_size=math.atan(1/size[1],current_r)
 		for phi=0,math.pi*2,step_size do
@@ -1057,11 +1222,17 @@ function update(  )
 				--draw_wavefront(true)
 			end
 			advance_wavefront()
+			if config.diffusion>0 and wavefront_complete then
+				--do_diffusion()
+				do_depth_diffusion()
+				wavefront_complete=false
+			end
 			--draw_wavefront()
 
 			local w=visits
 			visits=visits2
 			visits2=w
+			copy_buffer(visits,visits2)
 			global_tick=global_tick+1
 			--do_step=do_step-1
 		end
