@@ -4,8 +4,6 @@ local ffi = require("ffi")
 		* UGH the names!!!! make them sensible
 		* add enum to match the "type_id" in make_buffer
 		* maybe rethink the make_buffer make_texture stuff so it is easier to just stamp them out and read/write
-		* some way of multibuffer constructs (also multi texture)
-			* needs to support 3 at least (for wave sim)
 		* generally go over the stuff and try to simplify
 		* maybe move some stuff to files so it could be easier to reuse (e.g. wave sim in other projects)
 			* wave sim

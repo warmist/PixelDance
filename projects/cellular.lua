@@ -29,11 +29,13 @@ end
 local max_vertex_count=10000
 wavefront_vertices=wavefront_vertices or make_flt_half_buffer(max_vertex_count,1)
 
+local MAX_VALUE=1e8
 
 config=make_config({
 	{"gamma",1,type="float",min=-5,max=5},
 	{"step_count",1,type="int",min=0,max=25},
 	{"diffusion",0,type="floatsci",min=0,max=1,power=2},
+	{"diffusion_color",0,type="floatsci",min=0,max=1,power=2},
 	{"wave_step_size",1.61803398875,type="float",min=0.01,max=5},
 	{"update_dist",0,type="int",min=0,max=125},
 	{"avg_influence",0.5,type="float",min=0,max=1},
@@ -83,11 +85,13 @@ float gain(float x, float k)
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	normed.y=1-normed.y;
+	vec2 polar_normed=vec2(length(pos),(atan(pos.y,pos.x)+3.1459)/2);
+	//vec3 col=texture(tex_main,polar_normed).xyz;
 	vec3 col=texture(tex_main,normed).xyz;
 	//col*=(1-col.b*5);
 	//col*=clamp(col.g*10,0.3,1);
 	//float value=abs(current_age/255-col.z);//col.y;
-	vec3 value=col.xyz;
+	vec3 value=log(col.xyz+vec3(1))/14;
 	value=clamp(value,0,1);
 	/*
 	if(gamma_value<0)
@@ -289,7 +293,7 @@ CA_rule_alive={
 	[3]=1,
 	[4]=0,
 	[5]=0,
-	[6]=1,
+	[6]=0,
 	[7]=0,
 	[8]=0,
 	[9]=0,
@@ -304,6 +308,22 @@ function fix_coord( x,y )
 	if math.floor(x)>size[1]-1 then error("X too big") end
 	if math.floor(y)>size[2]-1 then error("Y too big") end]]
 	return x,y
+end
+function fix_coord_circle( x,y )
+	local cx=x-size[1]/2
+	local cy=y-size[2]/2
+	local r=math.sqrt(cx*cx+cy*cy)
+	local ang=math.atan(cy,cx)
+	local radius=size[1]/2.05
+	if r>=radius then
+		--r=r-radius
+		r=radius*2-r
+		x=math.floor(math.cos(ang)*r+size[1]/2)
+		y=math.floor(math.sin(ang)*r+size[2]/2)
+		return x,y
+	else
+		return x,y
+	end
 end
 function add_sources(x,y, cnts )
 	local retx=0
@@ -331,17 +351,38 @@ function reset_buffer(  )
 		{size[1]/3,size[2]/3},
 		{size[1]*2/3,size[2]*2/2},
 	}
+	--[[
+	for x=0,size[1]-1 do
+	for y=0,size[2]-1 do
+		local r=x
+		local phi=(y/size[2])*math.pi*2
+		if r<size[1]/3.5 and r>10 and phi<math.pi/4 then
+			local p=visits:get(x,y)
+			p.r=1--MAX_VALUE
+			p.g=1--MAX_VALUE
+			p.b=1--MAX_VALUE
+			visits2:set(x,y,p)
+		else
+			visits:set(x,y,{0,0,0,0})
+			visits2:set(x,y,{0,0,0,0})
+		end
+	end
+	end
+	--]]
+	-- [====[
 	for x=0,size[1]-1 do
 	for y=0,size[2]-1 do
 		-- [[
 		local dx=x-size[1]/2
 		local dy=y-size[2]/2
 		local d=math.sqrt(dx*dx+dy*dy)
-		if d<size[1]/3.5 then
+		local radius=size[1]/5.5
+		if d<radius then
+		--if math.abs(dx)<radius and math.abs(dy)<radius then
 			local p=visits:get(x,y)
-			p.r=1
-			p.g=1
-			p.b=1
+			p.r=1--MAX_VALUE
+			p.g=1--MAX_VALUE
+			p.b=1--MAX_VALUE
 			visits2:set(x,y,p)
 		else
 			visits:set(x,y,{0,0,0,0})
@@ -388,6 +429,7 @@ function reset_buffer(  )
 		--]===]
 	end
 	end
+	--]====]
 	visit_tex:use(0)
 	visits2:write_texture(visit_tex)
 	--relax_flowfield(20,0.001)
@@ -445,6 +487,69 @@ function reset_buffer(  )
 	--]]
 end
 --reset_buffer()
+function sign( x )
+	if x>=0 then
+		return 1
+	else
+		return -1
+	end
+end
+function safe_log( x )
+	return math.log(math.abs(x)+1)*sign(x)
+end
+function get_points_around_polar(x,y)
+	local cx=x-size[1]/2
+	local cy=y-size[2]/2
+
+	local r=math.sqrt(cx*cx+cy*cy)
+	local phi=math.atan(cy,cx)
+
+	local count={0,0,0}
+	local count_s={0,0,0}
+	local avg={0,0,0}
+	local names={"r","g","b"}
+	for dr=-1,1 do
+	for dphi=-2,2 do
+		local tr=dr
+		local tphi=dphi*math.pi/4
+		local tx=math.floor(math.cos(tphi)*tr+x)
+		local ty=math.floor(math.sin(tphi)*tr+y)
+		tx,ty=fix_coord(tx,ty)
+		local v=visits:sget(tx,ty)
+		for i=1,3 do
+			local value=v[names[i]]
+			avg[i]=avg[i]+value
+		end
+	end
+	end
+	for i=1,3 do
+		avg[i]=safe_log(avg[i]/9)
+	end
+	for dr=-1,1 do
+	for dphi=-2,2 do
+		local tr=dr
+		local tphi=dphi*math.pi/4
+		local tx=math.floor(math.cos(tphi)*tr+x)
+		local ty=math.floor(math.sin(tphi)*tr+y)
+		tx,ty=fix_coord(tx,ty)
+		local v=visits:sget(tx,ty)
+		for i=1,3 do
+			local value=v[names[i]]
+			if safe_log(value)/avg[i]>1/9 then
+			--if safe_log(value)/avg[i]>1/8 then
+			--if safe_log(value)>safe_log(MAX_VALUE)/2 then
+				count[i]=count[i]+1
+				if dx==0 and dy==0 then
+					count_s[i]=count_s[i]+1
+				end
+			end
+		end
+	end
+	end
+
+
+	return count,count_s,avg
+end
 function get_points_around(x,y)
 	local x=math.floor(x)
 	local y=math.floor(y)
@@ -455,35 +560,48 @@ function get_points_around(x,y)
 	local names={"r","g","b"}
 	for dx=-1,1 do
 	for dy=-1,1 do
-		local tx,ty=fix_coord(x+dx,y+dy)
+		local tx,ty=fix_coord_circle(x+dx,y+dy)
 		local v=visits:sget(tx,ty)
 		for i=1,3 do
 			local value=v[names[i]]
 			avg[i]=avg[i]+value
-			if value>0.5 then
-				count[i]=count[i]+1
-				if dx==0 and dy==0 then
-					count_s[i]=count_s[i]+1
-				end
-			end
 		end
 	end
 	end
 	for i=1,3 do
-		avg[i]=avg[i]/9
+		avg[i]=safe_log(avg[i]/9)
+	end
+	for dx=-1,1 do
+	for dy=-1,1 do
+		local tx,ty=fix_coord_circle(x+dx,y+dy)
+		local v=visits:sget(tx,ty)
+		for i=1,3 do
+			local value=v[names[i]]
+			if safe_log(value)>avg[i] then
+			--if safe_log(value)/avg[i]>1/9 then
+			--if safe_log(value)/avg[i]>1/8 then
+			--if safe_log(value)>safe_log(MAX_VALUE)/2 then
+				if dx==0 and dy==0 then
+					count_s[i]=count_s[i]+1
+				else
+					count[i]=count[i]+1
+				end
+			end
+		end
+	end
 	end
 	
 	return count,count_s,avg
 end
 function laplace_pos( x,y ) --with laplacian kernel (cnt -1,near .2,diag 0.05)
 	local cnt
-	local sum=0
+	local sum={r=0,g=0,b=0}
 
 	for dx=-1,1 do
 	for dy=-1,1 do
 		local w=0
 		local tx,ty=fix_coord(x+dx,y+dy)
-		local v=visits:sget(tx,ty).g
+		local v=visits2:sget(tx,ty)
 		if dx==0 and dy==0 then
 			cnt=v
 			w=-1
@@ -493,7 +611,9 @@ function laplace_pos( x,y ) --with laplacian kernel (cnt -1,near .2,diag 0.05)
 			w=0.05
 		end
 
-		sum=sum+v*w
+		sum.r=sum.r+v.r*w
+		sum.g=sum.g+v.g*w
+		sum.b=sum.b+v.b*w
 	end
 	end
 
@@ -676,7 +796,7 @@ function do_rule( x,y,dx,dy ,id)
 		if rule_res[i]>0.5 then
 			tr[trgs[i]]=tr[trgs[i]]+(config.value_grow+value_g_offsets[i])*ai
 			--if tr.g<0.5 then tr.g=0.5 end
-			if tr[trgs[i]]>1 then tr[trgs[i]]=1 end
+			if tr[trgs[i]]>MAX_VALUE then tr[trgs[i]]=MAX_VALUE end
 		else
 			tr[trgs[i]]=tr[trgs[i]]-(config.value_shrink+value_s_offsets[i])*ai
 			if tr[trgs[i]]<0 then tr[trgs[i]]=0 end
@@ -980,7 +1100,7 @@ function advance_wavefront()
 	local radius=wavefront_step
 
 
-	--[==[
+	--[==[ circle
 
 	function set_pixels( x,y )
 		local cx=size[1]/2
@@ -1009,7 +1129,7 @@ function advance_wavefront()
 		end
 	end
 	--]==]
-	--[==[ regular polygon 
+	-- [==[ regular polygon 
 	local count_sides=3
 	local angle_step=math.pi*2/count_sides
 	local angle_offset=wavefront_step*0.01
@@ -1027,7 +1147,7 @@ function advance_wavefront()
 		set_pixel(x,math.floor(wavefront_step))
 	end
 	--]==]
-	-- [==[ full screen update
+	--[==[ full screen update
 
 	for x=0,size[1]-1 do
 		for y=0,size[2]-1 do
@@ -1053,15 +1173,40 @@ function do_diffusion(  )
 	for x=0,size[1]-1 do
 		for y=0,size[2]-1 do
 			local L,v_old=laplace_pos(x,y)
-			local v=visits2:get(x,y)
-			v.g=v_old+L*d
+			local v=visits:get(x,y)
+			v.r=v_old.r+L.r*d
+			v.g=v_old.g+L.g*d
+			v.b=v_old.b+L.b*d
 		end
 	end
 end
-function do_depth_diffusion(  )
-	local d=config.diffusion
 
-	
+function do_depth_diffusion(  )
+	local d=config.diffusion_color
+	for x=0,size[1]-1 do
+		for y=0,size[2]-1 do
+			local in_v=visits:get(x,y)
+			local v=visits2:get(x,y)
+			local avg=(in_v.r+in_v.g+in_v.b)/3
+			local dr=in_v.r-avg
+			local dg=in_v.g-avg
+			local db=in_v.b-avg
+			if dr>dg and dr>db then
+				local transfer=in_v.g*d-in_v.b*d
+				transfer=math.max(math.min(transfer,1-in_v.r),0)
+				v.r=in_v.r+transfer
+				v.g=in_v.g-transfer
+				v.b=in_v.b-transfer
+			else
+				local transfer=dr+dg+db
+				transfer=math.max(math.min(transfer,1-in_v.b),0)
+				v.r=in_v.r-transfer
+				v.g=in_v.g-transfer
+				v.b=in_v.b+transfer
+			end
+		end
+	end
+	--[[
 	for x=0,size[1]-1 do
 		for y=0,size[2]-1 do
 			--local v,vs,avg=get_points_around(x,y)
@@ -1072,14 +1217,15 @@ function do_depth_diffusion(  )
 				local dr=in_v.r-avg
 				local dg=in_v.g-avg
 				local db=in_v.b-avg
-				if dr*dr+dg*dg+db*db>0.05 then
+				--if dr*dr+dg*dg+db*db>0.05 then
 					v.r=in_v.r*(1-d)+avg*d
 					v.g=in_v.g*(1-d)+avg*d
 					v.b=in_v.b*(1-d)+avg*d
-				end
+				--end
 			--end
 		end
 	end
+	--]]
 end
 function advance_wavefront_ex(  )
 	--[==[
@@ -1222,9 +1368,13 @@ function update(  )
 				--draw_wavefront(true)
 			end
 			advance_wavefront()
-			if config.diffusion>0 and wavefront_complete then
-				--do_diffusion()
-				do_depth_diffusion()
+			if wavefront_complete then
+				if config.diffusion>0 then
+					do_diffusion()
+				end
+				if config.diffusion_color> 0 then
+					do_depth_diffusion()
+				end
 				wavefront_complete=false
 			end
 			--draw_wavefront()
