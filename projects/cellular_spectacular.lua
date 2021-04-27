@@ -68,22 +68,24 @@ void main(){
 	//col*=(1-col.b*5);
 	//col*=clamp(col.g*10,0.3,1);
 	//float value=abs(current_age/255-col.z);//col.y;
-	//vec3 value=log(col.xyz+vec3(1))/14;
-	//value=clamp(value,0,1);
+	//vec3 value=log(col.xyz+vec3(1))/4;
+	vec3 value=col.xyz;
+	value=clamp(value,0,1);
 	/*
 	if(gamma_value<0)
 		value=1-pow(1-value,-gamma_value);
 	else
 		value=pow(value,gamma_value);
 	*/
-	/*
+	float gamma_value=2;
+	///*
 	value.x=gain(value.x,gamma_value);
 	value.y=gain(value.y,gamma_value);
 	value.z=gain(value.z,gamma_value);
-	*/
+	//*/
 	//value+=col.x*0.05;
 	//col=palette(value,vec3(0.5),vec3(0.5),vec3(0.4,0.35,0.30),vec3(0.5,0.45,0.3));
-	//col=vec3(value);
+	col=vec3(value);
 	//col.r=1;
 	color = vec4(col,1);
 }
@@ -115,20 +117,46 @@ vec4 count_around(vec2 pos)
 	//ret+=textureOffset(tex_main,pos,ivec2(0,0))*(-1);
 	return ret;
 }
+vec4 laplace(vec2 pos) //with laplacian kernel (cnt -1,near .2,diag 0.05)
+{
+	vec4 ret=vec4(0);
+	ret+=textureOffset(tex_main,pos,ivec2(-1,-1))*0.05;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,1))*0.05;
+	ret+=textureOffset(tex_main,pos,ivec2(1,-1))*0.05;
+	ret+=textureOffset(tex_main,pos,ivec2(1,1))*0.05;
 
+	ret+=textureOffset(tex_main,pos,ivec2(0,-1))*.2;
+	ret+=textureOffset(tex_main,pos,ivec2(-1,0))*.2;
+	ret+=textureOffset(tex_main,pos,ivec2(1,0))*.2;
+	ret+=textureOffset(tex_main,pos,ivec2(0,1))*.2;
+
+	ret+=textureOffset(tex_main,pos,ivec2(0,0))*(-1);
+	return ret;
+}
 vec4 rule(vec4 p,vec4 c)
 {
 	//if p==1 and c=2,3 then 1
 	//if p==0 and c==3 then 1
 	//else 0
 	//vec4 ret;
-	//ret+=mix(step(vec4(2.5),c)-step(vec4(3.5),c),step(vec4(1.5),c)-step(vec4(3.5),c),p);
+	/*
+	ret+=mix(
+		step(vec4(2.5),c)-step(vec4(3.5),c),
+		step(vec4(1.5),c)-step(vec4(4.5),c)
+		,clamp(p,0,1));
+		*/
+		vec4 rule_res=mix(
+		step(vec4(2.5),c)-step(vec4(3.5),c),
+		step(vec4(1.5),c)-step(vec4(4.5),c),
+		clamp(p,0,1));
 	vec4 ret=p;
-	float width=0.01;
+	/*
+	float width=0.005;
 	vec4 rule_res=mix(
 		smoothstep(vec4(2.5-width),vec4(2.5+width),c)-smoothstep(vec4(3.5-width),vec4(3.5+width),c), //if dead
-		smoothstep(vec4(1.5-width),vec4(1.5+width),c)-smoothstep(vec4(5.5-width),vec4(5.5+width),c), //if alive
+		smoothstep(vec4(1.5-width),vec4(1.5+width),c)-smoothstep(vec4(3.5-width),vec4(3.5+width),c), //if alive
 		clamp(p,0,1));
+	*/
 	ret+=mix(-value_shrink,value_grow,rule_res);
 	return ret;
 }
@@ -138,12 +166,24 @@ void main()
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec4 cnt=texture(tex_main,normed);
 	vec4 count=count_around(normed);
-	float diffusion=0;
-	float color_diffusion=0.001;
-	vec4 ret=rule(cnt,count)+((count+cnt)/9)*diffusion;
+	float diffusion=0;//0.001;
+	float color_diffusion=0;//0.00025;
+	vec4 ret=rule(cnt,count)+laplace(normed)*diffusion;
 	float avg=(ret.x+ret.y+ret.z+ret.w)/4.0;
 	ret=ret*(1-color_diffusion)+vec4(avg)*color_diffusion;
-	color=ret;
+	float d=length(pos.xy);
+	if(length(pos.xy)<1)
+		color=clamp(ret,0,1);
+	else
+	{
+		//color=vec4(0);
+		vec2 p2;
+		float a=atan(pos.y,pos.x);
+		p2=vec2(cos(a),sin(a))*(2-d);
+		normed=(p2+vec2(1))/2;
+		color=texture(tex_main,normed);
+	}
+
 }
 ]==]
 
@@ -157,7 +197,7 @@ function reset_buffer(  )
 		local dy=y-h/2
 		local d=math.sqrt(dx*dx+dy*dy)
 		local radius=w/5.5
-		if d<radius and math.random()>0.6 then
+		if d<radius then
 		--if math.abs(dx)<radius and math.abs(dy)<radius then
 			local p=io_buffer:get(x,y)
 			local v=math.random()
@@ -189,10 +229,10 @@ function rule_step()
 	if not next_buff:render_to(cell_buffer.w,cell_buffer.h) then
 		error("failed to set framebuffer up")
 	end
-	local g=0.5
-	local s=0.01
-	update_shader:set("value_grow",g,g+0.01,g+0.02,g+0.03)
-	update_shader:set("value_shrink",s,s,s,s-0.001)
+	local g=0.02
+	local s=0.001
+	update_shader:set("value_grow",g,g,g,g)
+	update_shader:set("value_shrink",s,s*0.9,s*0.95,s)
 	update_shader:draw_quad()
 	__render_to_window()
 	cell_buffer:advance()
