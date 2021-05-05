@@ -49,7 +49,7 @@ local sample_count=math.pow(2,20)
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
 
-str_cmplx=str_cmplx or "s"
+str_cmplx=str_cmplx or "c_mul(s,vec2(global_seed,1)/sqrt(global_seed*global_seed+1))"
 
 str_other_code=str_other_code or ""
 str_preamble=str_preamble or ""
@@ -350,6 +350,7 @@ vec3 tonemap(vec3 light)
 	//Y=log(Y+1)/log(min_max.y+1);
 #if 0
 	Y=Tonemap_Uchimura(Y);
+	//Y=Tonemap_ACES(Y);
 #else
 	if(white_point<0)
     	Y = Y / (1 + Y); //simple compression
@@ -368,7 +369,8 @@ vec3 tonemap(vec3 light)
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	vec3 ccol=texture(tex_main,normed).xyz;
+	//vec3 ccol=texture(tex_main,normed).xyz;
+	vec3 ccol=texture(tex_main,normed).xyz+vec3(avg_lum);
 
 	/*
 	if(ccol.x<0)ccol.x=log(1-ccol.x);
@@ -579,7 +581,7 @@ end
 
 palette.generators={
 	{"random",function (ret, hue_range,sat_range,lit_range )
-		local count=math.random(2,10)
+		local count=math.random(20,50)
 		--local count=2
 		for i=1,count do
 			local nh,ns,nl
@@ -693,6 +695,15 @@ palette.generators={
 			if l2<0 then l2=0 end
 
 			table.insert(ret,new_color(h2,s2,l2,((i)/max_step)*(max_palette_size-1)))
+		end
+	end},
+	{"fullspectrum",function (ret, hue_range,sat_range,lit_range )
+		local s=0.4
+		local l=0.33
+		for i=0,max_palette_size-1 do
+			local h=i/(max_palette_size-1)
+
+			table.insert(ret,new_color(h*0.75,s,l,(i/(max_palette_size-1))*(max_palette_size-1)))
 		end
 	end}
 }
@@ -881,7 +892,8 @@ local normal_symbols_complex={
 --]=]
 ["c_div(R,R)"]=0.01,["c_inv(R)"]=1,
 ["c_mul(R,R)"]=2,
-["(R)-(R)"]=3,["(R)+(R)"]=3
+["(R)-(R)"]=3,["(R)+(R)"]=3,
+--["cheb_eval(R)"]=1
 }
 local terminal_symbols_FT={
 ["t"]=0.5,["c"]=0.5,
@@ -1289,13 +1301,48 @@ function newton_fractal( degree )
 	ret=ret..string.format("s-c_mul(params.xy,%s)+c_mul(params.zw,p)",fract)
 	return ret
 end
+function chebyshev_poly_series( degree )
+	local values={}
+	local sum_value={0,0}
+	for i=1,degree do
+		local v={math.random()*2-1,math.random()*2-1}--{math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1}--{i-degree/2,-i+degree/2}--{math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1}
+		--v[2]=v[1]*(-1)
+		local l=math.sqrt(v[1]*v[1]+v[2]*v[2]
+)		v[1]=v[1]/l
+		v[2]=v[2]/l
+		values[i]=v
+		for i=1,2 do
+			sum_value[i]=sum_value[i]+v[i]*v[i]
+		end
+	end
+	local function insert_vec2( v )
+		return string.format("vec2(%g,%g)",v[1],v[2])
+	end
+	for i=1,degree do
+		for j=1,2 do
+			values[i][j]=values[i][j]/math.sqrt(sum_value[j])
+		end
+		print(i,insert_vec2(values[i]))
+	end
+	
+	str_other_code="vec2 cheb_eval(vec2 x){ vec2 ret=vec2(0); vec2 pure_chb_1=x;vec2 pure_chb_0=vec2(0);vec2 tmp_chb;\n"
+	str_other_code=str_other_code..string.format("ret+=%s*pure_chb_0;\n",insert_vec2(values[1]))
+	str_other_code=str_other_code..string.format("ret+=%s*pure_chb_1;\n",insert_vec2(values[2]))
+	for i=3,degree do
+		str_other_code=str_other_code.."tmp_chb=2*x*pure_chb_1-pure_chb_0;\npure_chb_0=pure_chb_1;pure_chb_1=tmp_chb;"
+		str_other_code=str_other_code..string.format("ret+=%s*pure_chb_1;\n",insert_vec2(values[i]))
+	end
+	str_other_code=str_other_code.."return ret;}"
+	--print(str_other_code)
+	--str_cmplx="cheb_eval(s*params.xy+p*params.zw)*global_seed+vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI"
+end
 animate=false
 function rand_function(  )
 	local s=random_math(rand_complexity)
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
 	--local tbl_insert={"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seed)","vec2(cos(length(p)*M_PI*4+global_seed),sin(length(p)*M_PI*4+global_seed))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
-	local tbl_insert={"params.xy","params.zw"}
+	local tbl_insert={"s","mix(p,p/length(p),global_seed)","params.xy","params.zw"}
 	--[[
 	local point_count=3
 	for i=1,point_count do
@@ -1305,22 +1352,27 @@ function rand_function(  )
 		table.insert(tbl_insert,string.format("vec2(%g,%g)",math.cos(vr)*r,math.sin(vr)*r))
 	end
 	--]]
-	--[[
+	--[==[
 	local tex_variants={
-		"tex_p.xy","tex_p.yz","tex_p.zx",
+		--[["tex_p.xy","tex_p.yz","tex_p.zx",
 		"tex_s.xy","tex_s.yz","tex_s.zx",
 		"vec2(tex_s.x,tex_p.x)","vec2(tex_s.y,tex_p.y)","vec2(tex_s.z,tex_p.z)",
 		"vec2(tex_s.x,tex_p.y)","vec2(tex_s.y,tex_p.z)","vec2(tex_s.z,tex_p.x)",
 		"vec2(tex_s.x,tex_p.z)","vec2(tex_s.y,tex_p.x)","vec2(tex_s.z,tex_p.y)",
-
+		--]]
+		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI","vec2(atan(tex_p.y,tex_p.x),atan(tex_s.y,tex_s.x))/M_PI",
+		"vec2(atan(tex_s.x,tex_s.z),atan(tex_p.x,tex_p.z))/M_PI","vec2(atan(tex_p.x,tex_p.z),atan(tex_s.x,tex_s.z))/M_PI"
 	}
-	local num_tex=1
+	local num_tex=2
 	for i=1,num_tex do
-		table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
+		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
+		table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
 	end
-	--]]
-	str_cmplx=random_math_complex(rand_complexity,"c_mul(c_sqrt(R*global_seed+s),p)+R",tbl_insert)
-	--str_cmplx="c_tan(c_sqrt(c_sqrt((params.zw)+(c_sin(((c_inv(s*global_seed))+(p))+(params.xy))))))"
+	--]==]
+	--chebyshev_poly_series(10)
+	str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert)
+	--str_cmplx=random_math_complex(15,"cheb_eval(R)",tbl_insert)
+	--str_cmplx=random_math_complex(15,"c_mul(cheb_eval(c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),(s-p))),R)",tbl_insert)
 	--str_cmplx=newton_fractal(rand_complexity)
 	--str_cmplx=random_math_complex_const(rand_complexity,nil,{"s","p*vec2(move_dist,global_seed)","params.xy","params.zw"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,2,nil,{"s","c_mul(p,vec2(move_dist,global_seed))","params.xy","params.zw"})
@@ -1512,9 +1564,9 @@ function rand_function(  )
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
 	--[[ polar gravity
-	--str_preamble=str_preamble.."vec2 np=s;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
+	str_preamble=str_preamble.."vec2 np=s;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."vec2 np=p;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
-	str_preamble=str_preamble.."vec2 np=tex_s.yz;float npl=abs(sqrt(dot(np,np)))+0.5;npl*=npl;"
+	--str_preamble=str_preamble.."vec2 np=tex_s.yz;float npl=abs(sqrt(dot(np,np)))+0.5;npl*=npl;"
 	--str_preamble=str_preamble.."vec2 np=c_mul(p-s,last_s);float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."float ang_xx=atan(last_s.y,last_s.x);vec2 np=s-p*vec2(cos(ang_xx),sin(ang_xx))/length(p);float npl=cos((sqrt(dot(np,np))-0.5)*M_PI*2)*0.5+1.25;npl*=npl;"
 	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
@@ -1524,8 +1576,8 @@ function rand_function(  )
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seed*8))/(M_PI/2);s=last_s+ds*((global_seed*7)*vv/ls);"
-	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
-	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/npl);s=last_s+ds*(move_dist*vv/ls);"
+	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/npl);s=last_s+ds*(move_dist*vv/ls);"
 	--]]
 	--[[ move towards circle
 	str_postamble=str_postamble.."vec2 tow_c=s+vec2(cos(normed_iter*M_PI*2),sin(normed_iter*M_PI*2))*move_dist;s=(dot(tow_c,s)*tow_c/length(tow_c));"
@@ -1607,10 +1659,11 @@ function rand_function(  )
 	--str_preamble=str_preamble.."s=vec2(cos(p.y)*s.x-sin(p.y)*s.y,cos(p.y)*s.y+sin(p.y)*s.x);"
 	str_preamble=str_preamble.."s=vec2(cos(normed_iter*M_PI*2)*s.x-sin(normed_iter*M_PI*2)*s.y,cos(normed_iter*M_PI*2)*s.y+sin(normed_iter*M_PI*2)*s.x);"
 	--]]
-	--[[ const-delta-like
+	-- [[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
-	str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
+	str_postamble=str_postamble.."s/=length(s);s=os+s*dot(tex_s,tex_s)/move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seed*move_dist+1)/move_dist);"
@@ -2036,10 +2089,14 @@ vec2 from_polar(vec2 p)
 
 vec3 func_actual(vec2 s,vec2 p)
 {
+	//vec4 tex_p=texture(tex_img,p*scale*move_dist);
+	//vec4 tex_s=texture(tex_img,s*scale*move_dist);
 	vec4 tex_p=texture(tex_img,p*scale);
 	vec4 tex_s=texture(tex_img,s*scale);
 	tex_s=tex_s/(length(tex_s)+1);
 	tex_p=tex_p/(length(tex_p)+1);
+	//tex_p*=move_dist;
+	//tex_s*=move_dist;
 	//tex_s=tex_s/(exp(-length(tex_s))+1);
 	//tex_p=tex_p/(exp(-length(tex_p))+1);
 	//tex_s=1/(exp(-tex_s)+1);
@@ -2223,7 +2280,7 @@ void main()
 ]==],
 --Args to format
 	escape_mode_str(),
-	other_code or "",
+	str_other_code or "",
 	str_preamble.."\n"..make_coord_change().."\n"..str_postamble
 ),
 [==[ void main(){} ]==],"point_out"
@@ -2786,12 +2843,12 @@ function generate_shuffling( num_steps )
 		end
 	end
 	--]]
-	-- [[ vanilla
+	--[[ vanilla
 	for i=1,num_steps do
 		global_seed_shuffling[i]=math.random()
 	end
 	--]]
-	--[[ constantly biggening
+	-- [[ constantly biggening
 	local v=math.random()
 	for i=1,num_steps do
 		global_seed_shuffling[i]=v
@@ -2800,7 +2857,7 @@ function generate_shuffling( num_steps )
 	for i=1,num_steps do
 		global_seed_shuffling[i]=global_seed_shuffling[i]/v
 	end
-	-- [=[ flip every second one
+	--[=[ flip every second one
 	for i=1,num_steps do
 		if i%2==0 then
 			global_seed_shuffling[i]=1-global_seed_shuffling[i]
