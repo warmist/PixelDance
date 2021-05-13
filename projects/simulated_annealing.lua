@@ -85,7 +85,7 @@ void main(){
 
 	if(count_steps>0)
 		col=floor(col*count_steps)/count_steps;
-#if 1
+#if 0
 	color = vec4(palette(col),1);
 #else
 	col=pow(col,2.2);
@@ -237,7 +237,7 @@ function randomize_ruleset(count )
 		ret[i][i]=math.abs(ret[i][i])
 	end
 	--]]
-	-- [[ enforce symetry
+	-- [[ enforce symmetry
 	for i=1,count do
 		for ii=i+1,count do
 			-- [=[ full
@@ -408,7 +408,7 @@ function get_around_fract( x,y )
 	local dx={-1, 0,0,1,2,0, 0,-2,3,0,0,-3}
 	local dy={ 0,-1,1,0,0,2,-2, 0,0,3,-3,0}
 	--]]
-	-- [[
+	--[[
 	for i=1,#dx do
 		local tx=x+dx[i]
 		local ty=y+dy[i]
@@ -463,7 +463,7 @@ function get_around_fract( x,y )
 	end
 	offset=offset+#offsets_x
 	--]]
-	--[[ 4(up to) fold symetry 
+	-- [[ 4(up to) fold symetry 
 
 	local gdx={1,-1,1,-1}
 	local gdy={1,1,-1,-1}
@@ -518,7 +518,7 @@ function get_around_fract( x,y )
 	end
 	offset=offset+#delta_v
 	--]]
-	-- [[ n fold rotational sym
+	--[[ n fold rotational sym
 
 	for i=1,#ctab do
 		local v=(0.5+i/#ctab)*2
@@ -645,16 +645,47 @@ function delta_substep( v )
 	return 3*v*v-2*v*v*v+0.5
 	--]]
 end
-function calculate_value_fract( x,y,v,v_fract)
+function sdEquilateralTriangle( x,y )
+    local k = math.sqrt(3.0);
+    x = math.abs(x) - 1.0;
+    y = y + 1.0/k;
+    if( x+k*y>0.0 ) then
+    	local nx=(x-k*y)/2
+    	local ny=(-k*x-y)/2
+    	x=nx
+    	y=ny
+    	--p = vec2(p.x-k*p.y,-k*p.x-p.y)/2.0;
+    end
+    local nx=x
+    if nx<-2.0 then nx=-2.0 end
+    if nx>0 then nx=0 end
+    x=x-nx
+    return -math.sqrt(x*x+y*y)*signum(y)
+    --p.x -= clamp( p.x, -2.0, 0.0 );
+    --return -length(p)*sign(p.y);
+end
+function global_rules(x,y, rv )
+	local cx=x-grid.w/2
+	local cy=y-grid.h/2
+	local nx=(cx/grid.w)*4
+	local ny=(cy/grid.h)*4
+	local m=-1
+	if cx>0 then m=1 end
+	return m*rv*(math.abs(sdEquilateralTriangle(nx,ny))-0.2)
+	--return math.cos((math.sqrt(cx*cx+cy*cy)-rv)*0.025*math.pi)
+end
+function calculate_value_fract( x,y,v,v_fract,rv)
+	local ret=0
+	-- [[
 	local a=get_around_fract(x,y)
 	local r=ruleset[v+1]
 	if r==nil then print(v+1,v_fract) end
-	local ret=0
 	local dst=delta_substep(v_fract)
 	if type(r)=="function" then
 		return r(a,v,v_fract,x,y)
 	end
-
+	--]]
+	-- [==[
 	for i,vv in ipairs(a) do
 		if vv[1]==nil then print(vv[1],vv[2],x,y,v,v_fract) end
 		local rule=r[vv[1]+1]
@@ -665,9 +696,49 @@ function calculate_value_fract( x,y,v,v_fract)
 		ret=rule*delta_substep((vv[2]+v_fract)/2)+ret
 		--ret=rule*delta_substep(math.sqrt(vv[2]*v_fract))+ret
 	end
-	return ret --*delta_substep(v_fract)
+	--]==]
+	return ret--*delta_substep(v_fract)
 end
-
+function calculate_value_global( x,y,v,v_fract,rv)
+	local ret=0
+	local cx=x-grid.w/2
+	local cy=y-grid.h/2
+	local sum_v=rv
+	--[[
+	local max_i=8
+	for i=0,max_i-1 do
+		local v=i/max_i
+		cx=math.floor((x-grid.w/2)*v+grid.w/2)
+		cy=math.floor((y-grid.h/2)*v+grid.h/2)
+		sum_v=sum_v+math.abs(rv-grid:get(cx,cy))
+	end
+	--]]
+	--[[
+	cx=math.floor((x-grid.w/2)*rv+grid.w/2)
+	cy=math.floor((y-grid.h/2)*rv+grid.h/2)
+	sum_v=math.abs(rv-grid:get(cx,cy))
+	--]]
+	local dx={1,-1,0,0,1,-1,1,-1}
+	local dy={0,0,1,-1,1,1,-1,-1}
+	local max_i=#dx
+	
+	local multiplier=math.floor(math.sqrt(cx*cx+cy*cy)/64)+1
+	
+	
+	for i=1,max_i*multiplier do
+		local v=math.floor(i/#dx)+1
+		local idx=((i - 1) % #dx) + 1
+		local tdx=dx[idx]*v
+		local tdy=dy[idx]*v
+		local tx=x+tdx
+		local ty=y+tdy
+		tx,ty=coord_edge(tx,ty)
+		local trv=grid:get(tx,ty)
+		sum_v=sum_v+math.abs(rv-trv)*((tdx*tdx+tdy*tdy))
+	end
+	--]]
+	return ret +global_rules(x,y,sum_v)--*delta_substep(v_fract)
+end
 function calculate_value_smooth( x,y,v,v_fract,real_value)
 	local a=get_around_fract(x,y)
 	-- [[
@@ -753,7 +824,8 @@ function do_grid_step(x,y)
 		local new_trg_value=calculate_value(tx,ty,v)*delta_substep(rv*num_values-v)
 		local new_value=calculate_value(x,y,tv)*delta_substep(trv*num_values-tv)
 		--]]
-		local f=calculate_value_fract
+		local f=calculate_value_global
+		--local f=calculate_value_fract
 		local old_value=f(x,y,v,v_fract,rv)
 		local old_trg_value=f(tx,ty,tv,t_fract,trv)
 
@@ -764,10 +836,10 @@ function do_grid_step(x,y)
 
 		--[[
 		if math.random()>0.99999 and delta_value~=0 then
-			print(math.sqrt(dx*dx+dy*dy),delta_value)
+			print(math.sqrt(dx*dx+dy*dy),delta_value,math.exp(-delta_value*delta_value*(1-config.temperature)))
 		end
 		--]]
-		if delta_value<0 or ( math.exp(-delta_value*(1-config.temperature))>math.random()) then
+		if delta_value<0 or ( math.exp(-delta_value/(config.temperature))>math.random()) then
 			--[[
 			grid:set(x,y,tv/num_values)
 			grid:set(tx,ty,v/num_values)
@@ -844,17 +916,17 @@ function update(  )
 	__clear()
 	imgui.Begin("Simulated annealing")
 	draw_config(config)
-	local variation_const=0.0
+	local variation_const=0.05
 	if imgui.Button("Restart") then
 		for x=0,grid.w-1 do
 		for y=0,grid.h-1 do
-			--grid:set(x,y,math.random())
+			grid:set(x,y,math.random())
 			--grid:set(x,y,(x*(1-variation_const)/grid.w+math.random()*variation_const))
 			--[[
 			local t=(x/grid.w+y/grid.h)*0.5
 			grid:set(x,y,(t*(1-variation_const)+math.random()*variation_const))
 			--]]
-			-- [[
+			--[[
 			local dx=(x-grid.w/2)
 			local dy=(y-grid.h/2)
 			local len=math.sqrt(dx*dx+dy*dy)/(0.5*grid.w)
@@ -883,13 +955,13 @@ function update(  )
 	end
 	imgui.SameLine()
 	if imgui.Button("RandomizeRules") then
-		randomize_ruleset(3)
+		randomize_ruleset(25)
 		num_values=#ruleset
 		print(rule_string())
 	end
 	imgui.End()
 	if not config.paused then
-		local stop_cond=0.001
+		local stop_cond=1e-10
 		update_grid()
 		--config.temperature=config.temperature-config.dt --linear cooling
 		--config.temperature=config.temperature*(1-config.dt) --exponential cooling
