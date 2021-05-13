@@ -670,7 +670,7 @@ function global_rules(x,y, rv )
 	local nx=(cx/grid.w)*4
 	local ny=(cy/grid.h)*4
 	local m=-1
-	if cx>0 then m=1 end
+	if math.abs(cx)<30 then m=1 end
 	return m*rv*(math.abs(sdEquilateralTriangle(nx,ny))-0.2)
 	--return math.cos((math.sqrt(cx*cx+cy*cy)-rv)*0.025*math.pi)
 end
@@ -734,7 +734,8 @@ function calculate_value_global( x,y,v,v_fract,rv)
 		local ty=y+tdy
 		tx,ty=coord_edge(tx,ty)
 		local trv=grid:get(tx,ty)
-		sum_v=sum_v+math.abs(rv-trv)*((tdx*tdx+tdy*tdy))
+		local dv=rv-trv
+		sum_v=sum_v+dv*dv*(250/math.sqrt(tdx*tdx+tdy*tdy+math.abs(tdx*tdy)))
 	end
 	--]]
 	return ret +global_rules(x,y,sum_v)--*delta_substep(v_fract)
