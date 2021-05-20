@@ -171,7 +171,7 @@ function load_hd_png()
 		__unbind_buffer()
 	end
 end
-image_buf=read_hd_png_buf("waves_out.buf")
+image_buf=read_hd_png_buf("sim_aneal.dat")
 --]]
 function safe_set_size( w,h )
 	if STATE.size[1]~=w or STATE.size[2]~=h then
@@ -738,11 +738,13 @@ float kubelka_munk(vec2 val)
 	return (sqrt(2*K*S)-S)/(2*K-S);
 #endif
 }
+//mixture of pigments
 float mixture(vec2 v1,vec2 v2,float c1)
 {
 	vec2 r=mix(v1,v2,c1);
 	return kubelka_munk(r);
 }
+//layering of pigments
 float reflectivity_KS(vec2 v1,float height,float Rg)
 {
 	float k=v1.x;
@@ -825,27 +827,7 @@ float mix_saturate(float v)
 	float center=1-padding*2;
 	return clamp((v-padding)*(1/center),0,1);
 }
-float draw_permutation(float back,int a,int b,int c,vec2 pos)
-{
-	if(1-step(abs(pos.x-0.5),0.9/2)>0)
-		return back;
-	float aspect=4.0/6.0;
-	if(1-step(abs(pos.y-0.5),0.9/2)>0)
-		return back;
-	//float v=step(abs(pos.x-0.5),0.4);//*step(abs(pos.y-0.5),0.4);
 
-	vec2 m1=mix(pigment[a],pigment[b],mix_saturate(pos.x*2));
-	vec2 m2=mix(pigment[b],pigment[c],mix_saturate(pos.x*2-1));
-	//vec2 m1=mix(pigment[a],pigment[b],1-step(pos.x,0.25));
-	//vec2 m2=mix(pigment[b],pigment[c],1-step(pos.x,0.75));
-	float vv=step(pos.x,0.5);
-	//return kubelka_munk(mix(m1,m2,1-vv));
-	//return kubelka_munk(m1);
-	//float cdist=min(1-abs(pos.y-0.5)*2,1-abs(pos.x-0.5)*2);
-	float sw=0.1;
-	float cdist=1-smoothstep(-sw,sw,sdBox(pos.xy-vec2(0.5),vec2(0.35,0.35)));
-	float height=cdist*8;
-	return reflectivity_KS(mix(m1,m2,1-vv),height,back);
 float saturate(float x)
 {
 	return clamp(x,0,1);
@@ -858,34 +840,6 @@ float mix3(float a,float b,float c,float v)
 	return w0*a+w1*b+w2*c;
 }
 void main(){
-
-	int permutations[]={
-		1, 2, 3,
-		1, 2, 4,
-		1, 3, 2,
-		1, 3, 4,
-		1, 4, 2,
-		1, 4, 3,
-		2, 1, 3,
-		2, 1, 4,
-		2, 3, 1,
-		2, 3, 4,
-		2, 4, 1,
-		2, 4, 3,
-		3, 1, 2,
-		3, 1, 4,
-		3, 2, 1,
-		3, 2, 4,
-		3, 4, 1,
-		3, 4, 2,
-		4, 1, 2,
-		4, 1, 3,
-		4, 2, 1,
-		4, 2, 3,
-		4, 3, 1,
-		4, 3, 2,
-	};
-
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec2 offset=vec2(0,0);
 	vec2 dist_pos=pos.xy;
@@ -908,8 +862,8 @@ void main(){
 	vec3 ss;
 
 	float scale_height=10;
-	vec3 h=vec3(v*scale_height);
-	//vec3 h=pow(nv,vec3(3))*scale_height;
+	//vec3 h=vec3(v*scale_height);
+	vec3 h=pow(nv,vec3(3))*scale_height;
 	vec3 cnorm=clamp(nv*4,0,1);
 	//h=clamp(h,0.01,100);
 	float T=input_temp;
@@ -920,20 +874,28 @@ void main(){
 
 	//nv.xyz=vec3(pos.xy+1,0)/2;
 	float sw=0.005;
+	/*
 	float back_v=1-smoothstep(sw,-sw,
 		//sminCubic(sdSphere(pos.xy,0.12),1-sdSphere(pos.xy,1),0.05)
 		abs(sdSphere(pos.xy,0.6))-0.3
 		);//smoothstep(-sw,sw,0.5-abs(pos.x))*smoothstep(-sw,sw,0.5-abs(pos.y));
-	if(pos.x>0)
-		back_v=1-back_v;
-	/*
-	float back=kubelka_munk(pigment[0])*back_v+
-			   kubelka_munk(pigment[1])*(1-back_v);
 	*/
+	//if(pos.x>0)
+	//	back_v=1-back_v;
+	/*float angle=atan(pos.y,pos.x)+M_PI;
+	float back_v=cos(angle*3)*0.5+0.5;
+	back_v*=cos(length(pos.xy)*16)*0.5+0.5;
+	back_v=back_v*0.6+0.4;*/
+	//back_v*=clamp(length(pos.xy),0,0.4)*2.5;
+	///*
+	float back_v=0.8;
+	float back=kubelka_munk(pigment[0])*back_v+
+			   kubelka_munk(pigment[5])*(1-back_v);
+	//*/
 	//vec2 back_ks=mix(pigment[0],pigment[1],back_v);
 	//float back=kubelka_munk(back_ks);
-	float stripes=step(mod(normed.y+1/24.0,1/6.0),1/12.0)*0.4;
-	float back=kubelka_munk(mix(pigment[0],pigment[5],stripes));
+	//float stripes=step(mod(normed.y+1/24.0,1/6.0),1/12.0)*0.4;
+	//float back=kubelka_munk(mix(pigment[0],pigment[5],stripes));
 	float vv=clamp(abs(pos.y)+0.1,0,1);//step((pos.x+pos.y)/2,0);
 	//float vv=0;
 	//float r=reflectivity(nv.x,reflectivity(nv.y,vv,wave_reflect.y),wave_reflect.x);
@@ -951,15 +913,20 @@ void main(){
 	vec2 icoord=floor(normed/rect_size);
 
 	int p=int(icoord.x+icoord.y*4);
-	//float r=kubelka_munk(pigment[permutations[p*3]]);
-	float r=draw_permutation(back,permutations[p*3],permutations[p*3+1],permutations[p*3+2],mcoord);
-	/*
+
+	///*
 	float mix_v=clamp(c,0,1);
-	vec2 mix_ks=mix(pigment[2],pigment[3],mix_v);
-	float r=reflectivity_KS(mix_ks,h.x,back);
+	float w_mix=0.05;
+	vec2 p1=mix(pigment[1],pigment[3],smoothstep(-w_mix,w_mix,pos.x));
+	vec2 p2=mix(pigment[2],pigment[4],smoothstep(-w_mix,w_mix,pos.y));
+
+	vec2 mix_ks=mix(p1,p2,mix_v);
+	
+	float r=reflectivity_KS(pigment[2],h.x,back);
 	//float mask=(1-smoothstep(-sw,sw,length(pos.xy)-0.8));
 	//float r=kubelka_munk(mix_k,mix_s)*mask+back*(1-mask);
 	//*/
+
 	//float border=step(abs(pos.x)-0.9,0)*step(abs(pos.y)-0.9,0);
 	//r=r*border+back*(1-border);
 	if(do_intensity==1)
@@ -1187,8 +1154,9 @@ function set_samples(  )
 			table.insert(names,k)
 		end
 	end
+	--nice mix: phathlo_green_blue_shade & cadmium_orange
 	-- [[
-	for i=4,4 do
+	for i=2,5 do
 		local n=names[math.random(1,#names)]
 		pigment_inputs[i]=n
 	end

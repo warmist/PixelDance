@@ -204,6 +204,15 @@ local function signum(number)
       return 0
    end
 end
+local function sgn(number)
+   if number > 0 then
+      return 1
+   elseif number < 0 then
+      return -1
+   else
+      return 1
+   end
+end
 function factorial(n)
     if (n == 0) then
         return 1
@@ -664,14 +673,64 @@ function sdEquilateralTriangle( x,y )
     --p.x -= clamp( p.x, -2.0, 0.0 );
     --return -length(p)*sign(p.y);
 end
+function sdCircle( x,y ,r)
+	return math.sqrt(x*x+y*y)-r
+end
+local phi=(1+math.sqrt(5))/2
+local phi_small=phi-1
+
+function generate_domain( domain_count, r )
+	local a=(1-r)/(1-math.pow(r,domain_count))
+	--print(a)
+	local ret={}
+	local cur_a=a
+	local sum_a=0
+	for i=1,domain_count do
+		local slope=2/cur_a
+		--[[if i==1 then
+			slope=1/cur_a
+		end]]
+		local offset=-slope*sum_a-1
+		print(i,cur_a,sum_a,slope,offset)
+		table.insert(ret,{sum_a,slope,offset})
+		sum_a=sum_a+cur_a
+		cur_a=cur_a*r
+	end
+	return ret
+end
+domain=generate_domain(5,phi_small)
+function domain_warp(x)
+	local s=signum(x)
+	x=math.abs(x)
+	if(x>1) then x=1 end
+	local ret_val=0
+	for i,v in ipairs(domain) do
+
+		if v[1]>=x then
+			return ret_val
+		end
+		ret_val=(v[2]*x+v[3])*s
+	end
+	return ret_val
+end
+function urand( v )
+	v =v or 1
+	return math.random()*(2*v)-v
+end
+--generate_domain(4,0.5)
 function global_rules(x,y, rv )
 	local cx=x-grid.w/2
 	local cy=y-grid.h/2
-	local nx=(cx/grid.w)*4
-	local ny=(cy/grid.h)*4
+	local nx=(cx/grid.w)
+	local ny=(cy/grid.h)
 	local m=-1
+	nx=domain_warp(2*(cx+urand(0.25))/grid.w)
+	ny=domain_warp(2*(cy+urand(0.25))/grid.h)
 	if math.abs(cx)<30 then m=1 end
-	return m*rv*(math.abs(sdEquilateralTriangle(nx,ny))-0.2)
+	--return m*rv*(math.abs(sdEquilateralTriangle(nx,ny))-0.2)
+	--if nx>0 then m=1 end
+	--return m*rv*(sdCircle(nx,ny,0.5))
+	return m*rv*sdEquilateralTriangle(nx*2,ny*2)
 	--return math.cos((math.sqrt(cx*cx+cy*cy)-rv)*0.025*math.pi)
 end
 function calculate_value_fract( x,y,v,v_fract,rv)
@@ -699,6 +758,7 @@ function calculate_value_fract( x,y,v,v_fract,rv)
 	--]==]
 	return ret--*delta_substep(v_fract)
 end
+
 function calculate_value_global( x,y,v,v_fract,rv)
 	local ret=0
 	local cx=x-grid.w/2
@@ -806,7 +866,11 @@ function do_grid_step(x,y)
 	--]]
 	-- [[
 	--local max_dist=config.max_dist_moved*config.temperature+1
-	local max_dist=config.max_dist_moved
+	local l=1
+	local cx=(x-grid.w/2)/(grid.w/2)
+	local cy=(y-grid.h/2)/(grid.w/2)
+	l=math.sqrt(cx*cx+cy*cy)/(math.sqrt(2))
+	local max_dist=math.floor(config.max_dist_moved*l)
 	local dx,dy=random_in_circle(max_dist)
 	local tx=x+dx
 	local ty=y+dy
@@ -941,6 +1005,13 @@ function update(  )
 			if v<0 then v=0 end
 			grid:set(x,y,v)
 			--]]
+			--[=[
+			local nx=x/(grid.w/2)-1
+			local ny=y/(grid.h/2)-1
+			nx=domain_warp(nx)
+			ny=domain_warp(ny)
+			grid:set(x,y,math.abs(nx+ny)/2)
+			--]=]
 		end
 		end
 		config.temperature=0.2
