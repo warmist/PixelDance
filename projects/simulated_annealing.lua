@@ -9,8 +9,10 @@ local size=STATE.size
 local zoom=2
 
 grid=grid or make_float_buffer(math.floor(size[1]/zoom),math.floor(size[2]/zoom))
+centers=centers or make_flt_half_buffer(math.floor(size[1]/zoom),math.floor(size[2]/zoom))
 function resize( w,h )
 	grid=make_float_buffer(math.floor(w/zoom),math.floor(h/zoom))
+	centers=make_flt_half_buffer(math.floor(w/zoom),math.floor(h/zoom))
 end
 
 config=make_config({
@@ -673,8 +675,98 @@ function sdEquilateralTriangle( x,y )
     --p.x -= clamp( p.x, -2.0, 0.0 );
     --return -length(p)*sign(p.y);
 end
-function sdCircle( x,y ,r)
+function sdCircle( x,y,r )
 	return math.sqrt(x*x+y*y)-r
+end
+function rotate( x,y,angle )
+	local c=math.cos(angle)
+	local s=math.sin(angle)
+
+	local nx=c*x-s*y
+	local ny=s*x+c*y
+	return nx,ny
+end
+function sdBox( x,y,r )
+	local dx=math.abs(x)-r
+	local dy=math.abs(y)-r
+	local mdx=math.max(dx,0)
+	local mdy=math.max(dy,0)
+	local l=math.sqrt(mdx*mdx+mdy*mdy)
+	return math.min(math.max(dx,dy),0)+l
+end
+--[[
+function opRound(shape, x,y,r )
+	return shape(x,y)-r
+end
+function opOnion( shape,)
+	return math.abs(shape(x,y))-r
+end
+--]]
+-- [[
+function opUnion( d1,d2 )
+	return math.min(d1,d2)
+end
+function opSubtraction( d1,d2 )
+	return math.max(-d1,d2)
+end
+function opIntersection( d1,d2 )
+	return math.max(d1,d2)
+end
+--]]
+function clamp( x,l,h )
+	if x>h then return h end
+	if x<l then return l end
+	return x
+end
+function coord_transform( ox,oy )
+	local s=0.2
+	local b=1.2
+	local x=math.pow(math.abs(ox),b)*signum(ox)
+	local y=math.pow(math.abs(oy),b)*signum(oy)
+	x=(x+s/2)%s-s/2
+	y=(y+s/2)%s-s/2
+	--x=math.pow(x,1/b)*signum(ox)
+	--y=math.pow(y,1/b)*signum(oy)
+	return x,y
+end
+function global_rules(x,y, rv )
+	local cx=x-grid.w/2
+	local cy=y-grid.h/2
+	local sh=1
+	local nx=(cx/grid.w)
+	local ny=(cy/grid.h)
+	nx,ny=coord_transform(nx,ny)
+	local rnx,rny=rotate(nx,ny,math.pi/4)
+	--nx,ny=rotate(nx,ny,(rv*2-1)*math.pi/16)
+	--[[
+
+	local rnx=nx
+	local rny=ny
+	local rotate_size=math.pi/10
+	local scale_size=1.3
+	local inner_scale=scale_size
+	for i=1,10 do
+		--local sh=math.min(math.max(sdBox(rnx,rny,0.9),sdCircle(nx,ny-0.2,0.9)),sdBox(rnx-0.4,rny+0.4,0.6))
+		--sh=opUnion(opSubtraction(sdCircle(nx-0.4,ny-0.4,0.7),sdEquilateralTriangle(rnx,rny)),sdCircle(nx-0.4,ny-0.4,0.3))
+		sh=opSubtraction(sdEquilateralTriangle(rnx,rny),sh)
+		sh=opUnion(sh,sdEquilateralTriangle(rnx*inner_scale,rny*inner_scale))
+		rnx,rny=rotate(rnx,rny,rotate_size)
+		rnx=rnx*scale_size
+		rny=rny*scale_size
+	end
+	--]]
+	--sh=sdBox(rnx,rny,0.4)
+	--sh=sdCircle(nx,ny,0.125)
+	sh=sdEquilateralTriangle(nx*8+0,ny*8-0.75)
+	--sh=opSubtraction(sdCircle(nx+1,ny,0.25),sh)
+	--sh=opSubtraction(sdCircle(nx-1,ny,0.25),sh)
+	--sh=opSubtraction(sdCircle(nx+0.4,ny,0.125),sh)
+	--sh=opSubtraction(sdCircle(nx-0.4,ny,0.125),sh)
+	local m=1
+	if math.abs(cx)<30 then m=-1 end
+	return m*sh
+	--return (clamp(m*sh,-1,1)+1)*0.5--(math.abs(sdEquilateralTriangle(nx,ny))-0.2)
+
 end
 local phi=(1+math.sqrt(5))/2
 local phi_small=phi-1
@@ -718,7 +810,7 @@ function urand( v )
 	return math.random()*(2*v)-v
 end
 --generate_domain(4,0.5)
-function global_rules(x,y, rv )
+function global_rules_ex(x,y, rv )
 	local cx=x-grid.w/2
 	local cy=y-grid.h/2
 	local nx=(cx/grid.w)
@@ -732,6 +824,13 @@ function global_rules(x,y, rv )
 	--return m*rv*(sdCircle(nx,ny,0.5))
 	return m*rv*sdEquilateralTriangle(nx*2,ny*2)
 	--return math.cos((math.sqrt(cx*cx+cy*cy)-rv)*0.025*math.pi)
+end
+function grad_rule( x,y,rv )
+	local s=0.1
+	local v00=global_rules(x,y,rv)
+	local v10=global_rules(x+s,y,rv)
+	local v01=global_rules(x,y+s,rv)
+	return (v10-v00)/s,(v01-v00)/s
 end
 function calculate_value_fract( x,y,v,v_fract,rv)
 	local ret=0
@@ -763,7 +862,10 @@ function calculate_value_global( x,y,v,v_fract,rv)
 	local ret=0
 	local cx=x-grid.w/2
 	local cy=y-grid.h/2
-	local sum_v=rv
+	local sum_v=0--rv
+	local wsum=0
+	local vsqrs=0
+	local gv=global_rules(x,y,rv)
 	--[[
 	local max_i=8
 	for i=0,max_i-1 do
@@ -778,6 +880,125 @@ function calculate_value_global( x,y,v,v_fract,rv)
 	cy=math.floor((y-grid.h/2)*rv+grid.h/2)
 	sum_v=math.abs(rv-grid:get(cx,cy))
 	--]]
+	--[=[
+	local gdx={1,-1,1,-1}
+	local gdy={1,1,-1,-1}
+	local mdx={0,1,0,1}
+	local mdy={0,0,1,1}
+	local ww={0,gv,gv,gv}
+
+	for i=1,#gdx do
+		local tx=(grid.w-1)*mdx[i]+x*gdx[i]
+		local ty=(grid.h-1)*mdy[i]+y*gdy[i]
+		tx,ty=coord_edge(tx,ty)
+		local trv=grid:get(tx,ty)*ww[i]
+		wsum=wsum+ww[i]
+		--local dv=math.abs(rv-trv)/(math.abs(rv)+math.abs(trv))
+		local dv=math.abs(rv-trv)*5
+		sum_v=sum_v+dv
+		vsqrs=vsqrs+dv*dv
+		--ret=ret+dv
+	end
+	--]=]
+	--[[
+	do
+		local cs=centers:get(x,y)
+		local tx=x+2*cs.r*grid.w
+		local ty=y+2*cs.g*grid.h
+		local l=cs.r*cs.r+cs.g*cs.g
+		tx,ty=coord_edge(tx,ty)
+		local trv=grid:get(tx,ty)*math.exp(-gv*gv/(l+1))
+		wsum=wsum+1
+		--local dv=math.abs(rv-trv)/(math.abs(rv)+math.abs(trv))
+		local dv=-math.abs(rv-trv)
+		sum_v=sum_v+dv
+		vsqrs=vsqrs+dv*dv
+		--ret=ret+dv
+	end
+	do
+		local cs=centers:get(x,y)
+		local tx=x+cs.r*grid.w
+		local ty=y+cs.g*grid.h
+		local l=cs.r*cs.r+cs.g*cs.g
+		tx,ty=coord_edge(tx,ty)
+		local trv=grid:get(tx,ty)*math.exp(-gv*gv/(l+1))
+		wsum=wsum+1
+		--local dv=math.abs(rv-trv)/(math.abs(rv)+math.abs(trv))
+		local dv=math.abs(rv-trv)
+		sum_v=sum_v+dv
+		vsqrs=vsqrs+dv*dv
+		--ret=ret+dv
+	end
+	--]]
+	--[[
+	do
+		local dx,dy=grad_rule(x,y,rv)
+		--local l=math.sqrt(dx*dx+dy*dy)
+		local l=1
+		local tx=x+dx*rv/l
+		local ty=y+dy*rv/l
+		tx,ty=coord_edge(tx,ty)
+		local trv=grid:get(tx,ty)
+		--sum_v=sum_v+math.abs(rv-trv)
+		ret=ret+math.abs(rv-trv)*4
+	end
+	--]]
+	-- [[
+	local count=0
+	local dx={ 1,-1, 0, 0, 1,-1, 1,-1}
+	local dy={ 0, 0, 1,-1, 1, 1,-1,-1}
+	local w= { -gv*4, gv,-gv*4, gv,gv*4,gv,gv*4,gv}
+	--local w= { 1,1,1,1,1,1,1,1}
+	local step=0.2
+	for i=1,#dx do
+		local v=math.floor(i/#dx)+1
+		local idx=((i - 1) % #dx) + 1
+		local tdx=dx[idx]*v
+		local tdy=dy[idx]*v
+		local tx=math.floor(x+tdx)
+		local ty=math.floor(y+tdy)
+		tx,ty=coord_edge(tx,ty)
+		local trv=grid:get(tx,ty)*w[idx]
+		wsum=wsum+w[idx]
+		--local dv=math.abs(rv-trv)/(math.abs(rv)+math.abs(trv))
+		--local dv=-math.abs(rv-trv)
+		local dv=math.max(sum_v,math.abs(rv-trv))
+		--local dv=trv*trv+2*math.abs(rv)
+		sum_v=dv
+		vsqrs=vsqrs+dv*dv
+		--ret=ret+dv
+		if math.abs(dv)>step then
+			count=count-1
+		else
+			count=count+1
+		end
+	end
+	--sum_v=sum_v*count
+	--]]
+	--[==[
+	local dx=math.random()*2-1
+	local dy=math.random()*2-1
+	local l=math.sqrt(dx*dx+dy*dy)
+	dx=dx/l
+	dy=dy/l
+	local tdx=x
+	local tdy=y
+	for i=1,20 do
+		--[[
+		tdx=tdx+dx
+		tdy=tdy+dy
+		--]]
+		tdx=tdx+math.random()*2-1
+		tdy=tdy+math.random()*2-1
+		tdx,tdy=coord_edge(tdx,tdy)
+		local tx=math.floor(tdx)
+		local ty=math.floor(tdy)
+
+		local trv=grid:get(tx,ty)
+		sum_v=sum_v-math.abs(trv-rv)/trv
+	end
+	--]==]
+	--[[
 	local dx={1,-1,0,0,1,-1,1,-1}
 	local dy={0,0,1,-1,1,1,-1,-1}
 	local max_i=#dx
@@ -798,7 +1019,14 @@ function calculate_value_global( x,y,v,v_fract,rv)
 		sum_v=sum_v+dv*dv*(250/math.sqrt(tdx*tdx+tdy*tdy+math.abs(tdx*tdy)))
 	end
 	--]]
-	return ret +global_rules(x,y,sum_v)--*delta_substep(v_fract)
+	--return sum_v
+	--local d=rv-sum_v/wsum
+	local N=36
+	local d=(vsqrs-sum_v*sum_v/N)/N
+	return -sum_v*sum_v
+
+	--return -(math.abs(rv)+math.abs(sum_v))/(math.abs(rv-sum_v))
+	--return ret+global_rules(x,y,sum_v)--*delta_substep(v_fract)
 end
 function calculate_value_smooth( x,y,v,v_fract,real_value)
 	local a=get_around_fract(x,y)
@@ -982,7 +1210,29 @@ function update(  )
 	imgui.Begin("Simulated annealing")
 	draw_config(config)
 	local variation_const=0.05
+	
 	if imgui.Button("Restart") then
+		local init_centers={{0.5,0.5}}
+		-- [[
+		for i=1,5 do
+			local ii=(i-1)/5
+			local v=math.pi*2*ii
+			table.insert(init_centers,{math.cos(v)*0.75+0.5,math.sin(v)*0.75+0.5})
+			--table.insert(init_centers,{ii,0.5})
+		end
+		-- [[
+		for i=1,7 do
+			local ii=(i-1)/7
+			local v=math.pi*2*ii
+			table.insert(init_centers,{math.cos(v)*0.35+0.5,math.sin(v)*0.35+0.5})
+		end
+		--]]
+		for i=1,5 do
+			local ii=(i-1)/5
+			local v=math.pi*2*ii+math.pi/4
+			table.insert(init_centers,{math.cos(v)*0.2+0.5,math.sin(v)*0.2+0.5})
+		end
+		--]]
 		for x=0,grid.w-1 do
 		for y=0,grid.h-1 do
 			grid:set(x,y,math.random())
@@ -1005,13 +1255,19 @@ function update(  )
 			if v<0 then v=0 end
 			grid:set(x,y,v)
 			--]]
-			--[=[
-			local nx=x/(grid.w/2)-1
-			local ny=y/(grid.h/2)-1
-			nx=domain_warp(nx)
-			ny=domain_warp(ny)
-			grid:set(x,y,math.abs(nx+ny)/2)
-			--]=]
+			local nx=x/grid.w
+			local ny=y/grid.h
+			local dist=math.huge
+			for i,v in ipairs(init_centers) do
+				local dx=v[1]-nx
+				local dy=v[2]-ny
+				local d=dx*dx+dy*dy
+				if d<dist then
+					dist=d
+					centers:set(x,y,{dx,dy})
+					--grid:set(x,y,(v[2]+v[1])/2)
+				end
+			end
 		end
 		end
 		config.temperature=0.2
