@@ -138,7 +138,7 @@ config=make_config({
 	--{"gen_radius",2,type="float",min=0,max=10},
 
 	{"gamma",1,type="float",min=0.01,max=5},
-	{"exposure",1,type="float",min=0,max=10},
+	--{"exposure",1,type="float",min=0,max=10},
 	{"white_point",1,type="float",min=0,max=10},
 
 	{"max_bright",1.0,type="float",min=0,max=2},
@@ -370,7 +370,7 @@ vec3 tonemap(vec3 light)
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	//vec3 ccol=texture(tex_main,normed).xyz;
-	vec3 ccol=texture(tex_main,normed).xyz+vec3(avg_lum);
+	vec3 ccol=texture(tex_main,normed).xyz;//+vec3(avg_lum);
 
 	/*
 	if(ccol.x<0)ccol.x=log(1-ccol.x);
@@ -481,7 +481,7 @@ function draw_visits(  )
 	display_shader:set_i("tex_main",0)
 	display_shader:set("v_gamma",config.gamma)
 
-	display_shader:set("exposure",config.exposure)
+	--display_shader:set("exposure",config.exposure)
 	display_shader:set("white_point",config.white_point)
 	display_shader:draw_quad()
 
@@ -553,7 +553,24 @@ function mix_color_rgb( c1,c2,v )
 	ret[4]=(c2[4]-c1[4])*local_v+c1[4]
 	return ret
 end
+function mix_color_xyz( c1,c2,v )
+	local c1_v=c1[5]
+	local c2_v=c2[5]
+	local c_v=c2_v-c1_v
+	local my_v=v-c1_v
+	local local_v=my_v/c_v
+
+	local c1_rgb={c1[1],c1[2],c1[3]}
+	local c2_rgb={c2[1],c2[2],c2[3]}
+	local ret={}
+	for i=1,3 do
+		ret[i]=(c2_rgb[i]-c1_rgb[i])*local_v+c1_rgb[i]
+	end
+	ret[4]=(c2[4]-c1[4])*local_v+c1[4]
+	return ret
+end
 function set_shader_palette(s)
+
 	s:set_i("palette_size",max_palette_size)
 	local cur_color=2
 	for i=0,max_palette_size-1 do
@@ -561,10 +578,16 @@ function set_shader_palette(s)
 			cur_color=cur_color+1
 		end
 		local c
-		if palette.rgb_lerp then
-			c=mix_color_rgb(palette.colors_input[cur_color-1],palette.colors_input[cur_color],i)
+		if palette.is_xyz then
+			s:set_i("palette_xyz",1)
+			c=mix_color_xyz(palette.colors_input[cur_color-1],palette.colors_input[cur_color],i)
 		else
-			c=mix_color_hsl(palette.colors_input[cur_color-1],palette.colors_input[cur_color],i)
+			s:set_i("palette_xyz",0)
+			if palette.rgb_lerp then
+				c=mix_color_rgb(palette.colors_input[cur_color-1],palette.colors_input[cur_color],i)
+			else
+				c=mix_color_hsl(palette.colors_input[cur_color-1],palette.colors_input[cur_color],i)
+			end
 		end
 		s:set(string.format("palette[%d]",i),c[1],c[2],c[3],c[4])
 	end
@@ -700,6 +723,7 @@ palette.generators={
 	{"fullspectrum",function (ret, hue_range,sat_range,lit_range )
 		local s=0.4
 		local l=0.33
+		palette.is_xyz=true
 		for i=0,max_palette_size-1 do
 			local h=i/(max_palette_size-1)
 
@@ -717,7 +741,7 @@ function gen_palette( )
 	local h1=rand_range(hue_range)
 	local s=rand_range(sat_range)
 	local l=rand_range(lit_range)
-
+	palette.is_xyz=false
 	palette.generators[palette.current_gen][2](ret,hue_range,sat_range,lit_range)
 end
 function print_col( c )
@@ -1352,7 +1376,7 @@ function rand_function(  )
 		table.insert(tbl_insert,string.format("vec2(%g,%g)",math.cos(vr)*r,math.sin(vr)*r))
 	end
 	--]]
-	--[==[
+	-- [==[
 	local tex_variants={
 		--[["tex_p.xy","tex_p.yz","tex_p.zx",
 		"tex_s.xy","tex_s.yz","tex_s.zx",
@@ -1363,7 +1387,7 @@ function rand_function(  )
 		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI","vec2(atan(tex_p.y,tex_p.x),atan(tex_s.y,tex_s.x))/M_PI",
 		"vec2(atan(tex_s.x,tex_s.z),atan(tex_p.x,tex_p.z))/M_PI","vec2(atan(tex_p.x,tex_p.z),atan(tex_s.x,tex_s.z))/M_PI"
 	}
-	local num_tex=2
+	local num_tex=3
 	for i=1,num_tex do
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
 		table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
@@ -1426,9 +1450,9 @@ function rand_function(  )
 	str_cmplx=random_math_complex(rand_complexity,"c_div(c_mul(R,s)+R,c_mul(R,s)+R)")
 	--]=]
 	--mandelbrot?
-	--[=[
+	-- [=[
 	--str_cmplx="c_mul(s,s)*value_inside(global_seed,0,0.5)+c_mul(s,c_mul(s,s))*value_inside(global_seed,0.5,1)+p"
-	str_cmplx="mix(c_mul(s,s)+p,c_mul(c_mul(s,s)+p,vec2(cos(M_PI),sin(M_PI))),tex_p.y*global_seed)"
+	--str_cmplx="mix(c_mul(s,s)+p,c_mul(c_mul(s,s)+p,vec2(cos(2*M_PI*global_seed),sin(2*M_PI*global_seed))),tex_p.y)"
 	--]=]
 
 	--[[ julia
@@ -1659,7 +1683,7 @@ function rand_function(  )
 	--str_preamble=str_preamble.."s=vec2(cos(p.y)*s.x-sin(p.y)*s.y,cos(p.y)*s.y+sin(p.y)*s.x);"
 	str_preamble=str_preamble.."s=vec2(cos(normed_iter*M_PI*2)*s.x-sin(normed_iter*M_PI*2)*s.y,cos(normed_iter*M_PI*2)*s.y+sin(normed_iter*M_PI*2)*s.x);"
 	--]]
-	-- [[ const-delta-like
+	--[[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
@@ -2089,10 +2113,10 @@ vec2 from_polar(vec2 p)
 
 vec3 func_actual(vec2 s,vec2 p)
 {
-	//vec4 tex_p=texture(tex_img,p*scale*move_dist);
-	//vec4 tex_s=texture(tex_img,s*scale*move_dist);
-	vec4 tex_p=texture(tex_img,p*scale);
-	vec4 tex_s=texture(tex_img,s*scale);
+	vec4 tex_p=texture(tex_img,p*scale*move_dist);
+	vec4 tex_s=texture(tex_img,s*scale*move_dist);
+	//vec4 tex_p=texture(tex_img,p*scale);
+	//vec4 tex_s=texture(tex_img,s*scale);
 	tex_s=tex_s/(length(tex_s)+1);
 	tex_p=tex_p/(length(tex_p)+1);
 	//tex_p*=move_dist;
@@ -2452,6 +2476,7 @@ uniform float global_seed;
 
 uniform vec4 palette[50];
 uniform int palette_size;
+uniform int palette_xyz;
 
 
 vec4 mix_palette(float value )
@@ -2593,7 +2618,11 @@ void main(){
 	//float color_value=normed_iter*exp(-start_l*start_l);
 	//float color_value=1-exp(-dot(delta_pos,delta_pos)/2.5);
 	//float color_value=mix(start_l,dist_traveled,normed_iter);
-	vec3 c=rgb2xyz(mix_palette(color_value).xyz);
+	vec3 c;
+	if(palette_xyz)
+		c=mix_palette(color_value).xyz;
+	else
+		c=rgb2xyz(mix_palette(color_value).xyz);
 	c*=a*intensity;
 	//c*=(sin(start_l*M_PI*16)+0.6);
 	//c*=(sin(normed_iter*M_PI*8)+0.1);
