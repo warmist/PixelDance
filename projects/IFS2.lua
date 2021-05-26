@@ -25,7 +25,7 @@ win_h=win_h or 0
 
 aspect_ratio=aspect_ratio or 1
 function update_size()
-	local trg_w=2560*size_mult
+	local trg_w=1440*size_mult
 	local trg_h=1440*size_mult
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
@@ -140,6 +140,7 @@ config=make_config({
 	{"gamma",1,type="float",min=0.01,max=5},
 	--{"exposure",1,type="float",min=0,max=10},
 	{"white_point",1,type="float",min=0,max=10},
+	--[[ other tonemapping
 
 	{"max_bright",1.0,type="float",min=0,max=2},
 	{"contrast",1.0,type="float",min=0,max=2},
@@ -147,6 +148,7 @@ config=make_config({
 	{"linear_len",0.4,type="float",min=0,max=1},
 	{"black_tight",1.33,type="float",min=0,max=2},
 	{"black_off",0,type="float",min=0,max=1},
+	--]]
 	{"animation",0,type="float",min=0,max=1},
 	{"reshuffle",false,type="boolean"},
 },config)
@@ -370,7 +372,7 @@ vec3 tonemap(vec3 light)
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	//vec3 ccol=texture(tex_main,normed).xyz;
-	vec3 ccol=texture(tex_main,normed).xyz;//+vec3(avg_lum);
+	vec3 ccol=texture(tex_main,normed).xyz;
 
 	/*
 	if(ccol.x<0)ccol.x=log(1-ccol.x);
@@ -381,6 +383,7 @@ void main(){
 	//ccol=abs(ccol);
 	ccol=max(vec3(0),ccol);
 	ccol=pow(ccol,vec3(v_gamma));
+	//ccol*=exp(v_gamma);
 	color = vec4(tonemap(ccol),1);
 	color.xyz=pow(color.xyz,vec3(2.2));
 	color.a=1;
@@ -436,6 +439,7 @@ function find_min_max( tex,buf )
 		if v.r>lmax[1] then lmax[1]=v.r end
 		if v.g>lmax[2] then lmax[2]=v.g end
 		if v.b>lmax[3] then lmax[3]=v.b end
+		--local lum=math.sqrt(v.g*v.g+v.r*v.r+v.b*v.b)--math.abs(v.g+v.r+v.b)
 		local lum=math.abs(v.g)
 		--if lum > config.min_value then
 			avg_lum=avg_lum+math.log(1+lum)
@@ -470,13 +474,14 @@ function draw_visits(  )
 	set_shader_palette(display_shader)
 	display_shader:set("min_max",lmin[2],lmax[2])
 
+	--[[
 	display_shader:set("uchimura_params[0]",config.max_bright)
 	display_shader:set("uchimura_params[1]",config.contrast)
 	display_shader:set("uchimura_params[2]",config.linear_start)
 	display_shader:set("uchimura_params[3]",config.linear_len)
 	display_shader:set("uchimura_params[4]",config.black_tight)
 	display_shader:set("uchimura_params[5]",config.black_off)
-
+	--]]
 	display_shader:set("avg_lum",lavg)
 	display_shader:set_i("tex_main",0)
 	display_shader:set("v_gamma",config.gamma)
@@ -626,7 +631,7 @@ function D65_approx(iter)
 	return (-1783.1047729784+9.977734354*wl-(0.0171304983)*wl*wl+(0.0000095146)*wl*wl*wl);
 end
 function D65_blackbody(iter, temp)
-	local wl=mix(380,740,iter);
+	--local wl=mix(380,740,iter);
 	--[[
 	float mod=-5754+27.3*wl-0.043*wl*wl+(2.26e-05)*wl*wl*wl;
 	return black_body(wl*1e-9,temp)-mod;
@@ -661,8 +666,8 @@ function D65_blackbody(iter, temp)
 		);
 
 	return black_body(wl*1e-9,temp)*mod*1e-8;]]
-	local b65=black_body(wl*1e-9,6503.5);
-	return D65_approx(iter)*(black_body(wl*1e-9,temp)/b65);
+	local b65=black_body(iter,6503.5);
+	return D65_approx(iter)*(black_body(iter,temp)/b65);
 end
 function gaussian( x, alpha,  mu, sigma1,  sigma2) 
 	local s=sigma1
@@ -813,8 +818,8 @@ palette.generators={
 		for i=0,max_palette_size-1 do
 			local h=i/(max_palette_size-1)
 			local w=xyz_from_normed_waves(h)
-			--local b=1--D65_blackbody(h,8000)--6503.5)
-			local b=black_body(h,6503.5)--6503.5)
+			local b=D65_blackbody(h,6503.5)--6503.5)
+			--local b=black_body(h,6503.5)--6503.5)
 			w.x=w.x*b
 			w.y=w.y*b
 			w.z=w.z*b
@@ -1457,7 +1462,7 @@ function rand_function(  )
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
 	--local tbl_insert={"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seed)","vec2(cos(length(p)*M_PI*4+global_seed),sin(length(p)*M_PI*4+global_seed))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
-	local tbl_insert={"s","mix(p,p/length(p),global_seed)","params.xy","params.zw"}
+	local tbl_insert={"mix(s,s/length(s),1-global_seed)","mix(p,p/length(p),global_seed)","params.xy","params.zw"}--"mix(p,p/length(p),global_seed)"
 	--[[
 	local point_count=3
 	for i=1,point_count do
@@ -1469,7 +1474,8 @@ function rand_function(  )
 	--]]
 	-- [==[
 	local tex_variants={
-		--[["tex_p.xy","tex_p.yz","tex_p.zx",
+		-- [[
+		"tex_p.xy","tex_p.yz","tex_p.zx",
 		"tex_s.xy","tex_s.yz","tex_s.zx",
 		"vec2(tex_s.x,tex_p.x)","vec2(tex_s.y,tex_p.y)","vec2(tex_s.z,tex_p.z)",
 		"vec2(tex_s.x,tex_p.y)","vec2(tex_s.y,tex_p.z)","vec2(tex_s.z,tex_p.x)",
@@ -1478,11 +1484,13 @@ function rand_function(  )
 		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI","vec2(atan(tex_p.y,tex_p.x),atan(tex_s.y,tex_s.x))/M_PI",
 		"vec2(atan(tex_s.x,tex_s.z),atan(tex_p.x,tex_p.z))/M_PI","vec2(atan(tex_p.x,tex_p.z),atan(tex_s.x,tex_s.z))/M_PI"
 	}
-	local num_tex=3
+	-- [[
+	local num_tex=1
 	for i=1,num_tex do
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
 		table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
 	end
+	--]]
 	--]==]
 	--chebyshev_poly_series(10)
 	str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert)
@@ -1667,7 +1675,8 @@ function rand_function(  )
 			sub_s=string.format("c_mul(%s,%s)","s",sub_s)
 		end
 		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
-		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+		input_s=input_s..string.format("+%s*c_mul(%s,vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))",sub_s,tex_variants[math.random(1,#tex_variants)])
 		local v_start=(i-1)/series_size
 		local v_end=i/series_size
 		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)*value_inside(global_seed,%g,%g)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2,v_start,v_end)
@@ -2204,14 +2213,14 @@ vec2 from_polar(vec2 p)
 
 vec3 func_actual(vec2 s,vec2 p)
 {
-	vec4 tex_p=texture(tex_img,p*scale*move_dist);
-	vec4 tex_s=texture(tex_img,s*scale*move_dist);
-	//vec4 tex_p=texture(tex_img,p*scale);
-	//vec4 tex_s=texture(tex_img,s*scale);
+	//vec4 tex_p=texture(tex_img,p*scale*move_dist);
+	//vec4 tex_s=texture(tex_img,s*scale*move_dist);
+	vec4 tex_p=texture(tex_img,p*scale);
+	vec4 tex_s=texture(tex_img,s*scale);
 	tex_s=tex_s/(length(tex_s)+1);
 	tex_p=tex_p/(length(tex_p)+1);
-	//tex_p*=move_dist;
-	//tex_s*=move_dist;
+	tex_p*=move_dist;
+	tex_s*=move_dist;
 	//tex_s=tex_s/(exp(-length(tex_s))+1);
 	//tex_p=tex_p/(exp(-length(tex_p))+1);
 	//tex_s=1/(exp(-tex_s)+1);
@@ -2440,10 +2449,10 @@ vec2 mapping(vec2 p)
 {
 	//float aspect_ratio=scale.y/scale.x;
 	//return tRotate(p,M_PI/2)*vec2(1,aspect_ratio);
-	return p; //normal - do nothing
+	//return p; //normal - do nothing
 	//return abs(p)-vec2(1);
 	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
-	///*
+	/*
 	if(length(p)<50) //modulo, but no artifacts because far away points are far away
 	{
 		float size=2.005; //0.005 overdraw as it smooths the tiling when using non 1 sized points
@@ -2710,11 +2719,12 @@ void main(){
 	//float color_value=1-exp(-dot(delta_pos,delta_pos)/2.5);
 	//float color_value=mix(start_l,dist_traveled,normed_iter);
 	vec3 c;
-	if(palette_xyz)
+	if(palette_xyz==1)
 		c=mix_palette(color_value).xyz;
 	else
 		c=rgb2xyz(mix_palette(color_value).xyz);
 	c*=a*intensity;
+	c+=vec3(0.01);
 	//c*=(sin(start_l*M_PI*16)+0.6);
 	//c*=(sin(normed_iter*M_PI*8)+0.1);
 	//c*=(sin(start_l*M_PI*8)+0.0);
