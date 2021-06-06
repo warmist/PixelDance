@@ -786,7 +786,7 @@ float func(vec2 pos)
 			}
 		return ret/10;
 	#endif
-	#if 0
+	#if 1
 		//if(time<max_time)
 		//if(pos.x<-0.35)
 			return (
@@ -867,7 +867,7 @@ float func(vec2 pos)
 
 
 	#endif
-	#if 1
+	#if 0
 
 
 	if(  length(pos+vec2(0.0,0.3))<0.005

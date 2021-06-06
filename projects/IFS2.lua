@@ -1,5 +1,6 @@
 require "common"
 require "colors"
+require "ast_tree"
 
 local luv=require "colors_luv"
 local bwrite = require "blobwriter"
@@ -47,6 +48,7 @@ local oversample=1
 local complex=false
 local init_zero=false
 local sample_count=math.pow(2,20)
+local use_ast_for_random=false
 
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
@@ -140,7 +142,7 @@ config=make_config({
 	--{"gen_radius",2,type="float",min=0,max=10},
 
 	{"gamma",1,type="float",min=0.01,max=5},
-	{"exposure",1,type="float",min=0,max=10},
+	{"exposure",1,type="float",min=-10,max=10},
 	{"white_point",1,type="float",min=0,max=10},
 	--[[ other tonemapping
 
@@ -243,17 +245,21 @@ vec3 lab2xyz( vec3 c ) {
         108.883 * (( fz > 0.206897 ) ? fz * fz * fz : ( fz - 16.0 / 116.0 ) / 7.787)
     );
 }
-
+//http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
+//TODO: works bad when out of bounds
 vec3 xyz2rgb( vec3 c ) {
     vec3 v =  c / 100.0 * mat3(
-        3.2406, -1.5372, -0.4986,
-        -0.9689, 1.8758, 0.0415,
-        0.0557, -0.2040, 1.0570
+        3.2406255, -1.5372080, -0.4986286,
+        -0.9689307, 1.8757561, 0.0415175,
+        0.0557101, -0.2040211, 1.0569959
     );
     vec3 r;
+    r=v;
+    /* srgb conversion
     r.x = ( v.r > 0.0031308 ) ? (( 1.055 * pow( v.r, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.r;
     r.y = ( v.g > 0.0031308 ) ? (( 1.055 * pow( v.g, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.g;
     r.z = ( v.b > 0.0031308 ) ? (( 1.055 * pow( v.b, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.b;
+    //*/
     return r;
 }
 
@@ -341,16 +347,51 @@ vec3 tonemap(vec3 light)
 {
 	float lum_white =white_point*white_point;// pow(10,white_point);
 	//lum_white*=lum_white;
+	float Y=light.y;
+	Y=Y*exp(exposure)/(avg_lum);
+	//Y=Y*exp(exposure);
+	//Y=(Y-min_max.x)/(min_max.y-min_max.x);
+	//Y=(log(Y+1)-log(min_max.x+1))/(log(min_max.y+1)-log(min_max.x+1));
+	//Y=log(Y+1)/log(min_max.y+1);
+#if 0
+	//Y=Tonemap_Uchimura(Y);
+	Y=Tonemap_ACES(Y);
+#else
+	if(white_point<0)
+    	Y = Y / (1 + Y); //simple compression
+	else
+    	Y = (Y*(1 + Y / lum_white)) / (Y + 1); //allow to burn out bright areas
+#endif
+
+	float m=Y/light.y;
+	light.y=Y;
+	light.xz*=m;
+
+    //light=clamp(light,0,2);
+    //float mm=max(light.x,max(light.y,light.z));
+    vec3 ret=xyz2rgb((light)*100);
+    float s=smoothstep(0,1,length(light));
+    //float s=smoothstep(0,1,dot(light,light));
+    //float s=smoothstep(0,1,max(light.x,max(light.y,light.z)));//length(light));
+    //float s=0;
+    return mix(ret,vec3(1),s*s*s);
+}
+vec3 tonemap_ex(vec3 light)
+{
+	float lum_white =white_point*white_point;// pow(10,white_point);
+	//lum_white*=lum_white;
 
 	//tocieYxy
 	float sum=light.x+light.y+light.z;
 	float x=light.x/sum;
 	float y=light.y/sum;
 	float Y=light.y;
+
+	//Y=Y*exp(exposure);
 #if SHOW_PALETTE
-	Y=Y*exposure/(9.6);
+	Y=Y*exp(exposure)/(9.6);
 #else
-	Y=Y*exposure/(9.6*avg_lum);
+	Y=Y*exp(exposure)/(avg_lum);
 #endif
 	//Y=(Y-min_max.x)/(min_max.y-min_max.x);
 	//Y=(log(Y+1)-log(min_max.x+1))/(log(min_max.y+1)-log(min_max.x+1));
@@ -370,12 +411,31 @@ vec3 tonemap(vec3 light)
     float small_x = x;
     float small_y = y;
     light.x = light.y*(small_x / small_y);
-    light.z = light.x / small_x - light.x - light.y;
+    float small_z=1-small_x-small_y;
+
+    //all of these are the same
+    light.z = light.x/small_x-light.x-light.y;
+    //light.z = (light.y/small_y)*(1 - small_x - small_y);
+    //light.z=(small_z/small_y)*light.y;
+    //light.z=(small_z/small_x)*light.x;
     //light=clamp(light,0,1);
     float s=length(light);
     //s=pow(s,1/8);
     return mix(xyz2rgb(light*100),vec3(1),smoothstep(0.0,1,s/16));
     //return xyz2rgb(light*100);
+}
+vec3 YxyToXyz(vec3 v)
+{
+	vec3 ret;
+	ret.y=v.x;
+    float small_x = v.y;
+    float small_y = v.z;
+    ret.x = ret.y*(small_x / small_y);
+    float small_z=1-small_x-small_y;
+
+    //all of these are the same
+    ret.z = ret.x/small_x-ret.x-ret.y;
+    return ret;
 }
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -397,7 +457,7 @@ void main(){
 	//ccol*=exp(v_gamma);
 	color = vec4(tonemap(ccol),1);
 	//color.xyz=pow(color.xyz,vec3(v_gamma));
-	color.xyz=pow(color.xyz,vec3(2.2));
+	//color.xyz=pow(color.xyz,vec3(2.4));
 	color.a=1;
 }
 ]==]
@@ -453,6 +513,7 @@ function find_min_max( tex,buf )
 		if v.b>lmax[3] then lmax[3]=v.b end
 		--local lum=math.sqrt(v.g*v.g+v.r*v.r+v.b*v.b)--math.abs(v.g+v.r+v.b)
 		local lum=math.abs(v.g)
+		--local lum=math.abs(v.g)+math.abs(v.r)+math.abs(v.b)
 		--if lum > config.min_value then
 			avg_lum=avg_lum+math.log(1+lum)
 			count=count+1
@@ -839,23 +900,40 @@ palette.generators={
 
 			table.insert(ret,new_color(h2,s2,l2,((i)/max_step)*(max_palette_size-1)))
 		end
-	end
-	},{"fullspectrum",function (ret, hue_range,sat_range,lit_range )
-		local s=0.4
-		local l=0.33
+	end},{"fullspectrum",function (ret, hue_range,sat_range,lit_range )
 		palette.is_xyz=true
 		for i=0,max_palette_size-1 do
 			local h=i/(max_palette_size-1)
 			local w=xyz_from_normed_waves(h)
-			local b=D65_blackbody(h,6503.5)--6503.5)
-			--local b=black_body(h,6503.5)--6503.5)
+			local b=D65_blackbody(h,5000)--6503.5)
+			--local b=black_body(h,6503.5)
+			--local b=1
 			w.x=w.x*b
 			w.y=w.y*b
 			w.z=w.z*b
 			table.insert(ret,new_color(w.x,w.y,w.z,(i/(max_palette_size-1))*(max_palette_size-1)))
 		end
-	end,
-	},{"pearl",function (ret, hue_range,sat_range,lit_range )
+	end},{"full_temperature",function (ret, hue_range,sat_range,lit_range )
+		palette.is_xyz=true
+		local max_temp=8000
+		local min_temp=6100
+		for i=0,max_palette_size-1 do
+			local h=i/(max_palette_size-1)
+			--h=math.pow(h,4)
+			local s={x=0,y=0,z=0}
+			local step_size=0.001
+			for j=0,1,step_size do
+				local w=xyz_from_normed_waves(j)
+				--local b=D65_blackbody(j,min_temp+(max_temp-min_temp)*i)--6503.5)
+				local b=black_body(j,min_temp+(max_temp-min_temp)*h)
+				--local b=1
+				s.x=s.x+w.x*b*step_size
+				s.y=s.y+w.y*b*step_size
+				s.z=s.z+w.z*b*step_size
+			end
+			table.insert(ret,new_color(s.x,s.y,s.z,(i/(max_palette_size-1))*(max_palette_size-1)))
+		end
+	end},{"pearl",function (ret, hue_range,sat_range,lit_range )
 		palette.is_xyz=true
 		local layers=gen_layers(400,700,1000)
 		for i=0,max_palette_size-1 do
@@ -1481,8 +1559,8 @@ function chebyshev_poly_series( degree )
 	for i=1,degree do
 		local v={math.random()*2-1,math.random()*2-1}--{math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1}--{i-degree/2,-i+degree/2}--{math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1}
 		--v[2]=v[1]*(-1)
-		local l=math.sqrt(v[1]*v[1]+v[2]*v[2]
-)		v[1]=v[1]/l
+		local l=math.sqrt(v[1]*v[1]+v[2]*v[2])
+		v[1]=v[1]/l
 		v[2]=v[2]/l
 		values[i]=v
 		for i=1,2 do
@@ -1511,6 +1589,100 @@ function chebyshev_poly_series( degree )
 	--str_cmplx="cheb_eval(s*params.xy+p*params.zw)*global_seed+vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI"
 end
 animate=false
+ast_tree=ast_tree or ast_node(normal_symbols_complex,terminal_symbols_complex)
+
+function get_forced_insert(  )
+	local tbl_insert={"s*global_seed","p","params.xy","params.zw"} --"(p*(global_seed+0.5))/length(p)"
+	--[[
+	table.insert(tbl_insert,"vec2(global_seed,0)")
+	table.insert(tbl_insert,"vec2(0,1-global_seed)")
+	--]]
+	--table.insert(tbl_insert,"mix(params.xy,params.zw,global_seed)")
+	--[[
+	table.insert(tbl_insert,"vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))")
+	--]]
+	-- [==[
+	local tex_variants={
+		-- [[
+		"tex_p.xy","tex_p.yz","tex_p.zx",
+		"tex_s.xy","tex_s.yz","tex_s.zx",
+		"vec2(tex_s.x,tex_p.x)","vec2(tex_s.y,tex_p.y)","vec2(tex_s.z,tex_p.z)",
+		"vec2(tex_s.x,tex_p.y)","vec2(tex_s.y,tex_p.z)","vec2(tex_s.z,tex_p.x)",
+		"vec2(tex_s.x,tex_p.z)","vec2(tex_s.y,tex_p.x)","vec2(tex_s.z,tex_p.y)",
+		--]]
+		--[[
+		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI","vec2(atan(tex_p.y,tex_p.x),atan(tex_s.y,tex_s.x))/M_PI",
+		"vec2(atan(tex_s.x,tex_s.z),atan(tex_p.x,tex_p.z))/M_PI","vec2(atan(tex_p.x,tex_p.z),atan(tex_s.x,tex_s.z))/M_PI"
+		--]]
+	}
+
+	-- [[
+	local num_tex=1
+	for i=1,num_tex do
+		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
+		table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
+	end
+	--]==]
+	return tbl_insert
+end
+function new_ast_tree()
+	ast_tree= ast_node(normal_symbols_complex,terminal_symbols_complex)
+	ast_tree.forced=get_forced_insert()
+	ast_tree.random_forced=true
+	print(ast_tree:to_string())
+end
+function ast_mutate(  )
+	ast_tree:mutate()
+	print(ast_tree:to_string())
+end
+function ast_trim(  )
+	ast_tree:trim()
+	print(ast_tree:to_string())
+end
+function ast_terminate( reterm )
+	if reterm then
+		ast_tree.forced=get_forced_insert()
+		ast_tree:clear_terminal()
+	end
+	ast_tree:terminate_all(ast_tree.forced)
+
+	str_cmplx=ast_tree:to_string()
+	print(str_cmplx)
+	str_preamble=""
+	str_postamble=""
+	--str_preamble=str_preamble.."p=mod(p+move_dist/2,move_dist)-move_dist/2;"
+	--[[ centered-polar
+	str_preamble=str_preamble.."s=to_polar(s-p);"
+	str_postamble=str_postamble.."s=from_polar(s)+p;"
+	--]]
+	--[[ polar gravity
+	--str_preamble=str_preamble.."vec2 np=s;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
+	--str_preamble=str_preamble.."vec2 np=p;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
+	--str_preamble=str_preamble.."vec2 np=tex_s.yz;float npl=abs(sqrt(dot(np,np)))+0.5;npl*=npl;"
+	str_preamble=str_preamble.."vec2 np=c_mul(p-s,last_s);float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
+	--str_preamble=str_preamble.."float ang_xx=atan(last_s.y,last_s.x);vec2 np=s-p*vec2(cos(ang_xx),sin(ang_xx))/length(p);float npl=cos((sqrt(dot(np,np))-0.5)*M_PI*2)*0.5+1.25;npl*=npl;"
+	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2);"
+	--str_postamble=str_postamble.."float ls=length(s);s*=1-atan(ls*move_dist)/(M_PI/2)*move_dist;"
+	--str_postamble=str_postamble.."float ls=length(s-vec2(1,1));s=s*(1-atan(ls*move_dist)/(M_PI/2)*move_dist)+vec2(1,1);"
+	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seed*8))/(M_PI/2);s=last_s+ds*((global_seed*7)*vv/ls);"
+	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/npl);s=last_s+ds*(move_dist*vv/ls);"
+	--]]
+	--[[ const-delta-like
+	str_preamble=str_preamble.."vec2 os=s;"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*dot(tex_s,tex_s)/move_dist;"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
+	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
+	str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seed*move_dist+1)/move_dist);"
+	--]]
+	make_visit_shader(true)
+	need_clear=true
+end
 function rand_function(  )
 	local s=random_math(rand_complexity)
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
@@ -1539,12 +1711,16 @@ function rand_function(  )
 		"vec2(tex_s.x,tex_p.y)","vec2(tex_s.y,tex_p.z)","vec2(tex_s.z,tex_p.x)",
 		"vec2(tex_s.x,tex_p.z)","vec2(tex_s.y,tex_p.x)","vec2(tex_s.z,tex_p.y)",
 		--]]
+		--[[
 		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI","vec2(atan(tex_p.y,tex_p.x),atan(tex_s.y,tex_s.x))/M_PI",
 		"vec2(atan(tex_s.x,tex_s.z),atan(tex_p.x,tex_p.z))/M_PI","vec2(atan(tex_p.x,tex_p.z),atan(tex_s.x,tex_s.z))/M_PI"
+		--]]
 	}
 
 	local num_tex=5
 	for i=1,num_tex do
+		table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
+		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
 		table.insert(tbl_insert_cmplx,tex_variants[math.random(1,#tex_variants)])
 		--table.insert(tbl_insert_x,tex_variants[math.random(1,#tex_variants)])
@@ -1570,6 +1746,8 @@ function rand_function(  )
 	--]]
 	--]==]
 	--chebyshev_poly_series(10)
+	--str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert)
+	--str_cmplx="(s/length(s)+p/length(p))*(0.5+global_seed)"
 	str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert_cmplx)
 	--str_cmplx=random_math_complex(15,"cheb_eval(R)",tbl_insert)
 	--str_cmplx=random_math_complex(15,"c_mul(cheb_eval(c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),(s-p))),R)",tbl_insert)
@@ -1628,7 +1806,7 @@ function rand_function(  )
 	--mandelbrot?
 	-- [=[
 	--str_cmplx="c_mul(s,s)*value_inside(global_seed,0,0.5)+c_mul(s,c_mul(s,s))*value_inside(global_seed,0.5,1)+p"
-	--str_cmplx="mix(c_mul(s,s)+p,c_mul(c_mul(s,s)+p,vec2(cos(2*M_PI*global_seed),sin(2*M_PI*global_seed))),tex_p.y)"
+	str_cmplx="mix(c_mul(s,s)+p,c_mul(c_mul(s,s)+p,vec2(cos(2*M_PI*global_seed),sin(2*M_PI*global_seed))),tex_p.y)"
 	--]=]
 
 	--[[ julia
@@ -1709,9 +1887,10 @@ function rand_function(  )
 	str_postamble=""
 	--str_preamble="vec2 FT="..FT..";"
 	--[[
-	--str_preamble=str_preamble.."vec2 last_s=s;"
+	str_preamble=str_preamble.."vec2 last_s=s;"
 	str_postamble=str_postamble.."s=mix(last_s,s,global_seed);"
 	--]]
+
 	--[[
 
 	--str_preamble=str_preamble.."p=p*0.8+vec2(cos(global_seed*M_PI*2)*p.x-sin(global_seed*M_PI*2)*p.y,cos(global_seed*M_PI*2)*p.y+sin(global_seed*M_PI*2)*p.x)*.2;"
@@ -1796,12 +1975,16 @@ function rand_function(  )
 	--[[ 4fold mirror
 	str_postamble=str_postamble.."s=abs(s);"
 	--]]
+	--[[
+	str_postamble=str_postamble.."s=mix(c_cos(s),c_sin(s),global_seed);"
+	--]]
 	--[[ center PRE
 	str_preamble=str_preamble.."s=s-p;"
 	--]]
 	--[[ cosify
-	str_preamble=str_preamble.."s=cos(s-p)*move_dist+p;"
-	--str_preamble=str_preamble.."s=c_cos(s);"
+	--str_preamble=str_preamble.."s=cos(s-p)*move_dist+p;"
+	--str_preamble=str_preamble.."s=c_cos((s-p)*global_seed)*move_dist+p;"
+	str_preamble=str_preamble.."s=c_cos(s-p)*move_dist+p;"
 	--]]
 	--[[ tanify
 	--str_preamble=str_preamble.."s=tan(s);"
@@ -1811,13 +1994,13 @@ function rand_function(  )
 	str_preamble=str_preamble.."s=log(abs(s));"
 	--]]
 	--[[ gaussination
-	str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
+	--str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
 	--str_postamble=str_postamble.."s=s*vec2(exp(move_dist/(-p.x*p.x)),exp(move_dist/(-p.y*p.y)));"
-	--str_postamble=str_postamble.."s=vec2(exp(global_seed/(-s.x*s.x)),exp(global_seed/(-s.y*s.y)));"
+	str_postamble=str_postamble.."s=vec2(exp(global_seed/(-s.x*s.x)),exp(global_seed/(-s.y*s.y)));"
 	--]]
 	--[[ invert-ination
-	str_preamble=str_preamble.."s=c_inv(s);"
-	str_postamble=str_postamble.."s=c_inv(s);"
+	str_preamble=str_preamble.."s=c_inv(s);"--s=c_mul(s,vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)));"
+	str_postamble=str_postamble.."s=c_inv(s);"--s=c_mul(s,vec2(cos(-global_seed*M_PI*2),sin(-global_seed*M_PI*2)));"
 	--]]
 	--[[ Chebyshev polynomial
 	str_preamble=str_preamble.."s=(move_dist+1)*acos(s+p);"
@@ -1958,14 +2141,37 @@ function gui()
 	if imgui.Button("regen shuffling") then
 		global_seed_shuffling={}
 	end
+	if use_ast_for_random then
 
-	rand_complexity=rand_complexity or 3
-	if imgui.Button("Rand function") then
-		rand_function()
+		if imgui.Button("New function") then
+			new_ast_tree()
+		end
+		imgui.SameLine()
+		if imgui.Button("Mutate") then
+			ast_mutate()
+		end
+		imgui.SameLine()
+		if imgui.Button("Trim") then
+			ast_trim()
+		end
+		imgui.SameLine()
+		if imgui.Button("Reterminate") then
+			ast_terminate(true)
+		end
+		imgui.SameLine()
+		if imgui.Button("Terminate") then
+			ast_terminate()
+		end
+	else
+
+		rand_complexity=rand_complexity or 3
+		if imgui.Button("Rand function") then
+			rand_function()
+		end
+		imgui.SameLine()
+
+		_,rand_complexity=imgui.SliderInt("Complexity",rand_complexity,1,15)
 	end
-	imgui.SameLine()
-
-	_,rand_complexity=imgui.SliderInt("Complexity",rand_complexity,1,15)
 
 	if imgui.Button("Animate") then
 		animate=true
@@ -2526,7 +2732,7 @@ vec2 mapping(vec2 p)
 {
 	//float aspect_ratio=scale.y/scale.x;
 	//return tRotate(p,M_PI/2)*vec2(1,aspect_ratio);
-	//return p; //normal - do nothing
+	return p; //normal - do nothing
 	//return abs(p)-vec2(1);
 	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
 	///*
@@ -3408,7 +3614,11 @@ function update_animation_values( )
 	--config.IFS_steps=lerp(1,1000,config.animation)
 	--draw_frames=lerp(100,1000,config.animation)
 end
-
+function fake_tonemap( v )
+	local Y=v.g
+	Y=Y/(1+Y)
+	return Y/v.g
+end
 function update_real(  )
 	__no_redraw()
 	if animate then
@@ -3441,6 +3651,28 @@ function update_real(  )
 	local c,x,y= is_mouse_down()
 	if c then
 		--mouse to screen
+		--[=[
+		x=(x/size[1]-0.5)*2
+		y=(-y/size[2]+0.5)*
+		if x>-1 and x<1 and
+		   y>-1 and y<1 then
+			--screen to world
+			--[[
+			x=(x-cx)/scale
+			y=(y-cy)/(scale*aspect_ratio)
+			--]]
+			--screen to pixel
+		
+			x=math.floor(((x+1)/2)*visit_buf.w)
+			y=math.floor(((y+1)/2)*visit_buf.h)
+			if x>=0 and x<visit_buf.w and y>=0 and y<visit_buf.h then
+				local v=visit_buf:get(x,y)
+				local m=fake_tonemap(v)
+				print(x,y,v.r*m,v.g*m,v.b*m)
+			end
+		end
+		--]=]
+		-- [[
 		x=(x/size[1]-0.5)*2
 		y=(-y/size[2]+0.5)*2
 		if x>-1 and x<1 and
@@ -3454,6 +3686,7 @@ function update_real(  )
 			config.cy=(-y)*(scale*aspect_ratio)
 			need_clear=true
 		end
+		--]]
 	end
 	if __mouse.wheel~=0 then
 		local pfact=math.exp(__mouse.wheel/10)
