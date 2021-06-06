@@ -13,6 +13,42 @@ local image_buf
 image_buf=load_png("saved_1596619752.png")
 
 -- [[
+
+function load_water(  )
+	local path="../assets/buiteveld94.txt"
+
+	local f=io.open(path,'r')
+	local line=f:read("l")
+	local skip_lines=6
+	local ret={}
+	for i=1,skip_lines do
+		line=f:read("l")
+	end
+	
+	while true do
+		local wl=f:read("n")
+		local value=f:read("n")
+		if wl==nil then break end
+		if wl>=380 and wl<=740 then
+			ret[wl]=value
+		end
+	end
+	line=f:read("l")
+	f:close()
+	return ret
+end
+water_absorbtion_data=load_water()
+function lerp_water( iter )
+	local min=380
+	local max=738
+	local cur=(max-min)*iter+min
+	local cur_f=math.floor(cur/2)*2
+	local next_f=cur_f+2
+	local w=(cur-cur_f)/2
+	--print(cur_f,next_f,cur,w)
+	return water_absorbtion_data[cur_f]*(1-w)+water_absorbtion_data[next_f]*w
+end
+
 local bwrite = require "blobwriter"
 local bread = require "blobreader"
 
@@ -85,8 +121,9 @@ function read_hd_png_buf( fname )
 
 	local sx=b:u32()
 	local sy=b:u32()
+
 	local chan_count = 4
-	local do_log_norm=true
+	local do_log_norm=false
 	local old_version=false
 	if not old_version then
  		chan_count=b:u32()
@@ -126,7 +163,7 @@ function read_hd_png_buf( fname )
 			--end
 		else
 			local v=b:f32()
-			v=background_minmax[2]-v
+			--v=background_minmax[2]-v
 			background_buf:set(x,y,{v,v,v,1})
 		end
 	end
@@ -140,12 +177,12 @@ function read_hd_png_buf( fname )
 		lavg=math.log(lavg+2.8)
 	end
 	print("Loaded:",background_minmax[1],background_minmax[2])
-	-- [[
+	--[[
 	for x=0,background_buf.w-1 do
 	for y=0,background_buf.h-1 do
 		tonemap2(background_buf:get(x,y),background_minmax[1],background_minmax[2])
 		--tonemap(background_buf:get(x,y),lavg)
-		--[[
+		--[=[
 		local iv=background_buf:get(x,y).r
 		if log_norm then
 			local min=background_minmax[1]
@@ -156,7 +193,7 @@ function read_hd_png_buf( fname )
 			local v=(iv-background_minmax[1])/(background_minmax[2]-background_minmax[1])
 			background_buf:set(x,y,{v,v,v,1})
 		end
-		--]]
+		--]=]
 	end
 	end
 	--]]
@@ -172,7 +209,7 @@ function load_hd_png()
 		__unbind_buffer()
 	end
 end
-image_buf=read_hd_png_buf("out.buf")
+image_buf=read_hd_png_buf("waves_out.buf")
 --]]
 function safe_set_size( w,h )
 	if STATE.size[1]~=w or STATE.size[2]~=h then
@@ -188,7 +225,7 @@ config=make_config({
 	{"iteration_step",0.001,type="floatsci",max=0.25},
 	{"bulge_r",0.1,type="float",max=0.5},
 	{"bulge_radius_offset",0,type="float",max=1},
-	{"gamma",2.2,type="float",min=0.01,max=5},
+	{"gamma",1,type="float",min=0.01,max=5},
 	{"whitepoint",0.33,type="float",min=-0.01,max=1},
 	{"exposure",0.004,type="floatsci",min=0.0001,max=1},
 	{"temperature",5778,type="float",min=0.001,max=10000},
@@ -261,10 +298,12 @@ vec3 xyz2rgb( vec3 c ) {
         -0.9689, 1.8758, 0.0415,
         0.0557, -0.2040, 1.0570
     );
-    vec3 r;
+    vec3 r=v;
+    /*
     r.x = ( v.r > 0.0031308 ) ? (( 1.055 * pow( v.r, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.r;
     r.y = ( v.g > 0.0031308 ) ? (( 1.055 * pow( v.g, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.g;
     r.z = ( v.b > 0.0031308 ) ? (( 1.055 * pow( v.b, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.b;
+    */
     return r;
 }
 
@@ -337,6 +376,7 @@ uniform float barrel_power;
 uniform float barrel_offset;
 uniform float v_gain;
 uniform float v_gamma;
+uniform float water_ab;
 float gain(float x, float k)
 {
     float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
@@ -537,9 +577,8 @@ float D65_approx(float iter)
 }
 float D65_blackbody(float iter,float temp)
 {
-	float wl=mix(380,740,iter);
-	float b65=black_body(wl*1e-9,6503.5);
-	return D65_approx(iter)*(black_body(wl*1e-9,temp)/b65);
+	float b65=black_body(iter,6503.5);
+	return D65_approx(iter)*(black_body(iter,temp)/b65);
 
 }
 vec2 tangent_distort(vec2 p,vec2 arg)
@@ -672,12 +711,15 @@ void main(){
 	//float T=4500;
 	//float T=8000;
 	//float T=6503.6; //D65 illiuminant
+	float water_depth=pow(nv.x,3)*8000+500;
+	//water_depth*=water_depth;
+	float water_transmitance=exp(-water_ab*water_depth); //units are "1/cm" so 100=>1m
 	#if 1
 	if(do_intensity==1)
 	{
 		float light_source=D65_blackbody(iteration,T);
 		//float light_source=black_body(iteration,T);
-		color.xyz=xyz_from_normed_waves(iteration)*light_source*nv*iteration_step;
+		color.xyz=xyz_from_normed_waves(iteration)*light_source*iteration_step*water_transmitance;//*nv
 	}
 	else
 		//color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,c))*iteration_step;
@@ -693,6 +735,9 @@ void main(){
 		float inteference=interference_spectrum(iteration,depth,0)*mix(1,0.0,c);
 		color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,T)*inteference*iteration_step;
 	#endif
+
+	//color.xyz=nv;
+
 	//
 	//color.xyz=nv;
 	//color.xyz=vec3(1,0.1,0.1);
@@ -872,6 +917,7 @@ function update(  )
 		main_shader:set("whitepoint",config.whitepoint)
 		main_shader:set("iteration",iteration)
 		main_shader:set("iteration_step",config.iteration_step)
+		main_shader:set("water_ab",lerp_water(iteration))
 		if config.image_is_intensity then
 			main_shader:set("do_intensity",1)
 		else
