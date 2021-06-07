@@ -1,0 +1,215 @@
+function normalize( tbl )
+	local sum=0
+	for i,v in pairs(tbl) do
+		sum=sum+v
+	end
+	for i,v in pairs(tbl) do
+		tbl[i]=tbl[i]/sum
+	end
+end
+
+
+local function rand_weighted(tbl)
+	local r=math.random()
+	local sum=0
+	for i,v in pairs(tbl) do
+		sum=sum+v
+		if sum>= r then
+			return i
+		end
+	end
+end
+local function replace_random( s,substr,rep )
+	local num_match=0
+	local function count(  )
+		num_match=num_match+1
+		return false
+	end
+	string.gsub(s,substr,count)
+	num_rep=math.random(0,num_match-1)
+	function rep_one(  )
+		if num_rep==0 then
+			num_rep=num_rep-1
+			if type(rep)=="function" then
+				return rep()
+			else
+				return rep
+			end
+		else
+			num_rep=num_rep-1
+			return false
+		end
+	end
+	local ret=string.gsub(s,substr,rep_one)
+	return ret
+end
+local function count_replacements( s )
+	local num_match=0
+	local function count(  )
+		num_match=num_match+1
+		return false
+	end
+	string.gsub(s,"R",count)
+	return num_match
+end
+ast_node=class(function ( n,table_normal,table_terminal,str, is_terminal,force_symbols)
+
+	n.tbl_n=table_normal
+	n.tbl_t=table_terminal
+
+	if is_terminal then
+		n:make_terminal(str,force_symbols)
+	else
+		n:make(str,force_symbols)
+	end
+end)
+local function pick_remove_rand( tbl )
+	local i=math.random(1,#tbl)
+	local v=tbl[i]
+	table.remove(tbl,i)
+	return v
+end
+random_forced=true
+local function pick_symbol( str,symbols,force_symbols )
+	if force_symbols and #force_symbols>0 then
+		if random_forced then
+			str=pick_remove_rand(force_symbols)
+		else
+			str=force_symbols[1]
+			table.remove(force_symbols,1)
+		end
+	else
+		if type(str)=="table" then
+			str=rand_weighted(str)
+		else
+			str=str or rand_weighted(symbols)
+		end
+	end
+	return str
+end
+function ast_node:make(str,force_symbols)
+	str=pick_symbol(str,self.tbl_n,force_symbols)
+
+	local ret=self
+	ret.str=str
+	ret.children={}
+	ret.num_children=count_replacements(str)
+
+	return ret
+end
+function ast_node:make_terminal( str ,force_symbols)
+
+	str=pick_symbol(str,self.tbl_t,force_symbols)
+
+	local ret=self
+	ret.is_terminal=true
+	ret.str=str
+
+	return ret
+end
+function ast_node.to_string(n)
+	if n.is_terminal then
+		return n.str
+	end
+	local num_match=0
+	local function replace_indexed(  )
+		num_match=num_match+1
+		if n.children[num_match] then
+			return n.children[num_match]:to_string()
+		else
+			return false
+		end
+	end
+	local ret=string.gsub(n.str,"R",replace_indexed)
+	return ret
+end
+ast_node.__tostring=ast_node.to_string
+function ast_node.mutate( n )
+	local choices={}
+	local choices_empty={}
+	for i=1,n.num_children do
+		if n.children[i] then
+			table.insert(choices,i)
+		else
+			table.insert(choices_empty,i)
+		end
+	end
+	if #choices==0 or (math.random()>0.5 and #choices_empty>0) then
+		n:grow(choices_empty[math.random(1,#choices_empty)])
+	else
+		local trg_child=choices[math.random(1,#choices)]
+		if n.children[trg_child].is_terminal then
+			local old_child=n.children[trg_child]
+			n.children[trg_child]=ast_node(n.tbl_n,n.tbl_t)
+			local trg_id=math.random(1,n.children[trg_child].num_children)
+			n.children[trg_child].children[trg_id]=old_child
+		else
+			n.children[trg_child]:mutate()
+		end
+	end
+end
+function ast_node.cut( n,child )
+	n.children[child]=nil
+end
+function ast_node.trim( n )
+	local choices={}
+	local choices_empty={}
+	for i=1,n.num_children do
+		if n.children[i] then
+			table.insert(choices,i)
+		end
+	end
+	if #choices==0 then
+		return false
+	else
+		local trg_child=choices[math.random(1,#choices)]
+		if n.children[trg_child].is_terminal then
+			n.children[trg_child]=nil
+			return true
+		end
+		if not n.children[trg_child]:trim() then
+			n:cut(trg_child)
+		end
+		return true
+	end
+end
+function ast_node.grow( n,child )
+	if child==nil then
+		local choices={}
+		for i=1,n.num_children do
+			if n.children[i] ==nil then
+				table.insert(choices,i)
+			end
+		end
+		child=choices[math.random(1,#choices)]
+	end
+	n.children[child]=ast_node(n.tbl_n,	n.tbl_t)
+end
+function ast_node.terminate_all(n,force_symbols )
+	if n.is_terminal then
+		return
+	end
+
+	for i=1,n.num_children do
+		if n.children[i] then
+			n.children[i]:terminate_all(force_symbols)
+		else
+			n.children[i]=ast_node(n.tbl_n,	n.tbl_t,nil,true,force_symbols)
+		end
+	end
+end
+function ast_node.clear_terminal(n )
+	if n.is_terminal then
+		return
+	end
+
+	for i=1,n.num_children do
+		if n.children[i] then
+			if n.children[i].is_terminal then
+				n.children[i]=nil
+			else
+				n.children[i]:clear_terminal()
+			end
+		end
+	end
+end
