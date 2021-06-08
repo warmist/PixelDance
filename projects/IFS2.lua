@@ -28,8 +28,8 @@ win_h=win_h or 0
 
 aspect_ratio=aspect_ratio or 1
 function update_size()
-	local trg_w=1024*size_mult
-	local trg_h=1024*size_mult
+	local trg_w=1024*2*size_mult
+	local trg_h=1024*2*size_mult
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
 	if win_w~=trg_w or win_h~=trg_h then
@@ -45,11 +45,11 @@ local size=STATE.size
 local max_palette_size=50
 local need_clear=false
 local oversample=1
-local complex=false
-local init_zero=false
+local complex=true
+local init_zero=true
 local sample_count=math.pow(2,20)
 local use_ast_for_random=false
-
+local not_pixelated=0
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
 
@@ -70,7 +70,7 @@ end
 function make_visits_texture()
 	if visit_tex==nil or visit_tex.w~=size[1]*oversample or visit_tex.h~=size[2]*oversample then
 		visit_tex={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
-		visit_tex.t:use(0,1)
+		visit_tex.t:use(0,not_pixelated)
 		visit_tex.t:set(size[1]*oversample,size[2]*oversample,1)
 		visit_buf=make_flt_buffer(size[1]*oversample,size[2]*oversample)
 	end
@@ -343,13 +343,17 @@ float Tonemap_Uchimura(float x) {
     float b = uchimura_params[5];  // pedestal
     return Tonemap_Uchimura(x, P, a, m, l, c, b);
 }
-vec3 tonemap(vec3 light)
+vec3 tonemap(vec3 light,float cur_exp)
 {
 	float lum_white =white_point*white_point;// pow(10,white_point);
 	//lum_white*=lum_white;
 	float Y=light.y;
-	Y=Y*exp(exposure)/(avg_lum);
-	//Y=Y*exp(exposure);
+#if SHOW_PALETTE
+	Y=Y*exp(cur_exp)/(9.6);
+#else
+	Y=Y*exp(cur_exp)/(avg_lum);
+#endif
+	//Y=Y*exp(cur_exp);
 	//Y=(Y-min_max.x)/(min_max.y-min_max.x);
 	//Y=(log(Y+1)-log(min_max.x+1))/(log(min_max.y+1)-log(min_max.x+1));
 	//Y=log(Y+1)/log(min_max.y+1);
@@ -370,59 +374,17 @@ vec3 tonemap(vec3 light)
     //light=clamp(light,0,2);
     //float mm=max(light.x,max(light.y,light.z));
     vec3 ret=xyz2rgb((light)*100);
-    float s=smoothstep(0,1,length(light));
+    //float s=smoothstep(0,1,length(light));
     //float s=smoothstep(0,1,dot(light,light));
     //float s=smoothstep(0,1,max(light.x,max(light.y,light.z)));//length(light));
-    //float s=0;
+    //float s=smoothstep(0.8,1.2,max(light.x,max(light.y,light.z))-1);//length(light));
+    float s=0;
+	///*
+    if(ret.x>1)ret.x=1;
+    if(ret.y>1)ret.y=1;
+    if(ret.z>1)ret.z=1;
+	//*/
     return mix(ret,vec3(1),s*s*s);
-}
-vec3 tonemap_ex(vec3 light)
-{
-	float lum_white =white_point*white_point;// pow(10,white_point);
-	//lum_white*=lum_white;
-
-	//tocieYxy
-	float sum=light.x+light.y+light.z;
-	float x=light.x/sum;
-	float y=light.y/sum;
-	float Y=light.y;
-
-	//Y=Y*exp(exposure);
-#if SHOW_PALETTE
-	Y=Y*exp(exposure)/(9.6);
-#else
-	Y=Y*exp(exposure)/(avg_lum);
-#endif
-	//Y=(Y-min_max.x)/(min_max.y-min_max.x);
-	//Y=(log(Y+1)-log(min_max.x+1))/(log(min_max.y+1)-log(min_max.x+1));
-	//Y=log(Y+1)/log(min_max.y+1);
-#if 0
-	Y=Tonemap_Uchimura(Y);
-	//Y=Tonemap_ACES(Y);
-#else
-	if(white_point<0)
-    	Y = Y / (1 + Y); //simple compression
-	else
-    	Y = (Y*(1 + Y / lum_white)) / (Y + 1); //allow to burn out bright areas
-#endif
-
-    //transform back to cieXYZ
-    light.y=Y;
-    float small_x = x;
-    float small_y = y;
-    light.x = light.y*(small_x / small_y);
-    float small_z=1-small_x-small_y;
-
-    //all of these are the same
-    light.z = light.x/small_x-light.x-light.y;
-    //light.z = (light.y/small_y)*(1 - small_x - small_y);
-    //light.z=(small_z/small_y)*light.y;
-    //light.z=(small_z/small_x)*light.x;
-    //light=clamp(light,0,1);
-    float s=length(light);
-    //s=pow(s,1/8);
-    return mix(xyz2rgb(light*100),vec3(1),smoothstep(0.0,1,s/16));
-    //return xyz2rgb(light*100);
 }
 vec3 YxyToXyz(vec3 v)
 {
@@ -455,7 +417,20 @@ void main(){
 	ccol=max(vec3(0),ccol);
 	ccol=pow(ccol,vec3(v_gamma));
 	//ccol*=exp(v_gamma);
-	color = vec4(tonemap(ccol),1);
+#if 0
+	float e1=exposure;
+	float e2=exposure+1;
+	float lerp_w=0.1;
+	float band_w=0.3;
+	float v=1-smoothstep(band_w-lerp_w/2,band_w+lerp_w/2,abs(pos.x));
+
+	color = vec4(tonemap(ccol,mix(e1,e2,v)),1);
+#elif 0
+	float auto_exp=-5.8*v_gamma+3.93;
+	color = vec4(tonemap(ccol,auto_exp),1);
+#else
+	color = vec4(tonemap(ccol,exposure),1);
+#endif
 	//color.xyz=pow(color.xyz,vec3(v_gamma));
 	//color.xyz=pow(color.xyz,vec3(2.4));
 	color.a=1;
@@ -494,7 +469,7 @@ end
 
 visits_minmax=visits_minmax or {}
 function find_min_max( tex,buf )
-	tex:use(0,1)
+	tex:use(0,not_pixelated)
 	local lmin={math.huge,math.huge,math.huge}
 	local lmax={-math.huge,-math.huge,-math.huge}
 
@@ -543,7 +518,7 @@ function draw_visits(  )
 	end
 
 	display_shader:use()
-	visit_tex.t:use(0,1)
+	visit_tex.t:use(0,not_pixelated)
 	set_shader_palette(display_shader)
 	display_shader:set("min_max",lmin[2],lmax[2])
 
@@ -905,7 +880,7 @@ palette.generators={
 		for i=0,max_palette_size-1 do
 			local h=i/(max_palette_size-1)
 			local w=xyz_from_normed_waves(h)
-			local b=D65_blackbody(h,5000)--6503.5)
+			local b=D65_blackbody(h,6503.5)
 			--local b=black_body(h,6503.5)
 			--local b=1
 			w.x=w.x*b
@@ -1589,7 +1564,7 @@ function chebyshev_poly_series( degree )
 	--str_cmplx="cheb_eval(s*params.xy+p*params.zw)*global_seed+vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI"
 end
 animate=false
-ast_tree=ast_tree or ast_node(normal_symbols_complex,terminal_symbols_complex)
+--ast_tree=ast_tree or ast_node(normal_symbols_complex,terminal_symbols_complex)
 
 function get_forced_insert(  )
 	local tbl_insert={"s*global_seed","p","params.xy","params.zw"} --"(p*(global_seed+0.5))/length(p)"
@@ -1688,7 +1663,8 @@ function rand_function(  )
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
 	--local tbl_insert_cmplx={"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seed)","vec2(cos(length(p)*M_PI*4+global_seed),sin(length(p)*M_PI*4+global_seed))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
-	local tbl_insert_cmplx={"s","p","params.xy","params.zw","vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))*move_dist"}--"mix(p,p/length(p),global_seed)"
+	local tbl_insert_cmplx={"s","c_mul(p,vec2(cos((global_seed-0.5)*0.1),sin((global_seed-0.5)*0.1)))","params.xy","params.zw"}--"mix(p,p/length(p),global_seed)"
+	--vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))*move_dist
 	--local tbl_insert_cmplx={"mix(s,s/length(s),1-global_seed)","mix(p,p/length(p),global_seed)","params.xy","params.zw"}--"mix(p,p/length(p),global_seed)"
 
 	local tbl_insert_x={"s.x+cos(global_seed*M_PI*2)","p.y+params.x","params.x","params.y"}
@@ -1702,7 +1678,7 @@ function rand_function(  )
 		table.insert(tbl_insert_cmplx,string.format("vec2(%g,%g)",math.cos(vr)*r,math.sin(vr)*r))
 	end
 	--]]
-	--[==[
+	-- [==[
 	local tex_variants={
 		-- [[
 		"tex_p.xy","tex_p.yz","tex_p.zx",
@@ -1719,7 +1695,7 @@ function rand_function(  )
 
 	local num_tex=5
 	for i=1,num_tex do
-		table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
+		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
 		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
 		table.insert(tbl_insert_cmplx,tex_variants[math.random(1,#tex_variants)])
@@ -1804,9 +1780,19 @@ function rand_function(  )
 	str_cmplx=random_math_complex(rand_complexity,"c_div(c_mul(R,s)+R,c_mul(R,s)+R)")
 	--]=]
 	--mandelbrot?
-	-- [=[
+	--[=[
 	--str_cmplx="c_mul(s,s)*value_inside(global_seed,0,0.5)+c_mul(s,c_mul(s,s))*value_inside(global_seed,0.5,1)+p"
-	str_cmplx="mix(c_mul(s,s)+p,c_mul(c_mul(s,s)+p,vec2(cos(2*M_PI*global_seed),sin(2*M_PI*global_seed))),tex_p.y)"
+	--str_cmplx="mix(c_mul(s,s)+p,c_mul(c_mul(s,s)+p,vec2(cos(2*M_PI*global_seed),sin(2*M_PI*global_seed))),tex_p.y)"
+	--str_cmplx="c_mul(s*(tex_p.y+0.5),s*(tex_s.y+0.5))+p*(global_seed+0.5)"
+	--str_cmplx="c_mul(s,s)+p*(global_seed+0.5)"
+	--str_cmplx="c_mul(s,s)+c_mul(p,vec2(cos((global_seed-0.5)*0.1),sin((global_seed-0.5)*0.1)))"
+	str_cmplx=[[
+	c_mul(
+		c_mul(s,s),
+		vec2(
+				cos((global_seed-0.5)*0.1),sin((global_seed-0.5)*0.1)
+			)
+		)+p]]
 	--]=]
 
 	--[[ julia
@@ -1896,6 +1882,8 @@ function rand_function(  )
 	--str_preamble=str_preamble.."p=p*0.8+vec2(cos(global_seed*M_PI*2)*p.x-sin(global_seed*M_PI*2)*p.y,cos(global_seed*M_PI*2)*p.y+sin(global_seed*M_PI*2)*p.x)*.2;"
 	str_preamble=str_preamble.."s=s*0.0+vec2(cos(global_seed*M_PI*2)*s.x-sin(global_seed*M_PI*2)*s.y,cos(global_seed*M_PI*2)*s.y+sin(global_seed*M_PI*2)*s.x)*0.6;"
 	--]]
+	--str_preamble=str_preamble.."p=mod(p+move_dist/2,move_dist)-move_dist/2;"
+	--str_preamble=str_preamble.."p=floor(p*move_dist)/move_dist;"
 	--[[ gravity
 	str_preamble=str_preamble.."s*=1/move_dist;"
 	--]]
@@ -1943,7 +1931,7 @@ function rand_function(  )
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	--[[ polar gravity
+	-- [[ polar gravity
 	str_preamble=str_preamble.."vec2 np=s;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."vec2 np=p;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."vec2 np=tex_s.yz;float npl=abs(sqrt(dot(np,np)))+0.5;npl*=npl;"
@@ -1957,7 +1945,9 @@ function rand_function(  )
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seed*8))/(M_PI/2);s=last_s+ds*((global_seed*7)*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-dot(s,s)/global_seed);s=last_s+ds*(move_dist*vv/ls);"
-	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/npl);s=last_s+ds*(move_dist*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-tex_p.y/npl);s=last_s+c_mul(ds,global_seed_vec)*(vv/(ls*move_dist));"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-tex_p.y/npl);s=last_s+c_mul(ds,global_seed_vec)*(vv*(1-normed_iter)/(ls*move_dist));"
+	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-tex_p.y/npl);s=last_s+ds*(vv/(ls*move_dist));"
 	--]]
 	--[[ move towards circle
 	str_postamble=str_postamble.."vec2 tow_c=s+vec2(cos(normed_iter*M_PI*2),sin(normed_iter*M_PI*2))*move_dist;s=(dot(tow_c,s)*tow_c/length(tow_c));"
@@ -1965,7 +1955,7 @@ function rand_function(  )
 	--[[ boost
 	str_preamble=str_preamble.."s*=move_dist;"
 	--]]
-	-- [[ boost less with distance
+	--[[ boost less with distance
 	str_preamble=str_preamble.."s*=move_dist*exp(-1/dot(s,s));"
 	--str_preamble=str_preamble.."s*=global_seed*exp(-1/dot(s,s));"
 	--]]
@@ -2068,7 +2058,7 @@ function rand_function(  )
 	str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
 	str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
 	--]]
-	-- [[ centered-polar
+	--[[ centered-polar
 	str_preamble=str_preamble.."s=to_polar(s-p);"
 	str_postamble=str_postamble.."s=from_polar(s)+p;"
 	--]]
@@ -2128,6 +2118,7 @@ function gui()
 	local s=STATE.size
 	if imgui.Button("Clear image") then
 		need_clear=true
+		tick=0
 	end
 	imgui.SameLine()
 	if imgui.Button("Save image") then
@@ -2510,6 +2501,7 @@ vec3 func_actual(vec2 s,vec2 p)
 	//tex_p=1/(exp(-tex_p)+1);
 	//init condition
 	vec2 last_s=s;
+	vec2 global_seed_vec=vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2));
 	float e=1;
 	%s
 #if ESCAPE_MODE
@@ -3315,175 +3307,31 @@ function visit_iter()
 		visit_call_count=visit_call_count+1
 		cur_visit_iter=0
 		-- [===[
-		if not shader_randomize then
-			if config.smart_reset then
-				local cs=samples:get_current()
-				cs:use()
-				cs:read(samples_data.d,draw_sample_count*4*4)
-				__unbind_buffer()
-			end
-			local last_pos={0,0}
-			local samples_int=ffi.cast("struct{uint32_t d[4];}*",samples_data.d)
-			for i=0,draw_sample_count-1 do
-				--gaussian blob
-			 	local x,y=gaussian2(0,gen_radius,0,gen_radius)
-				--[[ exact grid
-				local x=((i%sample_count_w)/sample_count_w-0.5)*2
-				local y=(math.floor(i/sample_count_w)/sample_count_w-0.5)*2
-				--]]
-				--[[ halton sequence
-				cur_sample=cur_sample+1
-				if cur_sample>max_sample then cur_sample=0 end
 
-				local x=vdc(cur_sample,2)*gen_radius-gen_radius/2
-				local y=vdc(cur_sample,3)*gen_radius-gen_radius/2
-				--]]
-				--[[ box muller transform on halton sequence i.e. guassian halton?
-				cur_sample=cur_sample+1
-				if cur_sample>max_sample then cur_sample=0 end
-
-				local u1=vdc(cur_sample,2)
-				local u2=vdc(cur_sample,3)*math.pi*2
-				local x=math.sqrt(-2*gen_radius*math.log(u1))*math.cos(u2)
-				local y=math.sqrt(-2*gen_radius*math.log(u1))*math.sin(u2)
-				--]]
-				--[[
-				local cc=i/draw_sample_count
-				local pix_id=cc*win_w*win_h
-
-				local x=(math.floor(pix_id%win_w)/win_w)*2-1
-				local y=(math.floor(pix_id/win_w)/win_h)*2-1
-				local blur_x=0.05/win_w
-				local blur_y=0.05/win_h
-				--[=[
-				x=x+math.random()*blur_x-blur_x/2
-				y=y+math.random()*blur_y-blur_y/2
-				--]=]
-				x,y=gaussian2(x,blur_x,y,blur_y)
-				--print(x,y,i)
-				--]]
-				--[[ square
-				local x=math.random()*gen_radius-gen_radius/2
-				local y=math.random()*gen_radius-gen_radius/2
-				--]]
-				--gaussian blob with moving center
-				--local x,y=gaussian2(-config.cx/config.scale,gen_radius,-config.cy/config.scale,gen_radius)
-				
-				--[[ n gaussian blobs
-				local count=3
-				local rad=2+gen_radius*gen_radius
-				local n=math.random(0,count-1)
-				local a=(n/count)*math.pi*2
-				local cx=math.cos(a)*rad
-				local cy=math.sin(a)*rad
-				local x,y=gaussian2(cx,gen_radius,cy,gen_radius)
-				--]]
-				--[[ circle perimeter
-				local a=math.random()*math.pi*2
-				local x=math.cos(a)*gen_radius
-				local y=math.sin(a)*gen_radius
-				--]]
-				--[[ random walk
-				last_pos[1]=last_pos[1]+(math.random()*2-1)*gen_radius/10000
-				last_pos[2]=last_pos[2]+(math.random()*2-1)*gen_radius/10000
-				if math.abs(last_pos[1])>gen_radius then last_pos[1]=0 end
-				if math.abs(last_pos[2])>gen_radius then last_pos[2]=0 end
-				local x=last_pos[1]
-				local y=last_pos[2]
-				--]]
-				--[[ circle area
-				local a = math.random() * 2 * math.pi
-				local r = gen_radius *math.sqrt(math.random())
-				local x = r * math.cos(a)
-				local y = r * math.sin(a)
-				--]]
-				--[[ spiral
-				local angle_speed=500;
-				local t=math.random();
-				local x=math.cos(t*angle_speed)*math.sqrt(t)*gen_radius;
-				local y=math.sin(t*angle_speed)*math.sqrt(t)*gen_radius;
-				--]]
-				-------------mods
-				--[[ polar grid mod
-				local r=math.sqrt(x*x+y*y)
-				local a=math.atan2(y,x)
-				local grid_r=0.05
-				local grid_a=math.pi/21
-				r=math.floor(r/grid_r)*grid_r
-				--a=math.floor(a/grid_a)*grid_a
-
-				x=math.cos(a)*r
-				y=math.sin(a)*r
-				--]]
-				--[[ grid mod
-				--local gr=math.sqrt(x*x+y*y)
-				local grid_size=0.05
-				x=math.floor(x/grid_size)*grid_size
-				y=math.floor(y/grid_size)*grid_size
-				--]]
-				--[[ blur mod
-				local blur_str=0.0000005
-				x,y=gaussian2(x,blur_str,y,blur_str*aspect_ratio)
-				--]]
-				--[[ blur mod linear
-				local blur_str=0.1
-				x=x+math.random()*blur_str-blur_str/2
-				y=y+math.random()*blur_str-blur_str/2
-				--]]
-				--[[ circles mod
-				local circle_size=0.001
-				local a2 = math.random() * 2 * math.pi
-				x=x+math.cos(a2)*circle_size
-				y=y+math.sin(a2)*circle_size
-				--]]
-				if escape_fractal then
-					x=math.random()*2-1
-					y=math.random()*2-1
-				end
-				local need_reset=test_point_for_random(samples_data.d[i])
-				if need_clear or not config.smart_reset or need_reset  then
-					samples_data.d[i]={x,y,x,y}
-					if need_reset then
-						count_reset[need_reset]=count_reset[need_reset]+1
-					end
-					count_reset[4]=count_reset[4]+1
-				end
-				--[[ for lines
-				local a2 = math.random() * 2 * math.pi
-				x=x+math.cos(a2)*config.move_dist
-				y=y+math.sin(a2)*config.move_dist
-				--samples.d[i+1]={x,y}
-				--]]
-			end
-			reset_stats=string.format("Reset: NAN=%.3g TOO_CLOSE:%.3g TOO_FAR:%.3g Total:%.3g",count_reset[1]/draw_sample_count,count_reset[2]/draw_sample_count,count_reset[3]/draw_sample_count,count_reset[4]/draw_sample_count)
-			local cs=samples:get_current()
-			cs:use()
-			cs:set(samples_data.d,draw_sample_count*4*4)
+		--]===]
+		-- [===[
+		randomize_points:use()
+		randomize_points:set("rand_number",math.random())
+		randomize_points:set("radius",config.gen_radius or 2)
+		--randomize_points:set("params",config.v0,config.v1,config.v2,config.v3)
+		if config.smart_reset and not need_clear then
+			randomize_points:set_i("smart_reset",1)
 		else
-			--]===]
-			-- [===[
-			randomize_points:use()
-			randomize_points:set("rand_number",math.random())
-			randomize_points:set("radius",config.gen_radius or 2)
-			--randomize_points:set("params",config.v0,config.v1,config.v2,config.v3)
-			if config.smart_reset and not need_clear then
-				randomize_points:set_i("smart_reset",1)
-			else
-				randomize_points:set_i("smart_reset",0)
-			end
-			local so=samples:get_other()
-			so:use()
-			so:bind_to_feedback()
-
-			samples:get_current():use()
-			randomize_points:raster_discard(true)
-			randomize_points:draw_points(0,draw_sample_count,4,1)
-			__unbind_buffer()
-			randomize_points:raster_discard(false)
-			samples:flip()
-			--sample_rand(10,draw_sample_count)
-			--]===]
+			randomize_points:set_i("smart_reset",0)
 		end
+		local so=samples:get_other()
+		so:use()
+		so:bind_to_feedback()
+
+		samples:get_current():use()
+		randomize_points:raster_discard(true)
+		randomize_points:draw_points(0,draw_sample_count,4,1)
+		__unbind_buffer()
+		randomize_points:raster_discard(false)
+		samples:flip()
+		--sample_rand(10,draw_sample_count)
+		--]===]
+
 	end
 -- [==[
 	transform_shader:use()
@@ -3525,7 +3373,7 @@ function visit_iter()
 		so:bind_to_feedback()
 
 		samples:get_current():use()
-		visit_tex.t:use(1)
+		visit_tex.t:use(1,not_pixelated)
 		transform_shader:set_i("img_tex",1)
 		transform_shader:set("global_seed",global_seed)
 		transform_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
@@ -3543,7 +3391,7 @@ function visit_iter()
 		cs:use()
 
 		add_visits_shader:raster_discard(false)
-		visit_tex.t:use(0)
+		visit_tex.t:use(0,not_pixelated)
 		add_visits_shader:push_attribute(0,"pos",4,nil,4*4)
 		add_visits_shader:blend_add()
 		add_visits_shader:set_i("img_tex",1)
@@ -3561,6 +3409,7 @@ function visit_iter()
 			__clear()
 			cur_visit_iter=0
 			need_clear=false
+			global_seed_id=1
 		end
 	end
 
@@ -3601,6 +3450,7 @@ function update_animation_values( )
 	]]
 	--gen_palette()
 	--rand_function()
+	--[[
 	global_seed_shuffling[1]=ncos(a*1+12.8)*0.5+0.5
 	global_seed_shuffling[2]=ncos(a*2+31.1)*0.5
 	global_seed_shuffling[3]=ncos(a*3+1)*0.125
@@ -3609,7 +3459,10 @@ function update_animation_values( )
 	global_seed_shuffling[6]=ncos(a*2+3.4)*0.9+0.1
 	global_seed_shuffling[7]=ncos(a*3+0.97)*0.1+0.9
 	global_seed_shuffling[8]=ncos(a*2)*0.3+0.3
-	--config.move_dist=lerp(0.0001,2,config.animation)
+	--]]
+	--config.v1=lerp(-0.6,-0.55,ncos(a))
+	config.v0=lerp(-0.440,0.1,ncos(a))
+	config.move_dist=lerp(0.1,0.165,ncos(a*2))
 	--config.gamma=lerp(0.4,0.89,config.animation)
 	--config.IFS_steps=lerp(1,1000,config.animation)
 	--draw_frames=lerp(100,1000,config.animation)
@@ -3639,12 +3492,22 @@ function update_real(  )
 		end
 	else
 		__clear()
-		--if config.draw then
-			draw_visits()
-		--end
+		draw_visits()
 	end
 	auto_clear()
-	visit_iter()
+	local anim_check=false
+	if anim_check then
+		update_animation_values( )
+		tick=tick or 0
+		--
+		tick=tick+1
+		if tick<draw_frames then
+			visit_iter()
+		end
+	else
+		visit_iter()
+	end
+
 	local scale=config.scale
 	local cx,cy=config.cx,config.cy
 
@@ -3696,3 +3559,4 @@ function update_real(  )
 		need_clear=true
 	end
 end
+
