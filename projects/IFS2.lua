@@ -17,9 +17,9 @@ local ffi = require("ffi")
 			- start point has color, add it to end point
 			- do real (from chrom. abber.) tonemapping
 			- maybe 2d map of colors?
-			- multiplicative blending for "absorption" like thing
+			- multiplicative blending for "absorption" like thing DONE: not pretty :<
 				- clear to blackbody
-				- stamp with "multiply" and "pow(absorbtion,depth)"
+				- stamp with "multiply" and "pow(absorbtion,depth)" (actually it's exp(-depth*absorbtion))
 		save hd buffer with tonemapping applied
 --]]
 
@@ -48,7 +48,6 @@ local oversample=1
 local complex=true
 local init_zero=true
 local sample_count=math.pow(2,20)
-local use_ast_for_random=false
 local not_pixelated=0
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
@@ -143,7 +142,7 @@ config=make_config({
 
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"exposure",1,type="float",min=-10,max=10},
-	{"white_point",1,type="float",min=0,max=10},
+	{"white_point",1,type="float",min=-0.01,max=10},
 	--[[ other tonemapping
 
 	{"max_bright",1.0,type="float",min=0,max=2},
@@ -155,6 +154,7 @@ config=make_config({
 	--]]
 	{"animation",0,type="float",min=0,max=1},
 	{"reshuffle",false,type="boolean"},
+	{"use_ast",false,type="boolean"},
 },config)
 
 local display_shader=shaders.Make[==[
@@ -384,7 +384,7 @@ vec3 tonemap(vec3 light,float cur_exp)
     if(ret.y>1)ret.y=1;
     if(ret.z>1)ret.z=1;
 	//*/
-    return mix(ret,vec3(1),s*s*s);
+    return mix(ret,vec3(1),pow(s,7));
 }
 vec3 YxyToXyz(vec3 v)
 {
@@ -1098,9 +1098,10 @@ local normal_symbols={
 }
 
 local terminal_symbols_complex={
-["s"]=3,["p"]=3,
-["params.xy"]=1,["params.zw"]=1,
---["(c_one()*normed_iter)"]=0.05,["(c_i()*normed_iter)"]=0.05,["c_one()"]=0.1,["c_i()"]=0.1,
+--["s"]=3,["p"]=3,
+--["params.xy"]=1,["params.zw"]=1,
+--["(c_one()*normed_iter)"]=0.05,["(c_i()*normed_iter)"]=0.05,
+["c_one()"]=0.1,["c_i()"]=0.1,
 }
 local terminal_symbols_complex_const={
 ["c_one()"]=1,["c_i()"]=0.1,
@@ -1566,8 +1567,16 @@ end
 animate=false
 --ast_tree=ast_tree or ast_node(normal_symbols_complex,terminal_symbols_complex)
 
-function get_forced_insert(  )
-	local tbl_insert={"s*global_seed","p","params.xy","params.zw"} --"(p*(global_seed+0.5))/length(p)"
+function get_forced_insert_complex(  )
+	--{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
+	--{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
+	--{"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seed)","vec2(cos(length(p)*M_PI*4+global_seed),sin(length(p)*M_PI*4+global_seed))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
+	--"mix(p,p/length(p),global_seed)"
+	--vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))*move_dist
+	--local tbl_insert_cmplx={"mix(s,s/length(s),1-global_seed)","mix(p,p/length(p),global_seed)","params.xy","params.zw"}--"mix(p,p/length(p),global_seed)"
+
+	--local tbl_insert={"s","c_mul(p,vec2(-1,1+(global_seed-0.5)*move_dist))","params.xy","params.zw"} --"(p*(global_seed+0.5))/length(p)"
+	local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seed-0.5)*M_PI*2*move_dist),sin((global_seed-0.5)*M_PI*2*move_dist))"} --"(p*(global_seed+0.5))/length(p)"
 	--[[
 	table.insert(tbl_insert,"vec2(global_seed,0)")
 	table.insert(tbl_insert,"vec2(0,1-global_seed)")
@@ -1591,18 +1600,21 @@ function get_forced_insert(  )
 		--]]
 	}
 
-	-- [[
 	local num_tex=1
 	for i=1,num_tex do
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
+		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
+		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
 		table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
+		--table.insert(tbl_insert_x,tex_variants[math.random(1,#tex_variants)])
+		--table.insert(tbl_insert_y,tex_variants[math.random(1,#tex_variants)])
 	end
 	--]==]
 	return tbl_insert
 end
 function new_ast_tree()
 	ast_tree= ast_node(normal_symbols_complex,terminal_symbols_complex)
-	ast_tree.forced=get_forced_insert()
+	ast_tree.forced=get_forced_insert_complex()
 	ast_tree.random_forced=true
 	print(ast_tree:to_string())
 end
@@ -1616,7 +1628,7 @@ function ast_trim(  )
 end
 function ast_terminate( reterm )
 	if reterm then
-		ast_tree.forced=get_forced_insert()
+		ast_tree.forced=get_forced_insert_complex()
 		ast_tree:clear_terminal()
 	end
 	ast_tree:terminate_all(ast_tree.forced)
@@ -1660,13 +1672,8 @@ function ast_terminate( reterm )
 end
 function rand_function(  )
 	local s=random_math(rand_complexity)
-	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
-	--str_cmplx=random_math_complex(rand_complexity,nil,{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
-	--local tbl_insert_cmplx={"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seed)","vec2(cos(length(p)*M_PI*4+global_seed),sin(length(p)*M_PI*4+global_seed))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
-	local tbl_insert_cmplx={"s","c_mul(p,vec2(cos((global_seed-0.5)*0.1),sin((global_seed-0.5)*0.1)))","params.xy","params.zw"}--"mix(p,p/length(p),global_seed)"
-	--vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))*move_dist
-	--local tbl_insert_cmplx={"mix(s,s/length(s),1-global_seed)","mix(p,p/length(p),global_seed)","params.xy","params.zw"}--"mix(p,p/length(p),global_seed)"
-
+	
+	local tbl_insert_cmplx=get_forced_insert_complex()
 	local tbl_insert_x={"s.x+cos(global_seed*M_PI*2)","p.y+params.x","params.x","params.y"}
 	local tbl_insert_y={"s.y+sin(global_seed*M_PI*2)","p.x+params.y","params.z","params.w"}
 	--[[
@@ -1678,31 +1685,7 @@ function rand_function(  )
 		table.insert(tbl_insert_cmplx,string.format("vec2(%g,%g)",math.cos(vr)*r,math.sin(vr)*r))
 	end
 	--]]
-	-- [==[
-	local tex_variants={
-		-- [[
-		"tex_p.xy","tex_p.yz","tex_p.zx",
-		"tex_s.xy","tex_s.yz","tex_s.zx",
-		"vec2(tex_s.x,tex_p.x)","vec2(tex_s.y,tex_p.y)","vec2(tex_s.z,tex_p.z)",
-		"vec2(tex_s.x,tex_p.y)","vec2(tex_s.y,tex_p.z)","vec2(tex_s.z,tex_p.x)",
-		"vec2(tex_s.x,tex_p.z)","vec2(tex_s.y,tex_p.x)","vec2(tex_s.z,tex_p.y)",
-		--]]
-		--[[
-		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI","vec2(atan(tex_p.y,tex_p.x),atan(tex_s.y,tex_s.x))/M_PI",
-		"vec2(atan(tex_s.x,tex_s.z),atan(tex_p.x,tex_p.z))/M_PI","vec2(atan(tex_p.x,tex_p.z),atan(tex_s.x,tex_s.z))/M_PI"
-		--]]
-	}
-
-	local num_tex=5
-	for i=1,num_tex do
-		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
-		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
-		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
-		table.insert(tbl_insert_cmplx,tex_variants[math.random(1,#tex_variants)])
-		--table.insert(tbl_insert_x,tex_variants[math.random(1,#tex_variants)])
-		--table.insert(tbl_insert_y,tex_variants[math.random(1,#tex_variants)])
-	end
-	--]==]
+	
 
 	local tex_variants_real={
 		-- [[
@@ -1919,8 +1902,8 @@ function rand_function(  )
 			sub_s=string.format("c_mul(%s,%s)","s",sub_s)
 		end
 		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
-		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
-		input_s=input_s..string.format("+%s*c_mul(%s,vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))",sub_s,tex_variants[math.random(1,#tex_variants)])
+		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
+		--input_s=input_s..string.format("+%s*c_mul(%s,vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))",sub_s,tex_variants[math.random(1,#tex_variants)])
 		local v_start=(i-1)/series_size
 		local v_end=i/series_size
 		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)*value_inside(global_seed,%g,%g)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2,v_start,v_end)
@@ -1931,7 +1914,7 @@ function rand_function(  )
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	-- [[ polar gravity
+	--[[ polar gravity
 	str_preamble=str_preamble.."vec2 np=s;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."vec2 np=p;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."vec2 np=tex_s.yz;float npl=abs(sqrt(dot(np,np)))+0.5;npl*=npl;"
@@ -2132,7 +2115,7 @@ function gui()
 	if imgui.Button("regen shuffling") then
 		global_seed_shuffling={}
 	end
-	if use_ast_for_random then
+	if config.use_ast then
 
 		if imgui.Button("New function") then
 			new_ast_tree()
@@ -3005,6 +2988,7 @@ void main(){
 	//c*=(sin(start_l*M_PI*8)+0.0);
 	//c*=(start_l-0.5)*2;
 	//c*=sin(global_seed*M_PI*8)+0.3;
+	//color=vec4(exp(-c*0.0001),1);
 	color=vec4(c,1);
 
 }
@@ -3393,6 +3377,7 @@ function visit_iter()
 		add_visits_shader:raster_discard(false)
 		visit_tex.t:use(0,not_pixelated)
 		add_visits_shader:push_attribute(0,"pos",4,nil,4*4)
+		--add_visits_shader:blend_multiply()
 		add_visits_shader:blend_add()
 		add_visits_shader:set_i("img_tex",1)
 		add_visits_shader:set_i("pix_size",psize)
@@ -3406,6 +3391,8 @@ function visit_iter()
 		end
 		add_visits_shader:draw_points(0,draw_sample_count,4)
 		if need_clear then
+			--__setclear(95.047,100,108.883) XYZ of d65 blackbody
+			__setclear(0,0,0)
 			__clear()
 			cur_visit_iter=0
 			need_clear=false
