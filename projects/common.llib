@@ -57,6 +57,7 @@ function make_buffer( typename,type_id,default_pixel )
 			end
 		end
 		img.write_texture=function(t, tex )
+			tex:use(0)
 			tex:set(t.d,t.w,t.h,t.type)
 		end
 		img.read_texture=function(t, tex )
