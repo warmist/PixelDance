@@ -12,7 +12,7 @@ local win_w=1024
 local win_h=1024
 
 __set_window_size(win_w,win_h)
-local oversample=1/8
+local oversample=1/2
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -22,7 +22,7 @@ local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 
 is_remade=false
-local figure_w=35
+local figure_w=250
 local max_particle_count=figure_w*figure_w
 
 function update_buffers()
@@ -45,6 +45,8 @@ config=make_config({
     {"pause",false,type="bool"},
     {"draw",true,type="bool"},
     {"noise_count",4,type="int",min=0,max=figure_w*figure_w},
+    {"long_dist_range",2,type="int",min=0,max=5},
+    {"long_dist_offset",0,type="int",min=0,max=7},
     {"zoom",1,type="float",min=1,max=10},
     {"t_x",0,type="float",min=0,max=1},
     {"t_y",0,type="float",min=0,max=1},
@@ -100,7 +102,9 @@ void main(){
     
 
     //col=texelFetch(pcb_colors,ivec2(particle_type,0),0);
-    vec3 c=palette(particle_age,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
+    //vec3 c=palette(particle_age,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
+    vec3 c=palette(particle_age,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
+    //vec3 c=palette(particle_age,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
     col=vec4(c,1);
     //if(col.a!=0)
     //    col.a=1;
@@ -156,11 +160,12 @@ function fix_pos( p )
 	if ret.g>=map_h then ret.g=0 end
 	return ret
 end
-function displace_by_dir_nn( pos,dir )
+function displace_by_dir_nn( pos,dir,dist )
+    dist=dist or 1
 	local ret={r=pos.r,g=pos.g}
 	local dx=dir_to_dx[dir]
-	ret.r=round(ret.r+dx[1])
-	ret.g=round(ret.g+dx[2])
+	ret.r=round(ret.r+dx[1]*dist)
+	ret.g=round(ret.g+dx[2]*dist)
 	return fix_pos(ret)
 end
 function get_nn( pos )
@@ -268,12 +273,46 @@ function concat_byline( s1,s2 )
     end
     return ret
 end
+function displace_by_dir( pos,dir )
+    local ret={r=pos.r,g=pos.g}
+    local dx=dir_to_dx[dir]
+    ret.r=round(ret.r+dx[1])
+    ret.g=round(ret.g+dx[2])
+    return fix_pos(ret)
+end
+function calculate_long_range_rule( pos )
 
+    for r=2,config.long_dist_range do
+        local count_in_range=0
+        local last_dir=0
+        for j=1,8 do
+            local tpos=displace_by_dir_nn(pos,j,r)
+            local sl=static_layer:get(tpos.r,tpos.g)
+            if sl.a>0 then
+                count_in_range=count_in_range+1
+                last_dir=j
+            end
+        end
+        if count_in_range>1 then
+            return 0 --more than one direction to move, so don't
+        elseif count_in_range==1 then
+            --if r>3 then
+                return rotate_dir(last_dir,config.long_dist_offset)
+            --else
+            --    return last_dir
+            --end
+        end
+    end
+    return 0 --couldn't find any thing
+end
 function calculate_rule( pos )
 	if #rules==0 then
 		return math.random(0,8)
 	else
 		local v=get_nn(pos)
+        if v==0 and config.long_dist_range>=2 then
+            return calculate_long_range_rule(pos)
+        end
 		return rules[v] or 0
 	end
 end
@@ -281,13 +320,7 @@ end
 function round( x )
 	return math.floor(x+0.5)
 end
-function displace_by_dir( pos,dir )
-	local ret={r=pos.r,g=pos.g}
-	local dx=dir_to_dx[dir]
-	ret.r=round(ret.r+dx[1])
-	ret.g=round(ret.g+dx[2])
-	return fix_pos(ret)
-end
+
 function particle_step(  )
 	for x=0,map_w-1 do
 		for y=0,map_h-1 do
@@ -331,7 +364,7 @@ function particle_step(  )
         else
         	--movement_layer_target:set(tpos.r,tpos.g,tp-1)
     		local a=particles_age:get(i,0)
-        	particles_age:set(i,0,a+0.01)
+        	particles_age:set(i,0,a+0.002)
         end
     end
 end
@@ -551,7 +584,7 @@ function update()
 		end
 		save_gif_frame()
 		giffer=gif_saver(string.format("saved_%d.gif",os.time(os.date("!*t"))),
-			img_buf_save,500,1)
+			img_buf_save,500,4)
 	end
 	imgui.SameLine()
 	if imgui.Button("Stop Gif") then
@@ -566,8 +599,18 @@ function update()
 
         -- [[
         for i=0,max_particle_count-1 do
-
             --[[
+            local x=math.random(0,map_w-1)
+            local y=math.random(0,map_h-1)
+            if static_layer:get(x,y).a==0 then
+                particles_pos:set(i,0,{x,y})
+            else
+                local x=math.random(0,map_w-1)
+                local y=math.random(0,map_h-1)
+                particles_pos:set(i,0,{x,y})
+            end
+            --]]
+            -- [[
             local r=math.sqrt(math.random())*map_w/2
 
             local a=math.random()*math.pi*2
@@ -575,17 +618,19 @@ function update()
             --]]
             --particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
             --particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.sin(a)*r})
+            -- [[
             local w=figure_w
             particles_pos:set(i,0,{map_w/2+i%w-math.floor(w/2),map_h/2+math.floor(i/w)-math.floor(w/2)})
             particles_age:set(i,0,0)
+            --]]
         end
         --]]
         -- [[
         local noise_count=config.noise_count
         for i=1,noise_count do
             local i=math.floor((max_particle_count-1)*(i-1)/(noise_count-1)+0.5)--math.random(0,max_particle_count-1)
-            local x=1--math.random(0,map_w-1)
-            local y=1--math.random(0,map_h-1)
+            local x=math.random(0,map_w-1)
+            local y=math.random(0,map_h-1)
             particles_pos:set(i,0,{x,y})
         end
         --]]
