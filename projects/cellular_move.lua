@@ -12,7 +12,7 @@ local win_w=1024
 local win_h=1024
 
 __set_window_size(win_w,win_h)
-local oversample=0.5
+local oversample=1/8
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -22,7 +22,7 @@ local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 
 is_remade=false
-local figure_w=101
+local figure_w=35
 local max_particle_count=figure_w*figure_w
 
 function update_buffers()
@@ -44,6 +44,7 @@ update_buffers()
 config=make_config({
     {"pause",false,type="bool"},
     {"draw",true,type="bool"},
+    {"noise_count",4,type="int",min=0,max=figure_w*figure_w},
     {"zoom",1,type="float",min=1,max=10},
     {"t_x",0,type="float",min=0,max=1},
     {"t_y",0,type="float",min=0,max=1},
@@ -136,6 +137,11 @@ dir_to_dx={
 	[7]={0,-1},
 	[8]={1,-1},
 }
+--[[
+    432
+    501
+    678
+--]]
 rules=rules or {
 
 }
@@ -150,11 +156,18 @@ function fix_pos( p )
 	if ret.g>=map_h then ret.g=0 end
 	return ret
 end
+function displace_by_dir_nn( pos,dir )
+	local ret={r=pos.r,g=pos.g}
+	local dx=dir_to_dx[dir]
+	ret.r=round(ret.r+dx[1])
+	ret.g=round(ret.g+dx[2])
+	return fix_pos(ret)
+end
 function get_nn( pos )
 	--local ret={}
 	local value=0
 	for i=1,8 do
-		local t=displace_by_dir(pos,i)
+		local t=displace_by_dir_nn(pos,i)
 		local v=static_layer:get(t.r,t.g)
 		if v.a>0 then
 			--ret[i]=true
@@ -163,6 +176,99 @@ function get_nn( pos )
 	end
 	return value
 end
+function value_to_nn_string( v )
+    local ret=""
+    local permutation={4,3,2,5--[[0]],1,6,7,8}
+
+    local id=0
+    for i=1,8 do
+        if (id)%3==0 then
+            ret=ret.."\n"
+        end
+        if i==5 then
+            ret=ret.."X"
+            id=id+1
+        end
+        id=id+1
+        local vv=permutation[i]
+        if bit.band(v,math.pow(2,vv-1))>0 then
+            ret=ret..'*'
+        else
+            ret=ret..'o'
+        end
+    end
+    return ret
+end
+function dir_to_arrow_string( d )
+    local tbl={
+        [0]=
+[[
+   
+ * 
+   
+]],
+        [1]=
+[[
+   
+ ->
+   
+]],
+        [2]=
+[[
+  ^
+ / 
+   
+]],
+        [3]=
+[[
+ ^ 
+ | 
+   
+]],
+        [4]=
+[[
+^  
+ \ 
+   
+]],
+        [5]=
+[[
+   
+<- 
+   
+]],
+        [6]=
+[[
+   
+ / 
+v  
+]],
+        [7]=
+[[
+   
+ | 
+ v 
+]],
+        [8]=
+[[
+   
+ \ 
+  v
+]],
+    }
+    return tbl[d]
+end
+function concat_byline( s1,s2 )
+    local ret=""
+    local f,ns,s_other_start=s2:gmatch("[^\r\n]+")
+    for s in s1:gmatch("[^\r\n]+") do
+        
+        local s_other=f(ns,s_other_start)
+        ret=ret..s..s_other.."\n"
+    end
+    return ret
+end
+
 function calculate_rule( pos )
 	if #rules==0 then
 		return math.random(0,8)
@@ -171,11 +277,7 @@ function calculate_rule( pos )
 		return rules[v] or 0
 	end
 end
---[[
-	432
-	501
-	678
---]]
+
 function round( x )
 	return math.floor(x+0.5)
 end
@@ -378,10 +480,10 @@ function update()
     end
  	if imgui.Button("rand rules") then
  		rules={}
- 		--rules[0]=0
+ 		rules[0]=0
         --[[
         for i=1,255 do
-        	rules[i]=3--math.random(0,8)
+        	rules[i]=math.random(0,8)
         end
         --]]
         --[[
@@ -397,23 +499,41 @@ function update()
         	end
         end
         --]]
-
+        -- [==[
         local pt=classify_patterns()
         local pt_rules={}
         for i,v in pairs(pt) do
         	-- [[
-        	pt_rules[v.id]=math.random(0,8)
+            if pt_rules[v.id]==nil then
+                if v.sym==8  then
+                    pt_rules[v.id]={math.random(0,8),i}
+                else
+                    pt_rules[v.id]={0,i}
+                end
+            end
         	--]]
+        end
+        local already_printed={}
+        for i,v in ipairs(pt) do
+            if not already_printed[v.id] then
+                if v.sym==8 then
+                    print("Group id:",v.id)
+                    local actual_dir=rotate_dir(pt_rules[v.id][1],v.rot)
+                    print(concat_byline(value_to_nn_string(pt_rules[v.id][2]),dir_to_arrow_string(actual_dir)))
+                    already_printed[v.id]=true
+                end
+            end
         end
         for i,v in pairs(pt) do
         	-- [[
         	if v.sym==8 then
-        		rules[i]=rotate_dir(pt_rules[v.id],v.rot)
+        		rules[i]=rotate_dir(pt_rules[v.id][1],v.rot)
         	else
         		rules[i]=0
         	end
         	--]]
         end
+        --]==]
     end
     if imgui.Button("save rules") then
         local f=io.open("rules.txt","w")
@@ -447,10 +567,11 @@ function update()
         -- [[
         for i=0,max_particle_count-1 do
 
-            --[[local r=math.sqrt(math.random())*map_w/4
-            r=i%16-7
+            --[[
+            local r=math.sqrt(math.random())*map_w/2
+
             local a=math.random()*math.pi*2
-            a=0
+
             --]]
             --particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
             --particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.sin(a)*r})
@@ -459,6 +580,16 @@ function update()
             particles_age:set(i,0,0)
         end
         --]]
+        -- [[
+        local noise_count=config.noise_count
+        for i=1,noise_count do
+            local i=math.floor((max_particle_count-1)*(i-1)/(noise_count-1)+0.5)--math.random(0,max_particle_count-1)
+            local x=1--math.random(0,map_w-1)
+            local y=1--math.random(0,map_h-1)
+            particles_pos:set(i,0,{x,y})
+        end
+        --]]
+        scratch_update()
     end
     if not config.pause then
         sim_tick()
