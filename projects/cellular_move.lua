@@ -121,7 +121,7 @@ void main(){
 #if LOG_AGE
     float pa=log(particle_age+1);
 #else
-    float pa=log(particle_age+1);
+    float pa=particle_age;
 #endif
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
     vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
