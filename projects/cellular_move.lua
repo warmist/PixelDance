@@ -22,7 +22,7 @@ local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 
 is_remade=false
-local figure_w=250
+local figure_w=45
 local max_particle_count=figure_w*figure_w
 
 function update_buffers()
@@ -65,12 +65,25 @@ uniform ivec2 res;
 uniform sampler2D tex_main;
 uniform vec2 zoom;
 uniform vec2 translate;
-
+#define DOWNSAMPLE 0
+#define SMOOTHDOWNSAMPLE 0
 void main(){
     vec2 normed=(pos.xy+vec2(1,-1))*vec2(0.5,-0.5);
     normed=(normed-vec2(0.5,0.5)-translate)/zoom+vec2(0.5,0.5);
-
+    //normed/=2;
+#if DOWNSAMPLE
+    normed*=vec2(res)/2;
+    normed=floor(normed)/(vec2(res)/2);
+#endif
+#if SMOOTHDOWNSAMPLE
+    vec4 pixel=textureOffset(tex_main,normed,ivec2(0,0))+
+        textureOffset(tex_main,normed,ivec2(1,0))+
+        textureOffset(tex_main,normed,ivec2(0,1))+
+        textureOffset(tex_main,normed,ivec2(1,1));
+    pixel/=4;
+#else
     vec4 pixel=texture(tex_main,normed);
+#endif
     color=vec4(pixel.xyz,1);
 }
 ]==])
@@ -87,6 +100,9 @@ uniform int pix_size;
 uniform vec2 res;
 uniform vec2 zoom;
 uniform vec2 translate;
+
+#define NO_TRANSIENTS 0
+#define LOG_AGE 0
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
     return a + b*cos( 6.28318*(c*t+d) );
@@ -102,9 +118,18 @@ void main(){
     
 
     //col=texelFetch(pcb_colors,ivec2(particle_type,0),0);
-    //vec3 c=palette(particle_age,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
-    vec3 c=palette(particle_age,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
-    //vec3 c=palette(particle_age,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
+#if LOG_AGE
+    float pa=log(particle_age+1);
+#else
+    float pa=log(particle_age+1);
+#endif
+    //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
+    vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
+    //vec3 c=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
+#if NO_TRANSIENTS
+    if(particle_age<0.05)
+        c=vec3(0);
+#endif
     col=vec4(c,1);
     //if(col.a!=0)
     //    col.a=1;
