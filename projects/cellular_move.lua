@@ -126,6 +126,7 @@ void main(){
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
     vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
     //vec3 c=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
+    //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.5),vec3(0.5));
 #if NO_TRANSIENTS
     if(particle_age<0.05)
         c=vec3(0);
