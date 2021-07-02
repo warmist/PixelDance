@@ -12,7 +12,7 @@ local win_w=1024
 local win_h=1024
 
 __set_window_size(win_w,win_h)
-local oversample=1/2
+local oversample=1/8
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -22,7 +22,7 @@ local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 
 is_remade=false
-local figure_w=45
+local figure_w=50
 local max_particle_count=figure_w*figure_w
 
 function update_buffers()
@@ -63,6 +63,7 @@ in vec3 pos;
 
 uniform ivec2 res;
 uniform sampler2D tex_main;
+uniform sampler2D tex_old;
 uniform vec2 zoom;
 uniform vec2 translate;
 #define DOWNSAMPLE 0
@@ -84,9 +85,18 @@ void main(){
 #else
     vec4 pixel=texture(tex_main,normed);
 #endif
-    color=vec4(pixel.xyz,1);
+    vec4 pix_old=texture(tex_old,(pos.xy+vec2(1,1))/2);
+    //vec3 c=pixel.xyz+pix_old.xyz-vec3(0.003);
+    float decay=0.998;
+    vec3 c=pixel.xyz+pix_old.xyz*decay;
+    c=clamp(c,0,1);
+    color=vec4(c,1);
+    //color=vec4(mix(pixel.xyz,pix_old.xyz,0.6),1);
+    //color=vec4(pixel.xyz,1);
+    //color=vec4(1,0,0,1);
 }
 ]==])
+
 local place_pixels_shader=shaders.Make(
 [==[
 #version 330
@@ -101,8 +111,8 @@ uniform vec2 res;
 uniform vec2 zoom;
 uniform vec2 translate;
 
-#define NO_TRANSIENTS 0
-#define LOG_AGE 0
+#define NO_TRANSIENTS 1
+#define LOG_AGE 1
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
     return a + b*cos( 6.28318*(c*t+d) );
@@ -124,11 +134,11 @@ void main(){
     float pa=particle_age;
 #endif
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
-    vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
+    //vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
     //vec3 c=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
-    //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.5),vec3(0.5));
+    vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.5),vec3(0.5));
 #if NO_TRANSIENTS
-    if(particle_age<0.05)
+    if(particle_age<0.02)
         c=vec3(0);
 #endif
     col=vec4(c,1);
@@ -180,10 +190,10 @@ function rnd( v )
 end
 function fix_pos( p )
 	local ret={r=p.r,g=p.g}
-	if ret.r<0 then ret.r=map_w-1 end
-	if ret.g<0 then ret.g=map_h-1 end
-	if ret.r>=map_w then ret.r=0 end
-	if ret.g>=map_h then ret.g=0 end
+	if ret.r<0 then ret.r=map_w+ret.r end
+	if ret.g<0 then ret.g=map_h+ret.g end
+	if ret.r>=map_w then ret.r=ret.r-map_w end
+	if ret.g>=map_h then ret.g=ret.g-map_h end
 	return ret
 end
 function displace_by_dir_nn( pos,dir,dist )
@@ -396,16 +406,16 @@ function particle_step(  )
 end
 if tex_pixel==nil then
     update_buffers()
-    tex_pixel=textures:Make()
-    tex_pixel:use(0,0,1)
-    tex_pixel:set(static_layer.w,static_layer.h,0)
+    tex_pixel=multi_texture(static_layer.w,static_layer.h,2,FLTA_PIX)
+    scratch_tex=multi_texture(static_layer.w,static_layer.h,2,FLTA_PIX)
 end
 
 function scratch_update(  )
 	--clear the texture
     draw_shader:use()
-    tex_pixel:use(0,0,1)
-    if not tex_pixel:render_to(static_layer.w,static_layer.h) then
+    local t=scratch_tex:get()
+    t:use(0,0,1)
+    if not t:render_to(static_layer.w,static_layer.h) then
         error("failed to set framebuffer up")
     end
     __setclear(0,0,0,0)
@@ -418,8 +428,8 @@ function scratch_update(  )
     --draw_shader:draw_quad()
 
     place_pixels_shader:use()
-    tex_pixel:use(0,0,1)
-    if not tex_pixel:render_to(static_layer.w,static_layer.h) then
+    t:use(0,0,1)
+    if not t:render_to(static_layer.w,static_layer.h) then
         error("failed to set framebuffer up")
     end
 
@@ -431,7 +441,7 @@ function scratch_update(  )
     place_pixels_shader:push_attribute(particles_age.d,"particle_age",1,GL_FLOAT)
     place_pixels_shader:draw_points(particles_pos.d,max_particle_count)
     __render_to_window()
-    static_layer:read_texture(tex_pixel)
+    static_layer:read_texture(t)
 end
 function sim_tick(  )
     int_count=0
@@ -585,7 +595,7 @@ function update()
         end
         for i,v in pairs(pt) do
         	-- [[
-        	if v.sym==8 then
+        	if v.sym==8  then
         		rules[i]=rotate_dir(pt_rules[v.id][1],v.rot)
         	else
         		rules[i]=0
@@ -686,15 +696,30 @@ function update()
     end
     --]]
     draw_shader:use()
-
-    tex_pixel:use(0,0,1)
-    static_layer:write_texture(tex_pixel)
+    local t1=scratch_tex:get()
+    local t2=tex_pixel:get()
+    local t_out=tex_pixel:get_next()
+    static_layer:write_texture(t1)
+    t1:use(0,0,1)
+    t2:use(1,0,1)
+    t_out:use(2,0,1)
 
 
     draw_shader:set_i("tex_main",0)
+    draw_shader:set_i("tex_old",1)
     draw_shader:set_i("res",map_w,map_h)
     draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
     draw_shader:set("translate",config.t_x,config.t_y)
+    if sim_done then
+        if not t_out:render_to(static_layer.w,static_layer.h) then
+            error("failed to set framebuffer up")
+        end
+        draw_shader:draw_quad()
+        __render_to_window()
+        draw_shader:use()
+    end
+    draw_shader:set_i("tex_main",1)
+    draw_shader:set_i("tex_old",5)
     draw_shader:draw_quad()
 	if giffer and sim_done then
         if giffer:want_frame() then
@@ -706,6 +731,7 @@ function update()
         save_img()
         need_save=false
     end
+     if sim_done then tex_pixel:advance() end
     --[[
     local tx,ty=config.t_x,config.t_y
     local c,x,y,dx,dy= is_mouse_down2()
