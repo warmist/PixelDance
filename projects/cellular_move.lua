@@ -22,8 +22,9 @@ local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 
 is_remade=false
-local figure_w=50
-local max_particle_count=figure_w*figure_w
+local figure_w=8*2
+local figure_h=8
+local max_particle_count=figure_w*figure_h
 
 function update_buffers()
 	if particles_pos==nil or particles_pos.w~=max_particle_count then
@@ -44,9 +45,10 @@ update_buffers()
 config=make_config({
     {"pause",false,type="bool"},
     {"draw",true,type="bool"},
-    {"noise_count",4,type="int",min=0,max=figure_w*figure_w},
+    {"noise_count",4,type="int",min=0,max=figure_w*figure_h},
     {"long_dist_range",2,type="int",min=0,max=5},
     {"long_dist_offset",0,type="int",min=0,max=7},
+    {"start_offset",4,type="int",min=0,max=10,watch=true},
     {"zoom",1,type="float",min=1,max=10},
     {"t_x",0,type="float",min=0,max=1},
     {"t_y",0,type="float",min=0,max=1},
@@ -68,6 +70,7 @@ uniform vec2 zoom;
 uniform vec2 translate;
 #define DOWNSAMPLE 0
 #define SMOOTHDOWNSAMPLE 0
+#define MAXDOWNSAMPLE 0
 void main(){
     vec2 normed=(pos.xy+vec2(1,-1))*vec2(0.5,-0.5);
     normed=(normed-vec2(0.5,0.5)-translate)/zoom+vec2(0.5,0.5);
@@ -82,6 +85,12 @@ void main(){
         textureOffset(tex_main,normed,ivec2(0,1))+
         textureOffset(tex_main,normed,ivec2(1,1));
     pixel/=4;
+#elif MAXDOWNSAMPLE
+    vec4 pixel=max(
+    max(textureOffset(tex_main,normed,ivec2(0,0)),
+        textureOffset(tex_main,normed,ivec2(1,0))),
+    max(textureOffset(tex_main,normed,ivec2(0,1)),
+        textureOffset(tex_main,normed,ivec2(1,1))));
 #else
     vec4 pixel=texture(tex_main,normed);
 #endif
@@ -111,7 +120,7 @@ uniform vec2 res;
 uniform vec2 zoom;
 uniform vec2 translate;
 
-#define NO_TRANSIENTS 1
+#define NO_TRANSIENTS 0
 #define LOG_AGE 1
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
@@ -133,6 +142,7 @@ void main(){
 #else
     float pa=particle_age;
 #endif
+    //pa=clamp(pa,0,1);
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
     //vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
     //vec3 c=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
@@ -332,11 +342,11 @@ function calculate_long_range_rule( pos )
         if count_in_range>1 then
             return 0 --more than one direction to move, so don't
         elseif count_in_range==1 then
-            --if r>3 then
+            if r>4 then
                 return rotate_dir(last_dir,config.long_dist_offset)
-            --else
-            --    return last_dir
-            --end
+            else
+                return rotate_dir(last_dir,config.long_dist_offset+4)
+            end
         end
     end
     return 0 --couldn't find any thing
@@ -629,7 +639,7 @@ function update()
 			giffer=nil
 		end
 	end
-    if is_remade then
+    if is_remade or (config.__change_events and config.__change_events.any) then
         --print("==============================")
         is_remade=false
 
@@ -655,8 +665,27 @@ function update()
             --particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
             --particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.sin(a)*r})
             -- [[
-            local w=figure_w
-            particles_pos:set(i,0,{map_w/2+i%w-math.floor(w/2),map_h/2+math.floor(i/w)-math.floor(w/2)})
+            local low_x=(i<(max_particle_count-1)/2)
+            local w=math.floor(figure_w/2)
+            --local h=math.floor(figure_h/2)
+            local ii=i
+            local offset=config.start_offset
+            if not low_x then
+                ii=i-math.floor(max_particle_count/2)
+            end
+            local x=ii%w-math.floor(w/2)
+            local y=math.floor(ii/w)-math.floor(w/2)
+            if low_x then
+                particles_pos:set(i,0,{x+math.floor(map_w/2)-offset-math.floor(w/2+0.5),y+math.floor(map_h/2)})
+            else
+                particles_pos:set(i,0,{x+math.floor(map_w/2)+offset+math.floor(w/2+0.5),y+math.floor(map_h/2)})
+            end
+
+            -- map particles to x=[offset,map_w-offset]; y=[center-h;center+h] (where h is height of bar)
+            --[[
+            local x_coord=i%(map_w-offset*2)+offset
+            local y_coord=math.floor(map_h/2)-math.floor(figure_h/2)+math.floor(i/(map_w-offset*2))
+            particles_pos:set(i,0,{x_coord,y_coord})
             particles_age:set(i,0,0)
             --]]
         end
