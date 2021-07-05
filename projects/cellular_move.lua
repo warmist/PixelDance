@@ -22,8 +22,8 @@ local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 
 is_remade=false
-local figure_w=8*2
-local figure_h=8
+local figure_w=3*2
+local figure_h=9
 local max_particle_count=figure_w*figure_h
 
 function update_buffers()
@@ -48,7 +48,7 @@ config=make_config({
     {"noise_count",4,type="int",min=0,max=figure_w*figure_h},
     {"long_dist_range",2,type="int",min=0,max=5},
     {"long_dist_offset",0,type="int",min=0,max=7},
-    {"start_offset",4,type="int",min=0,max=10,watch=true},
+    {"start_offset",4,type="int",min=0,max=20,watch=true},
     {"zoom",1,type="float",min=1,max=10},
     {"t_x",0,type="float",min=0,max=1},
     {"t_y",0,type="float",min=0,max=1},
@@ -96,7 +96,7 @@ void main(){
 #endif
     vec4 pix_old=texture(tex_old,(pos.xy+vec2(1,1))/2);
     //vec3 c=pixel.xyz+pix_old.xyz-vec3(0.003);
-    float decay=0.998;
+    float decay=0;
     vec3 c=pixel.xyz+pix_old.xyz*decay;
     c=clamp(c,0,1);
     color=vec4(c,1);
@@ -121,7 +121,7 @@ uniform vec2 zoom;
 uniform vec2 translate;
 
 #define NO_TRANSIENTS 0
-#define LOG_AGE 1
+#define LOG_AGE 0
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
     return a + b*cos( 6.28318*(c*t+d) );
@@ -144,9 +144,9 @@ void main(){
 #endif
     //pa=clamp(pa,0,1);
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
-    //vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
+    vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
     //vec3 c=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
-    vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.5),vec3(0.5));
+    //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.5),vec3(0.5));
 #if NO_TRANSIENTS
     if(particle_age<0.02)
         c=vec3(0);
@@ -538,7 +538,42 @@ function classify_patterns()
 	end
 	return ret_patern_store
 end
+local animation_data={
+    sim_tick_current=0,
+    sim_tick_max=1000,
+    sav_tick_current=0,
+    sav_tick_max=20,
+    animating=false,
+}
+function animation_metatick(  )
+    local a=animation_data
+    a.sav_tick_current=a.sav_tick_current+1
+    if a.sav_tick_current>=a.sav_tick_max then
+        a.animating=false
+    end
 
+    config.start_offset=config.start_offset-1
+    if config.start_offset<0 then
+        a.animating=false
+        config.start_offset=0
+    end
+    is_remade=true
+    need_save=true
+end
+function animation_tick(  )
+    local a=animation_data
+    a.sim_tick_current=a.sim_tick_current+1
+    if a.sim_tick_current>=a.sim_tick_max then
+        a.sim_tick_current=0
+        animation_metatick()
+    end
+end
+function animation_start(  )
+    local a=animation_data
+    a.sim_tick_current=0
+    a.sav_tick_current=0
+    a.animating=true
+end
 function update()
     __clear()
     __no_redraw()
@@ -670,15 +705,17 @@ function update()
             --local h=math.floor(figure_h/2)
             local ii=i
             local offset=config.start_offset
+            local offset_1=math.floor(offset/2)
+            local offset_2=offset-offset_1
             if not low_x then
                 ii=i-math.floor(max_particle_count/2)
             end
             local x=ii%w-math.floor(w/2)
             local y=math.floor(ii/w)-math.floor(w/2)
             if low_x then
-                particles_pos:set(i,0,{x+math.floor(map_w/2)-offset-math.floor(w/2+0.5),y+math.floor(map_h/2)})
+                particles_pos:set(i,0,{x+math.floor(map_w/2)-offset_1-math.floor(w/2+0.5),y+math.floor(map_h/2)})
             else
-                particles_pos:set(i,0,{x+math.floor(map_w/2)+offset+math.floor(w/2+0.5),y+math.floor(map_h/2)})
+                particles_pos:set(i,0,{x+math.floor(map_w/2)+offset_2+math.floor(w/2),y+math.floor(map_h/2)})
             end
 
             -- map particles to x=[offset,map_w-offset]; y=[center-h;center+h] (where h is height of bar)
@@ -686,8 +723,8 @@ function update()
             local x_coord=i%(map_w-offset*2)+offset
             local y_coord=math.floor(map_h/2)-math.floor(figure_h/2)+math.floor(i/(map_w-offset*2))
             particles_pos:set(i,0,{x_coord,y_coord})
-            particles_age:set(i,0,0)
             --]]
+            particles_age:set(i,0,0)
         end
         --]]
         -- [[
@@ -710,7 +747,19 @@ function update()
     if imgui.Button("Save") then
         need_save=true
     end
+    if not animation_data.animating then
+        if imgui.Button("Animate") then
+            animation_start()
+        end
+    else
+        if imgui.Button("Stop Animate") then
+            animation_data.animating=false
+        end
+    end
     imgui.End()
+    if animation_data.animating and sim_done then
+        animation_tick()
+    end
     __render_to_window()
 
     update_buffers()
@@ -730,8 +779,8 @@ function update()
     local t_out=tex_pixel:get_next()
     static_layer:write_texture(t1)
     t1:use(0,0,1)
-    t2:use(1,0,1)
-    t_out:use(2,0,1)
+    --t2:use(1,0,1)
+    --t_out:use(2,0,1)
 
 
     draw_shader:set_i("tex_main",0)
@@ -739,7 +788,7 @@ function update()
     draw_shader:set_i("res",map_w,map_h)
     draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
     draw_shader:set("translate",config.t_x,config.t_y)
-    if sim_done then
+    if sim_done and false then
         if not t_out:render_to(static_layer.w,static_layer.h) then
             error("failed to set framebuffer up")
         end
@@ -747,8 +796,8 @@ function update()
         __render_to_window()
         draw_shader:use()
     end
-    draw_shader:set_i("tex_main",1)
-    draw_shader:set_i("tex_old",5)
+    draw_shader:set_i("tex_main",0)
+    --draw_shader:set_i("tex_old",5)
     draw_shader:draw_quad()
 	if giffer and sim_done then
         if giffer:want_frame() then
@@ -760,7 +809,7 @@ function update()
         save_img()
         need_save=false
     end
-     if sim_done then tex_pixel:advance() end
+    --if sim_done then tex_pixel:advance() end
     --[[
     local tx,ty=config.t_x,config.t_y
     local c,x,y,dx,dy= is_mouse_down2()
