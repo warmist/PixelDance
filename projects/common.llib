@@ -148,11 +148,14 @@ function make_config(tbl,defaults)
 end
 
 function draw_config( tbl )
+	tbl.__change_events={}
 	for _,entry in ipairs(tbl) do
 		local name=entry[1]
 		local v=tbl[name]
 		local k=name
-		if type(v)=="boolean" then
+		if name=="__change_events" then
+			--skip special (hidden?) entry
+		elseif type(v)=="boolean" then
 			if imgui.RadioButton(k,tbl[k]) then
 				tbl[k]=not tbl[k]
 			end
@@ -220,6 +223,14 @@ function draw_config( tbl )
 			if imgui.Button("Z##"..k) then
 				entry.changing=true
 				tbl[k]=entry[2]
+			end
+		end
+	end
+	for _,entry in ipairs(tbl) do
+		if name~="__change_events" then
+			if entry.watch and entry.changing then
+				tbl.__change_events[entry[1]]=true
+				tbl.__change_events.any=true
 			end
 		end
 	end
