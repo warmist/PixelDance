@@ -12,7 +12,7 @@ local win_w=1024
 local win_h=1024
 
 __set_window_size(win_w,win_h)
-local oversample=1/8
+local oversample=1/4
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -25,6 +25,7 @@ is_remade=false
 local figure_w=3*2
 local figure_h=9
 local max_particle_count=figure_w*figure_h
+current_particle_count=current_particle_count or 0
 
 function update_buffers()
 	if particles_pos==nil or particles_pos.w~=max_particle_count then
@@ -44,8 +45,9 @@ update_buffers()
 
 config=make_config({
     {"pause",false,type="bool"},
-    {"draw",true,type="bool"},
-    {"noise_count",4,type="int",min=0,max=figure_w*figure_h},
+    {"color_by_age",true,type="bool"},
+    {"noise_count",4,type="int",min=0,max=figure_w*figure_w},
+    {"noise_offset",4,type="int",min=0,max=math.floor(figure_w/2)},
     {"long_dist_range",2,type="int",min=0,max=5},
     {"long_dist_offset",0,type="int",min=0,max=7},
     {"start_offset",4,type="int",min=0,max=20,watch=true},
@@ -96,7 +98,7 @@ void main(){
 #endif
     vec4 pix_old=texture(tex_old,(pos.xy+vec2(1,1))/2);
     //vec3 c=pixel.xyz+pix_old.xyz-vec3(0.003);
-    float decay=0;
+    float decay=0.0;
     vec3 c=pixel.xyz+pix_old.xyz*decay;
     c=clamp(c,0,1);
     color=vec4(c,1);
@@ -149,7 +151,8 @@ void main(){
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.5),vec3(0.5));
 #if NO_TRANSIENTS
     if(particle_age<0.02)
-        c=vec3(0);
+        //c=vec3(0);
+        c*=0.2;
 #endif
     col=vec4(c,1);
     //if(col.a!=0)
@@ -376,7 +379,7 @@ function particle_step(  )
 
 	local trg_pos={}
 
-    for i=0,max_particle_count-1 do
+    for i=0,current_particle_count-1 do
         local pos=fix_pos(particles_pos:get(i,0))
         local dir=calculate_rule(pos)
         local tpos=displace_by_dir(pos,dir)
@@ -394,7 +397,7 @@ function particle_step(  )
         --movement_layer_source:set(round(pos.r),round(pos.g),dir)
     end
 
-    for i=0,max_particle_count-1 do
+    for i=0,current_particle_count-1 do
         local pos=fix_pos(particles_pos:get(i,0))
         --local dir=movement_layer_source:get(round(pos.r),round(pos.g))
         --local tpos=displace_by_dir(pos,dir)
@@ -406,11 +409,15 @@ function particle_step(  )
         	pos.r=tpos.r
         	pos.g=tpos.g
         	particles_pos:set(i,0,pos)
-        	particles_age:set(i,0,0)
+            if config.color_by_age then
+        	   particles_age:set(i,0,0)
+            end
         else
         	--movement_layer_target:set(tpos.r,tpos.g,tp-1)
     		local a=particles_age:get(i,0)
-        	particles_age:set(i,0,a+0.002)
+            if config.color_by_age then
+        	   particles_age:set(i,0,a+0.002)
+            end
         end
     end
 end
@@ -449,7 +456,7 @@ function scratch_update(  )
     place_pixels_shader:set("translate",0,0)
 
     place_pixels_shader:push_attribute(particles_age.d,"particle_age",1,GL_FLOAT)
-    place_pixels_shader:draw_points(particles_pos.d,max_particle_count)
+    place_pixels_shader:draw_points(particles_pos.d,current_particle_count)
     __render_to_window()
     static_layer:read_texture(t)
 end
@@ -537,6 +544,11 @@ function classify_patterns()
 		end
 	end
 	return ret_patern_store
+end
+function dist_func( x,y )
+    --local v=(math.abs(x)+math.abs(y))
+    local v=math.sqrt(x*x+y*y)
+    return v
 end
 local animation_data={
     sim_tick_current=0,
@@ -656,6 +668,43 @@ function update()
         end
         f:close()
     end
+    imgui.SameLine()
+    if imgui.Button("load rules") then
+        local f=io.open("worm_world.txt","r")
+        for i=1,255 do
+            local ii,v=f:read("*n","*n")
+            if ii~=i then
+                print("FAIL at line:",i)
+                --break
+            end
+
+            rules[ii]=v
+        end
+        f:close()
+    end
+    if not config.color_by_age then
+        if imgui.Button("recolor points") then
+            local max_val=0
+            for i=0,current_particle_count-1 do
+                local p=particles_pos:get(i,0)
+                
+                local w=figure_w
+                local x=p.r-math.floor(map_w/2)
+                local y=p.g-math.floor(map_h/2)
+                local v=dist_func(x,y)
+                if max_val<v then max_val=v end
+            end
+            for i=0,current_particle_count-1 do
+                local p=particles_pos:get(i,0)
+                
+                local w=figure_w
+                local x=p.r-math.floor(map_w/2)
+                local y=p.g-math.floor(map_h/2)
+                local v=dist_func(x,y)
+                particles_age:set(i,0,v/(max_val))
+            end
+        end
+    end
     if imgui.Button("clear rules") then
         rules={}
     end
@@ -665,7 +714,7 @@ function update()
 		end
 		save_gif_frame()
 		giffer=gif_saver(string.format("saved_%d.gif",os.time(os.date("!*t"))),
-			img_buf_save,500,4)
+			img_buf_save,5000,10)
 	end
 	imgui.SameLine()
 	if imgui.Button("Stop Gif") then
@@ -675,20 +724,50 @@ function update()
 		end
 	end
     if is_remade or (config.__change_events and config.__change_events.any) then
+        current_particle_count=0
         --print("==============================")
         is_remade=false
 
         -- [[
+        local noise_count=config.noise_count
+        local offset=config.noise_offset
+        noise_idx={offset,(figure_w)*(figure_w-offset-1),figure_w*figure_w-1-offset,(figure_w)*(offset+1)-1}
+        local nidx={}
+        for i,v in ipairs(noise_idx) do
+            nidx[v]=true
+        end
         for i=0,max_particle_count-1 do
-            --[[
-            local x=math.random(0,map_w-1)
-            local y=math.random(0,map_h-1)
-            if static_layer:get(x,y).a==0 then
-                particles_pos:set(i,0,{x,y})
-            else
+            if not nidx[i] then
+                --[[
                 local x=math.random(0,map_w-1)
                 local y=math.random(0,map_h-1)
-                particles_pos:set(i,0,{x,y})
+                if static_layer:get(x,y).a==0 then
+                    particles_pos:set(i,0,{x,y})
+                else
+                    local x=math.random(0,map_w-1)
+                    local y=math.random(0,map_h-1)
+                    particles_pos:set(i,0,{x,y})
+                end
+                --]]
+                -- [[
+                local r=math.sqrt(math.random())*map_w/2
+
+                local a=math.random()*math.pi*2
+
+                --]]
+                --particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
+                --particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.sin(a)*r})
+                -- [[
+                local w=figure_w
+                local x=i%w-math.floor(w/2)
+                local y=math.floor(i/w)-math.floor(w/2)
+                particles_pos:set(current_particle_count,0,{map_w/2+x,map_h/2+y})
+                if config.color_by_age then
+                    particles_age:set(i,0,0)
+                end
+                --particles_age:set(i,0,dist_func(x,y)/(w))
+                --]]
+                current_particle_count=current_particle_count+1
             end
             --]]
             -- [[
@@ -727,10 +806,10 @@ function update()
             particles_age:set(i,0,0)
         end
         --]]
-        -- [[
-        local noise_count=config.noise_count
+        --[[
+        
         for i=1,noise_count do
-            local i=math.floor((max_particle_count-1)*(i-1)/(noise_count-1)+0.5)--math.random(0,max_particle_count-1)
+            local i=noise_idx[i] or 0--math.floor((max_particle_count-1)*(i-1)/(noise_count-1)+0.5)--math.random(0,max_particle_count-1)
             local x=math.random(0,map_w-1)
             local y=math.random(0,map_h-1)
             particles_pos:set(i,0,{x,y})
@@ -788,17 +867,21 @@ function update()
     draw_shader:set_i("res",map_w,map_h)
     draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
     draw_shader:set("translate",config.t_x,config.t_y)
-    if sim_done and false then
-        if not t_out:render_to(static_layer.w,static_layer.h) then
-            error("failed to set framebuffer up")
+    if want_decaying then
+        if sim_done then
+            if not t_out:render_to(static_layer.w,static_layer.h) then
+                error("failed to set framebuffer up")
+            end
+            draw_shader:draw_quad()
+            __render_to_window()
+            draw_shader:use()
         end
+        draw_shader:set_i("tex_main",1)
+        draw_shader:set_i("tex_old",5)
         draw_shader:draw_quad()
-        __render_to_window()
-        draw_shader:use()
+    else
+        draw_shader:draw_quad()
     end
-    draw_shader:set_i("tex_main",0)
-    --draw_shader:set_i("tex_old",5)
-    draw_shader:draw_quad()
 	if giffer and sim_done then
         if giffer:want_frame() then
 			save_gif_frame()
@@ -809,7 +892,7 @@ function update()
         save_img()
         need_save=false
     end
-    --if sim_done then tex_pixel:advance() end
+     if sim_done and want_decaying then tex_pixel:advance() end
     --[[
     local tx,ty=config.t_x,config.t_y
     local c,x,y,dx,dy= is_mouse_down2()
