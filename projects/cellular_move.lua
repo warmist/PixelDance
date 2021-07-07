@@ -12,7 +12,7 @@ local win_w=1024
 local win_h=1024
 
 __set_window_size(win_w,win_h)
-local oversample=1/4
+local oversample=1/8
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -22,9 +22,8 @@ local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 
 is_remade=false
-local figure_w=3*2
-local figure_h=9
-local max_particle_count=figure_w*figure_h
+
+local max_particle_count=10000
 current_particle_count=current_particle_count or 0
 
 function update_buffers()
@@ -46,11 +45,11 @@ update_buffers()
 config=make_config({
     {"pause",false,type="bool"},
     {"color_by_age",true,type="bool"},
-    {"noise_count",4,type="int",min=0,max=figure_w*figure_w},
-    {"noise_offset",4,type="int",min=0,max=math.floor(figure_w/2)},
+    {"block_size",10,type="int",min=0,max=50,watch=true},
+    {"block_count",3,type="int",min=0,max=8,watch=true},
+    {"block_offset",4,type="int",min=0,max=100,watch=true},
     {"long_dist_range",2,type="int",min=0,max=5},
     {"long_dist_offset",0,type="int",min=0,max=7},
-    {"start_offset",4,type="int",min=0,max=20,watch=true},
     {"zoom",1,type="float",min=1,max=10},
     {"t_x",0,type="float",min=0,max=1},
     {"t_y",0,type="float",min=0,max=1},
@@ -146,13 +145,13 @@ void main(){
 #endif
     //pa=clamp(pa,0,1);
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
-    vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
-    //vec3 c=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
+    //vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
+    vec3 c=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.5),vec3(0.5));
 #if NO_TRANSIENTS
     if(particle_age<0.02)
         //c=vec3(0);
-        c*=0.2;
+        c*=0.0;
 #endif
     col=vec4(c,1);
     //if(col.a!=0)
@@ -345,11 +344,11 @@ function calculate_long_range_rule( pos )
         if count_in_range>1 then
             return 0 --more than one direction to move, so don't
         elseif count_in_range==1 then
-            if r>4 then
+            --if r>4 then
+            --    return rotate_dir(last_dir,config.long_dist_offset)
+            --else
                 return rotate_dir(last_dir,config.long_dist_offset)
-            else
-                return rotate_dir(last_dir,config.long_dist_offset+4)
-            end
+            --end
         end
     end
     return 0 --couldn't find any thing
@@ -411,12 +410,15 @@ function particle_step(  )
         	particles_pos:set(i,0,pos)
             if config.color_by_age then
         	   particles_age:set(i,0,0)
+               --local a=particles_age:get(i,0)
+        	   --particles_age:set(i,0,a+0.002)
             end
         else
         	--movement_layer_target:set(tpos.r,tpos.g,tp-1)
     		local a=particles_age:get(i,0)
             if config.color_by_age then
-        	   particles_age:set(i,0,a+0.002)
+               --particles_age:set(i,0,0)
+               particles_age:set(i,0,a+0.002)
             end
         end
     end
@@ -554,7 +556,7 @@ local animation_data={
     sim_tick_current=0,
     sim_tick_max=1000,
     sav_tick_current=0,
-    sav_tick_max=20,
+    sav_tick_max=25,
     animating=false,
 }
 function animation_metatick(  )
@@ -564,10 +566,10 @@ function animation_metatick(  )
         a.animating=false
     end
 
-    config.start_offset=config.start_offset-1
-    if config.start_offset<0 then
+    config.block_offset=config.block_offset-1
+    if config.block_offset<10 then
         a.animating=false
-        config.start_offset=0
+        config.block_offset=10
     end
     is_remade=true
     need_save=true
@@ -660,6 +662,7 @@ function update()
         	--]]
         end
         --]==]
+        is_remade=true
     end
     if imgui.Button("save rules") then
         local f=io.open("rules.txt","w")
@@ -670,7 +673,7 @@ function update()
     end
     imgui.SameLine()
     if imgui.Button("load rules") then
-        local f=io.open("worm_world.txt","r")
+        local f=io.open("rules_huh.txt","r")
         for i=1,255 do
             local ii,v=f:read("*n","*n")
             if ii~=i then
@@ -688,7 +691,6 @@ function update()
             for i=0,current_particle_count-1 do
                 local p=particles_pos:get(i,0)
                 
-                local w=figure_w
                 local x=p.r-math.floor(map_w/2)
                 local y=p.g-math.floor(map_h/2)
                 local v=dist_func(x,y)
@@ -697,7 +699,6 @@ function update()
             for i=0,current_particle_count-1 do
                 local p=particles_pos:get(i,0)
                 
-                local w=figure_w
                 local x=p.r-math.floor(map_w/2)
                 local y=p.g-math.floor(map_h/2)
                 local v=dist_func(x,y)
@@ -729,48 +730,120 @@ function update()
         is_remade=false
 
         -- [[
-        local noise_count=config.noise_count
-        local offset=config.noise_offset
-        noise_idx={offset,(figure_w)*(figure_w-offset-1),figure_w*figure_w-1-offset,(figure_w)*(offset+1)-1}
-        local nidx={}
-        for i,v in ipairs(noise_idx) do
-            nidx[v]=true
+        for x=0,map_w-1 do
+        for y=0,map_h-1 do
+            static_layer:set(x,y,{0,0,0,0})
         end
-        for i=0,max_particle_count-1 do
-            if not nidx[i] then
-                --[[
+        end
+        --[==[
+        local count_add={0,2,4,6}
+        local offset_add={0,8,17,22}
+        local bcount_mod={1,1,1,1}
+        local angle_offset={0,math.pi/8,math.pi/4,3*math.pi/8}
+        for kk=1,1 do
+            local b_count=math.floor(config.block_count*bcount_mod[kk])
+            local offset=math.floor(config.block_offset+offset_add[kk])
+
+
+            for i=1,b_count do
+                local v=(i-1)/b_count
+                local cx=math.floor(map_w/2)
+                local cy=math.floor(map_h/2)
+                local bs=config.block_size+count_add[kk]
+                local hbs=math.floor(bs/2+0.5)
+                local tx=math.floor(math.cos(v*math.pi*2+angle_offset[kk])*offset+0.5)+cx-hbs
+                local ty=math.floor(math.sin(v*math.pi*2+angle_offset[kk])*offset+0.5)+cy-hbs
+                
+                for x=0,bs-1 do
+                for y=0,bs-1 do
+                    local ttx=x+tx
+                    local tty=y+ty
+                    if static_layer:get(ttx,tty).a==0 then
+                        static_layer:set(ttx,tty,{1,1,1,1})
+                        particles_pos:set(current_particle_count,0,{ttx,tty})
+                        if config.color_by_age then
+                            particles_age:set(current_particle_count,0,0)
+                        end
+                        current_particle_count=current_particle_count+1
+                    end
+                end
+                end
+            end
+        end
+        --]==]
+        --[==[
+        local not_place_count=0
+        while current_particle_count<config.block_count do
+            local cx=math.floor(map_w/2)
+            local cy=math.floor(map_h/2)
+
+            local bs=config.block_size
+            local hbs=math.floor(bs/2+0.5)
+            local v=math.random()
+            local r=math.sqrt(math.random())*hbs
+            local tx=math.floor(math.cos(v*math.pi*2)*r+cx)
+            local ty=math.floor(math.sin(v*math.pi*2)*r+cy)
+            if static_layer:get(tx,ty).a==0 then
+                static_layer:set(tx,ty,{1,1,1,1})
+                particles_pos:set(current_particle_count,0,{tx,ty})
+                if config.color_by_age then
+                    particles_age:set(current_particle_count,0,0)
+                end
+                current_particle_count=current_particle_count+1
+            else
+                not_place_count=not_place_count+1
+            end
+            if not_place_count>1000 then
+                break
+            end
+        end
+        --]==]
+        
+        -- [==[
+        local cx=math.floor(map_w/2)
+        local cy=math.floor(map_h/2)
+
+        local bs=config.block_size
+        local cx_o=cx
+        local cy_o=cy
+        local bc=config.block_count
+        local o=config.block_offset
+
+        local bw=bs+o --block width/height is it's size and spacer
+        local hbw=math.floor(bw*bc/2)
+        local ebw=bw*bc-hbw
+        for bx=-hbw,ebw do
+            for by=-hbw,ebw do
+                local mx=(bx+hbw-1)%bw
+                local my=(by+hbw-1)%bw
+
+                local tx=cx_o+bx+math.floor(o/2)
+                local ty=cy_o+by+math.floor(o/2)
+                if mx<bs and my<bs then
+                    particles_pos:set(current_particle_count,0,{tx,ty})
+                    if config.color_by_age then
+                        particles_age:set(current_particle_count,0,0)
+                    end
+                    current_particle_count=current_particle_count+1
+                end
+            end
+        end
+        --]==]
+        print("particle count:",current_particle_count)
+        --for i=0,max_particle_count-1 do
+           
+            --[[
+            local x=math.random(0,map_w-1)
+            local y=math.random(0,map_h-1)
+            if static_layer:get(x,y).a==0 then
+                particles_pos:set(i,0,{x,y})
+            else
                 local x=math.random(0,map_w-1)
                 local y=math.random(0,map_h-1)
-                if static_layer:get(x,y).a==0 then
-                    particles_pos:set(i,0,{x,y})
-                else
-                    local x=math.random(0,map_w-1)
-                    local y=math.random(0,map_h-1)
-                    particles_pos:set(i,0,{x,y})
-                end
-                --]]
-                -- [[
-                local r=math.sqrt(math.random())*map_w/2
-
-                local a=math.random()*math.pi*2
-
-                --]]
-                --particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
-                --particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.sin(a)*r})
-                -- [[
-                local w=figure_w
-                local x=i%w-math.floor(w/2)
-                local y=math.floor(i/w)-math.floor(w/2)
-                particles_pos:set(current_particle_count,0,{map_w/2+x,map_h/2+y})
-                if config.color_by_age then
-                    particles_age:set(i,0,0)
-                end
-                --particles_age:set(i,0,dist_func(x,y)/(w))
-                --]]
-                current_particle_count=current_particle_count+1
+                particles_pos:set(i,0,{x,y})
             end
             --]]
-            -- [[
+            --[[
             local r=math.sqrt(math.random())*map_w/2
 
             local a=math.random()*math.pi*2
@@ -778,7 +851,29 @@ function update()
             --]]
             --particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
             --particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.sin(a)*r})
-            -- [[
+            --[[
+
+            local w=figure_w
+            local x=i%w-math.floor(w/2)
+            local y=math.floor(i/w)-math.floor(w/2)
+            particles_pos:set(current_particle_count,0,{map_w/2+x,map_h/2+y})
+            if config.color_by_age then
+                particles_age:set(i,0,0)
+            end
+            --particles_age:set(i,0,dist_func(x,y)/(w))
+            --]]
+            
+
+            --]]
+            --[[
+            local r=math.sqrt(math.random())*map_w/2
+
+            local a=math.random()*math.pi*2
+
+            --]]
+            --particles_pos:set(i,0,{math.random()*map_w/2+map_w/4,math.random()*map_h/2+map_h/4})
+            --particles_pos:set(i,0,{map_w/2+math.cos(a)*r,map_h/2+math.sin(a)*r})
+            --[[
             local low_x=(i<(max_particle_count-1)/2)
             local w=math.floor(figure_w/2)
             --local h=math.floor(figure_h/2)
@@ -803,8 +898,8 @@ function update()
             local y_coord=math.floor(map_h/2)-math.floor(figure_h/2)+math.floor(i/(map_w-offset*2))
             particles_pos:set(i,0,{x_coord,y_coord})
             --]]
-            particles_age:set(i,0,0)
-        end
+
+        --end
         --]]
         --[[
         
