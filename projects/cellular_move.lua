@@ -456,10 +456,15 @@ function particle_step(  )
             pos.g=tpos.g
             particles_pos:set(i,0,pos)
             if config.color_by_age then
-                particles_age:set(i,0,0)
-                if not no_0_age then
-                    min_age=0
-                end
+                --particles_age:set(i,0,0)
+                local a=particles_age:get(i,0)
+                a=a*0.99
+                particles_age:set(i,0,a)
+                --if not no_0_age then
+                --    min_age=0
+                --end
+                if a>max_age then max_age=a end
+                if a<min_age then min_age=a end
                --local a=particles_age:get(i,0)
                --particles_age:set(i,0,a+0.002)
             end
@@ -468,7 +473,7 @@ function particle_step(  )
             local a=particles_age:get(i,0)
             if config.color_by_age then
                --particles_age:set(i,0,0)
-                a=a+0.002
+                a=a+0.001
                 particles_age:set(i,0,a)
                 if a>max_age then max_age=a end
                 if a<min_age then min_age=a end
