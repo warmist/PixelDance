@@ -31,12 +31,14 @@ function update_buffers()
         particles_pos=make_flt_half_buffer(max_particle_count,1)
         particles_age=make_float_buffer(max_particle_count,1)
         is_remade=true
+        need_clear=true
     end
     if static_layer==nil or static_layer.w~=map_w or static_layer.h~=map_h then
         static_layer=make_image_buffer(map_w,map_h)
         movement_layer_target=make_char_buffer(map_w,map_h) --a 0,1,2 would be enough
         movement_layer_source=make_char_buffer(map_w,map_h) --direction of movement
         is_remade=true
+        need_clear=true
     end
 end
 update_buffers()
@@ -46,7 +48,7 @@ config=make_config({
     {"pause",false,type="bool"},
     {"color_by_age",true,type="bool"},
     {"no_transients",true,type="bool"},
-
+    {"decay",0.99,type="floatsci",power=0.01},
     {"block_size",10,type="int",min=0,max=50,watch=true},
     {"block_count",3,type="int",min=0,max=8,watch=true},
     {"block_offset",4,type="int",min=0,max=100,watch=true},
@@ -72,6 +74,7 @@ uniform sampler2D tex_main;
 uniform sampler2D tex_old;
 uniform vec2 zoom;
 uniform vec2 translate;
+uniform float decay;
 #define DOWNSAMPLE 0
 #define SMOOTHDOWNSAMPLE 0
 #define MAXDOWNSAMPLE 0
@@ -99,9 +102,10 @@ void main(){
     vec4 pixel=texture(tex_main,normed);
 #endif
     vec4 pix_old=texture(tex_old,(pos.xy+vec2(1,1))/2);
-    //vec3 c=pixel.xyz+pix_old.xyz-vec3(0.003);
-    float decay=0.0;
-    vec3 c=pixel.xyz+pix_old.xyz*decay;
+    //float decay=0.0;
+    float a=pixel.a;
+    //vec3 c=pixel.xyz*a+pix_old.xyz*(1-a)-vec3(0.003);
+    vec3 c=pixel.xyz*a+pix_old.xyz*(1-a)*decay;
     c=clamp(c,0,1);
     color=vec4(c,1);
     //color=vec4(mix(pixel.xyz,pix_old.xyz,0.6),1);
@@ -162,7 +166,9 @@ void main(){
     {
         if(particle_age<0.02)
             //c=vec3(0);
-            c*=0.0;
+            //c*=0.0;
+            c=vec3(1);
+            //discard;
     }
     col=vec4(c,1);
     //if(col.a!=0)
@@ -483,7 +489,6 @@ end
 
 function scratch_update(  )
     --clear the texture
-    draw_shader:use()
     local t=scratch_tex:get()
     t:use(0,0,1)
     if not t:render_to(static_layer.w,static_layer.h) then
@@ -492,10 +497,8 @@ function scratch_update(  )
     __setclear(0,0,0,0)
     __clear()
 
-    draw_shader:set_i("tex_main",0)
-    draw_shader:set_i("res",map_w,map_h)
-    draw_shader:set("zoom",1*map_aspect_ratio,1)
-    draw_shader:set("translate",0,0)
+
+
     --draw_shader:draw_quad()
 
     place_pixels_shader:use()
@@ -523,7 +526,7 @@ function sim_tick(  )
     int_count=0
     scratch_update()
     particle_step()
-    scratch_update()
+    --scratch_update()
 end
 
 
@@ -695,6 +698,7 @@ function update()
     draw_config(config)
 
     --imgui.SameLine()
+    need_clear=false
     if imgui.Button("Reset world") then
         static_layer=nil
         update_buffers()
@@ -743,6 +747,7 @@ function update()
         end
         --]==]
         is_remade=true
+        need_clear=true
     end
     if imgui.Button("save rules") then
         local f=io.open("rules.txt","w")
@@ -996,6 +1001,7 @@ function update()
         end
         --]]
         scratch_update()
+        need_clear=true
     end
     if not config.pause then
         sim_tick()
@@ -1032,33 +1038,50 @@ function update()
         end
     end
     --]]
+    --[[
+        scratch has "real data"
+        draw from "scratch+old->new"
+        draw from "new+empty->screen"
+        swap new,old
+    --]]
     draw_shader:use()
     local t1=scratch_tex:get()
     local t2=tex_pixel:get()
     local t_out=tex_pixel:get_next()
     static_layer:write_texture(t1)
     t1:use(0,0,1)
-    --t2:use(1,0,1)
-    --t_out:use(2,0,1)
+    t2:use(1,0,1)
+    t_out:use(2,0,1)
 
+    local want_decaying=true
 
-    draw_shader:set_i("tex_main",0)
-    draw_shader:set_i("tex_old",1)
+    draw_shader:set_i("tex_main",0) --scratch
+    draw_shader:set_i("tex_old",1) --old
     draw_shader:set_i("res",map_w,map_h)
     draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
     draw_shader:set("translate",config.t_x,config.t_y)
+    draw_shader:set("decay",config.decay)
     if want_decaying then
         if sim_done then
-            if not t_out:render_to(static_layer.w,static_layer.h) then
+            if not t_out:render_to(static_layer.w,static_layer.h) then --new
                 error("failed to set framebuffer up")
             end
-            draw_shader:draw_quad()
+            if need_clear then
+                __clear()
+            else
+                draw_shader:draw_quad()
+            end
             __render_to_window()
             draw_shader:use()
         end
-        draw_shader:set_i("tex_main",1)
+        t_out:use(2,0,1)
+        draw_shader:set_i("tex_main",2)
         draw_shader:set_i("tex_old",5)
+        draw_shader:set("decay",0)
         draw_shader:draw_quad()
+        if need_clear then
+            __clear()
+        end
     else
         draw_shader:draw_quad()
     end
@@ -1072,7 +1095,9 @@ function update()
         save_img()
         need_save=false
     end
-     if sim_done and want_decaying then tex_pixel:advance() end
+    if sim_done and want_decaying then tex_pixel:advance() end
+
+    --need_clear=false
     --[[
     local tx,ty=config.t_x,config.t_y
     local c,x,y,dx,dy= is_mouse_down2()
