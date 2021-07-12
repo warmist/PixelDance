@@ -22,7 +22,7 @@ local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 
 is_remade=false
-
+local dist_logic_type="simple"
 local max_particle_count=10000
 current_particle_count=current_particle_count or 0
 
@@ -46,9 +46,11 @@ config=make_config({
     {"pause",false,type="bool"},
     {"color_by_age",true,type="bool"},
     {"no_transients",true,type="bool"},
+
     {"block_size",10,type="int",min=0,max=50,watch=true},
     {"block_count",3,type="int",min=0,max=8,watch=true},
     {"block_offset",4,type="int",min=0,max=100,watch=true},
+    {"long_dist_mode",0,type="choice",choices={"simple","single","multiple"}},
     {"long_dist_range",2,type="int",min=0,max=5},
     {"long_dist_offset",0,type="int",min=0,max=7},
     {"zoom",1,type="float",min=1,max=10},
@@ -156,7 +158,7 @@ void main(){
     vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
     //vec3 c=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.5),vec3(0.5));
-    if(no_transients)
+    if(no_transients==1)
     {
         if(particle_age<0.02)
             //c=vec3(0);
@@ -206,6 +208,7 @@ dir_to_dx={
 rules=rules or {
 
 }
+long_rules=long_rules or {}
 function rnd( v )
     return math.random()*v*2-v
 end
@@ -225,11 +228,11 @@ function displace_by_dir_nn( pos,dir,dist )
     ret.g=round(ret.g+dx[2]*dist)
     return fix_pos(ret)
 end
-function get_nn( pos )
+function get_nn( pos,dist )
     --local ret={}
     local value=0
     for i=1,8 do
-        local t=displace_by_dir_nn(pos,i)
+        local t=displace_by_dir_nn(pos,i,dist)
         local v=static_layer:get(t.r,t.g)
         if v.a>0 then
             --ret[i]=true
@@ -362,13 +365,37 @@ function calculate_long_range_rule( pos )
     end
     return 0 --couldn't find any thing
 end
+
+
+
 function calculate_rule( pos )
     if #rules==0 then
         return math.random(0,8)
     else
         local v=get_nn(pos)
         if v==0 and config.long_dist_range>=2 then
-            return calculate_long_range_rule(pos)
+            if config.long_dist_mode==0 then
+            -- three choices here: simple long dist
+                return calculate_long_range_rule(pos)
+            elseif config.long_dist_mode==1 then
+                --one rule for all dists
+                for i=2,config.long_dist_range do
+                    local v=get_nn(pos,i)
+                    if v~=0 then
+                        return long_rules[2][v]
+                    end
+                end
+            else
+                for i=2,config.long_dist_range do
+                -- each dist has it's own rules
+                    if long_rules[i] then
+                        local v=get_nn(pos,i)
+                        if v~=0 then
+                            return long_rules[i][v]
+                        end
+                    end
+                end
+            end
         end
         return rules[v] or 0
     end
@@ -618,6 +645,48 @@ function animation_start(  )
     a.sav_tick_current=0
     a.animating=true
 end
+function generate_rules( rule_tbl,overwrite )
+    local pt=classify_patterns()
+    local pt_rules={}
+    for i,v in pairs(pt) do
+        -- [[
+        if pt_rules[v.id]==nil then
+            if v.sym==8  then
+                pt_rules[v.id]={math.random(0,8),i}
+            else
+                pt_rules[v.id]={0,i}
+            end
+        end
+        --]]
+    end
+
+    if overwrite then
+        for i,v in ipairs(overwrite) do
+            pt_rules[v[1]]={v[2],i}
+        end
+    end
+
+    local already_printed={}
+    for i,v in ipairs(pt) do
+        if not already_printed[v.id] then
+            if v.sym==8 then
+                print("Group id:",v.id)
+                local actual_dir=rotate_dir(pt_rules[v.id][1],v.rot)
+                print(concat_byline(value_to_nn_string(pt_rules[v.id][2]),dir_to_arrow_string(actual_dir)))
+                already_printed[v.id]=true
+            end
+        end
+    end
+    for i,v in pairs(pt) do
+        -- [[
+        if v.sym==8  then
+            rule_tbl[i]=rotate_dir(pt_rules[v.id][1],v.rot)
+        else
+            rule_tbl[i]=0
+        end
+        --]]
+    end
+end
 function update()
     __clear()
     __no_redraw()
@@ -658,38 +727,19 @@ function update()
         end
         --]]
         -- [==[
-        local pt=classify_patterns()
-        local pt_rules={}
-        for i,v in pairs(pt) do
-            -- [[
-            if pt_rules[v.id]==nil then
-                if v.sym==8  then
-                    pt_rules[v.id]={math.random(0,8),i}
-                else
-                    pt_rules[v.id]={0,i}
-                end
+        generate_rules(rules)--,{{1,0},{2,0}})
+        long_rules={}
+        if config.long_dist_mode==2 then
+            for i=2,config.long_dist_range do
+                long_rules[i]={}
+                long_rules[i][0]=0
+                generate_rules(long_rules[i])
             end
-            --]]
-        end
-        local already_printed={}
-        for i,v in ipairs(pt) do
-            if not already_printed[v.id] then
-                if v.sym==8 then
-                    print("Group id:",v.id)
-                    local actual_dir=rotate_dir(pt_rules[v.id][1],v.rot)
-                    print(concat_byline(value_to_nn_string(pt_rules[v.id][2]),dir_to_arrow_string(actual_dir)))
-                    already_printed[v.id]=true
-                end
-            end
-        end
-        for i,v in pairs(pt) do
-            -- [[
-            if v.sym==8  then
-                rules[i]=rotate_dir(pt_rules[v.id][1],v.rot)
-            else
-                rules[i]=0
-            end
-            --]]
+        elseif config.long_dist_mode==1 then
+            local i=2
+            long_rules[i]={}
+            long_rules[i][0]=0
+            generate_rules(long_rules[i])
         end
         --]==]
         is_remade=true
