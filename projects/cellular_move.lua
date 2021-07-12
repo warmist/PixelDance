@@ -1,9 +1,9 @@
 --[===[
 2D CA but!:
-	* no create/destroy! only move
-	* if can't move, dont!
-	* gen random rules, check out the "dynamics" and "meta-atoms"
-	* "permutation city"
+    * no create/destroy! only move
+    * if can't move, dont!
+    * gen random rules, check out the "dynamics" and "meta-atoms"
+    * "permutation city"
 --]===]
 require 'common'
 require 'bit'
@@ -27,11 +27,11 @@ local max_particle_count=10000
 current_particle_count=current_particle_count or 0
 
 function update_buffers()
-	if particles_pos==nil or particles_pos.w~=max_particle_count then
-		particles_pos=make_flt_half_buffer(max_particle_count,1)
-		particles_age=make_float_buffer(max_particle_count,1)
+    if particles_pos==nil or particles_pos.w~=max_particle_count then
+        particles_pos=make_flt_half_buffer(max_particle_count,1)
+        particles_age=make_float_buffer(max_particle_count,1)
         is_remade=true
-	end
+    end
     if static_layer==nil or static_layer.w~=map_w or static_layer.h~=map_h then
         static_layer=make_image_buffer(map_w,map_h)
         movement_layer_target=make_char_buffer(map_w,map_h) --a 0,1,2 would be enough
@@ -45,6 +45,7 @@ update_buffers()
 config=make_config({
     {"pause",false,type="bool"},
     {"color_by_age",true,type="bool"},
+    {"no_transients",true,type="bool"},
     {"block_size",10,type="int",min=0,max=50,watch=true},
     {"block_count",3,type="int",min=0,max=8,watch=true},
     {"block_offset",4,type="int",min=0,max=100,watch=true},
@@ -121,7 +122,9 @@ uniform vec2 res;
 uniform vec2 zoom;
 uniform vec2 translate;
 
-#define NO_TRANSIENTS 0
+uniform vec2 value_range;
+
+uniform int no_transients;
 #define LOG_AGE 0
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
@@ -140,19 +143,25 @@ void main(){
     //col=texelFetch(pcb_colors,ivec2(particle_type,0),0);
 #if LOG_AGE
     float pa=log(particle_age+1);
+    pa=(pa-log(value_range.x+1))/(log(value_range.y+1)-log(value_range.x+1));
 #else
     float pa=particle_age;
+    pa=(pa-value_range.x)/max((value_range.y-value_range.x),0.01);
 #endif
+    if (particle_age==0)
+        pa=0;
+
     //pa=clamp(pa,0,1);
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
-    //vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
-    vec3 c=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
+    vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
+    //vec3 c=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.5),vec3(0.5));
-#if NO_TRANSIENTS
-    if(particle_age<0.02)
-        //c=vec3(0);
-        c*=0.0;
-#endif
+    if(no_transients)
+    {
+        if(particle_age<0.02)
+            //c=vec3(0);
+            c*=0.0;
+    }
     col=vec4(c,1);
     //if(col.a!=0)
     //    col.a=1;
@@ -179,15 +188,15 @@ void main(){
 }
 ]==])
 dir_to_dx={
-	[0]={0,0},
-	[1]={1,0},
-	[2]={1,1},
-	[3]={0,1},
-	[4]={-1,1},
-	[5]={-1,0},
-	[6]={-1,-1},
-	[7]={0,-1},
-	[8]={1,-1},
+    [0]={0,0},
+    [1]={1,0},
+    [2]={1,1},
+    [3]={0,1},
+    [4]={-1,1},
+    [5]={-1,0},
+    [6]={-1,-1},
+    [7]={0,-1},
+    [8]={1,-1},
 }
 --[[
     432
@@ -201,33 +210,33 @@ function rnd( v )
     return math.random()*v*2-v
 end
 function fix_pos( p )
-	local ret={r=p.r,g=p.g}
-	if ret.r<0 then ret.r=map_w+ret.r end
-	if ret.g<0 then ret.g=map_h+ret.g end
-	if ret.r>=map_w then ret.r=ret.r-map_w end
-	if ret.g>=map_h then ret.g=ret.g-map_h end
-	return ret
+    local ret={r=p.r,g=p.g}
+    if ret.r<0 then ret.r=map_w+ret.r end
+    if ret.g<0 then ret.g=map_h+ret.g end
+    if ret.r>=map_w then ret.r=ret.r-map_w end
+    if ret.g>=map_h then ret.g=ret.g-map_h end
+    return ret
 end
 function displace_by_dir_nn( pos,dir,dist )
     dist=dist or 1
-	local ret={r=pos.r,g=pos.g}
-	local dx=dir_to_dx[dir]
-	ret.r=round(ret.r+dx[1]*dist)
-	ret.g=round(ret.g+dx[2]*dist)
-	return fix_pos(ret)
+    local ret={r=pos.r,g=pos.g}
+    local dx=dir_to_dx[dir]
+    ret.r=round(ret.r+dx[1]*dist)
+    ret.g=round(ret.g+dx[2]*dist)
+    return fix_pos(ret)
 end
 function get_nn( pos )
-	--local ret={}
-	local value=0
-	for i=1,8 do
-		local t=displace_by_dir_nn(pos,i)
-		local v=static_layer:get(t.r,t.g)
-		if v.a>0 then
-			--ret[i]=true
-			value=value+math.pow(2,i-1)
-		end
-	end
-	return value
+    --local ret={}
+    local value=0
+    for i=1,8 do
+        local t=displace_by_dir_nn(pos,i)
+        local v=static_layer:get(t.r,t.g)
+        if v.a>0 then
+            --ret[i]=true
+            value=value+math.pow(2,i-1)
+        end
+    end
+    return value
 end
 function value_to_nn_string( v )
     local ret=""
@@ -354,29 +363,34 @@ function calculate_long_range_rule( pos )
     return 0 --couldn't find any thing
 end
 function calculate_rule( pos )
-	if #rules==0 then
-		return math.random(0,8)
-	else
-		local v=get_nn(pos)
+    if #rules==0 then
+        return math.random(0,8)
+    else
+        local v=get_nn(pos)
         if v==0 and config.long_dist_range>=2 then
             return calculate_long_range_rule(pos)
         end
-		return rules[v] or 0
-	end
+        return rules[v] or 0
+    end
 end
 
 function round( x )
-	return math.floor(x+0.5)
+    return math.floor(x+0.5)
 end
 
 function particle_step(  )
-	for x=0,map_w-1 do
-		for y=0,map_h-1 do
-			movement_layer_target:set(x,y,0)
-		end
-	end
+    local min_age=math.huge
+    local max_age=-math.huge
 
-	local trg_pos={}
+    local no_0_age=true
+
+    for x=0,map_w-1 do
+        for y=0,map_h-1 do
+            movement_layer_target:set(x,y,0)
+        end
+    end
+
+    local trg_pos={}
 
     for i=0,current_particle_count-1 do
         local pos=fix_pos(particles_pos:get(i,0))
@@ -384,13 +398,13 @@ function particle_step(  )
         local tpos=displace_by_dir(pos,dir)
         local sl=static_layer:get(tpos.r,tpos.g)
         if sl.a>0 then
-        	dir=0
-        	tpos=displace_by_dir(pos,dir)
+            dir=0
+            tpos=displace_by_dir(pos,dir)
         end
         trg_pos[i]={dir,tpos}
         local tp=movement_layer_target:get(tpos.r,tpos.g)
         if tp<254 then
-        	tp=tp+1
+            tp=tp+1
         end
         movement_layer_target:set(tpos.r,tpos.g,tp)
         --movement_layer_source:set(round(pos.r),round(pos.g),dir)
@@ -405,23 +419,34 @@ function particle_step(  )
         local tp=movement_layer_target:get(tpos.r,tpos.g)
 
         if tp<2 and dir~=0 then
-        	pos.r=tpos.r
-        	pos.g=tpos.g
-        	particles_pos:set(i,0,pos)
+            pos.r=tpos.r
+            pos.g=tpos.g
+            particles_pos:set(i,0,pos)
             if config.color_by_age then
-        	   particles_age:set(i,0,0)
+                particles_age:set(i,0,0)
+                if not no_0_age then
+                    min_age=0
+                end
                --local a=particles_age:get(i,0)
-        	   --particles_age:set(i,0,a+0.002)
+               --particles_age:set(i,0,a+0.002)
             end
         else
-        	--movement_layer_target:set(tpos.r,tpos.g,tp-1)
-    		local a=particles_age:get(i,0)
+            --movement_layer_target:set(tpos.r,tpos.g,tp-1)
+            local a=particles_age:get(i,0)
             if config.color_by_age then
                --particles_age:set(i,0,0)
-               particles_age:set(i,0,a+0.002)
+                a=a+0.002
+                particles_age:set(i,0,a)
+                if a>max_age then max_age=a end
+                if a<min_age then min_age=a end
             end
         end
     end
+    if config.color_by_age then
+        g_min_age=min_age
+        g_max_age=max_age
+    end
+    return min_age,max_age
 end
 if tex_pixel==nil then
     update_buffers()
@@ -430,7 +455,7 @@ if tex_pixel==nil then
 end
 
 function scratch_update(  )
-	--clear the texture
+    --clear the texture
     draw_shader:use()
     local t=scratch_tex:get()
     t:use(0,0,1)
@@ -456,7 +481,12 @@ function scratch_update(  )
     place_pixels_shader:set("res",map_w,map_h)
     place_pixels_shader:set("zoom",1*map_aspect_ratio,-1)
     place_pixels_shader:set("translate",0,0)
-
+    place_pixels_shader:set('value_range',g_min_age or 0,g_max_age or 0)
+    if config.no_transients then
+        place_pixels_shader:set_i("no_transients",1)
+    else
+        place_pixels_shader:set_i("no_transients",0)
+    end
     place_pixels_shader:push_attribute(particles_age.d,"particle_age",1,GL_FLOAT)
     place_pixels_shader:draw_points(particles_pos.d,current_particle_count)
     __render_to_window()
@@ -483,69 +513,69 @@ function save_img(  )
     img_buf_save:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
 function save_gif_frame(  )
-	if img_buf_save==nil or img_buf_save.w~=size[1] then
-    	img_buf_save=make_image_buffer(size[1],size[2])
+    if img_buf_save==nil or img_buf_save.w~=size[1] then
+        img_buf_save=make_image_buffer(size[1],size[2])
     end
-	if giffer==nil then
-		return
-	end
+    if giffer==nil then
+        return
+    end
     img_buf_save:read_frame()
     giffer:frame(img_buf_save)
 end
 function rotate_pattern(p)
-	local ret=p*2
-	if ret>=256 then
-		ret=ret-256+1
-	end
-	return ret
+    local ret=p*2
+    if ret>=256 then
+        ret=ret-256+1
+    end
+    return ret
 end
 function rotate_pattern_left(p)
-	local v=p%2
-	local ret=math.floor(p/2)
-	if v==1 then
-		ret=ret+128
-	end
-	return ret
+    local v=p%2
+    local ret=math.floor(p/2)
+    if v==1 then
+        ret=ret+128
+    end
+    return ret
 end
 function rotate_dir( d,r )
-	if d==0 then
-		return 0
-	end
-	return (d+r-1)%8+1
+    if d==0 then
+        return 0
+    end
+    return (d+r-1)%8+1
 end
 function classify_patterns()
-	print("=========================")
-	local store_id=1
-	local ret_patern_store={}
-	local pattern_store={}
+    print("=========================")
+    local store_id=1
+    local ret_patern_store={}
+    local pattern_store={}
 
-	for i=1,255 do
-		local old_pattern
-		local r=0
-		local rp=i
-		for j=1,8 do
-			rp=rotate_pattern_left(rp)
-			local sp=pattern_store[rp]
-			if sp then
-				old_pattern={id=sp.id,sym=sp.sym,rot=j}
-				ret_patern_store[i]=old_pattern
-				break
-			end
-			if rp==i then
-				r=j
-				break
-			end
-		end
-		if old_pattern then
-			print(i,old_pattern.id,old_pattern.sym,old_pattern.rot)
-		else
-			pattern_store[i]={id=store_id,sym=r,rot=0}
-			print(i,store_id,r,0)
-			store_id=store_id+1
-			ret_patern_store[i]=pattern_store[i]
-		end
-	end
-	return ret_patern_store
+    for i=1,255 do
+        local old_pattern
+        local r=0
+        local rp=i
+        for j=1,8 do
+            rp=rotate_pattern_left(rp)
+            local sp=pattern_store[rp]
+            if sp then
+                old_pattern={id=sp.id,sym=sp.sym,rot=j}
+                ret_patern_store[i]=old_pattern
+                break
+            end
+            if rp==i then
+                r=j
+                break
+            end
+        end
+        if old_pattern then
+            print(i,old_pattern.id,old_pattern.sym,old_pattern.rot)
+        else
+            pattern_store[i]={id=store_id,sym=r,rot=0}
+            print(i,store_id,r,0)
+            store_id=store_id+1
+            ret_patern_store[i]=pattern_store[i]
+        end
+    end
+    return ret_patern_store
 end
 function dist_func( x,y )
     --local v=(math.abs(x)+math.abs(y))
@@ -606,32 +636,32 @@ function update()
         sim_tick()
         sim_done=true
     end
- 	if imgui.Button("rand rules") then
- 		rules={}
- 		rules[0]=0
+    if imgui.Button("rand rules") then
+        rules={}
+        rules[0]=0
         --[[
         for i=1,255 do
-        	rules[i]=math.random(0,8)
+            rules[i]=math.random(0,8)
         end
         --]]
         --[[
         for i=1,8 do
-        	rules[math.pow(2,i)]=math.random(0,8)
+            rules[math.pow(2,i)]=math.random(0,8)
         end
 
         for i=1,8 do
-        	for j=1,8 do
-        		if i~=j then
-        			rules[math.pow(2,i)+math.pow(2,j)]=math.random(0,8)
-        		end
-        	end
+            for j=1,8 do
+                if i~=j then
+                    rules[math.pow(2,i)+math.pow(2,j)]=math.random(0,8)
+                end
+            end
         end
         --]]
         -- [==[
         local pt=classify_patterns()
         local pt_rules={}
         for i,v in pairs(pt) do
-        	-- [[
+            -- [[
             if pt_rules[v.id]==nil then
                 if v.sym==8  then
                     pt_rules[v.id]={math.random(0,8),i}
@@ -639,7 +669,7 @@ function update()
                     pt_rules[v.id]={0,i}
                 end
             end
-        	--]]
+            --]]
         end
         local already_printed={}
         for i,v in ipairs(pt) do
@@ -653,13 +683,13 @@ function update()
             end
         end
         for i,v in pairs(pt) do
-        	-- [[
-        	if v.sym==8  then
-        		rules[i]=rotate_dir(pt_rules[v.id][1],v.rot)
-        	else
-        		rules[i]=0
-        	end
-        	--]]
+            -- [[
+            if v.sym==8  then
+                rules[i]=rotate_dir(pt_rules[v.id][1],v.rot)
+            else
+                rules[i]=0
+            end
+            --]]
         end
         --]==]
         is_remade=true
@@ -667,7 +697,7 @@ function update()
     if imgui.Button("save rules") then
         local f=io.open("rules.txt","w")
         for i=1,255 do
-        	f:write(i," ",rules[i],"\n")
+            f:write(i," ",rules[i],"\n")
         end
         f:close()
     end
@@ -686,7 +716,10 @@ function update()
         f:close()
     end
     if not config.color_by_age then
+
         if imgui.Button("recolor points") then
+            g_max_age=-math.huge
+            g_min_age=math.huge
             local max_val=0
             for i=0,current_particle_count-1 do
                 local p=particles_pos:get(i,0)
@@ -704,26 +737,28 @@ function update()
                 local v=dist_func(x,y)
                 particles_age:set(i,0,v/(max_val))
             end
+            g_max_age=1
+            g_min_age=0
         end
     end
     if imgui.Button("clear rules") then
         rules={}
     end
-	if imgui.Button("Save Gif") then
-		if giffer~=nil then
-			giffer:stop()
-		end
-		save_gif_frame()
-		giffer=gif_saver(string.format("saved_%d.gif",os.time(os.date("!*t"))),
-			img_buf_save,5000,10)
-	end
-	imgui.SameLine()
-	if imgui.Button("Stop Gif") then
-		if giffer then
-			giffer:stop()
-			giffer=nil
-		end
-	end
+    if imgui.Button("Save Gif") then
+        if giffer~=nil then
+            giffer:stop()
+        end
+        save_gif_frame()
+        giffer=gif_saver(string.format("saved_%d.gif",os.time(os.date("!*t"))),
+            img_buf_save,5000,10)
+    end
+    imgui.SameLine()
+    if imgui.Button("Stop Gif") then
+        if giffer then
+            giffer:stop()
+            giffer=nil
+        end
+    end
     if is_remade or (config.__change_events and config.__change_events.any) then
         current_particle_count=0
         --print("==============================")
@@ -914,7 +949,7 @@ function update()
     end
     if not config.pause then
         sim_tick()
-       	sim_done=true
+        sim_done=true
         --add_particle{map_w/2,0,math.random()*0.25-0.125,math.random()-0.5,3}
     end
     imgui.SameLine()
@@ -939,12 +974,12 @@ function update()
     update_buffers()
     --[[
     for x=0,map_w-1 do
-    	for y=0,map_h-1 do
-    		local v=static_layer:get(x,y)
-    		if math.random()>0.99 and v.a>0 then
-    			print(x,y,math.abs(v.a-255*0.05))
-    		end
-    	end
+        for y=0,map_h-1 do
+            local v=static_layer:get(x,y)
+            if math.random()>0.99 and v.a>0 then
+                print(x,y,math.abs(v.a-255*0.05))
+            end
+        end
     end
     --]]
     draw_shader:use()
@@ -977,12 +1012,12 @@ function update()
     else
         draw_shader:draw_quad()
     end
-	if giffer and sim_done then
+    if giffer and sim_done then
         if giffer:want_frame() then
-			save_gif_frame()
-		end
-		giffer:frame(img_buf_save)
-	end
+            save_gif_frame()
+        end
+        giffer:frame(img_buf_save)
+    end
     if need_save then
         save_img()
         need_save=false
