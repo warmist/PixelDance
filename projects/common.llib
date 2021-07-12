@@ -218,6 +218,15 @@ function draw_config( tbl )
 					local mi=entry.min or 0
 					tbl[k]=math.random()*(mm-mi)+mi
 				end
+			elseif entry.type=="choice" then
+				local changing
+				changing,tbl[k]=imgui.ListBox(k,tbl[k],entry.choices)
+				entry.changing=changing
+				imgui.SameLine()
+				if imgui.Button("R##"..k) then
+					entry.changing=true
+					tbl[k]=math.random(0,#entry.choices-1)
+				end
 			end
 			imgui.SameLine()
 			if imgui.Button("Z##"..k) then
