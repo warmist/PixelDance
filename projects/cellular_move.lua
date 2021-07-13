@@ -464,7 +464,9 @@ function particle_step(  )
                 --    min_age=0
                 --end
                 if a>max_age then max_age=a end
-                if a<min_age then min_age=a end
+                if not no_0_age then
+                    if a<min_age then min_age=a end
+                end
                --local a=particles_age:get(i,0)
                --particles_age:set(i,0,a+0.002)
             end
@@ -579,7 +581,7 @@ function rotate_dir( d,r )
     return (d+r-1)%8+1
 end
 function classify_patterns()
-    print("=========================")
+    --print("=========================")
     local store_id=1
     local ret_patern_store={}
     local pattern_store={}
@@ -602,10 +604,10 @@ function classify_patterns()
             end
         end
         if old_pattern then
-            print(i,old_pattern.id,old_pattern.sym,old_pattern.rot)
+            --print(i,old_pattern.id,old_pattern.sym,old_pattern.rot)
         else
             pattern_store[i]={id=store_id,sym=r,rot=0}
-            print(i,store_id,r,0)
+            --print(i,store_id,r,0)
             store_id=store_id+1
             ret_patern_store[i]=pattern_store[i]
         end
