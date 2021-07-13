@@ -47,7 +47,7 @@ update_buffers()
 config=make_config({
     {"pause",false,type="bool"},
     {"color_by_age",true,type="bool"},
-    {"no_transients",true,type="bool"},
+    {"transient_cutoff",0.1,type="float",min=0,max=2},
     {"decay",0.99,type="floatsci",power=0.01},
     {"block_size",10,type="int",min=0,max=50,watch=true},
     {"block_count",3,type="int",min=0,max=8,watch=true},
@@ -130,7 +130,7 @@ uniform vec2 translate;
 
 uniform vec2 value_range;
 
-uniform int no_transients;
+uniform float transient_cutoff;
 #define LOG_AGE 0
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
@@ -159,15 +159,17 @@ void main(){
 
     //pa=clamp(pa,0,1);
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
-    vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
+    //vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
     //vec3 c=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
+    //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.6,0.6,0.2),vec3(0.1,0.7,0.3));
+    vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.33,0.4,0.7),vec3(0.5,0.12,0.8));
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.5),vec3(0.5));
-    if(no_transients==1)
+    if(transient_cutoff>0)
     {
-        if(particle_age<0.02)
+        if(particle_age<transient_cutoff)
             //c=vec3(0);
-            //c*=0.0;
-            c=vec3(1);
+            c*=0.0;
+            //c=vec3(1);
             //discard;
     }
     col=vec4(c,1);
@@ -450,7 +452,6 @@ function particle_step(  )
         local tpos=trg_pos[i][2]
         local dir=trg_pos[i][1]
         local tp=movement_layer_target:get(tpos.r,tpos.g)
-
         if tp<2 and dir~=0 then
             pos.r=tpos.r
             pos.g=tpos.g
@@ -477,8 +478,10 @@ function particle_step(  )
                --particles_age:set(i,0,0)
                 a=a+0.001
                 particles_age:set(i,0,a)
-                if a>max_age then max_age=a end
-                if a<min_age then min_age=a end
+                if a>config.transient_cutoff then
+                    if a>max_age then max_age=a end
+                    if a<min_age then min_age=a end
+                end
             end
         end
     end
@@ -519,11 +522,8 @@ function scratch_update(  )
     place_pixels_shader:set("zoom",1*map_aspect_ratio,-1)
     place_pixels_shader:set("translate",0,0)
     place_pixels_shader:set('value_range',g_min_age or 0,g_max_age or 0)
-    if config.no_transients then
-        place_pixels_shader:set_i("no_transients",1)
-    else
-        place_pixels_shader:set_i("no_transients",0)
-    end
+    place_pixels_shader:set("transient_cutoff",config.transient_cutoff)
+
     place_pixels_shader:push_attribute(particles_age.d,"particle_age",1,GL_FLOAT)
     place_pixels_shader:draw_points(particles_pos.d,current_particle_count)
     __render_to_window()
@@ -681,7 +681,7 @@ function generate_rules( rule_tbl,overwrite )
             end
         end
         --]]
-        local chance_0=0.7
+        local chance_0=0.5
         if pt_rules[v.id]==nil then
             if v.sym==8  then
                 if math.random()>chance_0 then
@@ -973,7 +973,13 @@ function update()
                         particles_age:set(current_particle_count,0,0)
                     end
                     current_particle_count=current_particle_count+1
+                    if current_particle_count== max_particle_count-1 then
+                        break
+                    end
                 end
+            end
+            if current_particle_count== max_particle_count-1 then
+                break
             end
         end
         --]==]
