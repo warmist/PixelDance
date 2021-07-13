@@ -220,7 +220,7 @@ function draw_config( tbl )
 				end
 			elseif entry.type=="choice" then
 				local changing
-				changing,tbl[k]=imgui.ListBox(k,tbl[k],entry.choices)
+				changing,tbl[k]=imgui.Combo(k,tbl[k],entry.choices)
 				entry.changing=changing
 				imgui.SameLine()
 				if imgui.Button("R##"..k) then

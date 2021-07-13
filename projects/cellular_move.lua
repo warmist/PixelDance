@@ -348,9 +348,11 @@ function displace_by_dir( pos,dir )
     ret.g=round(ret.g+dx[2])
     return fix_pos(ret)
 end
+local rule_0_stops=true
 function calculate_long_range_rule( pos )
 
-    for r=2,config.long_dist_range do
+     for r=2,config.long_dist_range do --original
+    --for r=config.long_dist_range,2,-1 do --inverted
         local count_in_range=0
         local last_dir=0
         for j=1,8 do
@@ -362,12 +364,16 @@ function calculate_long_range_rule( pos )
             end
         end
         if count_in_range>1 then
-            return 0 --more than one direction to move, so don't
+            if rule_0_stops then
+                return 0 --more than one direction to move, so don't
+            end
         elseif count_in_range==1 then
             --if r>4 then
             --    return rotate_dir(last_dir,config.long_dist_offset)
             --else
+            if last_dir~=0 or rule_0_stops then
                 return rotate_dir(last_dir,config.long_dist_offset)
+            end
             --end
         end
     end
@@ -380,8 +386,44 @@ function calculate_rule( pos )
     if #rules==0 then
         return math.random(0,8)
     else
-        local v=get_nn(pos)
+
+        --[==[ inverted order (first check farthest then closer)
+        local v=0
         if v==0 and config.long_dist_range>=2 then
+            if config.long_dist_mode==0 then
+            -- three choices here: simple long dist
+                return calculate_long_range_rule(pos)
+            elseif config.long_dist_mode==1 then
+                --one rule for all dists
+                for i=config.long_dist_range,2,-1 do
+                    local v=get_nn(pos,i)
+                    if v~=0 then
+                        if long_rules[2][v]~=0 or rule_0_stops then
+                            return long_rules[2][v]
+                        end
+                    end
+                end
+            else
+                for i=config.long_dist_range,2,-1 do
+                -- each dist has it's own rules
+                    if long_rules[i] then
+                        local v=get_nn(pos,i)
+                        if v~=0 then
+                            if long_rules[i][v]~=0 or rule_0_stops then
+                                return long_rules[i][v]
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        v=get_nn(pos)
+        return rules[v] or 0
+        --]==]
+        -- [==[ normal 
+        local v=get_nn(pos)
+        local r=rules[v]
+        if (v==0 or (r==0 and not rule_0_stops)) and config.long_dist_range>=2 then
             if config.long_dist_mode==0 then
             -- three choices here: simple long dist
                 return calculate_long_range_rule(pos)
@@ -390,7 +432,9 @@ function calculate_rule( pos )
                 for i=2,config.long_dist_range do
                     local v=get_nn(pos,i)
                     if v~=0 then
-                        return long_rules[2][v]
+                        if long_rules[2][v]~=0 or rule_0_stops then
+                            return long_rules[2][v]
+                        end
                     end
                 end
             else
@@ -399,13 +443,17 @@ function calculate_rule( pos )
                     if long_rules[i] then
                         local v=get_nn(pos,i)
                         if v~=0 then
-                            return long_rules[i][v]
+                            if long_rules[i][v]~=0 or rule_0_stops then
+                                return long_rules[i][v]
+                            end
                         end
                     end
                 end
             end
         end
-        return rules[v] or 0
+
+        return r or 0
+        --]==]
     end
 end
 
