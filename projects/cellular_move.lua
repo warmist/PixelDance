@@ -655,11 +655,24 @@ function animation_start(  )
     a.sav_tick_current=0
     a.animating=true
 end
+function mask_has_dir(m,d)
+    return bit.band(m,math.pow(2,d-1))==0
+end
+function generate_free_dir( mask )
+    for i=1,1000 do
+        local d=math.random(1,8)
+        if mask_has_dir(mask,d) then
+            return d
+        end
+    end
+    print("failed to find free dir for ",mask)
+    return 0
+end
 function generate_rules( rule_tbl,overwrite )
     local pt=classify_patterns()
     local pt_rules={}
     for i,v in pairs(pt) do
-        -- [[
+        --[[
         if pt_rules[v.id]==nil then
             if v.sym==8  then
                 pt_rules[v.id]={math.random(0,8),i}
@@ -668,6 +681,18 @@ function generate_rules( rule_tbl,overwrite )
             end
         end
         --]]
+        local chance_0=0.7
+        if pt_rules[v.id]==nil then
+            if v.sym==8  then
+                if math.random()>chance_0 then
+                    pt_rules[v.id]={generate_free_dir(i),i}
+                else
+                    pt_rules[v.id]={0,i}
+                end
+            else
+                pt_rules[v.id]={0,i}
+            end
+        end
     end
 
     if overwrite then
@@ -677,16 +702,35 @@ function generate_rules( rule_tbl,overwrite )
     end
 
     local already_printed={}
+    local only_print_non0=true
+    local short_rules={}
     for i,v in ipairs(pt) do
         if not already_printed[v.id] then
             if v.sym==8 then
-                print("Group id:",v.id)
                 local actual_dir=rotate_dir(pt_rules[v.id][1],v.rot)
-                print(concat_byline(value_to_nn_string(pt_rules[v.id][2]),dir_to_arrow_string(actual_dir)))
+                local is_free
+                if actual_dir~=0 then
+                    is_free=mask_has_dir(pt_rules[v.id][2],actual_dir)
+                else
+                    is_free=false
+                end
+                if not only_print_non0 or is_free then
+                    print("Group id:",v.id)
+                    print(concat_byline(value_to_nn_string(pt_rules[v.id][2]),dir_to_arrow_string(actual_dir)))
+                    table.insert(short_rules,{v.id,actual_dir})
+                end
                 already_printed[v.id]=true
             end
         end
     end
+    local r="rules:"
+    for i,v in ipairs(short_rules) do
+        if i~=1 then
+            r=r..","
+        end
+        r=r..v[1]..":"..v[2]
+    end
+    print(r)
     for i,v in pairs(pt) do
         -- [[
         if v.sym==8  then
@@ -762,10 +806,17 @@ function update()
             f:write(i," ",rules[i],"\n")
         end
         f:close()
+        for k,v in pairs(long_rules) do
+            local f=io.open("rules"..k..".txt","w")
+            for i=1,255 do
+                f:write(i," ",v[i],"\n")
+            end
+            f:close()
+        end
     end
     imgui.SameLine()
     if imgui.Button("load rules") then
-        local f=io.open("rules_huh.txt","r")
+        local f=io.open("rules.txt","r")
         for i=1,255 do
             local ii,v=f:read("*n","*n")
             if ii~=i then
