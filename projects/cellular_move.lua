@@ -130,6 +130,11 @@ uniform vec2 translate;
 
 uniform vec2 value_range;
 
+uniform vec3 c1;
+uniform vec3 c2;
+uniform vec3 c3;
+uniform vec3 c4;
+
 uniform float transient_cutoff;
 #define LOG_AGE 0
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
@@ -162,8 +167,9 @@ void main(){
     //vec3 c=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
     //vec3 c=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.6,0.6,0.2),vec3(0.1,0.7,0.3));
-    vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.33,0.4,0.7),vec3(0.5,0.12,0.8));
+    //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.33,0.4,0.7),vec3(0.5,0.12,0.8));
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.5),vec3(0.5));
+    vec3 c=palette(pa,c1,c2,c2,c3);
     if(transient_cutoff>0)
     {
         if(particle_age<transient_cutoff)
@@ -351,7 +357,7 @@ end
 local rule_0_stops=true
 function calculate_long_range_rule( pos )
 
-     for r=2,config.long_dist_range do --original
+    for r=2,config.long_dist_range do --original
     --for r=config.long_dist_range,2,-1 do --inverted
         local count_in_range=0
         local last_dir=0
@@ -397,7 +403,7 @@ function calculate_rule( pos )
                 --one rule for all dists
                 for i=config.long_dist_range,2,-1 do
                     local v=get_nn(pos,i)
-                    if v~=0 then
+                    if v~=0 and long_rules[2] then
                         if long_rules[2][v]~=0 or rule_0_stops then
                             return long_rules[2][v]
                         end
@@ -431,7 +437,7 @@ function calculate_rule( pos )
                 --one rule for all dists
                 for i=2,config.long_dist_range do
                     local v=get_nn(pos,i)
-                    if v~=0 then
+                    if v~=0 and long_rules[2] then
                         if long_rules[2][v]~=0 or rule_0_stops then
                             return long_rules[2][v]
                         end
@@ -571,7 +577,13 @@ function scratch_update(  )
     place_pixels_shader:set("translate",0,0)
     place_pixels_shader:set('value_range',g_min_age or 0,g_max_age or 0)
     place_pixels_shader:set("transient_cutoff",config.transient_cutoff)
-
+    if need_rand_color then
+        place_pixels_shader:set("c1",math.random(),math.random(),math.random())
+        place_pixels_shader:set("c2",math.random(),math.random(),math.random())
+        place_pixels_shader:set("c3",math.random(),math.random(),math.random())
+        place_pixels_shader:set("c4",math.random(),math.random(),math.random())
+        need_rand_color=false
+    end
     place_pixels_shader:push_attribute(particles_age.d,"particle_age",1,GL_FLOAT)
     place_pixels_shader:draw_points(particles_pos.d,current_particle_count)
     __render_to_window()
@@ -1132,6 +1144,10 @@ function update()
         if imgui.Button("Stop Animate") then
             animation_data.animating=false
         end
+    end
+    if imgui.Button("Randomize Color") then
+        need_rand_color=true
+
     end
     imgui.End()
     if animation_data.animating and sim_done then
