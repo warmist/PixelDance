@@ -61,7 +61,6 @@ config=make_config({
     },config)
 dist_constraints={}
 
-
 local draw_shader=shaders.Make(
 [==[
 #version 330
@@ -169,6 +168,10 @@ void main(){
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.6,0.6,0.2),vec3(0.1,0.7,0.3));
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.33,0.4,0.7),vec3(0.5,0.12,0.8));
     //vec3 c=palette(pa,vec3(0.5),vec3(0.5),vec3(0.5),vec3(0.5));
+    //vec3 c=palette(pa,vec3(0.999032,0.259156,0.217277),vec3(0.864574,0.440455,0.0905941),vec3(0.333333,0.4,0.333333),vec3(0.111111,0.2,0.1)); //Dark red/orange stuff
+    //vec3 c=palette(pa,vec3(0.884088,0.4138,0.538347),vec3(0.844537,0.95481,0.818469),vec3(0.875,0.875,1),vec3(3,1.5,1.5)); //white and dark and blue very nice
+    //vec3 c=palette(pa,vec3(0.971519,0.273919,0.310136),vec3(0.90608,0.488869,0.144119),vec3(5,10,2),vec3(1,1.8,1.28571)); //violet and blue
+    //vec3 c=palette(pa,vec3(0.960562,0.947071,0.886345),vec3(0.850642,0.990723,0.499583),vec3(0.1,0.2,0.111111),vec3(0.6,0.75,1)); //violet and yellow
     vec3 c=palette(pa,c1,c2,c2,c3);
     if(transient_cutoff>0)
     {
@@ -550,7 +553,28 @@ if tex_pixel==nil then
     tex_pixel=multi_texture(static_layer.w,static_layer.h,2,FLTA_PIX)
     scratch_tex=multi_texture(static_layer.w,static_layer.h,2,FLTA_PIX)
 end
-
+function gen_one_color( name,tbl,version)
+    local v1,v2,v3
+    version=version or 0
+    if version==0 then
+        v1=math.random()
+        v2=math.random()
+        v3=math.random()
+    elseif version==1 then
+        v1=math.random()*2
+        v2=math.random()*2
+        v3=math.random()*2
+    elseif version==2 then
+        local vtop=math.random(0,10)
+        v1=vtop/math.random(1,10)
+        v2=vtop/math.random(1,10)
+        v3=vtop/math.random(1,10)
+    end
+    place_pixels_shader:set(name,v1,v2,v3)
+    table.insert(tbl,v1)
+    table.insert(tbl,v2)
+    table.insert(tbl,v3)
+end
 function scratch_update(  )
     --clear the texture
     local t=scratch_tex:get()
@@ -578,10 +602,15 @@ function scratch_update(  )
     place_pixels_shader:set('value_range',g_min_age or 0,g_max_age or 0)
     place_pixels_shader:set("transient_cutoff",config.transient_cutoff)
     if need_rand_color then
-        place_pixels_shader:set("c1",math.random(),math.random(),math.random())
-        place_pixels_shader:set("c2",math.random(),math.random(),math.random())
-        place_pixels_shader:set("c3",math.random(),math.random(),math.random())
-        place_pixels_shader:set("c4",math.random(),math.random(),math.random())
+        local sformat="palette(pa,vec3(%g,%g,%g),vec3(%g,%g,%g),vec3(%g,%g,%g),vec3(%g,%g,%g));"
+        local res={}
+        gen_one_color("c1",res)
+        gen_one_color("c2",res)
+        gen_one_color("c3",res,2)
+        gen_one_color("c4",res,2)
+        --palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
+        print(string.format(sformat,unpack(res)))
+        color_table=res
         need_rand_color=false
     end
     place_pixels_shader:push_attribute(particles_age.d,"particle_age",1,GL_FLOAT)
