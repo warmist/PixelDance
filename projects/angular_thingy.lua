@@ -46,7 +46,7 @@ config=make_config({
     {"pause",false,type="bool"},
     {"pause_particles",true,type="bool"},
     {"show_particles",true,type="bool"},
-    {"sim_ticks",1,type="int",min=0,max=10},
+    {"sim_ticks",50,type="int",min=0,max=10},
     {"speed",0.1,type="floatsci",min=0,max=1,power=10},
 
     },config)
@@ -139,15 +139,17 @@ vec4 avg_at_pos(vec2 pos)
     vec4 ret_s=vec4(0);
     vec4 ret_c=vec4(0);
 
-    SC_SAMPLE(-1,-1,0.05);
-    SC_SAMPLE(-1,1,0.05);
-    SC_SAMPLE(1,-1,0.05);
-    SC_SAMPLE(1,1,0.05);
+    SC_SAMPLE(-1,-1,0.025);
+    SC_SAMPLE(-1,1,0.025);
+    SC_SAMPLE(1,-1,0.025);
+    SC_SAMPLE(1,1,0.025);
 
-    SC_SAMPLE(0,-1,0.2);
-    SC_SAMPLE(0,1,0.2);
-    SC_SAMPLE(1,0,0.2);
-    SC_SAMPLE(-1,0,0.2);
+    SC_SAMPLE(0,-1,0.1);
+    SC_SAMPLE(0,1,0.1);
+    SC_SAMPLE(1,0,0.1);
+    SC_SAMPLE(-1,0,0.1);
+
+    SC_SAMPLE(0,0,0.5);
 
     return atan(ret_s,ret_c);
 }
@@ -291,22 +293,20 @@ function update()
         local cy=math.floor(map_h/2)
         for x=0,map_w-1 do
         for y=0,map_h-1 do
-            if x<cx then
-                vector_layer:set(x,y,{math.random()*math.pi*2-math.pi,0,0,0})
-            else
-                vector_layer:set(x,y,{0,0,0,0})
-            end
+            vector_layer:set(x,y,{0,0,0,0})
+            --vector_layer:set(x,y,{(math.random()-0.5)*math.pi*2,0,0,0})
             speed_layer:set(x,y,{0,0,0,0})
         end
         end
 
 
         local s=config.speed
-        -- [[
+        --[[
         for i=-cx+1,cx-1 do
+            local eps=math.random()*0.001
             local v=i/100
-            vector_layer:set(cx+i,cy,{v*math.pi,0,0,0})
-            vector_layer:set(cx,cy+i,{v*math.pi,0,0,0})
+            vector_layer:set(cx+i,cy,{v*math.pi+eps,0,0,0})
+            vector_layer:set(cx,cy+i,{v*math.pi-eps,0,0,0})
             if i>0 then
                 speed_layer:set(cx+i,cy,{s,1,0,0})
                 speed_layer:set(cx,cy+i,{s,1,0,0})
@@ -316,6 +316,39 @@ function update()
             end
         end
         --]]
+        local function put_pixel( cx,cy,x,y,a )
+            speed_layer:set(cx+x,cy+y,{s,1,0,0})
+            vector_layer:set(cx+x,cy+y,{math.cos(a*4+a*a*0.5)*math.pi,0,0,0})
+        end
+        local r=math.floor(cx*0.8)
+        --[[
+        for a=0,math.pi*2,0.001 do
+            local x=math.floor(math.cos(a)*r)
+            local y=math.floor(math.sin(a)*r)
+            put_pixel(cx,cy,x,y,a)
+        end
+        r=r-80
+        for a=0,math.pi*2,0.001 do
+            local x=math.floor(math.cos(a)*r)
+            local y=math.floor(math.sin(a)*r)
+            put_pixel(cx,cy,x,y,a*0.25)
+        end
+        --]]
+        for x=-r,r do
+            local a=(x/r)*math.pi
+            put_pixel(cx,cy,x,-r,a)
+            put_pixel(cx,cy,x,r,a)
+            put_pixel(cx,cy,r,x,a)
+            put_pixel(cx,cy,-r,x,a)
+        end
+        r=math.floor(r/2)
+        for x=-r,r do
+            local a=(x/r)*math.pi*0.25
+            put_pixel(cx,cy,x,-r,a)
+            put_pixel(cx,cy,x,r,a)
+            put_pixel(cx,cy,r,x,a)
+            put_pixel(cx,cy,-r,x,a)
+        end
         --[[
         for i=1,1 do
             local x=math.random(0,cx)+math.floor(cx/2)
