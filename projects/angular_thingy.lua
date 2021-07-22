@@ -51,13 +51,21 @@ in vec3 pos;
 
 uniform ivec2 res;
 uniform sampler2D tex_main;
-
+vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
+{
+    return a + b*cos( 6.28318*(c*t+d) );
+}
 void main(){
     vec2 normed=(pos.xy+vec2(1,-1))*vec2(0.5,-0.5);
     normed=(normed-vec2(0.5,0.5))+vec2(0.5,0.5);
     vec4 pixel=texture(tex_main,normed);
     vec3 c=pixel.xyz;//(pixel.xyz/3.14+1)/2;
     //c=clamp(c,0,1);
+    float p=1;
+    if(c.x>0)
+        c.x=pow(abs(c.x),p);
+    else
+        c.x=-pow(abs(c.x),p);
     vec2 fvec=vec2(cos(c.x),sin(c.x));
 #if 0
     //gradient
@@ -77,7 +85,22 @@ void main(){
     float curl=dFdx(fvec.y)-dFdy(fvec.x);
     //curl=curl/2+0.5;
     color=vec4(curl*10,fvec.xy*0,1);
+#elif 1
+    //float pa=c.x/3.145926;
+    float pa=cos(c.x)/2+0.5;
+    //vec3 co=palette(pa,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
+    //vec3 co=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
+    vec3 co=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
+    //vec3 co=palette(pa,vec3(0.5),vec3(0.5),vec3(0.6,0.6,0.2),vec3(0.1,0.7,0.3));
+    //vec3 co=palette(pa,vec3(0.5),vec3(0.5),vec3(0.33,0.4,0.7),vec3(0.5,0.12,0.8));
+    //vec3 co=palette(pa,vec3(0.5),vec3(0.5),vec3(0.5),vec3(0.5));
+    //vec3 co=palette(pa,vec3(0.999032,0.259156,0.217277),vec3(0.864574,0.440455,0.0905941),vec3(0.333333,0.4,0.333333),vec3(0.111111,0.2,0.1)); //Dark red/orange stuff
+    //vec3 co=palette(pa,vec3(0.884088,0.4138,0.538347),vec3(0.844537,0.95481,0.818469),vec3(0.875,0.875,1),vec3(3,1.5,1.5)); //white and dark and blue very nice
+    //vec3 co=palette(pa,vec3(0.971519,0.273919,0.310136),vec3(0.90608,0.488869,0.144119),vec3(5,10,2),vec3(1,1.8,1.28571)); //violet and blue
+    //vec3 co=palette(pa,vec3(0.960562,0.947071,0.886345),vec3(0.850642,0.990723,0.499583),vec3(0.1,0.2,0.111111),vec3(0.6,0.75,1)); //violet and yellow
+    color=vec4(co,1);
 #else
+
     fvec=fvec/2+vec2(0.5);
     color=vec4(0,fvec.xy,1);
 #endif
@@ -191,7 +214,7 @@ function update()
     if imgui.Button("clear speeds") then
         for x=0,map_w-1 do
         for y=0,map_h-1 do
-            speed_layer:set(x,y,{0,0,0,0})
+           speed_layer:set(x,y,{0,0,0,0})
         end
         end
          speed_layer:write_texture(speed_buffer:get())
@@ -214,7 +237,7 @@ function update()
 
         local s=config.speed
         -- [[
-        for i=-100,100 do
+        for i=-cx+1,cx-1 do
             local v=i/100
             vector_layer:set(cx+i,cy,{v*math.pi,0,0,0})
             vector_layer:set(cx,cy+i,{v*math.pi,0,0,0})
