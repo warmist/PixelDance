@@ -519,7 +519,44 @@ end
 function multi_texture:get_prev()
 	return self:get(self.count-1)
 end
-
+-----------------------------------------
+--TODO: better state on creation
+multi_buffer=class(
+function(mb,buf_count)
+	mb.count=buf_count
+	mb.current=1
+	mb:reinit()
+end
+)
+function multi_buffer:reinit(force)
+	--TODO: implement force reinit or refactor etc..
+	self.buffers=self.buffers or {}
+ 	for i=1,self.count do
+ 		if self.buffers[i]==nil or force then
+ 			local t=buffer_data.Make()
+ 			self.buffers[i]=t
+ 		end
+ 	end
+end
+function multi_buffer:advance(  )
+	self.current=self.current+1
+	if self.current>self.count then
+		self.current=1
+	end
+end
+function multi_buffer:get(offset)
+	offset =offset or 0
+	local id=self.current+offset
+	id=((id-1) % self.count)+1
+	return self.buffers[id]
+end
+function multi_buffer:get_next()
+	return self:get(1)
+end
+function multi_buffer:get_prev()
+	return self:get(self.count-1)
+end
+-----------------------------------------
 gif_saver=class(
 function(gs,fname,buffer,frames,frame_skip)
 	gif_saver.start(gs,fname,buffer,frames,frame_skip)
