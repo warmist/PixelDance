@@ -48,7 +48,9 @@ config=make_config({
     {"show_particles",false,type="bool"},
     {"sim_ticks",50,type="int",min=0,max=10},
     {"speed",0.1,type="floatsci",min=0,max=1,power=10},
-
+    {"particle_opacity",0.01,type="floatsci",min=0,max=1,power=10},
+    {"particle_reset_iter",1000,type="int",min=0,max=10000},
+    {"particle_wait_iter",100,type="int",min=0,max=10000},
     },config)
 
 
@@ -120,7 +122,9 @@ vec4 calc_vector_image(vec2 normed)
 vec4 calc_particle_image(vec2 pos)
 {
     //return vec4(cos(pos.x)*0.5+0.5,sin(pos.y)*0.5+0.5,0,1);
-    return texture(tex_main,pos);
+    vec4 col=texture(tex_main,pos);
+    //col.xyz=pow(col.xyz,vec3(1));
+    return col;
 }
 void main(){
     vec2 normed=(pos.xy+vec2(1,-1))*vec2(0.5,-0.5);
@@ -197,10 +201,20 @@ uniform float speed;
 
 void main()
 {
+    vec2 normed=(position.xy+vec2(1,1))*vec2(0.5,0.5);
     //TODO: this bilinear/nn iterpolates. Does this make sense?
-    float angle=texture(tex_angles,position.xy).x;
+    float angle=texture(tex_angles,normed).x;
     vec2 delta=vec2(cos(angle),sin(angle))*speed;
-    point_out=position+vec4(delta,0,0);
+    vec2 p=position.xy+delta;
+    if(p.x<-1)
+        p.x=1;
+    if(p.x>1)
+        p.x=-1;
+    if(p.y<-1)
+        p.y=1;
+    if(p.y>1)
+        p.y=-1;
+    point_out=vec4(p,0,0);
 }
 ]==],
 [==[ void main(){} ]==],"point_out"
@@ -209,14 +223,29 @@ agent_draw_shader=shaders.Make(
 [==[
 #version 410
 
-layout(location =0) in vec4 position;
-layout(location =1) in vec4 particle_color;
+layout(location = 0) in vec4 position;
+layout(location = 1) in vec4 particle_color;
 
-out vec4 color;
-
+//out vec3 pos;
+out vec4 col;
 void main()
 {
-    color=particle_color;
+    gl_Position.xyz = position.xyz;
+    gl_Position.w = 1.0;
+    //pos=position;
+    col=particle_color;
+}
+]==],
+[==[
+#version 410
+
+in vec4 col;
+
+out vec4 color;
+uniform float opacity;
+void main()
+{
+    color=col*opacity;
 }
 ]==]
 )
@@ -225,14 +254,18 @@ function reset_agent_data()
     agent_state=make_flt_buffer(agent_count,1) --position and <other stuff>
 
     for i=0,agent_count-1 do
-        agent_color:set(i,0,{math.random(),math.random(),math.random(),1})
-        agent_state:set(i,0,{math.random()*map_w,math.random()*map_h,0,0})
+        local x=math.random()*2-1
+        local y=math.random()*2-1
+        agent_color:set(i,0,{x*0.5+0.5,y*0.5+0.5,(math.abs(x+y))*0.5,0.0001})
+        agent_state:set(i,0,{x,y,0,0})
     end
     for i=1,agent_state_buffer.count do
         local b=agent_state_buffer.buffers[i]
         b:use()
         b:set(agent_state.d,agent_count*4*4)
     end
+    agent_color_buffer:use()
+    agent_color_buffer:set(agent_color.d,agent_count*4*4)
     __unbind_buffer()
 end
 if vector_buffer==nil then
@@ -242,6 +275,7 @@ if vector_buffer==nil then
     trails_buffer=multi_texture(vector_layer.w,vector_layer.h,2,FLTA_PIX)
 
     agent_state_buffer=multi_buffer(2)
+    agent_color_buffer=buffer_data.Make()
     reset_agent_data()
 end
 
@@ -278,6 +312,7 @@ function sim_tick(  )
     vector_buffer:advance()
 end
 function agent_tick(  )
+    agent_shader:use()
     local so=agent_state_buffer:get_next()
     so:use()
     so:bind_to_feedback()
@@ -285,7 +320,7 @@ function agent_tick(  )
     agent_state_buffer:get():use()
     vector_buffer:get():use(1)
     agent_shader:set_i("tex_angles",1)
-    agent_shader:set("speed",0.1)
+    agent_shader:set("speed",(1/map_w)*1)
     agent_shader:raster_discard(true)
     agent_shader:draw_points(0,agent_count,4,1)
     agent_shader:raster_discard(false)
@@ -293,13 +328,22 @@ function agent_tick(  )
     __unbind_buffer()
 end
 function agent_draw(  )
-
     agent_draw_shader:use()
-    agent_draw_shader:push_attribute(agent_color.d,"particle_color",4,GL_FLOAT)
+    agent_draw_shader:set("opacity",config.particle_opacity)
+    agent_draw_shader:blend_add()
+    trails_buffer:get():use(0)
+    agent_color_buffer:use()
+    agent_draw_shader:push_attribute(0,"particle_color",4,GL_FLOAT)
     agent_state_buffer:get():use()
-    agent_draw_shader:draw_points(0,agent_count)
+    if not trails_buffer:get():render_to(vector_layer.w,vector_layer.h) then
+        error("failed to set framebuffer up")
+    end
+    agent_draw_shader:draw_points(0,agent_count,4)
+    agent_draw_shader:blend_default()
+    __render_to_window()
     __unbind_buffer()
 end
+particle_iter=particle_iter or 0
 function update()
     __clear()
     __no_redraw()
@@ -325,6 +369,19 @@ function update()
         end
         end
          speed_layer:write_texture(speed_buffer:get())
+    end
+    if imgui.Button("reset particles") then
+        reset_agent_data()
+    end
+    imgui.SameLine()
+    if imgui.Button("reset particle image") then
+        for x=0,map_w-1 do
+        for y=0,map_h-1 do
+            trails_layer:set(x,y,{0,0,0,1})
+        end
+        end
+        trails_layer:write_texture(trails_buffer:get())
+        trails_layer:write_texture(trails_buffer:get_next())
     end
     if is_remade or (config.__change_events and config.__change_events.any) then
         is_remade=false
@@ -360,7 +417,7 @@ function update()
             speed_layer:set(cx+x,cy+y,{s,1,0,0})
             vector_layer:set(cx+x,cy+y,{math.cos(a*4)*math.pi,0,0,0})
         end
-        local r=math.floor(cx*0.4)
+        local r=math.floor(cx*0.8)
         --[[
         for a=0,math.pi*2,0.001 do
             local x=math.floor(math.cos(a)*r)
@@ -374,6 +431,7 @@ function update()
             put_pixel(cx,cy,x,y,a*0.25)
         end
         --]]
+        --[[
         for x=-r,r do
             local a=(x/r)*math.pi
             put_pixel(cx,cy,x,-r,a)
@@ -381,30 +439,31 @@ function update()
             put_pixel(cx,cy,r,x,a)
             put_pixel(cx,cy,-r,x,a)
         end
-        r=math.floor(r*1.5)
+        r=math.floor(r*0.95)
         for x=-r,r do
             local a=(x/r)*math.pi*0.25
-            local y=math.abs(x-r)
 
-            put_pixel(cx,cy,x,-x,a)
-            put_pixel(cx,cy,x,x,a)
-            put_pixel(cx,cy,x,x,a)
-            put_pixel(cx,cy,-x,x,a)
-        end
-        --[[
-        for i=1,1 do
-            local x=math.random(0,cx)+math.floor(cx/2)
-            local y=math.random(0,cy)+math.floor(cy/2)
-            speed_layer:set(x,y,{s,1,0,0})
-            vector_layer:set(x,y,{math.random()*math.pi*2-math.pi,0,0,0})
+            put_pixel(cx,cy,x,-r,a)
+            put_pixel(cx,cy,x,r,a)
+            put_pixel(cx,cy,r,x,a)
+            put_pixel(cx,cy,-r,x,a)
         end
         ]]
+        -- [[
+        for i=1,500 do
+            local x=math.random(0,cx)+math.floor(cx/2)
+            local y=math.random(0,cy)+math.floor(cy/2)
+            speed_layer:set(x,y,{s*(math.random()*0.1+0.9),1,0,0})
+            vector_layer:set(x,y,{math.random()*math.pi*2-math.pi,0,0,0})
+        end
+        --]]
         vector_layer:write_texture(vector_buffer:get())
         vector_layer:write_texture(vector_buffer:get_next())
         speed_layer:write_texture(speed_buffer:get())
         trails_layer:write_texture(trails_buffer:get())
         trails_layer:write_texture(trails_buffer:get_next())
         need_clear=true
+        reset_agent_data()
     end
     if not config.pause or step then
         for i=1,config.sim_ticks do
@@ -413,10 +472,18 @@ function update()
         sim_done=true
         --add_particle{map_w/2,0,math.random()*0.25-0.125,math.random()-0.5,3}
     end
+
     if not config.pause_particles then
+        particle_iter=particle_iter+1
+        if particle_iter> config.particle_reset_iter and config.particle_reset_iter>0 then
+            reset_agent_data()
+            particle_iter=0
+        end
         for i=1,config.sim_ticks do
             agent_tick()
-            agent_draw()
+            if particle_iter>=config.particle_wait_iter then
+                agent_draw()
+            end
         end
     end
     imgui.SameLine()
