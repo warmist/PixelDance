@@ -22,13 +22,21 @@ local size=STATE.size
 
 is_remade=false
 
+local agent_count=10000
+
 function update_buffers()
     if vector_layer==nil or vector_layer.w~=map_w or vector_layer.h~=map_h then
-        
+
         vector_layer=make_flt_buffer(map_w,map_h) --current rotation(s)
         speed_layer=make_flt_buffer(map_w,map_h) --x - speed, y - mix(avg_neighthours, cur_angle+speed)
+        trails_layer=make_flt_buffer(map_w,map_h) --color of pixels that are moving around
+
         is_remade=true
         need_clear=true
+    end
+    if agent_color==nil or agent_color.w~=agent_count then
+        agent_color=make_flt_buffer(agent_count,1) --color of pixels that are moving around
+        agent_state=make_flt_buffer(agent_count,1) --position and <other stuff>
     end
 end
 update_buffers()
@@ -36,6 +44,8 @@ update_buffers()
 
 config=make_config({
     {"pause",false,type="bool"},
+    {"pause_particles",true,type="bool"},
+    {"show_particles",true,type="bool"},
     {"sim_ticks",1,type="int",min=0,max=10},
     {"speed",0.1,type="floatsci",min=0,max=1,power=10},
 
@@ -154,11 +164,48 @@ void main(){
     color=vec4(rotation.xyz,1);
 }
 ]==])
+function make_visit_shader( force )
 
+
+agent_shader=shaders.Make(
+[==[
+#version 330
+
+layout(location = 0) in vec4 position;
+
+out vec4 point_out;
+
+#define M_PI 3.1415926535897932384626433832795
+
+uniform sampler2D tex_angles;
+uniform float speed;
+
+void main()
+{
+    //TODO: this bilinear/nn iterpolates. Does this make sense?
+    vec2 delta=texture(tex_angles,position.xy).xy;
+    point_out=position+vec4(delta,0,0)*speed;
+}
+]==],
+[==[ void main(){} ]==],"point_out"
+)
+agent_draw=shaders.Make(
+[==[
+#version 330
+
+void main()
+{
+    
+}
+]==]
+)
 if vector_buffer==nil then
     update_buffers()
     vector_buffer=multi_texture(vector_layer.w,vector_layer.h,2,FLTA_PIX)
     speed_buffer=multi_texture(vector_layer.w,vector_layer.h,1,FLTA_PIX)
+    trails_buffer=multi_texture(vector_layer.w,vector_layer.h,2,FLTA_PIX)
+
+    agent_state_buffer=multi_texture(agent_count,1,2,FLTA_PIX)
 end
 
 
@@ -192,6 +239,25 @@ function sim_tick(  )
     __render_to_window()
 
     vector_buffer:advance()
+end
+function agent_tick(  )
+    local so=agent_state_buffer:get_other()
+    so:use()
+    so:bind_to_feedback()
+
+    agent_state_buffer:get_current():use()
+    visit_tex.t:use(1)
+    agent_shader:set_i("img_tex",1)
+    agent_shader:set("global_seed",global_seed)
+    agent_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
+    agent_shader:set("gen_radius",config.gen_radius or 2)
+    agent_shader:raster_discard(true)
+    agent_shader:draw_points(0,agent_count,4,1)
+    agent_shader:raster_discard(false)
+    agent_state_buffer:flip()
+end
+function agent_draw(  )
+    
 end
 function update()
     __clear()
