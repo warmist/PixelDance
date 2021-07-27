@@ -75,6 +75,8 @@ vec4 calc_vector_image(vec2 normed)
     vec3 c=pixel.xyz;//(pixel.xyz/3.14+1)/2;
     //c=clamp(c,0,1);
     float p=1;
+    //c.x=c.x-c.y;
+    //c.x=c.y;
     if(c.x>0)
         c.x=pow(abs(c.x),p);
     else
@@ -157,30 +159,79 @@ vec4 avg_at_pos(vec2 pos)
     vec4 ret_s=vec4(0);
     vec4 ret_c=vec4(0);
 
-    SC_SAMPLE(-1,-1,0.025);
-    SC_SAMPLE(-1,1,0.025);
-    SC_SAMPLE(1,-1,0.025);
-    SC_SAMPLE(1,1,0.025);
+    SC_SAMPLE(-1,-1,0.25);
+    SC_SAMPLE(-1,1,0.25);
+    SC_SAMPLE(1,-1,0.25);
+    SC_SAMPLE(1,1,0.25);
 
-    SC_SAMPLE(0,-1,0.1);
-    SC_SAMPLE(0,1,0.1);
-    SC_SAMPLE(1,0,0.1);
-    SC_SAMPLE(-1,0,0.1);
+    SC_SAMPLE(0,-1,0.5);
+    SC_SAMPLE(0,1,0.5);
+    SC_SAMPLE(1,0,0.5);
+    SC_SAMPLE(-1,0,0.5);
 
-    SC_SAMPLE(0,0,0.5);
+    SC_SAMPLE(0,0,3);
 
     return atan(ret_s,ret_c);
 }
-#undef SC_SAMPLE
+vec4 laplace_at_pos(vec2 pos)
+{
+    vec4 ret_s=vec4(0);
+    vec4 ret_c=vec4(0);
 
+    SC_SAMPLE(-1,-1,0.25);
+    SC_SAMPLE(-1,1,0.25);
+    SC_SAMPLE(1,-1,0.25);
+    SC_SAMPLE(1,1,0.25);
+
+    SC_SAMPLE(0,-1,0.5);
+    SC_SAMPLE(0,1,0.5);
+    SC_SAMPLE(1,0,0.5);
+    SC_SAMPLE(-1,0,0.5);
+
+    SC_SAMPLE(0,0,-3);
+
+    return vec4(ret_c.x,ret_s.x,ret_c.y,ret_s.y);
+}
+#undef SC_SAMPLE
+vec4 gray_scott(vec4 c,vec2 normed)
+{
+    vec4 scale=vec4(0.07,0.1,0,0);
+    vec4 offset=vec4(0);
+
+    vec4 k=vec4(0.5,0.5,0,0);
+
+    k=k*scale+offset;
+    c.xy+=vec2(2*M_PI);
+    float abb=c.x*c.y*c.y;
+    return vec4(-abb,abb,0,0)+vec4(k.x*(M_PI-c.x),-(k.y+k.x)*c.y,0,0);
+}
+vec2 func(vec4 c,vec2 pos)
+{
+    return gray_scott(c,pos).xy;
+}
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))*vec2(0.5,0.5);
     vec4 rotation=texture(tex_rotation,normed);
-
     vec4 speeds=texture(tex_speeds,normed);
+    float dt=0.125;
+#if 1
+    vec4 cnt_input=vec4(
+        cos(rotation.x+speeds.x*dt),sin(rotation.x+speeds.x*dt),
+        cos(rotation.y+speeds.y*dt),sin(rotation.y+speeds.y*dt));
+    vec4 cnt=cnt_input;
+    float L=0.8;
+    cnt+=laplace_at_pos(normed)*L*dt;
+    vec2 fval=func(rotation,normed)*dt;
 
-    rotation.x=mod(rotation.x+speeds.x,M_PI*2);
-    rotation=mix(avg_at_pos(normed),rotation,speeds.y);
+    cnt+=vec4( cos(fval.x),sin(fval.x),
+               cos(fval.y),sin(fval.y))*0.01;
+    rotation.x=mix(atan(cnt.y,cnt.x),atan(cnt_input.y,cnt_input.x),speeds.w);
+    rotation.y=mix(atan(cnt.w,cnt.z),atan(cnt_input.w,cnt_input.z),speeds.w);
+#else
+    rotation.x=mod(rotation.x+speeds.x*dt,M_PI*2);
+    rotation.y=mod(rotation.y+speeds.y*dt,M_PI*2);
+    rotation=mix(avg_at_pos(normed),rotation,speeds.w);
+#endif
     color=vec4(rotation.xyz,1);
 }
 ]==])
@@ -389,8 +440,12 @@ function update()
         local cy=math.floor(map_h/2)
         for x=0,map_w-1 do
         for y=0,map_h-1 do
-            vector_layer:set(x,y,{0,0,0,0})
-            --vector_layer:set(x,y,{(math.random()-0.5)*math.pi*2,0,0,0})
+            --vector_layer:set(x,y,{0,0,0,0})
+            if x>cx-25 and x<cx+25 then
+                vector_layer:set(x,y,{(math.random()-0.5)*math.pi*2,(math.random()-0.5)*math.pi*2,0,0})
+            else
+                vector_layer:set(x,y,{0,(math.random()-0.5)*math.pi*2,0,0})
+            end
             speed_layer:set(x,y,{0,0,0,0})
             trails_layer:set(x,y,{0,0,0,1})
         end
@@ -414,24 +469,28 @@ function update()
         end
         --]]
         local function put_pixel( cx,cy,x,y,a )
-            speed_layer:set(cx+x,cy+y,{s,1,0,0})
-            vector_layer:set(cx+x,cy+y,{math.cos(a*4)*math.pi,0,0,0})
+            speed_layer:set(cx+x,cy+y,{s,-s/2,0,1})
+            vector_layer:set(cx+x,cy+y,{math.cos(a*8)*math.pi,math.sin(a*16)*math.pi,0,0})
         end
-        local r=math.floor(cx*0.8)
+        local r=math.floor(cx*0.95)
         --[[
         for a=0,math.pi*2,0.001 do
             local x=math.floor(math.cos(a)*r)
             local y=math.floor(math.sin(a)*r)
             put_pixel(cx,cy,x,y,a)
         end
-        r=r-80
-        for a=0,math.pi*2,0.001 do
-            local x=math.floor(math.cos(a)*r)
-            local y=math.floor(math.sin(a)*r)
-            put_pixel(cx,cy,x,y,a*0.25)
+        local s=-1
+        for i=1,8 do
+            r=r-40
+            for a=0,math.pi*2,0.001 do
+                local x=math.floor(math.cos(a)*r)
+                local y=math.floor(math.sin(a)*r)
+                put_pixel(cx,cy,x,y,a*s)
+            end
+            s=s*(-6/8)
         end
         --]]
-        --[[
+        -- [[
         for x=-r,r do
             local a=(x/r)*math.pi
             put_pixel(cx,cy,x,-r,a)
@@ -448,13 +507,20 @@ function update()
             put_pixel(cx,cy,r,x,a)
             put_pixel(cx,cy,-r,x,a)
         end
-        ]]
-        -- [[
+        --]]
+        --[[
         for i=1,500 do
-            local x=math.random(0,cx)+math.floor(cx/2)
-            local y=math.random(0,cy)+math.floor(cy/2)
-            speed_layer:set(x,y,{s*(math.random()*0.1+0.9),1,0,0})
-            vector_layer:set(x,y,{math.random()*math.pi*2-math.pi,0,0,0})
+            --local x=math.random(0,cx)+math.floor(cx/2)
+            --local y=math.random(0,cy)+math.floor(cy/2)
+            --local x=math.random(0,map_w-1)
+            --local y=math.random(0,map_h-1)
+            local r=math.sqrt(math.random())*cx/4
+            local a=math.random()*math.pi*2
+            local x=math.floor(math.cos(a)*r)+cx
+            local y=math.floor(math.sin(a)*r)+cx
+            speed_layer:set(x,y,{s*(math.random()*0.01+0.99),1,0,0})
+            --vector_layer:set(x,y,{math.random()*math.pi*2-math.pi,0,0,0})
+            vector_layer:set(x,y,{math.cos(r*math.pi/cx)*math.pi,0,0,0})
         end
         --]]
         vector_layer:write_texture(vector_buffer:get())
