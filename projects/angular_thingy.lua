@@ -219,18 +219,19 @@ void main(){
         cos(rotation.x+speeds.x*dt),sin(rotation.x+speeds.x*dt),
         cos(rotation.y+speeds.y*dt),sin(rotation.y+speeds.y*dt));
     vec4 cnt=cnt_input;
-    float L=0.8;
+    float L=0.5;
     cnt+=laplace_at_pos(normed)*L*dt;
     vec2 fval=func(rotation,normed)*dt;
 
-    cnt+=vec4( cos(fval.x),sin(fval.x),
-               cos(fval.y),sin(fval.y))*0.01;
-    rotation.x=mix(atan(cnt.y,cnt.x),atan(cnt_input.y,cnt_input.x),speeds.w);
-    rotation.y=mix(atan(cnt.w,cnt.z),atan(cnt_input.w,cnt_input.z),speeds.w);
+    //cnt+=vec4( cos(fval.x),sin(fval.x),
+    //           cos(fval.y),sin(fval.y))*0.05;
+    //rotation.x=mix(atan(cnt.y,cnt.x),atan(cnt_input.y,cnt_input.x),speeds.w);
+    //rotation.y=mix(atan(cnt.w,cnt.z),atan(cnt_input.w,cnt_input.z),speeds.w);
+    rotation=vec4(atan(cnt.y,cnt.x),atan(cnt.w,cnt.z),0,0);
 #else
-    rotation.x=mod(rotation.x+speeds.x*dt,M_PI*2);
-    rotation.y=mod(rotation.y+speeds.y*dt,M_PI*2);
-    rotation=mix(avg_at_pos(normed),rotation,speeds.w);
+    //rotation.x=mod(rotation.x+speeds.x*dt,M_PI*2);
+    //rotation.y=mod(rotation.y+speeds.y*dt,M_PI*2);
+    rotation=avg_at_pos(normed)+vec4(speeds.xy,0,0)*dt;//mix(avg_at_pos(normed),rotation,speeds.w);
 #endif
     color=vec4(rotation.xyz,1);
 }
