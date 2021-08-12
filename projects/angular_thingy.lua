@@ -64,6 +64,128 @@ in vec3 pos;
 uniform ivec2 res;
 uniform sampler2D tex_main;
 uniform int draw_particles;
+
+uniform vec3 col_min,col_max,col_avg;
+
+float gain(float x, float k)
+{
+    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
+    return (x<0.5)?a:1.0-a;
+}
+
+vec3 rgb2xyz( vec3 c ) {
+    vec3 tmp=c;
+    /*
+    tmp.x = ( c.r > 0.04045 ) ? pow( ( c.r + 0.055 ) / 1.055, 2.4 ) : c.r / 12.92;
+    tmp.y = ( c.g > 0.04045 ) ? pow( ( c.g + 0.055 ) / 1.055, 2.4 ) : c.g / 12.92,
+    tmp.z = ( c.b > 0.04045 ) ? pow( ( c.b + 0.055 ) / 1.055, 2.4 ) : c.b / 12.92;
+    */
+    return 100.0 * tmp *
+        mat3( 0.4124, 0.3576, 0.1805,
+              0.2126, 0.7152, 0.0722,
+              0.0193, 0.1192, 0.9505 );
+}
+
+vec3 xyz2lab( vec3 c ) {
+    vec3 n = c / vec3( 95.047, 100, 108.883 );
+    vec3 v;
+    v.x = ( n.x > 0.008856 ) ? pow( n.x, 1.0 / 3.0 ) : ( 7.787 * n.x ) + ( 16.0 / 116.0 );
+    v.y = ( n.y > 0.008856 ) ? pow( n.y, 1.0 / 3.0 ) : ( 7.787 * n.y ) + ( 16.0 / 116.0 );
+    v.z = ( n.z > 0.008856 ) ? pow( n.z, 1.0 / 3.0 ) : ( 7.787 * n.z ) + ( 16.0 / 116.0 );
+    return vec3(( 116.0 * v.y ) - 16.0, 500.0 * ( v.x - v.y ), 200.0 * ( v.y - v.z ));
+}
+
+vec3 rgb2lab(vec3 c) {
+    vec3 lab = xyz2lab( rgb2xyz( c ) );
+    return vec3( lab.x / 100.0, 0.5 + 0.5 * ( lab.y / 127.0 ), 0.5 + 0.5 * ( lab.z / 127.0 ));
+}
+
+vec3 lab2xyz( vec3 c ) {
+    float fy = ( c.x + 16.0 ) / 116.0;
+    float fx = c.y / 500.0 + fy;
+    float fz = fy - c.z / 200.0;
+    return vec3(
+         95.047 * (( fx > 0.206897 ) ? fx * fx * fx : ( fx - 16.0 / 116.0 ) / 7.787),
+        100.000 * (( fy > 0.206897 ) ? fy * fy * fy : ( fy - 16.0 / 116.0 ) / 7.787),
+        108.883 * (( fz > 0.206897 ) ? fz * fz * fz : ( fz - 16.0 / 116.0 ) / 7.787)
+    );
+}
+//http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
+//TODO: works bad when out of bounds
+vec3 xyz2rgb( vec3 c ) {
+    vec3 v =  c / 100.0 * mat3(
+        3.2406255, -1.5372080, -0.4986286,
+        -0.9689307, 1.8757561, 0.0415175,
+        0.0557101, -0.2040211, 1.0569959
+    );
+    vec3 r;
+    r=v;
+    /* srgb conversion
+    r.x = ( v.r > 0.0031308 ) ? (( 1.055 * pow( v.r, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.r;
+    r.y = ( v.g > 0.0031308 ) ? (( 1.055 * pow( v.g, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.g;
+    r.z = ( v.b > 0.0031308 ) ? (( 1.055 * pow( v.b, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.b;
+    //*/
+    return r;
+}
+
+vec3 lab2rgb(vec3 c) {
+    return xyz2rgb( lab2xyz( vec3(100.0 * c.x, 2.0 * 127.0 * (c.y - 0.5), 2.0 * 127.0 * (c.z - 0.5)) ) );
+}
+
+vec3 hsv2rgb(vec3 c)
+{
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
+vec3 tonemap(vec3 light,float cur_exp)
+{
+    float white_point=10;
+    float lum_white =white_point*white_point;// pow(10,white_point);
+    //lum_white*=lum_white;
+    float Y=light.y;
+    float avg_lum=1;
+#if SHOW_PALETTE
+    Y=Y*exp(cur_exp)/(9.6);
+#else
+    Y=Y*exp(cur_exp)/(avg_lum);
+#endif
+    //Y=Y*exp(cur_exp);
+    //Y=(Y-min_max.x)/(min_max.y-min_max.x);
+    //Y=(log(Y+1)-log(min_max.x+1))/(log(min_max.y+1)-log(min_max.x+1));
+    //Y=log(Y+1)/log(min_max.y+1);
+#if 0
+    //Y=Tonemap_Uchimura(Y);
+    Y=Tonemap_ACES(Y);
+#else
+    if(white_point<0)
+        Y = Y / (1 + Y); //simple compression
+    else
+        Y = (Y*(1 + Y / lum_white)) / (Y + 1); //allow to burn out bright areas
+#endif
+
+    float m=Y/light.y;
+    light.y=Y;
+    light.xz*=m;
+
+    //light=clamp(light,0,2);
+    //float mm=max(light.x,max(light.y,light.z));
+    //vec3 ret=xyz2rgb((light)*100);
+    //float s=smoothstep(0,1,length(light));
+    //float s=smoothstep(0,1,dot(light,light));
+    //float s=smoothstep(0,1,max(light.x,max(light.y,light.z)));//length(light));
+    //float s=smoothstep(0.8,1.2,max(light.x,max(light.y,light.z))-1);//length(light));
+    //float s=0;
+    /*
+    if(ret.x>1)ret.x=1;
+    if(ret.y>1)ret.y=1;
+    if(ret.z>1)ret.z=1;
+    //*/
+   // return mix(ret,vec3(1),pow(s,8));
+    return light;
+}
+
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
     return a + b*cos( 6.28318*(c*t+d) );
@@ -125,7 +247,25 @@ vec4 calc_particle_image(vec2 pos)
 {
     //return vec4(cos(pos.x)*0.5+0.5,sin(pos.y)*0.5+0.5,0,1);
     vec4 col=texture(tex_main,pos);
-    //col.xyz=pow(col.xyz,vec3(1));
+    vec3 mmin=col_min;
+    vec3 mmax=col_max;
+#if 0
+    mmin=vec3(min(min(mmin.x,mmin.y),mmin.z));
+    mmax=vec3(max(max(mmax.x,mmax.y),mmax.z));
+#else
+    mmin=vec3(max(max(mmin.x,mmin.y),mmin.z));
+    mmax=vec3(min(min(mmax.x,mmax.y),mmax.z));
+#endif
+#if 1
+    col.xyz=log(col.xyz+vec3(1));
+    col.xyz-=log(mmin+vec3(1));
+    col.xyz/=log(mmax+vec3(1))-log(mmin+vec3(1));
+    //col.xyz=pow(col.xyz,vec3(2));
+#else
+    col.xyz-=mmin;
+    col.xyz/=(mmax-mmin);
+    col.xyz=pow(col.xyz,vec3(1));
+#endif
     return col;
 }
 void main(){
@@ -198,12 +338,13 @@ vec4 gray_scott(vec4 c,vec2 normed)
     vec4 scale=vec4(0.07,0.1,0,0);
     vec4 offset=vec4(0);
 
-    vec4 k=vec4(0.5,0.5,0,0);
+    vec4 k=vec4(8,9,0,0);
 
-    k=k*scale+offset;
-    c.xy+=vec2(2*M_PI);
-    float abb=c.x*c.y*c.y;
-    return vec4(-abb,abb,0,0)+vec4(k.x*(M_PI-c.x),-(k.y+k.x)*c.y,0,0);
+    //k=k*scale+offset;
+    c.xy+=vec2(M_PI);
+    c.xy/=M_PI;
+    float abb=c.x*c.y*c.y*cos(c.y*M_PI*2-c.x*M_PI);
+    return (vec4(-abb,abb,0,0)+vec4(k.x*(1-c.x),-(k.y+k.x)*c.y,0,0))*2*M_PI-M_PI;
 }
 vec2 func(vec4 c,vec2 pos)
 {
@@ -280,12 +421,19 @@ layout(location = 1) in vec4 particle_color;
 
 //out vec3 pos;
 out vec4 col;
+vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
+{
+    return a + b*cos( 6.28318*(c*t+d) );
+}
 void main()
 {
     gl_Position.xyz = position.xyz;
     gl_Position.w = 1.0;
     //pos=position;
-    col=particle_color;
+    //vec3 co=palette(particle_color.b,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
+    //vec3 co=palette(particle_color.b,vec3(0.971519,0.273919,0.310136),vec3(0.90608,0.488869,0.144119),vec3(5,10,2),vec3(1,1.8,1.28571)); //violet and blue
+    vec3 co=palette(particle_color.b,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
+    col=vec4(co,1);
 }
 ]==],
 [==[
@@ -301,15 +449,62 @@ void main()
 }
 ]==]
 )
-function reset_agent_data()
-    agent_color=make_flt_buffer(agent_count,1) --color of pixels that are moving around
-    agent_state=make_flt_buffer(agent_count,1) --position and <other stuff>
+function rand_gaussian(sigma,mu_x,mu_y)
+    mu_x=mu_x or 0
+    mu_y=mu_y or 0
+    local u1=math.random()
+    local u2=math.random()
+    local x=sigma*math.sqrt(-2*math.log(u1))*math.cos(2*math.pi*u2)+mu_x
+    local y=sigma*math.sqrt(-2*math.log(u1))*math.sin(2*math.pi*u2)+mu_y
+    return x,y
+end
 
+function reset_agent_data()
+    agent_color=agent_color or make_flt_buffer(agent_count,1) --color of pixels that are moving around
+    agent_state=agent_state or make_flt_buffer(agent_count,1) --position and <other stuff>
+    -- [=[
+    local b=agent_state_buffer.buffers[1]
+    b:use()
+    b:read(agent_state.d,agent_count*4*4)
+    --]=]
+    local chance_move=0.8
+    local chance_no_move=0.5
     for i=0,agent_count-1 do
-        local x=math.random()*2-1
-        local y=math.random()*2-1
-        agent_color:set(i,0,{x*0.5+0.5,y*0.5+0.5,(math.abs(x+y))*0.5,0.0001})
-        agent_state:set(i,0,{x,y,0,0})
+        if math.random()> chance_move then
+            -- [[
+            local x=math.random()*2-1
+            local y=math.random()*2-1
+            --]]
+            --local x,y=rand_gaussian(0.5)
+            if x>1 then x=x-2 end
+            if y>1 then y=y-2 end
+            if x<-1 then x=x+2 end
+            if y<-1 then y=y+2 end
+            agent_color:set(i,0,{x*0.5+0.5,y*0.5+0.5,(math.abs(x+y))*0.5,0.0001})
+            agent_state:set(i,0,{x,y,0,0})
+        else
+            local max_r=(1/map_w)*(map_w/8)
+
+            local v=agent_state:get(i,0)
+            local x,y
+            if math.random()>chance_no_move then
+
+                local r=math.sqrt(math.random())*max_r
+                local a=math.random()*math.pi*2
+                x=v.r+math.cos(a)*r
+                y=v.g+math.sin(a)*r
+            else
+                x=v.r
+                y=v.g
+            end
+            --]]
+            --local x,y=rand_gaussian(0.5)
+            if x>1 then x=x-2 end
+            if y>1 then y=y-2 end
+            if x<-1 then x=x+2 end
+            if y<-1 then y=y+2 end
+            agent_state:set(i,0,{x,y,0,0})
+        end
     end
     for i=1,agent_state_buffer.count do
         local b=agent_state_buffer.buffers[i]
@@ -372,7 +567,7 @@ function agent_tick(  )
     agent_state_buffer:get():use()
     vector_buffer:get():use(1)
     agent_shader:set_i("tex_angles",1)
-    agent_shader:set("speed",(1/map_w)*1)
+    agent_shader:set("speed",(1/map_w)*.1)
     agent_shader:raster_discard(true)
     agent_shader:draw_points(0,agent_count,4,1)
     agent_shader:raster_discard(false)
@@ -394,6 +589,43 @@ function agent_draw(  )
     agent_draw_shader:blend_default()
     __render_to_window()
     __unbind_buffer()
+end
+function find_min_max( tex,buf )
+    not_pixelated=not_pixelated or 0
+    tex:use(0,not_pixelated)
+    local lmin={math.huge,math.huge,math.huge}
+    local lmax={-math.huge,-math.huge,-math.huge}
+
+    trails_layer:read_texture(tex)
+    local avg_lum=0
+    local count=0
+    for x=0,trails_layer.w-1 do
+    for y=0,trails_layer.h-1 do
+        local v=trails_layer:get(x,y)
+        if v.r<lmin[1] then lmin[1]=v.r end
+        if v.g<lmin[2] then lmin[2]=v.g end
+        if v.b<lmin[3] then lmin[3]=v.b end
+
+        if v.r>lmax[1] then lmax[1]=v.r end
+        if v.g>lmax[2] then lmax[2]=v.g end
+        if v.b>lmax[3] then lmax[3]=v.b end
+        --local lum=math.sqrt(v.g*v.g+v.r*v.r+v.b*v.b)--math.abs(v.g+v.r+v.b)
+        --local lum=math.abs(v.g)
+        --local lum=math.abs(v.g)+math.abs(v.r)+math.abs(v.b)
+        local lum=math.abs(v.b)
+        --if lum > config.min_value then
+            avg_lum=avg_lum+math.log(1+lum)
+            count=count+1
+        --end
+    end
+    end
+    avg_lum = math.exp(avg_lum / count);
+    --[[print(avg_lum)
+    for i,v in ipairs(lmax) do
+        print(i,v)
+    end
+    --]]
+    return lmin,lmax,avg_lum
 end
 particle_iter=particle_iter or 0
 function update()
@@ -441,12 +673,12 @@ function update()
         local cy=math.floor(map_h/2)
         for x=0,map_w-1 do
         for y=0,map_h-1 do
-            --vector_layer:set(x,y,{0,0,0,0})
-            if x>cx-25 and x<cx+25 then
-                vector_layer:set(x,y,{(math.random()-0.5)*math.pi*2,(math.random()-0.5)*math.pi*2,0,0})
-            else
-                vector_layer:set(x,y,{0,(math.random()-0.5)*math.pi*2,0,0})
-            end
+            vector_layer:set(x,y,{0,0,0,0})
+            --if x>cx-25 and x<cx+25 then
+            --    vector_layer:set(x,y,{(math.random()-0.5)*math.pi*2,(math.random()-0.5)*math.pi*2,0,0})
+            --else
+                --vector_layer:set(x,y,{0,(math.random()-0.5)*math.pi*2,0,0})
+            --end
             speed_layer:set(x,y,{0,0,0,0})
             trails_layer:set(x,y,{0,0,0,1})
         end
@@ -454,59 +686,92 @@ function update()
 
 
         local s=config.speed
-        --[[
-        for i=-cx+1,cx-1 do
-            local eps=math.random()*0.001
-            local v=i/100
-            vector_layer:set(cx+i,cy,{v*math.pi+eps,0,0,0})
-            vector_layer:set(cx,cy+i,{v*math.pi-eps,0,0,0})
-            if i>0 then
-                speed_layer:set(cx+i,cy,{s,1,0,0})
-                speed_layer:set(cx,cy+i,{s,1,0,0})
-            else
-                speed_layer:set(cx+i,cy,{s,1,0,0})
-                speed_layer:set(cx,cy+i,{s,1,0,0})
-            end
+        -- [==[
+        local w=1
+        local eps=math.random()*(w/2)-w
+        for i=-cx+25,cx-25 do
+            local v=i/cx
+            local dy=math.floor(math.abs(v)*i)
+            local vv=math.cos(v*math.pi*4)
+            --vector_layer:set(cx+i,cy-dy,{v*math.pi+eps,0,0,0})
+            --vector_layer:set(cx+dy,cy+i,{v*math.pi-eps,0,0,0})
+            --if i>0 then
+                speed_layer:set(cx+i,cy-dy,{s*vv+eps,1,0,0})
+                speed_layer:set(cx+dy,cy+i,{-s*vv+eps,1,0,0})
+            --[[else
+                speed_layer:set(cx+i,cy+dy,{-s*0.5,1,0,0})
+                speed_layer:set(cx+dy,cy+i,{-s,1,0,0})
+            end]]
         end
-        --]]
+        --]==]
         local function put_pixel( cx,cy,x,y,a )
-            speed_layer:set(cx+x,cy+y,{s,-s/2,0,1})
-            vector_layer:set(cx+x,cy+y,{math.cos(a*8)*math.pi,math.sin(a*16)*math.pi,0,0})
+            speed_layer:set(cx+x,cy+y,{s,-s/8,0,1})
+            vector_layer:set(cx+x,cy+y,{math.cos(a*8)*math.pi,math.sin(a*8)*math.pi,0,0})
         end
-        local r=math.floor(cx*0.95)
+        local r=math.floor(cx*0.85)
         --[[
-        for a=0,math.pi*2,0.001 do
+        for a=0,math.pi*2,0.0001 do
             local x=math.floor(math.cos(a)*r)
             local y=math.floor(math.sin(a)*r)
             put_pixel(cx,cy,x,y,a)
         end
         local s=-1
-        for i=1,8 do
-            r=r-40
-            for a=0,math.pi*2,0.001 do
+        for i=1,12 do
+            r=r-i*5
+            for a=0,math.pi*2,0.0001 do
                 local x=math.floor(math.cos(a)*r)
                 local y=math.floor(math.sin(a)*r)
                 put_pixel(cx,cy,x,y,a*s)
             end
-            s=s*(-6/8)
+            s=s*(-5/8)
         end
         --]]
-        -- [[
-        for x=-r,r do
-            local a=(x/r)*math.pi
-            put_pixel(cx,cy,x,-r,a)
-            put_pixel(cx,cy,x,r,a)
-            put_pixel(cx,cy,r,x,a)
-            put_pixel(cx,cy,-r,x,a)
+        --[[
+        for i=-5,5 do
+            local nr=r+i
+            for x=-nr,nr do
+                local a=(x/nr)*math.pi
+                put_pixel(cx,cy,x,-nr,a)
+                put_pixel(cx,cy,x,nr,a)
+                put_pixel(cx,cy,nr,x,a)
+                put_pixel(cx,cy,-nr,x,a)
+            end
         end
-        r=math.floor(r*0.95)
-        for x=-r,r do
-            local a=(x/r)*math.pi*0.25
+        r=math.floor(r*0.8)
+        for i=-10,10 do
+            local nr=r+i
+            for x=-nr,nr do
+                local a=(x/nr)*math.pi*0.5
 
-            put_pixel(cx,cy,x,-r,a)
-            put_pixel(cx,cy,x,r,a)
-            put_pixel(cx,cy,r,x,a)
-            put_pixel(cx,cy,-r,x,a)
+                put_pixel(cx,cy,x,-nr,a)
+                put_pixel(cx,cy,x,nr,a)
+                put_pixel(cx,cy,nr,x,a)
+                put_pixel(cx,cy,-nr,x,a)
+            end
+        end
+        r=math.floor(r*0.6)
+        for i=-10,10 do
+            local nr=r+i
+            for x=-nr,nr do
+                local a=(x/nr)*math.pi*2
+
+                put_pixel(cx,cy,x,-nr,a)
+                put_pixel(cx,cy,x,nr,a)
+                put_pixel(cx,cy,nr,x,a)
+                put_pixel(cx,cy,-nr,x,a)
+            end
+        end
+        r=math.floor(r*0.6)
+        for i=-10,10 do
+            local nr=r+i
+            for x=-nr,nr do
+                local a=(x/nr)*math.pi*0.25
+
+                put_pixel(cx,cy,x,-nr,a)
+                put_pixel(cx,cy,x,nr,a)
+                put_pixel(cx,cy,nr,x,a)
+                put_pixel(cx,cy,-nr,x,a)
+            end
         end
         --]]
         --[[
@@ -515,7 +780,7 @@ function update()
             --local y=math.random(0,cy)+math.floor(cy/2)
             --local x=math.random(0,map_w-1)
             --local y=math.random(0,map_h-1)
-            local r=math.sqrt(math.random())*cx/4
+            local r=math.sqrt(math.random())*cx
             local a=math.random()*math.pi*2
             local x=math.floor(math.cos(a)*r)+cx
             local y=math.floor(math.sin(a)*r)+cx
@@ -557,18 +822,26 @@ function update()
     if imgui.Button("Save") then
         need_save=true
     end
-
+    if imgui.Button("renorm") then
+        need_renorm=true
+    end
     imgui.End()
 
     __render_to_window()
-
     draw_shader:use()
 
     draw_shader:set_i("res",map_w,map_h)
     if config.show_particles then
+        if need_renorm or glow==nil then
+            local avg
+            glow,ghigh,avg=find_min_max(trails_buffer:get())
+            need_renorm=false
+        end
         trails_buffer:get():use(0,0,1)
         draw_shader:set_i("tex_main",0)
         draw_shader:set_i("draw_particles",1)
+        draw_shader:set("col_min",glow[1],glow[2],glow[3])
+        draw_shader:set("col_max",ghigh[1],ghigh[2],ghigh[3])
     else
         local t1=vector_buffer:get()
         t1:use(0,0,1)
