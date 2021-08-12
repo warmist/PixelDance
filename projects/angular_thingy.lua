@@ -252,9 +252,14 @@ vec4 calc_particle_image(vec2 pos)
 #if 0
     mmin=vec3(min(min(mmin.x,mmin.y),mmin.z));
     mmax=vec3(max(max(mmax.x,mmax.y),mmax.z));
-#else
+#elif 0
     mmin=vec3(max(max(mmin.x,mmin.y),mmin.z));
     mmax=vec3(min(min(mmax.x,mmax.y),mmax.z));
+#elif 0
+    mmin=vec3(mmin.x+mmin.y+mmin.z)/3;
+    mmax=vec3(mmax.x+mmax.y+mmax.z)/3;
+#else
+    //noop
 #endif
 #if 1
     col.xyz=log(col.xyz+vec3(1));
@@ -483,7 +488,7 @@ function reset_agent_data()
             agent_color:set(i,0,{x*0.5+0.5,y*0.5+0.5,(math.abs(x+y))*0.5,0.0001})
             agent_state:set(i,0,{x,y,0,0})
         else
-            local max_r=(1/map_w)*(map_w/8)
+            local max_r=(1/map_w)*(map_w)
 
             local v=agent_state:get(i,0)
             local x,y
@@ -686,7 +691,7 @@ function update()
 
 
         local s=config.speed
-        -- [==[
+        --[==[
         local w=1
         local eps=math.random()*(w/2)-w
         for i=-cx+25,cx-25 do
@@ -704,7 +709,7 @@ function update()
             end]]
         end
         --]==]
-        local function put_pixel( cx,cy,x,y,a )
+        local function put_pixel( cx,cy,x,y,a,s )
             speed_layer:set(cx+x,cy+y,{s,-s/8,0,1})
             vector_layer:set(cx+x,cy+y,{math.cos(a*8)*math.pi,math.sin(a*8)*math.pi,0,0})
         end
@@ -726,6 +731,25 @@ function update()
             s=s*(-5/8)
         end
         --]]
+        -- [=[
+        local r2=math.floor(cx*0.25)
+        local dist=0.25
+        for a=0,math.pi*2,0.0001 do
+            local x=math.floor(math.cos(a)*r2)
+            local y=math.floor(math.sin(a)*r2)
+            put_pixel(cx,cy*(1-dist),x,y,a,s*0.75)
+        end
+        for a=0,math.pi*2,0.0001 do
+            local x=math.floor(math.cos(a)*r2)
+            local y=math.floor(math.sin(a)*r2)
+            put_pixel(cx,cy*1,x,y,a,-s)
+        end
+        for a=0,math.pi*2,0.0001 do
+            local x=math.floor(math.cos(a)*r2)
+            local y=math.floor(math.sin(a)*r2)
+            put_pixel(cx,cy*(1+dist),x,y,a,s*1.25)
+        end
+        --]=]
         --[[
         for i=-5,5 do
             local nr=r+i
