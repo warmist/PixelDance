@@ -225,6 +225,7 @@ vec4 calc_vector_image(vec2 normed)
 #elif 1
     //float pa=c.x/3.145926;
     float pa=cos(c.x)/2+0.5;
+    float pa2=cos(c.y)/2+0.5;
     //vec3 co=palette(pa,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
     //vec3 co=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
     vec3 co=palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
@@ -296,13 +297,19 @@ uniform sampler2D tex_rotation;
 uniform sampler2D tex_speeds;
 
 #define SC_SAMPLE(dx,dy,w) \
-    ret_s+=sin(textureOffset(tex_rotation,pos,ivec2(dx,dy)))*w;\
-    ret_c+=cos(textureOffset(tex_rotation,pos,ivec2(dx,dy)))*w
+    {\
+        vec4 c=cos(textureOffset(tex_rotation,pos,ivec2(dx,dy)));\
+        vec4 s=sin(textureOffset(tex_rotation,pos,ivec2(dx,dy)));\
+        sx+=c.x*s.y*w;\
+        sy+=s.x*s.y*w;\
+        sz+=c.y*w;\
+    }
 
 vec4 avg_at_pos(vec2 pos)
 {
-    vec4 ret_s=vec4(0);
-    vec4 ret_c=vec4(0);
+    float sx=0;
+    float sy=0;
+    float sz=0;
 
     SC_SAMPLE(-1,-1,0.25);
     SC_SAMPLE(-1,1,0.25);
@@ -316,12 +323,15 @@ vec4 avg_at_pos(vec2 pos)
 
     SC_SAMPLE(0,0,3);
 
-    return atan(ret_s,ret_c);
+    //return vec4(atan(sy,sx),atan(sqrt(sx*sx+sy*sy),sz),0,0);
+    //return vec4(atan(sy,sx),acos(clamp(sz,-1,1)),0,0);
+    return vec4(atan(sy,sx),atan(sqrt(sx*sx+sy*sy)/sz),0,0);
 }
 vec4 laplace_at_pos(vec2 pos)
 {
-    vec4 ret_s=vec4(0);
-    vec4 ret_c=vec4(0);
+    float sx=0;
+    float sy=0;
+    float sz=0;
 
     SC_SAMPLE(-1,-1,0.25);
     SC_SAMPLE(-1,1,0.25);
@@ -335,7 +345,7 @@ vec4 laplace_at_pos(vec2 pos)
 
     SC_SAMPLE(0,0,-3);
 
-    return vec4(ret_c.x,ret_s.x,ret_c.y,ret_s.y);
+    return vec4(sx,sy,sz,0);
 }
 #undef SC_SAMPLE
 vec4 gray_scott(vec4 c,vec2 normed)
@@ -355,15 +365,20 @@ vec2 func(vec4 c,vec2 pos)
 {
     return gray_scott(c,pos).xy;
 }
+vec4 input_rotated(vec4 rotation,vec4 speed)
+{
+    vec4 c=cos(rotation+speed);
+    vec4 s=sin(rotation+speed);
+
+    return vec4(c.x*s.y,s.x*s.y,c.y,0);
+}
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))*vec2(0.5,0.5);
     vec4 rotation=texture(tex_rotation,normed);
     vec4 speeds=texture(tex_speeds,normed);
     float dt=0.125;
 #if 1
-    vec4 cnt_input=vec4(
-        cos(rotation.x+speeds.x*dt),sin(rotation.x+speeds.x*dt),
-        cos(rotation.y+speeds.y*dt),sin(rotation.y+speeds.y*dt));
+    vec4 cnt_input=input_rotated(rotation,speeds*dt);
     vec4 cnt=cnt_input;
     float L=0.5;
     cnt+=laplace_at_pos(normed)*L*dt;
@@ -373,11 +388,12 @@ void main(){
     //           cos(fval.y),sin(fval.y))*0.05;
     //rotation.x=mix(atan(cnt.y,cnt.x),atan(cnt_input.y,cnt_input.x),speeds.w);
     //rotation.y=mix(atan(cnt.w,cnt.z),atan(cnt_input.w,cnt_input.z),speeds.w);
-    rotation=vec4(atan(cnt.y,cnt.x),atan(cnt.w,cnt.z),0,0);
+    rotation=vec4(atan(cnt.y,cnt.x),atan(sqrt(cnt.x*cnt.x+cnt.y*cnt.y),cnt.z),0,0);
 #else
     //rotation.x=mod(rotation.x+speeds.x*dt,M_PI*2);
     //rotation.y=mod(rotation.y+speeds.y*dt,M_PI*2);
     rotation=avg_at_pos(normed)+vec4(speeds.xy,0,0)*dt;//mix(avg_at_pos(normed),rotation,speeds.w);
+
 #endif
     color=vec4(rotation.xyz,1);
 }
@@ -709,11 +725,11 @@ function update()
             end]]
         end
         --]==]
-        local function put_pixel( cx,cy,x,y,a,s )
-            speed_layer:set(cx+x,cy+y,{s,-s/8,0,1})
+        local function put_pixel( cx,cy,x,y,a,s1,s2 )
+            speed_layer:set(cx+x,cy+y,{s1,s2,0,1})
             vector_layer:set(cx+x,cy+y,{math.cos(a*8)*math.pi,math.sin(a*8)*math.pi,0,0})
         end
-        local r=math.floor(cx*0.85)
+        local r=math.floor(cx*0.75)
         --[[
         for a=0,math.pi*2,0.0001 do
             local x=math.floor(math.cos(a)*r)
@@ -731,34 +747,34 @@ function update()
             s=s*(-5/8)
         end
         --]]
-        -- [=[
-        local r2=math.floor(cx*0.25)
-        local dist=0.25
+        --[=[
+        local r2=cx*0.25
+        local dist=0.3
         for a=0,math.pi*2,0.0001 do
             local x=math.floor(math.cos(a)*r2)
             local y=math.floor(math.sin(a)*r2)
-            put_pixel(cx,cy*(1-dist),x,y,a,s*0.75)
+            put_pixel(cx,math.floor(cy*(1-dist)),x,y,a,s,-s*0.75)
         end
         for a=0,math.pi*2,0.0001 do
             local x=math.floor(math.cos(a)*r2)
             local y=math.floor(math.sin(a)*r2)
-            put_pixel(cx,cy*1,x,y,a,-s)
+            put_pixel(cx,cy,x,y,a,-s,s)
         end
         for a=0,math.pi*2,0.0001 do
             local x=math.floor(math.cos(a)*r2)
             local y=math.floor(math.sin(a)*r2)
-            put_pixel(cx,cy*(1+dist),x,y,a,s*1.25)
+            put_pixel(cx,math.floor(cy*(1+dist)),x,y,a,s,-s*0.75)
         end
         --]=]
-        --[[
+        -- [[
         for i=-5,5 do
             local nr=r+i
             for x=-nr,nr do
                 local a=(x/nr)*math.pi
-                put_pixel(cx,cy,x,-nr,a)
-                put_pixel(cx,cy,x,nr,a)
-                put_pixel(cx,cy,nr,x,a)
-                put_pixel(cx,cy,-nr,x,a)
+                put_pixel(cx,cy,x,-nr,a,s,-s)
+                put_pixel(cx,cy,x,nr,a,s,-s)
+                put_pixel(cx,cy,nr,x,a,s,-s)
+                put_pixel(cx,cy,-nr,x,a,s,-s)
             end
         end
         r=math.floor(r*0.8)
@@ -767,12 +783,13 @@ function update()
             for x=-nr,nr do
                 local a=(x/nr)*math.pi*0.5
 
-                put_pixel(cx,cy,x,-nr,a)
-                put_pixel(cx,cy,x,nr,a)
-                put_pixel(cx,cy,nr,x,a)
-                put_pixel(cx,cy,-nr,x,a)
+                put_pixel(cx,cy,x,-nr,a,s,-s*0.5)
+                put_pixel(cx,cy,x,nr,a,s,-s*0.5)
+                put_pixel(cx,cy,nr,x,a,s,-s*0.5)
+                put_pixel(cx,cy,-nr,x,a,s,-s*0.5)
             end
         end
+        --[==[
         r=math.floor(r*0.6)
         for i=-10,10 do
             local nr=r+i
@@ -797,6 +814,7 @@ function update()
                 put_pixel(cx,cy,-nr,x,a)
             end
         end
+        --]==]
         --]]
         --[[
         for i=1,500 do
