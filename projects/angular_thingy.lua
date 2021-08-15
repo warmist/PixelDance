@@ -48,9 +48,11 @@ config=make_config({
     {"show_particles",false,type="bool"},
     {"sim_ticks",50,type="int",min=0,max=10},
     {"speed",0.1,type="floatsci",min=0,max=1,power=10},
+    {"speedz",0.1,type="floatsci",min=0,max=1,power=10},
     {"particle_opacity",0.01,type="floatsci",min=0,max=1,power=10},
     {"particle_reset_iter",1000,type="int",min=0,max=10000},
     {"particle_wait_iter",100,type="int",min=0,max=10000},
+    {"gamma",1,type="floatsci",min=0.5,max=2,power=0.5},
     },config)
 
 
@@ -65,6 +67,7 @@ uniform ivec2 res;
 uniform sampler2D tex_main;
 uniform int draw_particles;
 
+uniform float v_gamma;
 uniform vec3 col_min,col_max,col_avg;
 
 float gain(float x, float k)
@@ -266,7 +269,7 @@ vec4 calc_particle_image(vec2 pos)
     col.xyz=log(col.xyz+vec3(1));
     col.xyz-=log(mmin+vec3(1));
     col.xyz/=log(mmax+vec3(1))-log(mmin+vec3(1));
-    //col.xyz=pow(col.xyz,vec3(2));
+    col.xyz=pow(col.xyz,vec3(v_gamma));
 #else
     col.xyz-=mmin;
     col.xyz/=(mmax-mmin);
@@ -300,9 +303,9 @@ uniform sampler2D tex_speeds;
     {\
         vec4 c=cos(textureOffset(tex_rotation,pos,ivec2(dx,dy)));\
         vec4 s=sin(textureOffset(tex_rotation,pos,ivec2(dx,dy)));\
-        sx+=c.x*s.y*w;\
-        sy+=s.x*s.y*w;\
-        sz+=c.y*w;\
+        sx+=c.x*c.y*w;\
+        sy+=s.x*c.y*w;\
+        sz+=s.y*w;\
     }
 
 vec4 avg_at_pos(vec2 pos)
@@ -322,7 +325,9 @@ vec4 avg_at_pos(vec2 pos)
     SC_SAMPLE(-1,0,0.5);
 
     SC_SAMPLE(0,0,3);
-
+    sx/=6;
+    sy/=6;
+    sz/=6;
     //return vec4(atan(sy,sx),atan(sqrt(sx*sx+sy*sy),sz),0,0);
     //return vec4(atan(sy,sx),acos(clamp(sz,-1,1)),0,0);
     return vec4(atan(sy,sx),atan(sqrt(sx*sx+sy*sy)/sz),0,0);
@@ -344,7 +349,11 @@ vec4 laplace_at_pos(vec2 pos)
     SC_SAMPLE(-1,0,0.5);
 
     SC_SAMPLE(0,0,-3);
-
+/*
+    sx/=3;
+    sy/=3;
+    sz/=3;
+*/
     return vec4(sx,sy,sz,0);
 }
 #undef SC_SAMPLE
@@ -370,7 +379,7 @@ vec4 input_rotated(vec4 rotation,vec4 speed)
     vec4 c=cos(rotation+speed);
     vec4 s=sin(rotation+speed);
 
-    return vec4(c.x*s.y,s.x*s.y,c.y,0);
+    return vec4(c.x*c.y,s.x*c.y,s.y,0);
 }
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))*vec2(0.5,0.5);
@@ -382,13 +391,15 @@ void main(){
     vec4 cnt=cnt_input;
     float L=0.5;
     cnt+=laplace_at_pos(normed)*L*dt;
-    vec2 fval=func(rotation,normed)*dt;
 
+    //vec2 fval=func(rotation,normed)*dt;
     //cnt+=vec4( cos(fval.x),sin(fval.x),
     //           cos(fval.y),sin(fval.y))*0.05;
     //rotation.x=mix(atan(cnt.y,cnt.x),atan(cnt_input.y,cnt_input.x),speeds.w);
     //rotation.y=mix(atan(cnt.w,cnt.z),atan(cnt_input.w,cnt_input.z),speeds.w);
-    rotation=vec4(atan(cnt.y,cnt.x),atan(sqrt(cnt.x*cnt.x+cnt.y*cnt.y),cnt.z),0,0);
+    //rotation=vec4(atan(cnt.y,cnt.x),atan(sqrt(cnt.x*cnt.x+cnt.y*cnt.y),cnt.z),0,0);
+
+    rotation=vec4(atan(cnt.y,cnt.x),acos(clamp(cnt.z/length(cnt),-1,1)),0,0);
 #else
     //rotation.x=mod(rotation.x+speeds.x*dt,M_PI*2);
     //rotation.y=mod(rotation.y+speeds.y*dt,M_PI*2);
@@ -673,7 +684,7 @@ function update()
            speed_layer:set(x,y,{0,0,0,0})
         end
         end
-         speed_layer:write_texture(speed_buffer:get())
+        speed_layer:write_texture(speed_buffer:get())
     end
     if imgui.Button("reset particles") then
         reset_agent_data()
@@ -707,6 +718,7 @@ function update()
 
 
         local s=config.speed
+        local s2=config.speedz
         --[==[
         local w=1
         local eps=math.random()*(w/2)-w
@@ -726,7 +738,7 @@ function update()
         end
         --]==]
         local function put_pixel( cx,cy,x,y,a,s1,s2 )
-            speed_layer:set(cx+x,cy+y,{s1,s2,0,1})
+            speed_layer:set(cx+x,cy+y,{s1,s2,0,0})
             vector_layer:set(cx+x,cy+y,{math.cos(a*8)*math.pi,math.sin(a*8)*math.pi,0,0})
         end
         local r=math.floor(cx*0.75)
@@ -756,8 +768,8 @@ function update()
             put_pixel(cx,math.floor(cy*(1-dist)),x,y,a,s,-s*0.75)
         end
         for a=0,math.pi*2,0.0001 do
-            local x=math.floor(math.cos(a)*r2)
-            local y=math.floor(math.sin(a)*r2)
+            local x=math.floor(math.cos(a)*r)
+            local y=math.floor(math.sin(a)*r)
             put_pixel(cx,cy,x,y,a,-s,s)
         end
         for a=0,math.pi*2,0.0001 do
@@ -771,10 +783,10 @@ function update()
             local nr=r+i
             for x=-nr,nr do
                 local a=(x/nr)*math.pi
-                put_pixel(cx,cy,x,-nr,a,s,-s)
-                put_pixel(cx,cy,x,nr,a,s,-s)
-                put_pixel(cx,cy,nr,x,a,s,-s)
-                put_pixel(cx,cy,-nr,x,a,s,-s)
+                put_pixel(cx,cy,x,-nr,a,s,s2)
+                put_pixel(cx,cy,x,nr,a,s,s2)
+                put_pixel(cx,cy,nr,x,a,s,s2)
+                put_pixel(cx,cy,-nr,x,a,s,s2)
             end
         end
         r=math.floor(r*0.8)
@@ -783,10 +795,10 @@ function update()
             for x=-nr,nr do
                 local a=(x/nr)*math.pi*0.5
 
-                put_pixel(cx,cy,x,-nr,a,s,-s*0.5)
-                put_pixel(cx,cy,x,nr,a,s,-s*0.5)
-                put_pixel(cx,cy,nr,x,a,s,-s*0.5)
-                put_pixel(cx,cy,-nr,x,a,s,-s*0.5)
+                put_pixel(cx,cy,x,-nr,a,s,-s2)
+                put_pixel(cx,cy,x,nr,a,s,-s2)
+                put_pixel(cx,cy,nr,x,a,s,-s2)
+                put_pixel(cx,cy,-nr,x,a,s,-s2)
             end
         end
         --[==[
@@ -890,6 +902,7 @@ function update()
         draw_shader:set_i("tex_main",0)
         draw_shader:set_i("draw_particles",0)
     end
+    draw_shader:set("v_gamma",config.gamma)
     draw_shader:draw_quad()
 
     if need_save then
