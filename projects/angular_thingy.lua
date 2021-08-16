@@ -724,7 +724,7 @@ function reset_agent_data()
             if y>1 then y=y-2 end
             if x<-1 then x=x+2 end
             if y<-1 then y=y+2 end
-            agent_state:set(i,0,{x,y,0,0})
+            agent_state:set(i,0,{x,y,math.random(),0})
         end
     end
     for i=1,agent_state_buffer.count do
