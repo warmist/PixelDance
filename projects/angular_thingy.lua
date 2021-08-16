@@ -646,14 +646,14 @@ void main()
     //pos=position;
     //vec3 co=palette(particle_color.b,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
     //vec3 co=palette(particle_color.b,vec3(0.971519,0.273919,0.310136),vec3(0.90608,0.488869,0.144119),vec3(5,10,2),vec3(1,1.8,1.28571)); //violet and blue
-    //vec3 co=palette(particle_color.b,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
-    vec3 co;
-    if(position.z>0.6666)
+    vec3 co=palette(position.z,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
+    //vec3 co;
+    /*if(position.z>0.6666)
         co=vec3(0,0,1);
     else if(position.z>0.3333)
         co=vec3(0,1,0);
     else
-        co=vec3(1,0,0);
+        co=vec3(1,0,0);*/
     col=vec4(co,1);
 }
 ]==],
@@ -927,27 +927,30 @@ function update()
         end
         --]==]
         local function put_pixel( cx,cy,x,y,a,s1,s2 )
-            speed_layer:set(cx+x,cy+y,{s1,s2,0,0})
-            vector_layer:set(cx+x,cy+y,{math.cos(a*8)*math.pi,math.sin(a*8)*math.pi,0,0})
+            speed_layer:set(cx+x,cy+y,{s1,s2,0.05,0})
+            --vector_layer:set(cx+x,cy+y,{math.cos(a*4)*math.pi,math.sin(a*4)*math.pi,0,0})
+            vector_layer:set(cx+x,cy+y,{0,0,math.cos(a*4)*math.pi,0})
         end
         local r=math.floor(cx*0.75)
+        -- [=[
         --[[
         for a=0,math.pi*2,0.0001 do
             local x=math.floor(math.cos(a)*r)
             local y=math.floor(math.sin(a)*r)
-            put_pixel(cx,cy,x,y,a)
+            put_pixel(cx,cy,x,y,a,s,s2)
         end
-        local s=-1
+        --]]
+        --local s=-1
         for i=1,12 do
             r=r-i*5
             for a=0,math.pi*2,0.0001 do
                 local x=math.floor(math.cos(a)*r)
                 local y=math.floor(math.sin(a)*r)
-                put_pixel(cx,cy,x,y,a*s)
+                put_pixel(cx,cy,x,y,a,s,-s2)
             end
             s=s*(-5/8)
         end
-        --]]
+        --]=]
         -- [=[
         local r2=cx*0.25
         local dist=0.3
@@ -1027,7 +1030,8 @@ function update()
             local a=math.random()*math.pi*2
             local x=math.floor(math.cos(a)*r)+cx
             local y=math.floor(math.sin(a)*r)+cx
-            speed_layer:set(x,y,{s*(math.random()*0.01+0.99),1,0,0})
+            local v=r/cx
+            speed_layer:set(x,y,{s*v,s2*(math.random()*0.05+0.95),math.random(),0})
             --vector_layer:set(x,y,{math.random()*math.pi*2-math.pi,0,0,0})
             vector_layer:set(x,y,{math.cos(r*math.pi/cx)*math.pi,0,0,0})
         end
