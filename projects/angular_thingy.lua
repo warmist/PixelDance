@@ -46,12 +46,13 @@ config=make_config({
     {"pause",false,type="bool"},
     {"pause_particles",true,type="bool"},
     {"show_particles",false,type="bool"},
-    {"sim_ticks",50,type="int",min=0,max=10},
+    {"layer",0,type="int",min=0,max=2},
+    {"sim_ticks",50,type="int",min=0,max=50},
     {"speed",0.1,type="floatsci",min=0,max=1,power=10},
     {"speedz",0.1,type="floatsci",min=0,max=1,power=10},
     {"particle_opacity",0.01,type="floatsci",min=0,max=1,power=10},
-    {"particle_reset_iter",1000,type="int",min=0,max=10000},
-    {"particle_wait_iter",100,type="int",min=0,max=10000},
+    {"particle_reset_iter",100,type="int",min=0,max=1000},
+    {"particle_wait_iter",0,type="int",min=0,max=1000},
     {"gamma",1,type="floatsci",min=0.5,max=2,power=0.5},
     },config)
 
@@ -66,6 +67,7 @@ in vec3 pos;
 uniform ivec2 res;
 uniform sampler2D tex_main;
 uniform int draw_particles;
+uniform int draw_layer;
 
 uniform float v_gamma;
 uniform vec3 col_min,col_max,col_avg;
@@ -227,7 +229,14 @@ vec4 calc_vector_image(vec2 normed)
     color=vec4(curl*10,fvec.xy*0,1);
 #elif 1
     //float pa=c.x/3.145926;
-    float pa=cos(c.x)/2+0.5;
+    float pa;
+    if (draw_layer==0)
+        pa=cos(c.x)/2+0.5;
+    else if(draw_layer==1)
+        pa=sin(c.y*2)/2+0.5;
+    else
+        pa=sin(c.z*2)/2+0.5;
+
     float pa2=cos(c.y)/2+0.5;
     //vec3 co=palette(pa,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
     //vec3 co=palette(pa,vec3(0.8,0.5,0.4),vec3(0.2,0.4,0.2),vec3(2,1,1),vec3(0.0,0.25,0.25));
@@ -291,7 +300,7 @@ local update_rotations_shader=shaders.Make(
 [==[
 #version 330
 
-#line 69
+#line 301
 out vec4 color;
 in vec3 pos;
 
@@ -330,6 +339,7 @@ vec4 avg_at_pos(vec2 pos)
     sz/=6;
     //return vec4(atan(sy,sx),atan(sqrt(sx*sx+sy*sy),sz),0,0);
     //return vec4(atan(sy,sx),acos(clamp(sz,-1,1)),0,0);
+    //return vec4(atan(sy,sx),asin(clamp(sz,-1,1)),0,0);
     return vec4(atan(sy,sx),atan(sqrt(sx*sx+sy*sy)/sz),0,0);
 }
 vec4 laplace_at_pos(vec2 pos)
@@ -355,6 +365,155 @@ vec4 laplace_at_pos(vec2 pos)
     sz/=3;
 */
     return vec4(sx,sy,sz,0);
+}
+#undef SC_SAMPLE
+//QUATERNION VERSION
+#define QUATERNION_IDENTITY vec4(0, 0, 0, 1)
+
+vec4 qmul(vec4 q1, vec4 q2) {
+    return vec4(
+        q2.xyz * q1.w + q1.xyz * q2.w + cross(q1.xyz, q2.xyz),
+        q1.w * q2.w - dot(q1.xyz, q2.xyz)
+    );
+}
+vec4 q_conj(vec4 q) {
+    return vec4(-q.x, -q.y, -q.z, q.w);
+}
+vec4 q_slerp(vec4 a, vec4 b, float t) {
+    // if either input is zero, return the other.
+    if (length(a) == 0.0) {
+        if (length(b) == 0.0) {
+            return QUATERNION_IDENTITY;
+        }
+        return b;
+    } else if (length(b) == 0.0) {
+        return a;
+    }
+
+    float cosHalfAngle = a.w * b.w + dot(a.xyz, b.xyz);
+
+    if (cosHalfAngle >= 1.0 || cosHalfAngle <= -1.0) {
+        return a;
+    } else if (cosHalfAngle < 0.0) {
+        b.xyz = -b.xyz;
+        b.w = -b.w;
+        cosHalfAngle = -cosHalfAngle;
+    }
+
+    float blendA;
+    float blendB;
+    if (cosHalfAngle < 0.99) {
+        // do proper slerp for big angles
+        float halfAngle = acos(cosHalfAngle);
+        float sinHalfAngle = sin(halfAngle);
+        float oneOverSinHalfAngle = 1.0 / sinHalfAngle;
+        blendA = sin(halfAngle * (1.0 - t)) * oneOverSinHalfAngle;
+        blendB = sin(halfAngle * t) * oneOverSinHalfAngle;
+    } else {
+        // do lerp if angle is really small.
+        blendA = 1.0 - t;
+        blendB = t;
+    }
+
+    vec4 result = vec4(blendA * a.xyz + blendB * b.xyz, blendA * a.w + blendB * b.w);
+    if (length(result) > 0.0) {
+        return normalize(result);
+    }
+    return QUATERNION_IDENTITY;
+}
+vec4 q_from_euler(vec3 euler)
+{
+    vec4 q;
+    vec3 c=cos(euler*0.5);
+    vec3 s=sin(euler*0.5);
+
+    q.w=(c.x*c.y*c.z+s.x*s.y*s.z);
+    q.x=(s.x*c.y*c.z-c.x*s.y*s.z);
+    q.y=(c.x*s.y*c.z+s.x*c.y*s.z);
+    q.z=(c.x*c.y*s.z-s.x*s.y*c.z);
+    return q;
+}
+vec3 euler_from_q(vec4 q)
+{
+    vec3 e;
+    float sinr_cosp = 2 * (q.w * q.x + q.y * q.z);
+    float cosr_cosp = 1 - 2 * (q.x * q.x + q.y * q.y);
+    e.x = atan(sinr_cosp, cosr_cosp);
+
+    // pitch (y-axis rotation)
+    float sinp = 2 * (q.w * q.y - q.z * q.x);
+    if (abs(sinp) >= 1)
+    {
+        if(sinp<0)
+            e.y=-M_PI/2;
+        else
+            e.y=M_PI/2;
+    }
+    else
+        e.y = asin(sinp);
+
+    // yaw (z-axis rotation)
+    float siny_cosp = 2 * (q.w * q.z + q.x * q.y);
+    float cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
+    e.z = atan(siny_cosp, cosy_cosp);
+
+    return e;
+}
+#define SC_SAMPLE(dx,dy,weight) \
+    {\
+        vec4 e=textureOffset(tex_rotation,pos,ivec2(dx,dy));\
+        vec4 qtmp=q_from_euler(e.xyz);\
+        if(dot(qtmp,q)<0)\
+            q-=qtmp*weight;\
+        else\
+            q+=qtmp*weight;\
+    }
+vec4 quat_laplace_at_pos(vec2 pos)
+{
+    vec4 q=vec4(0);
+
+    SC_SAMPLE(-1,-1,0.25);
+    SC_SAMPLE(-1,1,0.25);
+    SC_SAMPLE(1,-1,0.25);
+    SC_SAMPLE(1,1,0.25);
+
+    SC_SAMPLE(0,-1,0.5);
+    SC_SAMPLE(0,1,0.5);
+    SC_SAMPLE(1,0,0.5);
+    SC_SAMPLE(-1,0,0.5);
+
+    SC_SAMPLE(0,0,-3);
+/*
+    sx/=3;
+    sy/=3;
+    sz/=3;
+*/
+    return q;
+}
+vec4 quat_avg_at_pos(vec2 pos)
+{
+    vec4 q=vec4(0);
+
+    SC_SAMPLE(-1,-1,0.25);
+    SC_SAMPLE(-1,1,0.25);
+    SC_SAMPLE(1,-1,0.25);
+    SC_SAMPLE(1,1,0.25);
+
+    SC_SAMPLE(0,-1,0.5);
+    SC_SAMPLE(0,1,0.5);
+    SC_SAMPLE(1,0,0.5);
+    SC_SAMPLE(-1,0,0.5);
+
+    SC_SAMPLE(0,0,3);
+    q/=6.0;
+    return normalize(q);
+}
+vec4 quat_input_rotated(vec4 rotation,vec4 speed)
+{
+    vec4 q=q_from_euler(rotation.xyz);
+    q=qmul(q,q_from_euler(speed.xyz));
+
+    return q;
 }
 #undef SC_SAMPLE
 vec4 gray_scott(vec4 c,vec2 normed)
@@ -386,10 +545,10 @@ void main(){
     vec4 rotation=texture(tex_rotation,normed);
     vec4 speeds=texture(tex_speeds,normed);
     float dt=0.125;
-#if 1
+    float L=0.125;
+#if 0
     vec4 cnt_input=input_rotated(rotation,speeds*dt);
     vec4 cnt=cnt_input;
-    float L=0.5;
     cnt+=laplace_at_pos(normed)*L*dt;
 
     //vec2 fval=func(rotation,normed)*dt;
@@ -398,8 +557,22 @@ void main(){
     //rotation.x=mix(atan(cnt.y,cnt.x),atan(cnt_input.y,cnt_input.x),speeds.w);
     //rotation.y=mix(atan(cnt.w,cnt.z),atan(cnt_input.w,cnt_input.z),speeds.w);
     //rotation=vec4(atan(cnt.y,cnt.x),atan(sqrt(cnt.x*cnt.x+cnt.y*cnt.y),cnt.z),0,0);
+    //if (length(cnt)>0.00001)
+    //    rotation=vec4(atan(cnt.y,cnt.x),asin(clamp(cnt.z/length(cnt),-1,1)),0,0);
+#elif 0
+    vec4 cnt=quat_input_rotated(rotation,speeds*dt);
+    cnt+=quat_laplace_at_pos(normed)*L*dt;
+    if(length(cnt)>0)
+        rotation.xyz=euler_from_q(normalize(cnt));
+#elif 1
+    vec4 org=q_from_euler(rotation.xyz);
+    org=qmul(org,q_from_euler(speeds.xyz*dt));
+    vec4 avg=quat_avg_at_pos(normed);
+    vec4 cnt=q_slerp(org,avg,0.5);
+    //vec4 cnt=quat_input_rotated(quat_avg_at_pos(normed),speeds*dt);
 
-    rotation=vec4(atan(cnt.y,cnt.x),acos(clamp(cnt.z/length(cnt),-1,1)),0,0);
+    //if(length(cnt)>0)
+        rotation.xyz=euler_from_q(normalize(cnt));
 #else
     //rotation.x=mod(rotation.x+speeds.x*dt,M_PI*2);
     //rotation.y=mod(rotation.y+speeds.y*dt,M_PI*2);
@@ -428,8 +601,17 @@ void main()
 {
     vec2 normed=(position.xy+vec2(1,1))*vec2(0.5,0.5);
     //TODO: this bilinear/nn iterpolates. Does this make sense?
-    float angle=texture(tex_angles,normed).x;
-    vec2 delta=vec2(cos(angle),sin(angle))*speed;
+    vec3 angle=texture(tex_angles,normed).xyz;
+    vec2 delta;
+
+    if(position.z>0.6666)
+        delta=vec2(cos(angle.z),sin(angle.z));
+    else if(position.z>0.3333)
+        delta=vec2(cos(angle.y),sin(angle.y));
+    else
+        delta=vec2(cos(angle.x),sin(angle.x));
+
+    delta*=speed;
     vec2 p=position.xy+delta;
     if(p.x<-1)
         p.x=1;
@@ -439,7 +621,7 @@ void main()
         p.y=1;
     if(p.y>1)
         p.y=-1;
-    point_out=vec4(p,0,0);
+    point_out=vec4(p,position.z,0);
 }
 ]==],
 [==[ void main(){} ]==],"point_out"
@@ -459,12 +641,19 @@ vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 }
 void main()
 {
-    gl_Position.xyz = position.xyz;
+    gl_Position.xyz = vec3(position.xy,0);
     gl_Position.w = 1.0;
     //pos=position;
     //vec3 co=palette(particle_color.b,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
     //vec3 co=palette(particle_color.b,vec3(0.971519,0.273919,0.310136),vec3(0.90608,0.488869,0.144119),vec3(5,10,2),vec3(1,1.8,1.28571)); //violet and blue
-    vec3 co=palette(particle_color.b,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
+    //vec3 co=palette(particle_color.b,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
+    vec3 co;
+    if(position.z>0.6666)
+        co=vec3(0,0,1);
+    else if(position.z>0.3333)
+        co=vec3(0,1,0);
+    else
+        co=vec3(1,0,0);
     col=vec4(co,1);
 }
 ]==],
@@ -513,7 +702,7 @@ function reset_agent_data()
             if x<-1 then x=x+2 end
             if y<-1 then y=y+2 end
             agent_color:set(i,0,{x*0.5+0.5,y*0.5+0.5,(math.abs(x+y))*0.5,0.0001})
-            agent_state:set(i,0,{x,y,0,0})
+            agent_state:set(i,0,{x,y,math.random(),0})
         else
             local max_r=(1/map_w)*(map_w)
 
@@ -612,7 +801,7 @@ function agent_draw(  )
     agent_draw_shader:blend_add()
     trails_buffer:get():use(0)
     agent_color_buffer:use()
-    agent_draw_shader:push_attribute(0,"particle_color",4,GL_FLOAT)
+    --agent_draw_shader:push_attribute(0,"particle_color",4,GL_FLOAT)
     agent_state_buffer:get():use()
     if not trails_buffer:get():render_to(vector_layer.w,vector_layer.h) then
         error("failed to set framebuffer up")
@@ -705,9 +894,9 @@ function update()
         local cy=math.floor(map_h/2)
         for x=0,map_w-1 do
         for y=0,map_h-1 do
-            vector_layer:set(x,y,{0,0,0,0})
+            --vector_layer:set(x,y,{0,0,0,0})
             --if x>cx-25 and x<cx+25 then
-            --    vector_layer:set(x,y,{(math.random()-0.5)*math.pi*2,(math.random()-0.5)*math.pi*2,0,0})
+                --vector_layer:set(x,y,{(math.random()-0.5)*math.pi*2,(math.random()-0.5)*math.pi*2,(math.random()-0.5)*math.pi*2,0})
             --else
                 --vector_layer:set(x,y,{0,(math.random()-0.5)*math.pi*2,0,0})
             --end
@@ -759,26 +948,26 @@ function update()
             s=s*(-5/8)
         end
         --]]
-        --[=[
+        -- [=[
         local r2=cx*0.25
         local dist=0.3
         for a=0,math.pi*2,0.0001 do
             local x=math.floor(math.cos(a)*r2)
             local y=math.floor(math.sin(a)*r2)
-            put_pixel(cx,math.floor(cy*(1-dist)),x,y,a,s,-s*0.75)
+            put_pixel(cx,math.floor(cy*(1-dist)),x,y,a,s,s2)
         end
         for a=0,math.pi*2,0.0001 do
             local x=math.floor(math.cos(a)*r)
             local y=math.floor(math.sin(a)*r)
-            put_pixel(cx,cy,x,y,a,-s,s)
+            put_pixel(cx,cy,x,y,a,-s,-s2*0.75)
         end
         for a=0,math.pi*2,0.0001 do
             local x=math.floor(math.cos(a)*r2)
             local y=math.floor(math.sin(a)*r2)
-            put_pixel(cx,math.floor(cy*(1+dist)),x,y,a,s,-s*0.75)
+            put_pixel(cx,math.floor(cy*(1+dist)),x,y,a,s,s2)
         end
         --]=]
-        -- [[
+        --[[
         for i=-5,5 do
             local nr=r+i
             for x=-nr,nr do
@@ -885,6 +1074,7 @@ function update()
     draw_shader:use()
 
     draw_shader:set_i("res",map_w,map_h)
+    draw_shader:set_i("draw_layer",config.layer)
     if config.show_particles then
         if need_renorm or glow==nil then
             local avg
