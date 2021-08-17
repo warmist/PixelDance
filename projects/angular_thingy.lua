@@ -72,11 +72,6 @@ uniform int draw_layer;
 uniform float v_gamma;
 uniform vec3 col_min,col_max,col_avg;
 
-float gain(float x, float k)
-{
-    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
-    return (x<0.5)?a:1.0-a;
-}
 
 vec3 rgb2xyz( vec3 c ) {
     vec3 tmp=c;
@@ -256,6 +251,15 @@ vec4 calc_vector_image(vec2 normed)
 #endif
     return color;
 }
+float gain(float x, float k)
+{
+    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
+    return (x<0.5)?a:1.0-a;
+}
+vec3 gain(vec3 x,float k)
+{
+    return vec3(gain(x.x,k),gain(x.y,k),gain(x.z,k));
+}
 vec4 calc_particle_image(vec2 pos)
 {
     //return vec4(cos(pos.x)*0.5+0.5,sin(pos.y)*0.5+0.5,0,1);
@@ -265,7 +269,7 @@ vec4 calc_particle_image(vec2 pos)
 #if 0
     mmin=vec3(min(min(mmin.x,mmin.y),mmin.z));
     mmax=vec3(max(max(mmax.x,mmax.y),mmax.z));
-#elif 0
+#elif 1
     mmin=vec3(max(max(mmin.x,mmin.y),mmin.z));
     mmax=vec3(min(min(mmax.x,mmax.y),mmax.z));
 #elif 0
@@ -278,11 +282,13 @@ vec4 calc_particle_image(vec2 pos)
     col.xyz=log(col.xyz+vec3(1));
     col.xyz-=log(mmin+vec3(1));
     col.xyz/=log(mmax+vec3(1))-log(mmin+vec3(1));
-    col.xyz=pow(col.xyz,vec3(v_gamma));
+    //col.xyz=pow(col.xyz,vec3(v_gamma));
+    col.xyz=gain(col.xyz,v_gamma);
 #else
     col.xyz-=mmin;
     col.xyz/=(mmax-mmin);
-    col.xyz=pow(col.xyz,vec3(1));
+    //col.xyz=pow(col.xyz,vec3(v_gamma));
+    col.xyz=gain(col.xyz,v_gamma);
 #endif
     return col;
 }
@@ -896,7 +902,7 @@ function update()
         for y=0,map_h-1 do
             --vector_layer:set(x,y,{0,0,0,0})
             --if x>cx-25 and x<cx+25 then
-                --vector_layer:set(x,y,{(math.random()-0.5)*math.pi*2,(math.random()-0.5)*math.pi*2,(math.random()-0.5)*math.pi*2,0})
+                vector_layer:set(x,y,{(math.random()-0.5)*math.pi*1.8,(math.random()-0.5)*math.pi,(math.random()-0.5)*math.pi,0})
             --else
                 --vector_layer:set(x,y,{0,(math.random()-0.5)*math.pi*2,0,0})
             --end
@@ -929,9 +935,9 @@ function update()
         local function put_pixel( cx,cy,x,y,a,s1,s2 )
             speed_layer:set(cx+x,cy+y,{s1,s2,0.05,0})
             --vector_layer:set(cx+x,cy+y,{math.cos(a*4)*math.pi,math.sin(a*4)*math.pi,0,0})
-            vector_layer:set(cx+x,cy+y,{0,0,math.cos(a*4)*math.pi,0})
+            vector_layer:set(cx+x,cy+y,{a,0,math.cos(a*4)*math.pi,0})
         end
-        local r=math.floor(cx*0.75)
+        local r=math.floor(cx*0.95)
         -- [=[
         --[[
         for a=0,math.pi*2,0.0001 do
