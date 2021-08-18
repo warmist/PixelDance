@@ -54,13 +54,14 @@ config=make_config({
     {"particle_reset_iter",100,type="int",min=0,max=1000},
     {"particle_wait_iter",0,type="int",min=0,max=1000},
     {"gamma",1,type="floatsci",min=0.5,max=2,power=0.5},
+    {"level",1,type="floatsci",min=0.5,max=2000,power=10},
     },config)
 
 
 local draw_shader=shaders.Make(
 [==[
 #version 330
-#line 47
+#line 63
 out vec4 color;
 in vec3 pos;
 
@@ -70,6 +71,7 @@ uniform int draw_particles;
 uniform int draw_layer;
 
 uniform float v_gamma;
+uniform float avg_lum;
 uniform vec3 col_min,col_max,col_avg;
 
 
@@ -141,11 +143,11 @@ vec3 hsv2rgb(vec3 c)
 
 vec3 tonemap(vec3 light,float cur_exp)
 {
-    float white_point=10;
+    float white_point=-1;
     float lum_white =white_point*white_point;// pow(10,white_point);
     //lum_white*=lum_white;
     float Y=light.y;
-    float avg_lum=1;
+
 #if SHOW_PALETTE
     Y=Y*exp(cur_exp)/(9.6);
 #else
@@ -183,7 +185,7 @@ vec3 tonemap(vec3 light,float cur_exp)
     if(ret.z>1)ret.z=1;
     //*/
    // return mix(ret,vec3(1),pow(s,8));
-    return light;
+    return xyz2rgb(light*100);
 }
 
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
@@ -292,13 +294,46 @@ vec4 calc_particle_image(vec2 pos)
 #endif
     return col;
 }
+vec4 calc_particle_image_xyz(vec2 pos)
+{
+    vec4 col=texture(tex_main,pos);
+    vec3 mmin=col_min;
+    vec3 mmax=col_max;
+#if 0
+    mmin=vec3(min(min(mmin.x,mmin.y),mmin.z));
+    mmax=vec3(max(max(mmax.x,mmax.y),mmax.z));
+#elif 1
+    mmin=vec3(max(max(mmin.x,mmin.y),mmin.z));
+    mmax=vec3(min(min(mmax.x,mmax.y),mmax.z));
+#elif 0
+    mmin=vec3(mmin.x+mmin.y+mmin.z)/3;
+    mmax=vec3(mmax.x+mmax.y+mmax.z)/3;
+#else
+    //noop
+#endif
+#if 0
+    col.xyz=log(col.xyz+vec3(1));
+    col.xyz-=log(mmin+vec3(1));
+    col.xyz/=log(mmax+vec3(1))-log(mmin+vec3(1));
+    //col.xyz=pow(col.xyz,vec3(v_gamma));
+    col.xyz=gain(col.xyz,v_gamma);
+#elif 0
+    col.xyz-=mmin;
+    col.xyz/=(mmax-mmin);
+    //col.xyz=pow(col.xyz,vec3(v_gamma));
+    col.xyz=gain(col.xyz,v_gamma);
+#else
+
+#endif
+    return vec4(tonemap(col.xyz,v_gamma),1);
+}
 void main(){
     vec2 normed=(pos.xy+vec2(1,-1))*vec2(0.5,-0.5);
     normed=(normed-vec2(0.5,0.5))+vec2(0.5,0.5);
     if(draw_particles==0)
         color=calc_vector_image(normed);
     else
-        color=calc_particle_image(normed);
+        color=calc_particle_image_xyz(normed);
 }
 ]==])
 
@@ -610,13 +645,25 @@ void main()
     vec3 angle=texture(tex_angles,normed).xyz;
     vec2 delta;
 
+#if 1
     if(position.z>0.6666)
         delta=vec2(cos(angle.z),sin(angle.z));
     else if(position.z>0.3333)
         delta=vec2(cos(angle.y),sin(angle.y));
     else
         delta=vec2(cos(angle.x),sin(angle.x));
+#elif 0
+    if(position.z>0.5)
+        delta=mix(vec2(cos(angle.y),sin(angle.y)),vec2(cos(angle.z),sin(angle.z)),(position.z-0.5)*2);
+    else
+        delta=mix(vec2(cos(angle.x),sin(angle.x)),vec2(cos(angle.y),sin(angle.y)),(position.z)*2);
+    delta=normalize(delta);
+#else
+    delta=vec2(cos(angle.x),sin(angle.x));
+#endif
 
+    //float pout=(atan(delta.y,delta.x)/M_PI+1)/2;
+    float pout=position.z;
     delta*=speed;
     vec2 p=position.xy+delta;
     if(p.x<-1)
@@ -627,7 +674,7 @@ void main()
         p.y=1;
     if(p.y>1)
         p.y=-1;
-    point_out=vec4(p,position.z,0);
+    point_out=vec4(p,pout,0);
 }
 ]==],
 [==[ void main(){} ]==],"point_out"
@@ -645,6 +692,69 @@ vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
     return a + b*cos( 6.28318*(c*t+d) );
 }
+
+float gaussian(float x, float alpha, float mu, float sigma1, float sigma2) {
+  float squareRoot = (x - mu)/(x < mu ? sigma1 : sigma2);
+  return alpha * exp( -(squareRoot * squareRoot)/2 );
+}
+
+vec3 xyzFromWavelength(float wavelength) {
+    vec3 ret;
+  ret.x = gaussian(wavelength,  1.056, 5998, 379, 310)
+         + gaussian(wavelength,  0.362, 4420, 160, 267)
+         + gaussian(wavelength, -0.065, 5011, 204, 262);
+
+  ret.y = gaussian(wavelength,  0.821, 5688, 469, 405)
+         + gaussian(wavelength,  0.286, 5309, 163, 311);
+
+  ret.z = gaussian(wavelength,  1.217, 4370, 118, 360)
+         + gaussian(wavelength,  0.681, 4590, 260, 138);
+  return ret;
+}
+
+vec3 xyz_from_normed_waves(float v_in)
+{
+    vec3 ret;
+    ret.x = gaussian(v_in,  1.056, 0.6106, 0.10528, 0.0861)
+        + gaussian(v_in,  0.362, 0.1722, 0.04444, 0.0742)
+        + gaussian(v_in, -0.065, 0.3364, 0.05667, 0.0728);
+
+    ret.y = gaussian(v_in,  0.821, 0.5244, 0.1303, 0.1125)
+        + gaussian(v_in,  0.286, 0.4192, 0.0452, 0.0864);
+
+    ret.z = gaussian(v_in,  1.217, 0.1583, 0.0328, 0.1)
+        + gaussian(v_in,  0.681, 0.2194, 0.0722, 0.0383);
+
+    return ret;
+}
+float black_body_spectrum(float l,float temperature )
+{
+    /*float h=6.626070040e-34; //Planck constant
+    float c=299792458; //Speed of light
+    float k=1.38064852e-23; //Boltzmann constant
+    */
+    float const_1=5.955215e-17;//h*c*c
+    float const_2=0.0143878;//(h*c)/k
+    float top=(2*const_1);
+    float bottom=(exp((const_2)/(temperature*l))-1)*l*l*l*l*l;
+    return top/bottom;
+}
+float black_body(float iter,float temp)
+{
+    return black_body_spectrum(mix(380*1e-9,740*1e-9,iter),temp);
+}
+float D65_approx(float iter)
+{
+    //3rd order fit on D65
+    float wl=mix(380,740,iter);
+    return (-1783.1047729784+9.977734354*wl-(0.0171304983)*wl*wl+(0.0000095146)*wl*wl*wl);
+}
+float D65_blackbody(float iter,float temp)
+{
+    float b65=black_body(iter,6503.5);
+    return D65_approx(iter)*(black_body(iter,temp)/b65);
+
+}
 void main()
 {
     gl_Position.xyz = vec3(position.xy,0);
@@ -652,7 +762,8 @@ void main()
     //pos=position;
     //vec3 co=palette(particle_color.b,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
     //vec3 co=palette(particle_color.b,vec3(0.971519,0.273919,0.310136),vec3(0.90608,0.488869,0.144119),vec3(5,10,2),vec3(1,1.8,1.28571)); //violet and blue
-    vec3 co=palette(position.z,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
+    //vec3 co=palette(position.z,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
+    vec3 co=xyz_from_normed_waves(clamp(position.z,0,1))*D65_blackbody(position.z,6503.5);
     //vec3 co;
     /*if(position.z>0.6666)
         co=vec3(0,0,1);
@@ -839,11 +950,11 @@ function find_min_max( tex,buf )
         --local lum=math.sqrt(v.g*v.g+v.r*v.r+v.b*v.b)--math.abs(v.g+v.r+v.b)
         --local lum=math.abs(v.g)
         --local lum=math.abs(v.g)+math.abs(v.r)+math.abs(v.b)
-        local lum=math.abs(v.b)
-        --if lum > config.min_value then
+        local lum=math.abs(v.g)
+        if lum > config.level then
             avg_lum=avg_lum+math.log(1+lum)
             count=count+1
-        --end
+        end
     end
     end
     avg_lum = math.exp(avg_lum / count);
@@ -900,9 +1011,9 @@ function update()
         local cy=math.floor(map_h/2)
         for x=0,map_w-1 do
         for y=0,map_h-1 do
-            --vector_layer:set(x,y,{0,0,0,0})
+            vector_layer:set(x,y,{0,0,0,0})
             --if x>cx-25 and x<cx+25 then
-                vector_layer:set(x,y,{(math.random()-0.5)*math.pi*1.8,(math.random()-0.5)*math.pi,(math.random()-0.5)*math.pi,0})
+                --vector_layer:set(x,y,{(math.random()-0.5)*math.pi*1.8,(math.random()-0.5)*math.pi,(math.random()-0.5)*math.pi,0})
             --else
                 --vector_layer:set(x,y,{0,(math.random()-0.5)*math.pi*2,0,0})
             --end
@@ -957,7 +1068,7 @@ function update()
             s=s*(-5/8)
         end
         --]=]
-        -- [=[
+        --[=[
         local r2=cx*0.25
         local dist=0.3
         for a=0,math.pi*2,0.0001 do
@@ -976,7 +1087,8 @@ function update()
             put_pixel(cx,math.floor(cy*(1+dist)),x,y,a,s,s2)
         end
         --]=]
-        --[[
+        -- [[
+        r=math.floor(cx*0.6)
         for i=-5,5 do
             local nr=r+i
             for x=-nr,nr do
@@ -1087,8 +1199,7 @@ function update()
     draw_shader:set_i("draw_layer",config.layer)
     if config.show_particles then
         if need_renorm or glow==nil then
-            local avg
-            glow,ghigh,avg=find_min_max(trails_buffer:get())
+            glow,ghigh,gavg=find_min_max(trails_buffer:get())
             need_renorm=false
         end
         trails_buffer:get():use(0,0,1)
@@ -1096,6 +1207,7 @@ function update()
         draw_shader:set_i("draw_particles",1)
         draw_shader:set("col_min",glow[1],glow[2],glow[3])
         draw_shader:set("col_max",ghigh[1],ghigh[2],ghigh[3])
+        draw_shader:set("avg_lum",gavg)
     else
         local t1=vector_buffer:get()
         t1:use(0,0,1)
