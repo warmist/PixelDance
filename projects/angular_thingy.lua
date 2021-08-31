@@ -22,7 +22,7 @@ local size=STATE.size
 
 is_remade=false
 
-local agent_count=10000
+local agent_count=1000
 
 function update_buffers()
     if vector_layer==nil or vector_layer.w~=map_w or vector_layer.h~=map_h then
@@ -684,9 +684,9 @@ void main(){
     vec4 org=q_from_euler(rotation.xyz);
     vec3 speed_out;
     float time=time_input;
-    speed_out.x=snoise(vec3(normed,time*speeds.x));
-    speed_out.y=snoise(vec3(normed,time*speeds.y));
-    speed_out.z=snoise(vec3(normed,time*speeds.z));
+    speed_out.x=snoise(vec3(normed+vec2(0.124,2.33),time*speeds.x+0.157));
+    speed_out.y=snoise(vec3(normed+vec2(4.05,4.783),time*speeds.y-0.7777));
+    speed_out.z=snoise(vec3(normed+vec2(11.28,7.11),time*speeds.z+1.579));
     org=qmul(org,q_from_euler(speed_out*0.05*dt));
     vec4 avg=quat_avg_at_pos(normed);
     vec4 cnt=q_slerp(org,avg,0.5);
@@ -717,6 +717,82 @@ out vec4 point_out;
 
 uniform sampler2D tex_angles;
 uniform float speed;
+uniform float time_input;
+
+//  Simplex 3D Noise 
+//  by Ian McEwan, Ashima Arts
+//
+vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+
+float snoise(vec3 v){ 
+  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+
+// First corner
+  vec3 i  = floor(v + dot(v, C.yyy) );
+  vec3 x0 =   v - i + dot(i, C.xxx) ;
+
+// Other corners
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min( g.xyz, l.zxy );
+  vec3 i2 = max( g.xyz, l.zxy );
+
+  //  x0 = x0 - 0. + 0.0 * C 
+  vec3 x1 = x0 - i1 + 1.0 * C.xxx;
+  vec3 x2 = x0 - i2 + 2.0 * C.xxx;
+  vec3 x3 = x0 - 1. + 3.0 * C.xxx;
+
+// Permutations
+  i = mod(i, 289.0 ); 
+  vec4 p = permute( permute( permute( 
+             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+           + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+
+// Gradients
+// ( N*N points uniformly over a square, mapped onto an octahedron.)
+  float n_ = 1.0/7.0; // N=7
+  vec3  ns = n_ * D.wyz - D.xzx;
+
+  vec4 j = p - 49.0 * floor(p * ns.z *ns.z);  //  mod(p,N*N)
+
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
+
+  vec4 x = x_ *ns.x + ns.yyyy;
+  vec4 y = y_ *ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+
+  vec4 b0 = vec4( x.xy, y.xy );
+  vec4 b1 = vec4( x.zw, y.zw );
+
+  vec4 s0 = floor(b0)*2.0 + 1.0;
+  vec4 s1 = floor(b1)*2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+
+  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+
+  vec3 p0 = vec3(a0.xy,h.x);
+  vec3 p1 = vec3(a0.zw,h.y);
+  vec3 p2 = vec3(a1.xy,h.z);
+  vec3 p3 = vec3(a1.zw,h.w);
+
+//Normalise gradients
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+  p0 *= norm.x;
+  p1 *= norm.y;
+  p2 *= norm.z;
+  p3 *= norm.w;
+
+// Mix final noise value
+  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+  m = m * m;
+  return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), 
+                                dot(p2,x2), dot(p3,x3) ) );
+}
 
 void main()
 {
@@ -725,13 +801,19 @@ void main()
     vec3 angle=texture(tex_angles,normed).xyz;
     vec2 delta;
 
+    float noise=snoise(vec3(normed,time_input*0.05))*0.5+0.5;
+
 #if 1
-    if(position.z>0.6666)
+    if(noise>0.6666)
         delta=vec2(cos(angle.z),sin(angle.z));
-    else if(position.z>0.3333)
+    else if(noise>0.3333)
         delta=vec2(cos(angle.y),sin(angle.y));
     else
         delta=vec2(cos(angle.x),sin(angle.x));
+    if(noise>1)
+        delta=vec2(1,0);
+    if(noise<0)
+        delta=vec2(0,1);
 #elif 0
     if(position.z>0.5)
         delta=mix(vec2(cos(angle.y),sin(angle.y)),vec2(cos(angle.z),sin(angle.z)),(position.z-0.5)*2);
@@ -742,8 +824,8 @@ void main()
     delta=vec2(cos(angle.x),sin(angle.x));
 #endif
 
-    //float pout=(atan(delta.y,delta.x)/M_PI+1)/2;
-    float pout=position.z;
+    float pout=(atan(delta.y,delta.x)/M_PI+1)/2;
+    //float pout=position.z;
     delta*=speed;
     vec2 p=position.xy+delta;
     if(p.x<-1)
@@ -754,7 +836,7 @@ void main()
         p.y=1;
     if(p.y>1)
         p.y=-1;
-    point_out=vec4(p,pout,0);
+    point_out=vec4(p,pout,position.z);
 }
 ]==],
 [==[ void main(){} ]==],"point_out"
@@ -765,7 +847,9 @@ agent_draw_shader=shaders.Make(
 
 layout(location = 0) in vec4 position;
 layout(location = 1) in vec4 particle_color;
-
+uniform float norm_wave;
+uniform float time_input;
+#define M_PI   3.14159265358979323846264338327950288
 //out vec3 pos;
 out vec4 col;
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
@@ -835,16 +919,120 @@ float D65_blackbody(float iter,float temp)
     return D65_approx(iter)*(black_body(iter,temp)/b65);
 
 }
+//  Simplex 3D Noise 
+//  by Ian McEwan, Ashima Arts
+//
+vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+
+float snoise(vec3 v){ 
+  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+
+// First corner
+  vec3 i  = floor(v + dot(v, C.yyy) );
+  vec3 x0 =   v - i + dot(i, C.xxx) ;
+
+// Other corners
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min( g.xyz, l.zxy );
+  vec3 i2 = max( g.xyz, l.zxy );
+
+  //  x0 = x0 - 0. + 0.0 * C 
+  vec3 x1 = x0 - i1 + 1.0 * C.xxx;
+  vec3 x2 = x0 - i2 + 2.0 * C.xxx;
+  vec3 x3 = x0 - 1. + 3.0 * C.xxx;
+
+// Permutations
+  i = mod(i, 289.0 ); 
+  vec4 p = permute( permute( permute( 
+             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+           + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+
+// Gradients
+// ( N*N points uniformly over a square, mapped onto an octahedron.)
+  float n_ = 1.0/7.0; // N=7
+  vec3  ns = n_ * D.wyz - D.xzx;
+
+  vec4 j = p - 49.0 * floor(p * ns.z *ns.z);  //  mod(p,N*N)
+
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
+
+  vec4 x = x_ *ns.x + ns.yyyy;
+  vec4 y = y_ *ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+
+  vec4 b0 = vec4( x.xy, y.xy );
+  vec4 b1 = vec4( x.zw, y.zw );
+
+  vec4 s0 = floor(b0)*2.0 + 1.0;
+  vec4 s1 = floor(b1)*2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+
+  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+
+  vec3 p0 = vec3(a0.xy,h.x);
+  vec3 p1 = vec3(a0.zw,h.y);
+  vec3 p2 = vec3(a1.xy,h.z);
+  vec3 p3 = vec3(a1.zw,h.w);
+
+//Normalise gradients
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+  p0 *= norm.x;
+  p1 *= norm.y;
+  p2 *= norm.z;
+  p3 *= norm.w;
+
+// Mix final noise value
+  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+  m = m * m;
+  return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), 
+                                dot(p2,x2), dot(p3,x3) ) );
+}
+vec2 rand_circular(vec3 pos,float v,float radius)
+{
+    float n1=snoise(pos.xyz*vec3(v,1,0)+vec3(0,0,time_input*0.5))*0.5+0.5;
+    float n2=snoise(pos.xyz*vec3(1,v,0)+vec3(0.123,2.512,9.239)+vec3(0,0,time_input*0.333))*0.5+0.5;
+
+    n1*=M_PI*2;
+    n2=sqrt(n2);
+    return vec2(cos(n1),sin(n1))*n2*radius;
+}
+float angle_diff(float a,float b)
+{
+    float d=a-b;
+    return mod((a+M_PI/2),M_PI*2)-M_PI/2;
+}
 void main()
 {
-    gl_Position.xyz = vec3(position.xy,0);
+    float d=angle_diff(position.z,position.w)/M_PI;
+    d=clamp(1-d,0,1);
+
+    vec2 pd=rand_circular(position.xyz,norm_wave,0.05*d);
+    gl_Position.xyz = vec3(position.xy+pd,0);
     gl_Position.w = 1.0;
     //pos=position;
     //vec3 co=palette(particle_color.b,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
     //vec3 co=palette(particle_color.b,vec3(0.971519,0.273919,0.310136),vec3(0.90608,0.488869,0.144119),vec3(5,10,2),vec3(1,1.8,1.28571)); //violet and blue
     //vec3 co=palette(position.z,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
-    vec3 co=xyz_from_normed_waves(clamp(position.z,0,1))*D65_blackbody(position.z,6503.5);
-    //vec3 co;
+    vec3 co=vec3(0);
+    float v=norm_wave;
+    /*
+    for(int i=0;i<100;i++)
+    {
+        float v=float(i)/100.0;
+    */
+        //float n=(snoise(position.xyz*vec3(0,0,0)+particle_color.xyz*vec3(v,v,1))+1)*0.5;
+        //float n=(snoise(position.xyz*vec3(0,0,v))+1)*0.5;
+        //n*=position.z;
+        //float v=clamp(position.z,0,1);
+        float n=1;
+        co+=xyz_from_normed_waves(v)*D65_blackbody(v,6503.5)*n;//*mix(n,1,0);
+    //}
     /*if(position.z>0.6666)
         co=vec3(0,0,1);
     else if(position.z>0.3333)
@@ -888,10 +1076,10 @@ function reset_agent_data()
     local chance_move=0.8
     local chance_no_move=0.5
     for i=0,agent_count-1 do
-        --local z=math.random()
-        local z=rand_gaussian(0.1,0.5)
-        if z>1 then z=1 end
-        if z<0 then z=0 end
+        local z=math.random()
+        --local z=rand_gaussian(0.1,0.5)
+        --if z>1 then z=1 end
+        --if z<0 then z=0 end
 
         if math.random()> chance_move then
             -- [[
@@ -994,6 +1182,7 @@ function agent_tick(  )
     vector_buffer:get():use(1)
     agent_shader:set_i("tex_angles",1)
     agent_shader:set("speed",(1/map_w)*.1)
+    agent_shader:set("time_input",global_time)
     agent_shader:raster_discard(true)
     agent_shader:draw_points(0,agent_count,4,1)
     agent_shader:raster_discard(false)
@@ -1011,7 +1200,11 @@ function agent_draw(  )
     if not trails_buffer:get():render_to(vector_layer.w,vector_layer.h) then
         error("failed to set framebuffer up")
     end
-    agent_draw_shader:draw_points(0,agent_count,4)
+    for i=0,1,0.01 do
+        agent_draw_shader:set("norm_wave",i)
+        agent_draw_shader:set("time_input",global_time)
+        agent_draw_shader:draw_points(0,agent_count,4)
+    end
     agent_draw_shader:blend_default()
     __render_to_window()
     __unbind_buffer()
@@ -1130,7 +1323,7 @@ function update()
         end
         --]==]
         local function put_pixel( cx,cy,x,y,a,s1,s2 )
-            speed_layer:set(cx+x,cy+y,{s1,s2,0.05,0})
+            speed_layer:set(cx+x,cy+y,{s1,s2,(s1+s2)*0.5,0})
             --vector_layer:set(cx+x,cy+y,{math.cos(a*4)*math.pi,math.sin(a*4)*math.pi,0,0})
             vector_layer:set(cx+x,cy+y,{a,0,math.cos(a*4)*math.pi,0})
         end
