@@ -22,7 +22,7 @@ local size=STATE.size
 
 is_remade=false
 
-local agent_count=1000
+local agent_count=10000
 
 function update_buffers()
     if vector_layer==nil or vector_layer.w~=map_w or vector_layer.h~=map_h then
@@ -146,11 +146,11 @@ vec3 tonemap(vec3 light,float cur_exp)
     float lum_white =white_point*white_point;// pow(10,white_point);
     //lum_white*=lum_white;
     float Y=light.y;
-
+    float www=exp(cur_exp);
 #if SHOW_PALETTE
-    Y=Y*exp(cur_exp)/(9.6);
+    Y=Y*www/(9.6);
 #else
-    Y=Y*exp(cur_exp)/(avg_lum);
+    Y=Y*www/(avg_lum);
 #endif
     //Y=Y*exp(cur_exp);
     //Y=(Y-min_max.x)/(min_max.y-min_max.x);
@@ -172,8 +172,8 @@ vec3 tonemap(vec3 light,float cur_exp)
 
     //light=clamp(light,0,2);
     //float mm=max(light.x,max(light.y,light.z));
-    //vec3 ret=xyz2rgb((light)*100);
-    //float s=smoothstep(0,1,length(light));
+    vec3 ret=xyz2rgb((light)*100);
+    float s=smoothstep(0,1,length(light));
     //float s=smoothstep(0,1,dot(light,light));
     //float s=smoothstep(0,1,max(light.x,max(light.y,light.z)));//length(light));
     //float s=smoothstep(0.8,1.2,max(light.x,max(light.y,light.z))-1);//length(light));
@@ -183,8 +183,11 @@ vec3 tonemap(vec3 light,float cur_exp)
     if(ret.y>1)ret.y=1;
     if(ret.z>1)ret.z=1;
     //*/
-   // return mix(ret,vec3(1),pow(s,8));
-    return xyz2rgb(light*100);
+    return mix(ret,vec3(1),pow(s,3));
+    //light=pow(light,vec3(cur_exp));
+
+    //ret=pow(ret,vec3(cur_exp));
+    //return ret;
 }
 
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
@@ -279,6 +282,7 @@ vec4 calc_particle_image(vec2 pos)
 #else
     //noop
 #endif
+
 #if 1
     col.xyz=log(col.xyz+vec3(1));
     col.xyz-=log(mmin+vec3(1));
@@ -684,9 +688,13 @@ void main(){
     vec4 org=q_from_euler(rotation.xyz);
     vec3 speed_out;
     float time=time_input;
+#if 0
     speed_out.x=snoise(vec3(normed+vec2(0.124,2.33),time*speeds.x+0.157));
     speed_out.y=snoise(vec3(normed+vec2(4.05,4.783),time*speeds.y-0.7777));
     speed_out.z=snoise(vec3(normed+vec2(11.28,7.11),time*speeds.z+1.579));
+#else
+    speed_out=speeds.xyz;
+#endif
     org=qmul(org,q_from_euler(speed_out*0.05*dt));
     vec4 avg=quat_avg_at_pos(normed);
     vec4 cnt=q_slerp(org,avg,0.5);
@@ -823,9 +831,10 @@ void main()
 #else
     delta=vec2(cos(angle.x),sin(angle.x));
 #endif
-
-    float pout=(atan(delta.y,delta.x)/M_PI+1)/2;
-    //float pout=position.z;
+    if(length(delta)<0.001 || length(delta)>100)
+        delta=vec2(cos(noise),sin(noise));
+    //float pout=(atan(delta.y,delta.x)/M_PI+1)/2;
+    float pout=position.z;
     delta*=speed;
     vec2 p=position.xy+delta;
     if(p.x<-1)
@@ -849,6 +858,7 @@ layout(location = 0) in vec4 position;
 layout(location = 1) in vec4 particle_color;
 uniform float norm_wave;
 uniform float time_input;
+uniform float seed;
 #define M_PI   3.14159265358979323846264338327950288
 //out vec3 pos;
 out vec4 col;
@@ -1009,10 +1019,13 @@ float angle_diff(float a,float b)
 }
 void main()
 {
-    float d=angle_diff(position.z,position.w)/M_PI;
-    d=clamp(1-d,0,1);
+    //float d=cos(angle_diff(position.z,position.w))*0.5+0.5;
+    //float d=position.z;//snoise(vec3(position.z*8,0,0))+1;
+    float d=sin(position.z*2*M_PI)*0.5+0.5;//snoise(vec3(position.z*8,0,0))+1;
+    d=clamp(d,0,1);
 
-    vec2 pd=rand_circular(position.xyz,norm_wave,0.05*d);
+    //vec2 pd=rand_circular(position.xyz,norm_wave,0.05*d);
+    vec2 pd=vec2(cos(seed*M_PI*2),sin(seed*M_PI*2))*d*(1-norm_wave)*0.05;
     gl_Position.xyz = vec3(position.xy+pd,0);
     gl_Position.w = 1.0;
     //pos=position;
@@ -1073,13 +1086,12 @@ function reset_agent_data()
     b:use()
     b:read(agent_state.d,agent_count*4*4)
     --]=]
-    local chance_move=0.8
-    local chance_no_move=0.5
+    local chance_move=0.7
+    local chance_no_move=0
     for i=0,agent_count-1 do
         local z=math.random()
         --local z=rand_gaussian(0.1,0.5)
-        --if z>1 then z=1 end
-        --if z<0 then z=0 end
+        
 
         if math.random()> chance_move then
             -- [[
@@ -1099,15 +1111,18 @@ function reset_agent_data()
 
             local v=agent_state:get(i,0)
             local x,y
+
             if math.random()>chance_no_move then
 
                 local r=math.sqrt(math.random())*max_r
                 local a=math.random()*math.pi*2
                 x=v.r+math.cos(a)*r
                 y=v.g+math.sin(a)*r
+                z=v.b+(math.random()-0.5)*max_r*0.01
             else
                 x=v.r
                 y=v.g
+                z=v.b
             end
             --]]
             --local x,y=rand_gaussian(0.5)
@@ -1115,6 +1130,8 @@ function reset_agent_data()
             if y>1 then y=y-2 end
             if x<-1 then x=x+2 end
             if y<-1 then y=y+2 end
+            if z>1 then z=0 end
+            if z<0 then z=1 end
             agent_state:set(i,0,{x,y,z,0})
         end
     end
@@ -1202,6 +1219,7 @@ function agent_draw(  )
     end
     for i=0,1,0.01 do
         agent_draw_shader:set("norm_wave",i)
+        agent_draw_shader:set("seed",math.random())
         agent_draw_shader:set("time_input",global_time)
         agent_draw_shader:draw_points(0,agent_count,4)
     end
@@ -1323,9 +1341,9 @@ function update()
         end
         --]==]
         local function put_pixel( cx,cy,x,y,a,s1,s2 )
-            speed_layer:set(cx+x,cy+y,{s1,s2,(s1+s2)*0.5,0})
+            speed_layer:set(cx+x,cy+y,{s1,s2,(s1*s1+s2)*0.5,0})
             --vector_layer:set(cx+x,cy+y,{math.cos(a*4)*math.pi,math.sin(a*4)*math.pi,0,0})
-            vector_layer:set(cx+x,cy+y,{a,0,math.cos(a*4)*math.pi,0})
+            vector_layer:set(cx+x,cy+y,{a,-a,math.cos(a*16)*math.pi,0})
         end
         local r=math.floor(cx*0.95)
         -- [=[
@@ -1366,7 +1384,7 @@ function update()
             put_pixel(cx,math.floor(cy*(1+dist)),x,y,a,s,s2)
         end
         --]=]
-        -- [[
+        --[[
         r=math.floor(cx*0.6)
         for i=-5,5 do
             local nr=r+i
