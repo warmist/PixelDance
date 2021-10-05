@@ -120,8 +120,8 @@ config=make_config({
     {"ag_sensor_distance",5.1840000152588,type="float",min=0.1,max=10},
     --{"ag_sensor_size",1,type="int",min=1,max=3},
     {"ag_sensor_angle",1.3159999847412,type="float",min=0,max=math.pi/2},
-    {"ag_turn_angle",0.25,type="float",min=-math.pi/2,max=math.pi/2},
-    {"ag_turn_avoid",-0.60900002717972,type="float",min=-math.pi/2,max=math.pi/2},
+    {"ag_turn_angle",0.25,type="float",min=-1,max=1},
+    {"ag_turn_avoid",-0.60900002717972,type="float",min=-1,max=1},
     {"ag_step_size",6.7600002288818,type="float",min=0.01,max=10},
     {"ag_trail_amount",0.5,type="float",min=0,max=0.5},
     {"trail_size",1,type="int",min=1,max=5},
@@ -735,8 +735,8 @@ void main(){
 	float step_size=ag_step_size;
 	float sensor_distance=ag_sensor_distance;
 	float sensor_angle=ag_sensor_angle;
-	float turn_size=ag_turn_angle;
-	float turn_size_neg=ag_turn_around;
+	float turn_size=ag_turn_angle*sensor_angle;
+	float turn_size_neg=ag_turn_avoid*sensor_angle;
 	float turn_around=ag_turn_around;
     float clumpiness=ag_clumpiness;
 
@@ -748,7 +748,7 @@ void main(){
 	float tex_sample=sample_back(normed_state);//cubicPulse(0.6,0.3,abs(normed_p.x));//;
 
 	float pl=length(normed_p);
-    sensor_distance*=clamp(0.2,1,(pl/2));
+    //sensor_distance*=clamp(0.2,1,(pl/2));
 	//sensor_distance*=(1-tex_sample)*0.9+0.1;
 	//sensor_distance*=normed_state.x;
 
@@ -759,7 +759,8 @@ void main(){
 	//turn_around-=cubicPulse(0.6,0.3,abs(normed_p.x));
 	//turn_around*=tex_sample*0.3+0.7;
     //turn_around*=normed_state.x;
-    clumpiness*=abs(normed_p.x*10)+0.3;
+    //clumpiness*=abs(normed_p.x*10)+0.3;
+    clumpiness*=clamp(1-pl*pl,0.3,10);
 	//clamp(turn_around,0.2,5);
 	//figure out new heading
 	//sensor_angle*=(1-tex_sample)*.9+.1;
@@ -812,9 +813,12 @@ void main(){
 
 	}
 	//step_size/=clamp(rgt/lft,0.5,2);
+	if(fow<=turn_around*2)
+	{
+		step_size*=1-clamp(fow/clumpiness,0.0,1-0.01);
+	}
 
-
-	///* turn head to center somewhat (really stupid way of doing it...)
+	/* turn head to center somewhat (really stupid way of doing it...)
 	vec2 c=rez/2;
 	vec2 d_c=(c-state.xy);
 	d_c*=1/sqrt(dot(d_c,d_c));
@@ -825,7 +829,7 @@ void main(){
 	head=atan(new_h.y,new_h.x);
 	//*/
 	//step_size*=1-clamp(cubicPulse(0,0.1,fow),0,1);
-    //step_size*=1-clamp(fow/clumpiness,0.0,1);
+    
     //float diff=abs(fow-lft)+abs(fow-rgt)+abs(rgt-lft);
     //float diff=fow/turn_around;
     //float diff=abs(rgt-lft)/fow;
@@ -834,7 +838,7 @@ void main(){
     float diff=abs(center-fow)/fow;
     //diff*=0.333333333333;
     //if(fow<turn_around*1.2)
-        step_size*=1-clamp(diff/clumpiness,0.0,1);
+        //step_size*=1-clamp(diff/clumpiness,0.0,1);
 	//step_size*=1-cubicPulse(0,0.4,abs(pl))*0.5;
 	//step_size*=(clamp(fow/turn_around,0,1))*0.95+0.05;
 	//step_size*=noise(state.xy/100);
@@ -987,12 +991,12 @@ function update()
     		-- [[
     		agent_data:set(i,0,
     			{math.random(0,map_w-1),
-    			 math.random(0,map_h-1),
+    			 math.random(0,math.floor((map_h-1)/2)),
     			 math.random()*math.pi*2,
     			 0})
     		--]]
     		--[[
-    		local r=map_w/6+math.sqrt(math.random())*map_w/8
+    		local r=math.sqrt(math.random())*map_w/8
     		local phi=math.random()*math.pi*2
     		agent_data:set(i,0,
     			{math.cos(phi)*r+map_w/2,
