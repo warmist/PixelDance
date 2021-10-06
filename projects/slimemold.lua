@@ -16,7 +16,7 @@ local win_w=1280
 local win_h=1280
 
 __set_window_size(win_w,win_h)
-local oversample=1
+local oversample=0.5
 local agent_count=3e6
 --[[ perf:
 	oversample 2 768x768
@@ -627,9 +627,12 @@ vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 }
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
+    float len=length(pos.xy);
     //normed=normed/zoom+translate;
     float turn_around_actual=turn_around;
     //turn_around_actual*=normed.x;
+    //turn_around_actual*=clamp(pow(normed.x,0.4),0.1,1);
+    //turn_around_actual*=1-clamp(pow(len,1.4),0.1,1);
     vec4 pixel=texture(tex_main,normed);
     //float v=log(pixel.x+1);
     float v=pow(abs(pixel.x)/turn_around_actual,1);
@@ -731,6 +734,34 @@ float random_normed(vec3 state)
 {
     return rand(state.xy*state.z*794347+state.xy*45721+vec2(7.5,2.813));
 }
+float sdBox( in vec2 p, in vec2 b )
+{
+    vec2 d = abs(p)-b;
+    return length(max(d,0.0)) + min(max(d.x,d.y),0.0);
+}
+float turn_mask(float left,float right,float fow,float thresh)
+{
+    float size=0.015f;
+    float v=sdBox(vec2(left,right),vec2(thresh));
+    return smoothstep(v-size,v+size,0.0f);
+}
+float turn_func(float left,float right,float fow,float rdir,
+	float turn_pos,float turn_neg,float turn_around_thresh)
+{
+#if 1
+	float rnd_dir=0;
+#else
+	float rnd_dir=rdir;
+#endif
+
+	float size=0.1;
+	float v=left-right;
+	float val=smoothstep(left-size,left+size,0)*smoothstep(right-size,right+size,0);
+	float turn_normal=val*rdir*turn_pos+
+	(1-val)*(smoothstep(v-size,v+size,0)-0.5)*(2)*turn_pos;
+	float t_around=turn_mask(left,right,fow,turn_around_thresh);
+	return mix(turn_neg,turn_normal,t_around);
+}
 void main(){
 	float step_size=ag_step_size;
 	float sensor_distance=ag_sensor_distance;
@@ -760,7 +791,11 @@ void main(){
 	//turn_around*=tex_sample*0.3+0.7;
     //turn_around*=normed_state.x;
     //clumpiness*=abs(normed_p.x*10)+0.3;
-    clumpiness*=clamp(1-pl*pl,0.3,10);
+    //clumpiness*=clamp(1-pl*pl,0.3,10);
+    clumpiness*=clamp(abs(normed_p.y),0.2,1);
+    //turn_around*=clamp(pow(normed_state.x,0.4),0.1,1);
+    //turn_around*=1-clamp(pow(pl,1.4),0.1,1);
+
 	//clamp(turn_around,0.2,5);
 	//figure out new heading
 	//sensor_angle*=(1-tex_sample)*.9+.1;
@@ -772,11 +807,10 @@ void main(){
 
 	float lft=abs(sample_heading(state.xy,head-sensor_angle,sensor_distance));
 	float rgt=abs(sample_heading(state.xy,head+sensor_angle,sensor_distance));
-
+#if 0
 	if(fow<lft && fow<rgt)
 	{
 		head+=(random_normed(state)-0.5)*2*turn_size;
-
 	}
 	else if(rgt>fow)
 	{
@@ -787,7 +821,7 @@ void main(){
 			head+=turn_size_neg;
 		else
 	#endif
-			head+=turn_size;
+			head+=turn_size;//*(rgt-fow)/rgt;
 	}
 	else if(lft>fow)
 	{
@@ -798,7 +832,7 @@ void main(){
 			head-=turn_size_neg;
 		else
 	#endif
-			head-=turn_size;
+			head-=turn_size;//*(lft-fow)/lft;
 	}
 	#ifdef TURNAROUND
 	else 
@@ -813,10 +847,16 @@ void main(){
 
 	}
 	//step_size/=clamp(rgt/lft,0.5,2);
-	if(fow<=turn_around*2)
+	/*
+	if(fow<=turn_around)
 	{
-		step_size*=1-clamp(fow/clumpiness,0.0,1-0.01);
+		step_size*=1-clamp(fow/clumpiness,0.01,1-0.01);
 	}
+	*/
+#else
+	head+=turn_func(lft-fow,rgt-fow,fow,(random_normed(state)-0.5)*2,
+		turn_size,turn_size_neg,turn_around);
+#endif
 
 	/* turn head to center somewhat (really stupid way of doing it...)
 	vec2 c=rez/2;
@@ -849,6 +889,7 @@ void main(){
 
 	//step in heading direction
 	state.xy+=vec2(cos(head)*step_size,sin(head)*step_size);
+	//state.z=atan(sin(head),cos(head));
 	state.z=head;
 	state.xy=mod(state.xy,rez);
 	state_out=vec4(state.xyz,type);
@@ -991,7 +1032,7 @@ function update()
     		-- [[
     		agent_data:set(i,0,
     			{math.random(0,map_w-1),
-    			 math.random(0,math.floor((map_h-1)/2)),
+    			 math.random(math.floor((map_h-1)*3/4),math.floor((map_h-1)/4)),
     			 math.random()*math.pi*2,
     			 0})
     		--]]
