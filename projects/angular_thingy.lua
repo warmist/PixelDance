@@ -462,6 +462,19 @@ vec4 avg_at_pos(vec2 pos)
     //return vec4(atan(sy,sx),asin(clamp(sz,-1,1)),0,0);
     return vec4(atan(sy,sx),atan(sqrt(sx*sx+sy*sy)/sz),0,0);
 }
+/*
+(https://math.stackexchange.com/questions/4230404/how-can-i-calculate-the-mean-position-on-the-circle-or-mean-direction)
+(https://www.youtube.com/watch?v=cYVmcaRAbJg)
+Intrinsic circular mean of 8 points around a point:
+    argmin (k=0,1,N-1) sum(arg (e^{i(f_j-f_0)})^2p_j)
+
+    ONE OF:
+        f_k=f_0+k*(2*pi/N)=f_0+k*(2*pi/8)
+        f_0 = 1/8 sum(samples)
+
+    Question:
+        how to add weights?
+*/
 vec4 laplace_at_pos(vec2 pos)
 {
     float sx=0;
