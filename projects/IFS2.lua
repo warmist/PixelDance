@@ -1576,7 +1576,9 @@ function get_forced_insert_complex(  )
 	--local tbl_insert_cmplx={"mix(s,s/length(s),1-global_seed)","mix(p,p/length(p),global_seed)","params.xy","params.zw"}--"mix(p,p/length(p),global_seed)"
 
 	--local tbl_insert={"s","c_mul(p,vec2(-1,1+(global_seed-0.5)*move_dist))","params.xy","params.zw"} --"(p*(global_seed+0.5))/length(p)"
-	local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seed-0.5)*M_PI*2*move_dist),sin((global_seed-0.5)*M_PI*2*move_dist))"} --"(p*(global_seed+0.5))/length(p)"
+	--local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seed-0.5)*M_PI*2*move_dist),sin((global_seed-0.5)*M_PI*2*move_dist))"} --"(p*(global_seed+0.5))/length(p)"
+	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seed*global_seed*3))"} --"(p*(global_seed+0.5))/length(p)"
+	local tbl_insert={"s","p","params.xy","params.zw"}
 	--[[
 	table.insert(tbl_insert,"vec2(global_seed,0)")
 	table.insert(tbl_insert,"vec2(0,1-global_seed)")
@@ -1585,7 +1587,7 @@ function get_forced_insert_complex(  )
 	--[[
 	table.insert(tbl_insert,"vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))")
 	--]]
-	-- [==[
+	--[==[
 	local tex_variants={
 		-- [[
 		"tex_p.xy","tex_p.yz","tex_p.zx",
@@ -1608,6 +1610,13 @@ function get_forced_insert_complex(  )
 		table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
 		--table.insert(tbl_insert_x,tex_variants[math.random(1,#tex_variants)])
 		--table.insert(tbl_insert_y,tex_variants[math.random(1,#tex_variants)])
+	end
+	--]==]
+	--[==[
+
+	local num_parts=10
+	for i=1,num_parts do
+		table.insert(tbl_insert,string.format("(vec2(global_seed,global_seed)*value_inside(global_seed,%g,%g))",(i-1)/num_parts,i/num_parts))
 	end
 	--]==]
 	return tbl_insert
