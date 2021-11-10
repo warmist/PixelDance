@@ -118,7 +118,8 @@ end
 
 tick=tick or 0
 config=make_config({
-	{"draw",true,type="boolean"},
+	{"normalize",true,type="boolean"},
+	{"auto_normalize",true,type="boolean"},
 	{"point_size",0,type="int",min=0,max=10},
 	{"size_mult",false,type="boolean"},
 
@@ -503,15 +504,18 @@ function find_min_max( tex,buf )
 	--]]
 	return lmin,lmax,avg_lum
 end
+count_visits=0
 function draw_visits(  )
 
 	make_visits_texture()
 	local lmin,lmax,lavg=unpack(visits_minmax)
-	if config.draw or need_buffer_save or lmin==nil then
+	if config.normalize or need_buffer_save or lmin==nil or 
+		(count_visits>1000 and config.auto_normalize) then
 		lmin,lmax,lavg=find_min_max(visit_tex.t,visit_buf)
 		visits_minmax={lmin,lmax,lavg}
+		count_visits=0
 	end
-
+	count_visits=count_visits+1
 	if need_buffer_save then
 		buffer_save(need_buffer_save,visits_minmax[1],visits_minmax[2],lavg)
 		need_buffer_save=nil
@@ -3233,7 +3237,7 @@ function generate_shuffling( num_steps )
 	local spread=0.00005
 	local num_spread=10
 	local id=1
-	for i=1,num_steps do
+	for i=1,math.floor(num_steps/num_spread) do
 		local c=math.random()
 		for i=1,num_spread do
 			global_seed_shuffling[id]=c+(math.random()*spread-0.5*spread)
@@ -3289,7 +3293,7 @@ function visit_iter()
 	local gen_radius=config.gen_radius or 2
 
 	local draw_sample_count=sample_count
-	if config.draw and not shader_randomize then
+	if config.normalize and not shader_randomize then
 		draw_sample_count=math.min(1e5,sample_count)
 	end
 
@@ -3348,7 +3352,8 @@ function visit_iter()
 		global_seed_id=global_seed_id+1
 		if global_seed_id>#global_seed_shuffling then
 			if config.reshuffle then
-				shuffle(global_seed_shuffling)
+				--shuffle(global_seed_shuffling)
+				generate_shuffling(config.shuffle_size)
 			end
 			global_seed_id=1
 		end
