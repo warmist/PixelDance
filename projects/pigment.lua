@@ -874,12 +874,12 @@ void main(){
 
 	//nv.xyz=vec3(pos.xy+1,0)/2;
 	float sw=0.005;
-	/*
+	///*
 	float back_v=1-smoothstep(sw,-sw,
 		//sminCubic(sdSphere(pos.xy,0.12),1-sdSphere(pos.xy,1),0.05)
 		abs(sdSphere(pos.xy,0.6))-0.3
 		);//smoothstep(-sw,sw,0.5-abs(pos.x))*smoothstep(-sw,sw,0.5-abs(pos.y));
-	*/
+	//*/
 	//if(pos.x>0)
 	//	back_v=1-back_v;
 	/*float angle=atan(pos.y,pos.x)+M_PI;
@@ -888,7 +888,7 @@ void main(){
 	back_v=back_v*0.6+0.4;*/
 	//back_v*=clamp(length(pos.xy),0,0.4)*2.5;
 	///*
-	float back_v=0.8;
+	//float back_v=0.8;
 	float back=kubelka_munk(pigment[0])*back_v+
 			   kubelka_munk(pigment[5])*(1-back_v);
 	//*/
@@ -916,13 +916,13 @@ void main(){
 
 	///*
 	float mix_v=clamp(c,0,1);
-	float w_mix=0.05;
+	float w_mix=0.5;
 	vec2 p1=mix(pigment[1],pigment[3],smoothstep(-w_mix,w_mix,pos.x));
 	vec2 p2=mix(pigment[2],pigment[4],smoothstep(-w_mix,w_mix,pos.y));
 
 	vec2 mix_ks=mix(p1,p2,mix_v);
 	
-	float r=reflectivity_KS(pigment[2],h.x,back);
+	float r=reflectivity_KS(p1,h.x,back);
 	//float mask=(1-smoothstep(-sw,sw,length(pos.xy)-0.8));
 	//float r=kubelka_munk(mix_k,mix_s)*mask+back*(1-mask);
 	//*/
@@ -1007,7 +1007,7 @@ vec3 eye_adapt_and_stuff(vec3 light)
 	//Y=(llog(Y)-llog(min_v.y))/(llog(max_v.y)-llog(min_v.y));
 	//Y=exp(Y);
 	Y = (Y* exposure )/avg_lum;
-#if 0
+#if 1
 	if(whitepoint<0)
     	Y = Y / (1 + Y); //simple compression
 	else
@@ -1045,10 +1045,13 @@ void main()
 	//color.xyz*=exposure/(max(color.x,max(color.y,color.z)));
 	color.xyz=eye_adapt_and_stuff(color.xyz);
 	//color.xyz=xyz2rgb(color.xyz*exposure);
+	color.xyz=pow(color.xyz,vec3(v_gamma));
 	color.xyz=xyz2rgb(color.xyz);
+	float s=smoothstep(1,8,dot(color.xyz,color.xyz));
+
+    color.xyz=mix(color.xyz,vec3(1),s);
 	//color.xyz=tonemapFilmic(color.xyz);
 
-	color.xyz=pow(color.xyz,vec3(v_gamma));
 	//color.xyz=vec3(gain(color.x,v_gain),gain(color.y,v_gain),gain(color.z,v_gain));
 }
 ]]
