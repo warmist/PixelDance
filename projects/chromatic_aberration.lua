@@ -37,16 +37,74 @@ function load_water(  )
 	f:close()
 	return ret
 end
-water_absorbtion_data=load_water()
-function lerp_water( iter )
+function load_obsidian(  )
+	local path="../assets/obsidian.txt"
+
+	local f=io.open(path,'r')
+	local line=f:read("l")
+	local skip_lines=1
+	local ret={}
+	for i=1,skip_lines do
+		line=f:read("l")
+	end
+	local margin=10
+	while true do
+		local wn=f:read("n")
+		if wn==nil then break end
+		local wl=10000000/wn--math.floor(10000000/wn)
+		local value=f:read("n")
+		if wl>=380-margin and wl<=740+margin then
+			ret[wl]=value
+		end
+	end
+	line=f:read("l")
+	f:close()
+	return ret
+end
+function resample( tbl )
+	local ret={}
+	local keys={}
+	for k,v in pairs(tbl) do
+		table.insert(keys,k)
+	end
+	table.sort(keys)
+	local idx_key_before=0
+	for i=1,#keys do
+		if keys[i]>380 then
+			idx_key_before=i-1
+			break
+		end
+	end
+	--print(idx_key_before)
+	local value_before=keys[idx_key_before]
+	local value_next=keys[idx_key_before+1]
+	--print(value_before,value_next)
+	for i=380,738 do
+		if i>value_next then
+			idx_key_before=idx_key_before+1
+			value_before=value_next
+			value_next=keys[idx_key_before+1]
+		end
+		local key_lerped=((i-value_before)/(value_next-value_before))
+		local value_range=(tbl[value_next]-tbl[value_before])
+		local value_lerped=key_lerped*value_range+tbl[value_before]
+		--print(i,key_lerped,value_range,value_lerped)
+		ret[i]=value_lerped
+	end
+	return ret
+end
+sample_material_data=load_obsidian()
+sample_material_data=resample(sample_material_data)
+function lerp_sample( iter )
+	local step=1
 	local min=380
 	local max=738
 	local cur=(max-min)*iter+min
-	local cur_f=math.floor(cur/2)*2
-	local next_f=cur_f+2
-	local w=(cur-cur_f)/2
+	local cur_f=math.floor(cur/step)*step
+	local next_f=cur_f+step
+	local w=(cur-cur_f)/step
 	--print(cur_f,next_f,cur,w)
-	return water_absorbtion_data[cur_f]*(1-w)+water_absorbtion_data[next_f]*w
+	return sample_material_data[cur_f]*(1-w)+sample_material_data[next_f]*w
 end
 
 local bwrite = require "blobwriter"
@@ -376,7 +434,7 @@ uniform float barrel_power;
 uniform float barrel_offset;
 uniform float v_gain;
 uniform float v_gamma;
-uniform float water_ab;
+uniform float sample_ab;
 float gain(float x, float k)
 {
     float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
@@ -711,15 +769,18 @@ void main(){
 	//float T=4500;
 	//float T=8000;
 	//float T=6503.6; //D65 illiuminant
-	float water_depth=pow(nv.x,3)*8000+500;
+	//float sample_depth=pow(nv.x,3)*8000+500; //for water
+	float sample_depth=-pow(nv.x,2)*1.5+1.8; //obsidian
 	//water_depth*=water_depth;
-	float water_transmitance=exp(-water_ab*water_depth); //units are "1/cm" so 100=>1m
+	float sample_transmitance=exp(-sample_ab*sample_depth*1.1); //units are "1/cm" so 100=>1m
+
 	#if 1
 	if(do_intensity==1)
 	{
 		float light_source=D65_blackbody(iteration,T);
 		//float light_source=black_body(iteration,T);
-		color.xyz=xyz_from_normed_waves(iteration)*light_source*iteration_step*water_transmitance;//*nv
+		//color.xyz=xyz_from_normed_waves(iteration)*light_source*iteration_step*nv;
+		color.xyz=xyz_from_normed_waves(iteration)*light_source*iteration_step*sample_transmitance;
 	}
 	else
 		//color.xyz=xyz_from_normed_waves(iteration)*black_body(iteration,mix(2000,T,c))*iteration_step;
@@ -842,12 +903,14 @@ void main()
 	//color.xyz=pow(color.xyz,vec3(1/2.2));
 	//color.xyz*=exposure/(max(color.x,max(color.y,color.z)));
 	color.xyz=eye_adapt_and_stuff(color.xyz);
+	color.xyz=pow(color.xyz,vec3(v_gamma));
 	//color.xyz=xyz2rgb(color.xyz*exposure);
 	color.xyz=xyz2rgb(color.xyz);
 	//color.xyz=tonemapFilmic(color.xyz);
 
-	color.xyz=pow(color.xyz,vec3(v_gamma));
 	//color.xyz=vec3(gain(color.x,v_gain),gain(color.y,v_gain),gain(color.z,v_gain));
+	float s=smoothstep(1,8,length(color.xyz));
+    color.xyz=mix(color.xyz,vec3(1),s);
 }
 ]]
 local con_tex=textures.Make()
@@ -878,12 +941,13 @@ function find_min_max(  )
 		if v.g>lmax[2] then lmax[2]=v.g end
 		if v.b>lmax[3] then lmax[3]=v.b end
 		local lum=math.abs(v.g)
-		if lum<math.huge and lum>1 then
+		if lum<math.huge  then
 			avg_lum=avg_lum+math.log(2.8+lum)
 			count=count+1
 		end
 	end
 	end
+
 	avg_lum = math.exp(avg_lum / count);
 	print(avg_lum)
 	for i,v in ipairs(lmax) do
@@ -917,14 +981,14 @@ function update(  )
 		main_shader:set("whitepoint",config.whitepoint)
 		main_shader:set("iteration",iteration)
 		main_shader:set("iteration_step",config.iteration_step)
-		main_shader:set("water_ab",lerp_water(iteration))
+		main_shader:set("sample_ab",lerp_sample(iteration))
 		if config.image_is_intensity then
 			main_shader:set("do_intensity",1)
 		else
 			main_shader:set("do_intensity",0)
 		end
 		main_shader:set("input_temp",config.temperature)
-		compute_tex.t:use(1)
+		compute_tex.t:use(1,1)
 		--main_shader:set("barrel_noise",config.bulge_noise)
 		if not compute_tex.t:render_to(compute_tex.w,compute_tex.h) then
 			error("failed to set framebuffer up")
@@ -946,7 +1010,7 @@ function update(  )
 	imgui.SameLine()
 	imgui.Text(string.format("Done:%g",iteration))
 	draw_shader:use()
-	compute_tex.t:use(0)
+	compute_tex.t:use(0,1)
 	draw_shader:set_i("tex_main",0)
 	draw_shader:set("iteration_step",config.iteration_step)
 	draw_shader:set("min_v",lmin[1],lmin[2],lmin[3])
