@@ -750,7 +750,7 @@ float reflectivity_KS(vec2 v1,float height,float Rg)
 	float k=v1.x;
 	float s=v1.y;
 	float R_inf=kubelka_munk(v1);
-	if(height<0.02)
+	if(height<0.005)
 		return Rg;
 #if 0
 	float eterm=exp(s*height*(1/R_inf-R_inf));
@@ -873,7 +873,7 @@ void main(){
 	//float T=6503.6; //D65 illiuminant
 
 	//nv.xyz=vec3(pos.xy+1,0)/2;
-	float sw=0.005;
+	float sw=0.05;
 	///*
 	float back_v=1-smoothstep(sw,-sw,
 		//sminCubic(sdSphere(pos.xy,0.12),1-sdSphere(pos.xy,1),0.05)
@@ -887,12 +887,13 @@ void main(){
 	back_v*=cos(length(pos.xy)*16)*0.5+0.5;
 	back_v=back_v*0.6+0.4;*/
 	//back_v*=clamp(length(pos.xy),0,0.4)*2.5;
-	///*
+	/*
 	//float back_v=0.8;
 	float back=kubelka_munk(pigment[0])*back_v+
 			   kubelka_munk(pigment[5])*(1-back_v);
-	//*/
+	*/
 	//vec2 back_ks=mix(pigment[0],pigment[1],back_v);
+	float back=reflectivity_KS(pigment[0],back_v*5,kubelka_munk(pigment[5]));
 	//float back=kubelka_munk(back_ks);
 	//float stripes=step(mod(normed.y+1/24.0,1/6.0),1/12.0)*0.4;
 	//float back=kubelka_munk(mix(pigment[0],pigment[5],stripes));
@@ -922,7 +923,8 @@ void main(){
 
 	vec2 mix_ks=mix(p1,p2,mix_v);
 	
-	float r=reflectivity_KS(p1,h.x,back);
+	float r0=reflectivity_KS(p1,h.x,back);
+	float r=reflectivity_KS(p2,h.y,r0);
 	//float mask=(1-smoothstep(-sw,sw,length(pos.xy)-0.8));
 	//float r=kubelka_munk(mix_k,mix_s)*mask+back*(1-mask);
 	//*/
