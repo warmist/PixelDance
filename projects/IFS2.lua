@@ -379,13 +379,15 @@ vec3 tonemap(vec3 light,float cur_exp)
     //float s=smoothstep(0,1,dot(light,light));
     //float s=smoothstep(0,1,max(light.x,max(light.y,light.z)));//length(light));
     //float s=smoothstep(0.8,1.2,max(light.x,max(light.y,light.z))-1);//length(light));
-    float s=0;
+    //float s=0;
+    //float s=smoothstep(1,8,dot(ret,ret));
+    float s=smoothstep(1,8,length(ret));
 	///*
     if(ret.x>1)ret.x=1;
     if(ret.y>1)ret.y=1;
     if(ret.z>1)ret.z=1;
 	//*/
-    return mix(ret,vec3(1),pow(s,7));
+    return mix(ret,vec3(1),s);
 }
 vec3 YxyToXyz(vec3 v)
 {
@@ -1580,16 +1582,31 @@ function get_forced_insert_complex(  )
 	--local tbl_insert_cmplx={"mix(s,s/length(s),1-global_seed)","mix(p,p/length(p),global_seed)","params.xy","params.zw"}--"mix(p,p/length(p),global_seed)"
 
 	--local tbl_insert={"s","c_mul(p,vec2(-1,1+(global_seed-0.5)*move_dist))","params.xy","params.zw"} --"(p*(global_seed+0.5))/length(p)"
-	--local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seed-0.5)*M_PI*2*move_dist),sin((global_seed-0.5)*M_PI*2*move_dist))"} --"(p*(global_seed+0.5))/length(p)"
-	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seed*global_seed*3))"} --"(p*(global_seed+0.5))/length(p)"
-	local tbl_insert={"s","p","params.xy","params.zw"}
+	local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seed-0.5)*M_PI*2*move_dist),sin((global_seed-0.5)*M_PI*2*move_dist))"} --"(p*(global_seed+0.5))/length(p)"
+	--local tbl_insert={"mix(c_mul(s,s),c_mul(p,p),global_seed)","c_mul(s,p)","params.xy","params.zw"}
+	--local tbl_insert={"mix(c_mul(c_mul(s,s),s),c_mul(c_mul(p,p),p),global_seed)","c_mul(s,p)","params.xy","params.zw"}
+	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seed*global_seed*8))"} --"(p*(global_seed+0.5))/length(p)"
+
+	--local tbl_insert={"s","p","params.xy","params.zw"}
+	--local tbl_insert={"s*(length(s-p)*global_seed)","p","params.xy","params.zw"}
+	--local tbl_insert={"params.xy+s*params.z+p*params.w+c_mul(s,p)*global_seed"}
 	--[[
 	table.insert(tbl_insert,"vec2(global_seed,0)")
 	table.insert(tbl_insert,"vec2(0,1-global_seed)")
 	--]]
+	--table.insert(tbl_insert,"vec2(length(p),length(s))")
 	--table.insert(tbl_insert,"mix(params.xy,params.zw,global_seed)")
 	--[[
 	table.insert(tbl_insert,"vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))")
+	--]]
+	--[[
+	local num_roots=5
+	local dist=1
+	for i=1,num_roots do
+		local v=((i-1)/num_roots)*math.pi*2
+		--table.insert(tbl_insert,string.format("vec2(%g,%g)",math.cos(v)*dist,math.sin(v)*dist))
+		table.insert(tbl_insert,string.format("vec2(%g,%g)*global_seed",math.cos(v)*dist,math.sin(v)*dist))
+	end
 	--]]
 	--[==[
 	local tex_variants={
@@ -1680,6 +1697,19 @@ function ast_terminate( reterm )
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
 	str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seed*move_dist+1)/move_dist);"
 	--]]
+	-- [[ ORBIFY!
+	--Idea: project to circle inside with sigmoid like func
+	local circle_radius=1
+	str_postamble=str_postamble..string.format("float DC=length(s)-%g;",circle_radius)
+	str_postamble=str_postamble.."vec2 VC=-normalize(s);"
+	str_postamble=str_postamble..string.format("s+=step(0,DC)*VC*(DC+%g*2*(sigmoid(DC*move_dist)));",circle_radius)
+	--]]
+	print("==============")
+	print(other_code)
+	print(str_preamble)
+	print(str_cmplx)
+	print(str_postamble)
+
 	make_visit_shader(true)
 	need_clear=true
 end
@@ -1776,7 +1806,45 @@ function rand_function(  )
 	str_cmplx=random_math_complex(rand_complexity,"c_div(c_mul(R,s)+R,c_mul(R,s)+R)")
 	--]=]
 	--mandelbrot?
-	--[=[
+	--str_cmplx="c_mul(s,s)+p"
+	--str_cmplx="c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),c_mul(s,s))+p"
+	--str_cmplx="vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))*move_dist+c_mul(s,s)+p"
+	--str_cmplx="c_mul(s,s)+c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),params.xy)"
+	--str_cmplx="c_mul(c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),s),s)+p"
+
+	--str_cmplx="vec2(0)"
+	--[==[
+	str_cmplx="c_mul(s,s)"
+	local num_copies=10
+	for i=1,num_copies do
+		local v=((i-1)/num_copies)
+		local v2=((i)/num_copies)
+		local a=v*math.pi*2
+		local vv=-1
+		if i%2==0 then
+			vv=1
+		end
+		--str_cmplx=str_cmplx..string.format("+c_mul(vec2(%g,%g)*(1+global_seed),c_mul(s,s)+p)",math.cos(a),math.sin(a))
+		str_cmplx=str_cmplx..string.format("+value_inside(global_seed,%g,%g)*c_mul(vec2(cos(%g),sin(%g)),p)",v,v2,a,a)
+	end
+	--]==]
+	--[==[
+	str_cmplx="p"
+	local num_copies=10
+	for i=1,num_copies do
+		local v=((i-1)/num_copies)
+		local v2=((i)/num_copies)
+		local a=v*math.pi*2
+		local vv=-1
+		if i%2==0 then
+			vv=1
+		end
+		--str_cmplx=str_cmplx..string.format("+c_mul(vec2(%g,%g),c_mul(s,s))",math.cos(a),math.sin(a))
+		--str_cmplx=str_cmplx..string.format("+value_inside(global_seed,%g,%g)*c_mul(vec2(cos(%g),sin(%g)),c_mul(s,s))",v,v2,a,a)
+		str_cmplx=str_cmplx..string.format("+c_mul(vec2(cos(%g+global_seed*M_PI*2),sin(%g+global_seed*M_PI*2)),c_mul(s,s))",v,v2,a,a)
+	end
+	--]==]
+		--[=[
 	--str_cmplx="c_mul(s,s)*value_inside(global_seed,0,0.5)+c_mul(s,c_mul(s,s))*value_inside(global_seed,0.5,1)+p"
 	--str_cmplx="mix(c_mul(s,s)+p,c_mul(c_mul(s,s)+p,vec2(cos(2*M_PI*global_seed),sin(2*M_PI*global_seed))),tex_p.y)"
 	--str_cmplx="c_mul(s*(tex_p.y+0.5),s*(tex_s.y+0.5))+p*(global_seed+0.5)"
@@ -1926,6 +1994,13 @@ function rand_function(  )
 		--input_s=input_s..string.format("+%s*vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))",sub_s)
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
+	--]]
+	-- [[ ORBIFY!
+	--Idea: project to circle inside with sigmoid like func
+	local circle_radius=1
+	str_postamble=str_postamble..string.format("float DC=length(s)-%g;",circle_radius)
+	str_postamble=str_postamble.."vec2 VC=-normalize(s);"
+	str_postamble=str_postamble..string.format("s+=step(0,DC)*VC*(DC+%g*2*(sigmoid(DC*move_dist)));",circle_radius)
 	--]]
 	--[[ polar gravity
 	str_preamble=str_preamble.."vec2 np=s;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
@@ -2477,7 +2552,15 @@ vec2 from_polar(vec2 p)
 {
 	return vec2(cos(p.y)*p.x,sin(p.y)*p.x);
 }
-
+float sigmoid(float v)
+{
+#if 0
+	float vv=clamp(v,-10000,10000);
+	return vv/sqrt(1+vv*vv);
+#else
+	return atan(v*M_PI/2)*2/M_PI;
+#endif
+}
 //str_other_code
 %s
 
@@ -3245,12 +3328,12 @@ function generate_shuffling( num_steps )
 		end
 	end
 	--]]
-	--[[ vanilla
+	-- [[ vanilla
 	for i=1,num_steps do
 		global_seed_shuffling[i]=math.random()
 	end
 	--]]
-	-- [[ constantly biggening
+	--[[ constantly biggening
 	local v=math.random()
 	for i=1,num_steps do
 		global_seed_shuffling[i]=v
@@ -3259,6 +3342,7 @@ function generate_shuffling( num_steps )
 	for i=1,num_steps do
 		global_seed_shuffling[i]=global_seed_shuffling[i]/v
 	end
+
 	--[=[ flip every second one
 	for i=1,num_steps do
 		if i%2==0 then

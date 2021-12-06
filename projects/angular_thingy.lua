@@ -53,7 +53,8 @@ config=make_config({
     {"particle_opacity",0.01,type="floatsci",min=0,max=1,power=10},
     {"particle_reset_iter",100,type="int",min=0,max=1000},
     {"particle_wait_iter",0,type="int",min=0,max=1000},
-    {"gamma",1,type="floatsci",min=-2,max=2,power=0.5},
+    {"gamma",1,type="floatsci",min=0,max=2,power=0.5},
+    {"exposure",1,type="floatsci",min=-2,max=2,power=0.5},
     },config)
 
 
@@ -70,6 +71,7 @@ uniform int draw_particles;
 uniform int draw_layer;
 
 uniform float v_gamma;
+uniform float v_exposure;
 uniform float avg_lum;
 uniform vec3 col_min,col_max,col_avg;
 
@@ -173,7 +175,7 @@ vec3 tonemap(vec3 light,float cur_exp)
     //light=clamp(light,0,2);
     //float mm=max(light.x,max(light.y,light.z));
     vec3 ret=xyz2rgb((light)*100);
-    float s=smoothstep(0,1,length(light));
+    float s=smoothstep(0,1,length(ret));
     //float s=smoothstep(0,1,dot(light,light));
     //float s=smoothstep(0,1,max(light.x,max(light.y,light.z)));//length(light));
     //float s=smoothstep(0.8,1.2,max(light.x,max(light.y,light.z))-1);//length(light));
@@ -326,9 +328,9 @@ vec4 calc_particle_image_xyz(vec2 pos)
     //col.xyz=pow(col.xyz,vec3(v_gamma));
     col.xyz=gain(col.xyz,v_gamma);
 #else
-
+    col.xyz=pow(col.xyz,vec3(v_gamma));
 #endif
-    return vec4(tonemap(col.xyz,v_gamma),1);
+    return vec4(tonemap(col.xyz,v_exposure),1);
 }
 void main(){
     vec2 normed=(pos.xy+vec2(1,-1))*vec2(0.5,-0.5);
@@ -736,7 +738,35 @@ out vec2 pos_old;
 uniform sampler2D tex_angles;
 uniform float speed;
 uniform float time_input;
-
+vec2 sample_orb(vec2 orb_pos,vec2 p_pos,float v2)
+{
+    vec2 p=vec2(0.2,1);
+    vec2 d=orb_pos-p_pos;
+    float len=length(d);
+    d/=len;
+    //p*=exp(-len*len*v2*v2*5);
+    //p.y*=1;
+    //p.x*=exp(-len*len*(1-v2)*0.05);
+    float v=len*5;
+#if 0
+    v*=v;
+    float a=mix(1,100,v2);
+    float a2=mix(40,80,v2);
+    float scaling=log(1/a)/(1-a);
+    float scaling2=log(1/a2)/(1-a2);
+    float vscale=-exp(-a*scaling)+exp(-scaling);
+    float vscale2=-exp(-a2*scaling2)+exp(-scaling2);
+    p.x*=(-exp(-a2*v)+exp(-v))/vscale2;
+    p.y*=(-exp(-a*v)+exp(-v))/vscale;
+#endif
+    float a=2;
+    float scaling=log(1/a)/(1-a);
+    float vscale=-exp(-a*scaling)+exp(-scaling);
+    //p.x*=1-v*v;
+    p.y*=(-exp(-a*v)+exp(-v))/vscale;
+    vec2 n=vec2(-d.y,d.x);
+    return p.x*d+p.y*n;
+}
 void main()
 {
     vec2 normed=(position.xy+vec2(1,1))*vec2(0.5,0.5);
@@ -748,7 +778,7 @@ void main()
     //float noise=snoise(vec3(normed,time_input*0.05))*0.5+0.5;
     float noise=position.z;
 
-#if 1
+#if 0
     if(noise>0.6666)
         delta=vec2(cos(angle.z),sin(angle.z));
     else if(noise>0.3333)
@@ -765,6 +795,16 @@ void main()
     else
         delta=mix(vec2(cos(angle.x),sin(angle.x)),vec2(cos(angle.y),sin(angle.y)),(position.z)*2);
     delta=normalize(delta);
+#elif 1
+    int count_points=5;
+    vec2 c=vec2(0.5);
+    delta=vec2(0);
+    for(int i=0;i<count_points;i++)
+    {
+        float a=float(i)/float(count_points);
+        vec2 tpos=c+vec2(cos(a*M_PI*2),sin(a*M_PI*2))*mix(0.25,0.5,position.z);
+        delta+=sample_orb(tpos,normed,position.z);
+    }
 #else
     delta=vec2(cos(angle.x),sin(angle.x));
 #endif
@@ -976,15 +1016,17 @@ void main()
     d=clamp(d,0,1);
 
     //vec2 pd=rand_circular(position.xyz,norm_wave,0.05*d);
-    vec2 pd=vec2(cos(seed*M_PI*2),sin(seed*M_PI*2))*d*(1-norm_wave)*0.05;
-    gl_Position.xyz = vec3(position.xy+pd,0);
+    //vec2 pd=vec2(cos(seed*M_PI*2),sin(seed*M_PI*2))*d*(1-norm_wave)*0.05;
+    //gl_Position.xyz = vec3(position.xy+pd,0);
+    gl_Position.xyz = vec3(position.xy,0);
     gl_Position.w = 1.0;
     //pos=position;
     //vec3 co=palette(particle_color.b,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
     //vec3 co=palette(particle_color.b,vec3(0.971519,0.273919,0.310136),vec3(0.90608,0.488869,0.144119),vec3(5,10,2),vec3(1,1.8,1.28571)); //violet and blue
     //vec3 co=palette(position.z,vec3(0.5),vec3(0.5),vec3(1),vec3(0.0,0.33,0.67));
     vec3 co=vec3(0);
-    float v=norm_wave;
+    //float v=norm_wave;
+    float v=position.z;
     /*
     for(int i=0;i<100;i++)
     {
@@ -994,15 +1036,19 @@ void main()
         //float n=(snoise(position.xyz*vec3(0,0,v))+1)*0.5;
         //n*=position.z;
         //float v=clamp(position.z,0,1);
+        //float n=(snoise(vec3(position.z*10,norm_wave,0))+1)/2;
+        //float n=position.z;
         float n=1;
         co+=xyz_from_normed_waves(v)*D65_blackbody(v,6503.5)*n;//*mix(n,1,0);
     //}
-    /*if(position.z>0.6666)
+    /*
+    if(position.z>0.6666)
         co=vec3(0,0,1);
     else if(position.z>0.3333)
         co=vec3(0,1,0);
     else
-        co=vec3(1,0,0);*/
+        co=vec3(1,0,0);
+        */
     col=vec4(co,1);
 }
 ]==],
@@ -1039,7 +1085,7 @@ function reset_agent_data()
     b:read(agent_state.d,agent_count*4*4)
     --]=]
     local chance_move=0.7
-    local chance_no_move=0
+    local chance_no_move=1
     for i=0,agent_count-1 do
         local z=math.random()
         --local z=rand_gaussian(0.1,0.5)
@@ -1070,11 +1116,11 @@ function reset_agent_data()
                 local a=math.random()*math.pi*2
                 x=v.r+math.cos(a)*r
                 y=v.g+math.sin(a)*r
-                z=v.b+(math.random()-0.5)*max_r*0.01
+                z=0--v.b+(math.random()-0.5)*max_r*0.01
             else
                 x=v.r
                 y=v.g
-                z=v.b
+                z=0--v.b
             end
             --]]
             --local x,y=rand_gaussian(0.5)
@@ -1169,12 +1215,13 @@ function agent_draw(  )
     if not trails_buffer:get():render_to(vector_layer.w,vector_layer.h) then
         error("failed to set framebuffer up")
     end
-    for i=0,1,0.01 do
-        agent_draw_shader:set("norm_wave",i)
+    --for i=0,1,0.01 do
+        --agent_draw_shader:set("norm_wave",i)
+        agent_draw_shader:set("norm_wave",1)
         agent_draw_shader:set("seed",math.random())
         agent_draw_shader:set("time_input",global_time)
         agent_draw_shader:draw_points(0,agent_count,4)
-    end
+    --end
     agent_draw_shader:blend_default()
     __render_to_window()
     __unbind_buffer()
@@ -1464,6 +1511,7 @@ function update()
         draw_shader:set_i("draw_particles",0)
     end
     draw_shader:set("v_gamma",config.gamma)
+    draw_shader:set("v_exposure",config.exposure)
     draw_shader:draw_quad()
 
     if need_save then
