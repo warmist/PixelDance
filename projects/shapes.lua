@@ -117,8 +117,7 @@ float smooth_mod(float x,float y)
 	float den=s*s+eps*eps;
 	return y*(0.5-(1/PI)*atan(num/den));
 }
-
-float F(vec2 pos)
+float F2(vec2 pos)
 {
 
 	float v=sdCircle(pos,0.8);
@@ -134,6 +133,27 @@ float F(vec2 pos)
 	//	v=abs(v-0.025)-0.025;
 	return v;
 }
+float F(vec2 pos)
+{
+
+	//float v=length(pos);
+	/*
+	float k1=4;
+	float k2=5;
+	float v=pow(pow(abs(pos.x),k1)+pow(abs(pos.y),k2),1/k1);
+	*/
+	/*
+	vec2 c=vec2(0.1,0.1);
+	float v=length(pos-c);
+	//*/
+	//*
+	float a=0.5;
+	float b=0.2;
+	float c=0.00;
+	float v=abs(a*pos.x*pos.x+b*pos.y+c)/sqrt(a*a+b*b);
+	//*/
+	return v;
+}
 vec2 grad( in vec2 x )
 {
     vec2 h = vec2( 0.0001, 0.0 );
@@ -142,15 +162,16 @@ vec2 grad( in vec2 x )
 }
 void main(){
 	float aspect=rez.x/rez.y;
+	float s=0.25;
 	vec2 p=pos.xy*vec2(1,1/aspect);
-	float v=F(p);
+	float v=F(p*s);
 	//vec2 g=grad(p);
 	//float de=abs(v)/length(g);
-	float w=0.003;
+	float w=0.003*s;
 	float line_thick=0.05;
 	float lv=v;
 	float ldist=0.3;
-	lv=abs(fract(lv/ldist+0.5)-0.5)*ldist;
+	//lv=abs(fract(lv/ldist+0.5)-0.5)*ldist;
 	lv=smoothstep(line_thick+w,line_thick-w,lv);
 	//lv=abs(v)/(length(g));
 	color=vec4(vec3(lv),1);

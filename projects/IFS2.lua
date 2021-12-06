@@ -137,7 +137,7 @@ config=make_config({
 
 	{"cx",0,type="float",min=-10,max=10},
 	{"cy",0,type="float",min=-10,max=10},
-	{"shuffle_size",5,type="int",min=1,max=200},
+	{"shuffle_size",200,type="int",min=1,max=200},
 	--{"min_value",0,type="float",min=0,max=20},
 	--{"gen_radius",2,type="float",min=0,max=10},
 
@@ -552,7 +552,7 @@ end
 
 palette=palette or {show=false,
 rgb_lerp=false,
-current_gen=1,
+current_gen=8,
 colors_input={{0.01, 0.01, 0.01, 0,0},{0.25,0.25,0.25,1,math.floor(max_palette_size*0.5)},{.99, .99, .99, 1,max_palette_size-1}}}
 function update_palette_img(  )
 	if palette_img.w~=#palette.colors_input then
@@ -1590,6 +1590,11 @@ function get_forced_insert_complex(  )
 	--local tbl_insert={"s","p","params.xy","params.zw"}
 	--local tbl_insert={"s*(length(s-p)*global_seed)","p","params.xy","params.zw"}
 	--local tbl_insert={"params.xy+s*params.z+p*params.w+c_mul(s,p)*global_seed"}
+	--local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seed-0.5)*M_PI*2*move_dist),sin((global_seed-0.5)*M_PI*2*move_dist))"} --"(p*(global_seed+0.5))/length(p)"
+	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seed*global_seed*3))"} --"(p*(global_seed+0.5))/length(p)"
+	--local tbl_insert={"vec2(s.y,mix(s.x,move_dist,global_seed))","p","params.xy","params.zw"}
+	--local tbl_insert={"s","p","mix(s*params.xy,s*params.zw,global_seed)","mix(p*params.zw,p*params.xy,global_seed)"}
+	local tbl_insert={"c_mul(mix(s,p,global_seed),mix(p,s,global_seed))","c_mul(mix(c_mul(s,s),c_mul(p,p),global_seed*global_seed),mix(c_mul(p,p),c_mul(s,s),global_seed*global_seed))","params.xy","params.zw"}
 	--[[
 	table.insert(tbl_insert,"vec2(global_seed,0)")
 	table.insert(tbl_insert,"vec2(0,1-global_seed)")
@@ -1845,18 +1850,28 @@ function rand_function(  )
 	end
 	--]==]
 		--[=[
+	--[=[
+	str_cmplx="c_mul(s,s)+p"
 	--str_cmplx="c_mul(s,s)*value_inside(global_seed,0,0.5)+c_mul(s,c_mul(s,s))*value_inside(global_seed,0.5,1)+p"
 	--str_cmplx="mix(c_mul(s,s)+p,c_mul(c_mul(s,s)+p,vec2(cos(2*M_PI*global_seed),sin(2*M_PI*global_seed))),tex_p.y)"
 	--str_cmplx="c_mul(s*(tex_p.y+0.5),s*(tex_s.y+0.5))+p*(global_seed+0.5)"
 	--str_cmplx="c_mul(s,s)+p*(global_seed+0.5)"
+	--str_cmplx="c_mul(s*global_seed,s*(1-global_seed))+p"
+	--str_cmplx="vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))*c_mul(s,s)+c_mul(p,params.zw)"
+	--spiral brot
+	--str_cmplx="c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),c_mul(s,s))+c_mul(p,params.zw)"
+
 	--str_cmplx="c_mul(s,s)+c_mul(p,vec2(cos((global_seed-0.5)*0.1),sin((global_seed-0.5)*0.1)))"
-	str_cmplx=[[
+	--str_cmplx="c_mul(s,s)+p"
+	--[[str_cmplx=[[
 	c_mul(
 		c_mul(s,s),
 		vec2(
 				cos((global_seed-0.5)*0.1),sin((global_seed-0.5)*0.1)
 			)
 		)+p]]
+
+	--]]
 	--]=]
 
 	--[[ julia
@@ -3065,13 +3080,14 @@ void main(){
 	//float color_value=length(pos);
 	//float color_value=dot(delta_pos,delta_pos)/10;
 	//float color_value=exp(-start_l*start_l);
-	//float color_value=normed_iter;
+	//float color_value=1-normed_iter;
 	//float color_value=cos(normed_iter*M_PI*2*20)*0.5+0.5;
 	//float color_value=smoothstep(0,1,start_l);
 	//float color_value=sin(start_l*M_PI*2/4)*0.5+0.5;
 	//float color_value=normed_iter*exp(-start_l*start_l);
 	//float color_value=1-exp(-dot(delta_pos,delta_pos)/2.5);
 	//float color_value=mix(start_l,dist_traveled,normed_iter);
+	//float color_value=clamp(dist_traveled/(1+dist_traveled),0,1);
 	vec3 c;
 	if(palette_xyz==1)
 		c=mix_palette(color_value).xyz;
