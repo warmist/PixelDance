@@ -1811,7 +1811,7 @@ function rand_function(  )
 	str_cmplx=random_math_complex(rand_complexity,"c_div(c_mul(R,s)+R,c_mul(R,s)+R)")
 	--]=]
 	--mandelbrot?
-	--str_cmplx="c_mul(s,s)+p"
+	str_cmplx="c_mul(s,s)+p"
 	--str_cmplx="c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),c_mul(s,s))+p"
 	--str_cmplx="vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))*move_dist+c_mul(s,s)+p"
 	--str_cmplx="c_mul(s,s)+c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),params.xy)"
@@ -3344,12 +3344,26 @@ function generate_shuffling( num_steps )
 		end
 	end
 	--]]
-	-- [[ vanilla
+	--[[ vanilla
 	for i=1,num_steps do
 		global_seed_shuffling[i]=math.random()
 	end
 	--]]
-	--[[ constantly biggening
+	--[[ random walk
+	local v=math.random()
+	local min_value=v
+	local max_value=v
+	for i=1,num_steps do
+		global_seed_shuffling[i]=v
+		v=v+math.random()*2-1
+		if min_value>v then min_value=v end
+		if max_value<v then max_value=v end
+	end
+	for i=1,num_steps do
+		global_seed_shuffling[i]=(global_seed_shuffling[i]-min_value)/(max_value-min_value)
+	end
+	--]]
+	-- [[ constantly biggening
 	local v=math.random()
 	for i=1,num_steps do
 		global_seed_shuffling[i]=v
