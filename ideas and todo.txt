@@ -45,3 +45,4 @@ Cellular automatton and stuff:
 
 * Lavalamp
 * vector drawing thingy, but instead of crisp lines, you get fluid simmed ink (or just fluid simmed stuff)
+* Zen garden: draw by dragging stuff through sand
