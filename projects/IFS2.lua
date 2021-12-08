@@ -1104,9 +1104,11 @@ local normal_symbols={
 }
 
 local terminal_symbols_complex={
---["s"]=3,["p"]=3,
+["s"]=0.005,["p"]=0.005,
 --["params.xy"]=1,["params.zw"]=1,
 --["(c_one()*normed_iter)"]=0.05,["(c_i()*normed_iter)"]=0.05,
+["(c_one()*global_seed)"]=0.05,["(c_i()*global_seed)"]=0.05,
+["vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))"]=0.5,
 ["c_one()"]=0.1,["c_i()"]=0.1,
 }
 local terminal_symbols_complex_const={
@@ -1574,6 +1576,7 @@ animate=false
 --ast_tree=ast_tree or ast_node(normal_symbols_complex,terminal_symbols_complex)
 
 function get_forced_insert_complex(  )
+	local tbl_insert={"s","p","params.xy","params.zw"}
 	--{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
 	--{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
 	--{"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seed)","vec2(cos(length(p)*M_PI*4+global_seed),sin(length(p)*M_PI*4+global_seed))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
@@ -1582,12 +1585,11 @@ function get_forced_insert_complex(  )
 	--local tbl_insert_cmplx={"mix(s,s/length(s),1-global_seed)","mix(p,p/length(p),global_seed)","params.xy","params.zw"}--"mix(p,p/length(p),global_seed)"
 
 	--local tbl_insert={"s","c_mul(p,vec2(-1,1+(global_seed-0.5)*move_dist))","params.xy","params.zw"} --"(p*(global_seed+0.5))/length(p)"
-	local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seed-0.5)*M_PI*2*move_dist),sin((global_seed-0.5)*M_PI*2*move_dist))"} --"(p*(global_seed+0.5))/length(p)"
+	--local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seed-0.5)*M_PI*2*move_dist),sin((global_seed-0.5)*M_PI*2*move_dist))"} --"(p*(global_seed+0.5))/length(p)"
 	--local tbl_insert={"mix(c_mul(s,s),c_mul(p,p),global_seed)","c_mul(s,p)","params.xy","params.zw"}
 	--local tbl_insert={"mix(c_mul(c_mul(s,s),s),c_mul(c_mul(p,p),p),global_seed)","c_mul(s,p)","params.xy","params.zw"}
 	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seed*global_seed*8))"} --"(p*(global_seed+0.5))/length(p)"
 
-	--local tbl_insert={"s","p","params.xy","params.zw"}
 	--local tbl_insert={"s*(length(s-p)*global_seed)","p","params.xy","params.zw"}
 	--local tbl_insert={"params.xy+s*params.z+p*params.w+c_mul(s,p)*global_seed"}
 	--local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seed-0.5)*M_PI*2*move_dist),sin((global_seed-0.5)*M_PI*2*move_dist))"} --"(p*(global_seed+0.5))/length(p)"
@@ -1706,8 +1708,21 @@ function ast_terminate( reterm )
 	--Idea: project to circle inside with sigmoid like func
 	local circle_radius=1
 	str_postamble=str_postamble..string.format("float DC=length(s)-%g;",circle_radius)
+	-- [==[
 	str_postamble=str_postamble.."vec2 VC=-normalize(s);"
 	str_postamble=str_postamble..string.format("s+=step(0,DC)*VC*(DC+%g*2*(sigmoid(DC*move_dist)));",circle_radius)
+	--str_postamble=str_postamble..string.format("s=(1-step(0,DC))*s+step(0,DC)*(%g)*rotate(VC,M_PI*move_dist*global_seed)*sigmoid(DC*global_seed);",circle_radius)
+	--]==]
+	--[==[
+	local angle=2*math.pi/3
+	str_postamble=str_postamble..string.format("vec2 m=-normalize(s)*%g;",circle_radius)
+	--str_postamble=str_postamble..string.format("vec2 n=rotate(m,%g);",angle)
+	str_postamble=str_postamble..string.format("vec2 n=rotate(m,M_PI*global_seed);",angle)
+	--str_postamble=str_postamble.."vec2 n=rotate(m,M_PI*(sigmoid(length(p))+1)/2);"
+	--str_postamble=str_postamble.."vec2 n=rotate(m,M_PI*normed_iter);"
+	str_postamble=str_postamble.."s=(1-step(0,DC))*s+step(0,DC)*mix(m,n,(sigmoid(DC*move_dist)+1)/2);"
+	--str_postamble=str_postamble.."s=mix(m,n,sigmoid(DC*move_dist));"
+	--]==]
 	--]]
 	print("==============")
 	print(other_code)
@@ -2010,7 +2025,7 @@ function rand_function(  )
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	-- [[ ORBIFY!
+	--[[ ORBIFY!
 	--Idea: project to circle inside with sigmoid like func
 	local circle_radius=1
 	str_postamble=str_postamble..string.format("float DC=length(s)-%g;",circle_radius)
@@ -2259,7 +2274,7 @@ function gui()
 	if imgui.Button("Update frame") then
 		update_animation_values()
 	end
-	imgui.Text(string.format("Done: %d %s",(cur_visit_iter/config.IFS_steps)*100,reset_stats or ""))
+	imgui.Text(string.format("Done: %d %d %s",(cur_visit_iter/config.IFS_steps)*100,(global_seed_id or 0),reset_stats or ""))
 	imgui.End()
 end
 
@@ -2575,6 +2590,12 @@ float sigmoid(float v)
 #else
 	return atan(v*M_PI/2)*2/M_PI;
 #endif
+}
+vec2 rotate(vec2 v, float a) {
+	float s = sin(a);
+	float c = cos(a);
+	mat2 m = mat2(c, -s, s, c);
+	return m * v;
 }
 //str_other_code
 %s
@@ -3205,7 +3226,7 @@ bool need_reset(vec2 p,vec2 s)
 #endif
 #if 1
 	float move_dist=length(s-p);
-	if(move_dist<0.000001)
+	if(move_dist<1e-25)
 		return true;
 #endif
 #if 1
