@@ -1104,11 +1104,11 @@ local normal_symbols={
 }
 
 local terminal_symbols_complex={
-["s"]=0.005,["p"]=0.005,
+--["s"]=0.005,["p"]=0.005,
 --["params.xy"]=1,["params.zw"]=1,
 --["(c_one()*normed_iter)"]=0.05,["(c_i()*normed_iter)"]=0.05,
-["(c_one()*global_seed)"]=0.05,["(c_i()*global_seed)"]=0.05,
-["vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))"]=0.5,
+--["(c_one()*global_seed)"]=0.05,["(c_i()*global_seed)"]=0.05,
+--["vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))"]=0.5,
 ["c_one()"]=0.1,["c_i()"]=0.1,
 }
 local terminal_symbols_complex_const={
@@ -1596,7 +1596,7 @@ function get_forced_insert_complex(  )
 	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seed*global_seed*3))"} --"(p*(global_seed+0.5))/length(p)"
 	--local tbl_insert={"vec2(s.y,mix(s.x,move_dist,global_seed))","p","params.xy","params.zw"}
 	--local tbl_insert={"s","p","mix(s*params.xy,s*params.zw,global_seed)","mix(p*params.zw,p*params.xy,global_seed)"}
-	local tbl_insert={"c_mul(mix(s,p,global_seed),mix(p,s,global_seed))","c_mul(mix(c_mul(s,s),c_mul(p,p),global_seed*global_seed),mix(c_mul(p,p),c_mul(s,s),global_seed*global_seed))","params.xy","params.zw"}
+	--local tbl_insert={"c_mul(mix(s,p,global_seed),mix(p,s,global_seed))","c_mul(mix(c_mul(s,s),c_mul(p,p),global_seed*global_seed),mix(c_mul(p,p),c_mul(s,s),global_seed*global_seed))","params.xy","params.zw"}
 	--[[
 	table.insert(tbl_insert,"vec2(global_seed,0)")
 	table.insert(tbl_insert,"vec2(0,1-global_seed)")
@@ -1630,16 +1630,20 @@ function get_forced_insert_complex(  )
 		--]]
 	}
 
-	local num_tex=1
+	local num_tex=2
 	for i=1,num_tex do
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
 		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
-		table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
+		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
 		--table.insert(tbl_insert_x,tex_variants[math.random(1,#tex_variants)])
 		--table.insert(tbl_insert_y,tex_variants[math.random(1,#tex_variants)])
 	end
 	--]==]
+	table.insert(tbl_insert,"vec2(cos(tex_p.x*global_seed*2*M_PI),sin(tex_p.y*global_seed*2*M_PI))")
+	--table.insert(tbl_insert,"vec2(cos(tex_s.x*global_seed*2*M_PI),sin(tex_s.y*global_seed*2*M_PI))")
+	--table.insert(tbl_insert,"vec2(cos(tex_p.y*global_seed*2*M_PI),sin(tex_p.z*global_seed*2*M_PI))")
+	--table.insert(tbl_insert,"vec2(cos(tex_s.y*global_seed*2*M_PI),sin(tex_s.z*global_seed*2*M_PI))")
 	--[==[
 
 	local num_parts=10
@@ -1826,7 +1830,7 @@ function rand_function(  )
 	str_cmplx=random_math_complex(rand_complexity,"c_div(c_mul(R,s)+R,c_mul(R,s)+R)")
 	--]=]
 	--mandelbrot?
-	str_cmplx="c_mul(s,s)+p"
+	--str_cmplx="c_mul(s,s)+p"
 	--str_cmplx="c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),c_mul(s,s))+p"
 	--str_cmplx="vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))*move_dist+c_mul(s,s)+p"
 	--str_cmplx="c_mul(s,s)+c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),params.xy)"
@@ -2029,9 +2033,11 @@ function rand_function(  )
 	--Idea: project to circle inside with sigmoid like func
 	local circle_radius=1
 	str_postamble=str_postamble..string.format("float DC=length(s)-%g;",circle_radius)
+	-- [==[
 	str_postamble=str_postamble.."vec2 VC=-normalize(s);"
 	str_postamble=str_postamble..string.format("s+=step(0,DC)*VC*(DC+%g*2*(sigmoid(DC*move_dist)));",circle_radius)
-	--]]
+	--str_postamble=str_postamble..string.format("s=(1-step(0,DC))*s+step(0,DC)*(%g)*rotate(VC,M_PI*move_dist*global_seed)*sigmoid(DC*global_seed);",circle_radius)
+	--]==]
 	--[[ polar gravity
 	str_preamble=str_preamble.."vec2 np=s;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."vec2 np=p;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
@@ -2322,7 +2328,8 @@ function make_init_cond(  )
 		return "p"
 	end
 end
-function escape_mode_str(  )
+
+function escape_mode_str(  ) --BROKEN
 	if escape_fractal then
 		return "1"
 	else
@@ -2337,7 +2344,7 @@ if transform_shader==nil or force then
 	transform_shader=shaders.Make(
 string.format([==[
 #version 330
-#line 1226
+#line 2343
 //escape_mode_str
 #define ESCAPE_MODE %s
 layout(location = 0) in vec4 position;
@@ -2602,14 +2609,21 @@ vec2 rotate(vec2 v, float a) {
 
 vec3 func_actual(vec2 s,vec2 p)
 {
-	//vec4 tex_p=texture(tex_img,p*scale*move_dist);
-	//vec4 tex_s=texture(tex_img,s*scale*move_dist);
-	vec4 tex_p=texture(tex_img,p*scale);
-	vec4 tex_s=texture(tex_img,s*scale);
-	tex_s=tex_s/(length(tex_s)+1);
-	tex_p=tex_p/(length(tex_p)+1);
-	tex_p*=move_dist;
-	tex_s*=move_dist;
+	vec4 tex_p=texture(tex_img,p*scale*move_dist);
+	vec4 tex_s=texture(tex_img,s*scale*move_dist);
+	//vec4 tex_p=texture(tex_img,p*scale);
+	//vec4 tex_s=texture(tex_img,s*scale);
+	float tex_sl=length(tex_s);
+	float tex_pl=length(tex_p);
+	tex_s=tex_s/(tex_sl+1);
+	tex_p=tex_p/(tex_pl+1);
+	/*
+	float lum_white=exp(move_dist);
+	tex_s=(tex_s*(1 + tex_sl / lum_white)) / (tex_sl + 1);
+	tex_p=(tex_p*(1 + tex_pl / lum_white)) / (tex_pl + 1);
+	//*/
+	//tex_p*=move_dist;
+	//tex_s*=move_dist;
 	//tex_s=tex_s/(exp(-length(tex_s))+1);
 	//tex_p=tex_p/(exp(-length(tex_p))+1);
 	//tex_s=1/(exp(-tex_s)+1);
@@ -2623,7 +2637,7 @@ vec3 func_actual(vec2 s,vec2 p)
 			if(e>normed_iter && dot(s,s)>4)
 				{
 				e=normed_iter;
-				break;
+				//break;
 				}
 #endif
 	last_s=s;
@@ -2775,16 +2789,12 @@ void main()
 		vec2 seed=float_from_floathash(position.zw);
 		start_pos=gaussian2(seed,vec2(0),vec2(gen_radius));
 	}
+	vec2 p=func(position.xy,start_pos).xy;
 #if ESCAPE_MODE
-	vec2 inp_p=mapping((position.xy-center)/scale);
-    vec3 rez= func(inp_p);//*scale+center;
-    //pos.xy=position.xy;//*scale+center;
-    //gl_Position.xy=position.xy;//*scale+center;
-    //pos.z=rez.z;//length(rez);
     point_out.xy=position.xy;
+    point_out.zw=position.zw;
 #else
 	//in add shader: pos.xy*scale+center
-	vec2 p=func(position.xy,start_pos).xy;
 	//p=(mapping(p*scale+center)-center)/scale;
 	point_out.xy=p;
 	point_out.zw=position.zw;
@@ -2807,7 +2817,7 @@ make_visit_shader(true)
 add_visits_shader=shaders.Make(
 [==[
 #version 330
-#line 2032
+#line 2809
 layout(location = 0) in vec4 pos;
 
 #define M_PI 3.1415926535897932384626433832795
@@ -2842,7 +2852,7 @@ vec2 mapping(vec2 p)
 	return p; //normal - do nothing
 	//return abs(p)-vec2(1);
 	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
-	///*
+	/*
 	if(length(p)<50) //modulo, but no artifacts because far away points are far away
 	{
 		float size=2.005; //0.005 overdraw as it smooths the tiling when using non 1 sized points
@@ -2952,7 +2962,7 @@ void main()
 string.format(
 [==[
 #version 330
-#line 1763
+#line 2954
 #define M_PI   3.14159265358979323846264338327950288
 #define ESCAPE_MODE %s
 
@@ -3224,9 +3234,9 @@ bool need_reset(vec2 p,vec2 s)
 	if(isnan(s.x) || isnan(s.y))
 		return true;
 #endif
-#if 1
+#if 0
 	float move_dist=length(s-p);
-	if(move_dist<1e-25)
+	if(move_dist<0.005)
 		return true;
 #endif
 #if 1
@@ -3251,8 +3261,8 @@ void main()
 	//vec2 seed=hash22(position.zw*params.x+hash22(vec2(rand_number*params.y,gl_VertexID*params.z))*params.w);
 	//vec2 seed=hash22(vec2(rand_number*par_uniform,gl_VertexID*par_id)+position.zw*par_point);
 
-	//vec2 seed=hash22(position.zw*params.x+vec2(rand_number*params.y,gl_VertexID*params.z));
-	//vec2 seed=vec2(rand(rand_number*999999),rand(position.x*789789+position.w*rand_number*45648978));
+	//vec2 seedu=hash22(position.zw*98.5789+vec2(rand_number*78.1547,gl_VertexID*484.0545));
+	//vec2 seedu=vec2(rand(rand_number*999999),rand(position.x*789789+position.w*rand_number*45648978));
 	//vec2 seed=vec2(1-random(vec2(random_number,random_number)));//*2-vec2(1);
 	//vec2 g =(seed*2-vec2(1))*radius;
 
@@ -3435,9 +3445,12 @@ function visit_iter()
 	local count_reset={0,0,0,0}
 
 	local sample_count_w=math.floor(math.sqrt(draw_sample_count))
-	if cur_visit_iter>config.IFS_steps or need_clear then
-		visit_call_count=visit_call_count+1
-		cur_visit_iter=0
+	if cur_visit_iter>config.IFS_steps or need_clear or 
+		(config.smart_reset and (cur_visit_iter%245==244)) then
+		if  cur_visit_iter>config.IFS_steps or need_clear then
+			visit_call_count=visit_call_count+1
+			cur_visit_iter=0
+		end
 		-- [===[
 
 		--]===]
@@ -3446,7 +3459,7 @@ function visit_iter()
 		randomize_points:set("rand_number",math.random())
 		randomize_points:set("radius",config.gen_radius or 2)
 		--randomize_points:set("params",config.v0,config.v1,config.v2,config.v3)
-		if config.smart_reset and not need_clear then
+		if (config.smart_reset and not need_clear) and cur_visit_iter~=0 and math.random()<0.8 then
 			randomize_points:set_i("smart_reset",1)
 		else
 			randomize_points:set_i("smart_reset",0)
