@@ -52,7 +52,7 @@ local not_pixelated=0
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
 
-str_cmplx=str_cmplx or "c_mul(s,vec2(global_seed,1)/sqrt(global_seed*global_seed+1))"
+str_cmplx=str_cmplx or "c_mul(s,vec2(global_seeds.x,1)/sqrt(global_seeds.x*global_seeds.x+1))"
 
 str_other_code=str_other_code or ""
 str_preamble=str_preamble or ""
@@ -1283,15 +1283,15 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 		local dx=0
 		local dy=0
 		--]]
-		ret=ret.."("..rc..string.format("+vec2(%g,%g))*value_inside(global_seed,%g,%g)",dx,dy,istart,iend)
+		ret=ret.."("..rc..string.format("+vec2(%g,%g))*value_inside(global_seeds.x,%g,%g)",dx,dy,istart,iend)
 		--[[
 		if i==1 then
-			ret=ret..string.format("(c_mul(%s,vec2(%g,%g))+vec2(%g,%g))*value_inside(global_seed,%g,%g)",rc,dx,dy,dx2,dy2,istart,iend)
+			ret=ret..string.format("(c_mul(%s,vec2(%g,%g))+vec2(%g,%g))*value_inside(global_seeds.x,%g,%g)",rc,dx,dy,dx2,dy2,istart,iend)
 		else
-			ret=ret..string.format("(c_mul(s,vec2(%g,%g))+vec2(%g,%g))*value_inside(global_seed,%g,%g)",dx,dy,dx2,dy2,istart,iend)
+			ret=ret..string.format("(c_mul(s,vec2(%g,%g))+vec2(%g,%g))*value_inside(global_seeds.x,%g,%g)",dx,dy,dx2,dy2,istart,iend)
 		end
 		--]]
-		--ret=ret..string.format("(c_pow(s,%d)+p+vec2(%g,%g))*value_inside(global_seed,%g,%g)",i+1,dx,dy,istart,iend)
+		--ret=ret..string.format("(c_pow(s,%d)+p+vec2(%g,%g))*value_inside(global_seeds.x,%g,%g)",i+1,dx,dy,istart,iend)
 		if i~=count_intervals then
 			ret=ret.."+"
 		end
@@ -1327,7 +1327,7 @@ function random_math_intervals(is_dx,steps,count_intervals,seed,force_values )
 		local delta=dx
 		if not is_dx then delta=dy end
 
-		ret=ret.."("..rc..string.format("+%g)*value_inside(global_seed,%g,%g)",dy,istart,iend)
+		ret=ret.."("..rc..string.format("+%g)*value_inside(global_seeds.x,%g,%g)",dy,istart,iend)
 		if i~=count_intervals then
 			ret=ret.."+"
 		end
@@ -1532,7 +1532,7 @@ function newton_fractal( degree )
 	local f1=poly_to_string(p)
 	local f2=poly_to_string(pder)
 	local fract=string.format("c_div(%s,%s)",f1,f2)
-	local prot="vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))"
+	local prot="vec2(cos(global_seeds.x*2*M_PI),sin(global_seeds.x*2*M_PI))"
 	--ret=ret..string.format("s-c_mul(c_mul(params.xy,%s),%s)+c_mul(params.zw,p)",prot,fract)
 	ret=ret..string.format("s-c_mul(params.xy,%s)+c_mul(params.zw,p)",fract)
 	return ret
@@ -1570,41 +1570,44 @@ function chebyshev_poly_series( degree )
 	end
 	str_other_code=str_other_code.."return ret;}"
 	--print(str_other_code)
-	--str_cmplx="cheb_eval(s*params.xy+p*params.zw)*global_seed+vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI"
+	--str_cmplx="cheb_eval(s*params.xy+p*params.zw)*global_seeds.x+vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI"
 end
 animate=false
 --ast_tree=ast_tree or ast_node(normal_symbols_complex,terminal_symbols_complex)
 
 function get_forced_insert_complex(  )
-	local tbl_insert={"s","p","params.xy","params.zw"}
-	--{"s","p","vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seed,0)","vec2(0,1-global_seed)"})
-	--{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))","params.zw"})
-	--{"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seed)","vec2(cos(length(p)*M_PI*4+global_seed),sin(length(p)*M_PI*4+global_seed))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
-	--"mix(p,p/length(p),global_seed)"
-	--vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))*move_dist
-	--local tbl_insert_cmplx={"mix(s,s/length(s),1-global_seed)","mix(p,p/length(p),global_seed)","params.xy","params.zw"}--"mix(p,p/length(p),global_seed)"
+	--local tbl_insert={"s","p","params.xy","params.zw"}
+	--{"s","p","vec2(cos(global_seeds.x*2*M_PI),sin(global_seeds.x*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seeds.x,0)","vec2(0,1-global_seeds.x)"})
+	--{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seeds.x*2*M_PI),sin(global_seeds.x*2*M_PI)))","params.zw"})
+	--{"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seeds.x)","vec2(cos(length(p)*M_PI*4+global_seeds.x),sin(length(p)*M_PI*4+global_seeds.x))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
+	--"mix(p,p/length(p),global_seeds.x)"
+	--vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2))*move_dist
+	--local tbl_insert_cmplx={"mix(s,s/length(s),1-global_seeds.x)","mix(p,p/length(p),global_seeds.x)","params.xy","params.zw"}--"mix(p,p/length(p),global_seeds.x)"
 
-	--local tbl_insert={"s","c_mul(p,vec2(-1,1+(global_seed-0.5)*move_dist))","params.xy","params.zw"} --"(p*(global_seed+0.5))/length(p)"
-	--local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seed-0.5)*M_PI*2*move_dist),sin((global_seed-0.5)*M_PI*2*move_dist))"} --"(p*(global_seed+0.5))/length(p)"
-	--local tbl_insert={"mix(c_mul(s,s),c_mul(p,p),global_seed)","c_mul(s,p)","params.xy","params.zw"}
-	--local tbl_insert={"mix(c_mul(c_mul(s,s),s),c_mul(c_mul(p,p),p),global_seed)","c_mul(s,p)","params.xy","params.zw"}
-	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seed*global_seed*8))"} --"(p*(global_seed+0.5))/length(p)"
+	--local tbl_insert={"s","c_mul(p,vec2(-1,1+(global_seeds.x-0.5)*move_dist))","params.xy","params.zw"} --"(p*(global_seeds.x+0.5))/length(p)"
+	--local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seeds.x-0.5)*M_PI*2*move_dist),sin((global_seeds.x-0.5)*M_PI*2*move_dist))"} --"(p*(global_seeds.x+0.5))/length(p)"
+	--local tbl_insert={"mix(c_mul(s,s),c_mul(p,p),global_seeds.x)","c_mul(s,p)","params.xy","params.zw"}
+	--local tbl_insert={"mix(c_mul(c_mul(s,s),s),c_mul(c_mul(p,p),p),global_seeds.x)","c_mul(s,p)","params.xy","params.zw"}
+	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seeds.x*global_seeds.x*8))"} --"(p*(global_seeds.x+0.5))/length(p)"
 
-	--local tbl_insert={"s*(length(s-p)*global_seed)","p","params.xy","params.zw"}
-	--local tbl_insert={"params.xy+s*params.z+p*params.w+c_mul(s,p)*global_seed"}
-	--local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seed-0.5)*M_PI*2*move_dist),sin((global_seed-0.5)*M_PI*2*move_dist))"} --"(p*(global_seed+0.5))/length(p)"
-	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seed*global_seed*3))"} --"(p*(global_seed+0.5))/length(p)"
-	--local tbl_insert={"vec2(s.y,mix(s.x,move_dist,global_seed))","p","params.xy","params.zw"}
-	--local tbl_insert={"s","p","mix(s*params.xy,s*params.zw,global_seed)","mix(p*params.zw,p*params.xy,global_seed)"}
-	--local tbl_insert={"c_mul(mix(s,p,global_seed),mix(p,s,global_seed))","c_mul(mix(c_mul(s,s),c_mul(p,p),global_seed*global_seed),mix(c_mul(p,p),c_mul(s,s),global_seed*global_seed))","params.xy","params.zw"}
+	--local tbl_insert={"s*(length(s-p)*global_seeds.x)","p","params.xy","params.zw"}
+	--local tbl_insert={"params.xy+s*params.z+p*params.w+c_mul(s,p)*global_seeds.x"}
+	--local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seeds.x-0.5)*M_PI*2*move_dist),sin((global_seeds.x-0.5)*M_PI*2*move_dist))"} --"(p*(global_seeds.x+0.5))/length(p)"
+	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seeds.x*global_seeds.x*3))"} --"(p*(global_seeds.x+0.5))/length(p)"
+	--local tbl_insert={"vec2(s.y,mix(s.x,move_dist,global_seeds.x))","p","params.xy","params.zw"}
+	local tbl_insert={"s","p","mix(s*params.xy,s*params.zw,global_seeds.x)","mix(p*params.zw,p*params.xy,global_seeds.x)"}
+	--local tbl_insert={"c_mul(mix(s,p,global_seeds.x),mix(p,s,global_seeds.x))","c_mul(mix(c_mul(s,s),c_mul(p,p),global_seeds.x*global_seeds.x),mix(c_mul(p,p),c_mul(s,s),global_seeds.x*global_seeds.x))","params.xy","params.zw"}
 	--[[
-	table.insert(tbl_insert,"vec2(global_seed,0)")
-	table.insert(tbl_insert,"vec2(0,1-global_seed)")
+	table.insert(tbl_insert,"vec2(global_seeds.x,0)")
+	--table.insert(tbl_insert,"vec2(0,1-global_seeds.x)")
 	--]]
 	--table.insert(tbl_insert,"vec2(length(p),length(s))")
-	--table.insert(tbl_insert,"mix(params.xy,params.zw,global_seed)")
+	--table.insert(tbl_insert,"mix(params.xy,params.zw,global_seeds.x)")
+	--table.insert(tbl_insert,"mix(s,p,global_seeds.x)")
+	--table.insert(tbl_insert,"c_mul(mix(s,p,global_seeds.x),mix(s,p,1-global_seeds.x))")
+	--table.insert(tbl_insert,"((global_seeds.x*2-1)*(move_dist*c_mul(s,s)+s+p))")
 	--[[
-	table.insert(tbl_insert,"vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))")
+	table.insert(tbl_insert,"vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2))")
 	--]]
 	--[[
 	local num_roots=5
@@ -1612,7 +1615,7 @@ function get_forced_insert_complex(  )
 	for i=1,num_roots do
 		local v=((i-1)/num_roots)*math.pi*2
 		--table.insert(tbl_insert,string.format("vec2(%g,%g)",math.cos(v)*dist,math.sin(v)*dist))
-		table.insert(tbl_insert,string.format("vec2(%g,%g)*global_seed",math.cos(v)*dist,math.sin(v)*dist))
+		table.insert(tbl_insert,string.format("vec2(%g,%g)*global_seeds.x",math.cos(v)*dist,math.sin(v)*dist))
 	end
 	--]]
 	--[==[
@@ -1632,23 +1635,28 @@ function get_forced_insert_complex(  )
 
 	local num_tex=2
 	for i=1,num_tex do
-		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
+		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)))")
 		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
-		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))")
+		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)))")
 		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
 		--table.insert(tbl_insert_x,tex_variants[math.random(1,#tex_variants)])
 		--table.insert(tbl_insert_y,tex_variants[math.random(1,#tex_variants)])
 	end
 	--]==]
-	table.insert(tbl_insert,"vec2(cos(tex_p.x*global_seed*2*M_PI),sin(tex_p.y*global_seed*2*M_PI))")
-	--table.insert(tbl_insert,"vec2(cos(tex_s.x*global_seed*2*M_PI),sin(tex_s.y*global_seed*2*M_PI))")
-	--table.insert(tbl_insert,"vec2(cos(tex_p.y*global_seed*2*M_PI),sin(tex_p.z*global_seed*2*M_PI))")
-	--table.insert(tbl_insert,"vec2(cos(tex_s.y*global_seed*2*M_PI),sin(tex_s.z*global_seed*2*M_PI))")
+	--table.insert(tbl_insert,"vec2(cos(tex_p.x*global_seeds.x*2*M_PI),sin(tex_p.y*global_seeds.x*2*M_PI))")
+	--table.insert(tbl_insert,"vec2(cos(tex_p.x*move_dist*global_seeds.x*2*M_PI),sin(tex_p.y*move_dist*global_seeds.x*2*M_PI))")
+	--table.insert(tbl_insert,"vec2(cos(tex_s.x*global_seeds.x*2*M_PI),sin(tex_s.y*global_seeds.x*2*M_PI))")
+	--table.insert(tbl_insert,"vec2(cos(tex_p.y*global_seeds.x*2*M_PI),sin(tex_p.z*global_seeds.x*2*M_PI))")
+	--table.insert(tbl_insert,"vec2(cos(tex_s.y*global_seeds.x*2*M_PI),sin(tex_s.z*global_seeds.x*2*M_PI))")
+	--table.insert(tbl_insert,"(c_mul(s-p,vec2(cos(tex_s.x*global_seeds.x*2*M_PI),sin(tex_s.y*global_seeds.x*2*M_PI)))+p)")
+	--table.insert(tbl_insert,"(c_mul(s-p,vec2(cos(tex_s.x*global_seeds.x*2*M_PI),sin(tex_s.x*global_seeds.x*2*M_PI)))+p)")
+	--table.insert(tbl_insert,"(c_mul(s-p,vec2(cos(tex_sl*global_seeds.x*2*M_PI),sin(tex_sl*global_seeds.x*2*M_PI)))+p)")
+	--table.insert(tbl_insert,"(c_mul(s-p,vec2(cos(tex_pl*move_dist*global_seeds.x*2*M_PI),sin(tex_pl*move_dist*global_seeds.x*2*M_PI)))+p)")
 	--[==[
 
 	local num_parts=10
 	for i=1,num_parts do
-		table.insert(tbl_insert,string.format("(vec2(global_seed,global_seed)*value_inside(global_seed,%g,%g))",(i-1)/num_parts,i/num_parts))
+		table.insert(tbl_insert,string.format("(vec2(global_seeds.x,global_seeds.x)*value_inside(global_seeds.x,%g,%g))",(i-1)/num_parts,i/num_parts))
 	end
 	--]==]
 	return tbl_insert
@@ -1695,7 +1703,7 @@ function ast_terminate( reterm )
 	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
-	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seed*8))/(M_PI/2);s=last_s+ds*((global_seed*7)*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seeds.x*8))/(M_PI/2);s=last_s+ds*((global_seeds.x*7)*vv/ls);"
 	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/dot(s,s));s=last_s+ds*(move_dist*vv/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-1/npl);s=last_s+ds*(move_dist*vv/ls);"
 	--]]
@@ -1706,22 +1714,22 @@ function ast_terminate( reterm )
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*dot(tex_s,tex_s)/move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
-	str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seed*move_dist+1)/move_dist);"
+	str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seeds.x*move_dist+1)/move_dist);"
 	--]]
-	-- [[ ORBIFY!
+	--[[ ORBIFY!
 	--Idea: project to circle inside with sigmoid like func
 	local circle_radius=1
 	str_postamble=str_postamble..string.format("float DC=length(s)-%g;",circle_radius)
 	-- [==[
 	str_postamble=str_postamble.."vec2 VC=-normalize(s);"
 	str_postamble=str_postamble..string.format("s+=step(0,DC)*VC*(DC+%g*2*(sigmoid(DC*move_dist)));",circle_radius)
-	--str_postamble=str_postamble..string.format("s=(1-step(0,DC))*s+step(0,DC)*(%g)*rotate(VC,M_PI*move_dist*global_seed)*sigmoid(DC*global_seed);",circle_radius)
+	--str_postamble=str_postamble..string.format("s=(1-step(0,DC))*s+step(0,DC)*(%g)*rotate(VC,M_PI*move_dist*global_seeds.x)*sigmoid(DC*global_seeds.x);",circle_radius)
 	--]==]
 	--[==[
 	local angle=2*math.pi/3
 	str_postamble=str_postamble..string.format("vec2 m=-normalize(s)*%g;",circle_radius)
 	--str_postamble=str_postamble..string.format("vec2 n=rotate(m,%g);",angle)
-	str_postamble=str_postamble..string.format("vec2 n=rotate(m,M_PI*global_seed);",angle)
+	str_postamble=str_postamble..string.format("vec2 n=rotate(m,M_PI*global_seeds.x);",angle)
 	--str_postamble=str_postamble.."vec2 n=rotate(m,M_PI*(sigmoid(length(p))+1)/2);"
 	--str_postamble=str_postamble.."vec2 n=rotate(m,M_PI*normed_iter);"
 	str_postamble=str_postamble.."s=(1-step(0,DC))*s+step(0,DC)*mix(m,n,(sigmoid(DC*move_dist)+1)/2);"
@@ -1741,8 +1749,8 @@ function rand_function(  )
 	local s=random_math(rand_complexity)
 	
 	local tbl_insert_cmplx=get_forced_insert_complex()
-	local tbl_insert_x={"s.x+cos(global_seed*M_PI*2)","p.y+params.x","params.x","params.y"}
-	local tbl_insert_y={"s.y+sin(global_seed*M_PI*2)","p.x+params.y","params.z","params.w"}
+	local tbl_insert_x={"s.x+cos(global_seeds.x*M_PI*2)","p.y+params.x","params.x","params.y"}
+	local tbl_insert_y={"s.y+sin(global_seeds.x*M_PI*2)","p.x+params.y","params.z","params.w"}
 	--[[
 	local point_count=3
 	for i=1,point_count do
@@ -1773,30 +1781,30 @@ function rand_function(  )
 	--]==]
 	--chebyshev_poly_series(10)
 	--str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert)
-	--str_cmplx="(s/length(s)+p/length(p))*(0.5+global_seed)"
+	--str_cmplx="(s/length(s)+p/length(p))*(0.5+global_seeds.x)"
 	str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert_cmplx)
 	--str_cmplx=random_math_complex(15,"cheb_eval(R)",tbl_insert)
-	--str_cmplx=random_math_complex(15,"c_mul(cheb_eval(c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),(s-p))),R)",tbl_insert)
+	--str_cmplx=random_math_complex(15,"c_mul(cheb_eval(c_mul(vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)),(s-p))),R)",tbl_insert)
 	--str_cmplx=newton_fractal(rand_complexity)
-	--str_cmplx=random_math_complex_const(rand_complexity,nil,{"s","p*vec2(move_dist,global_seed)","params.xy","params.zw"})
-	--str_cmplx=random_math_complex_intervals(rand_complexity,2,nil,{"s","c_mul(p,vec2(move_dist,global_seed))","params.xy","params.zw"})
+	--str_cmplx=random_math_complex_const(rand_complexity,nil,{"s","p*vec2(move_dist,global_seeds.x)","params.xy","params.zw"})
+	--str_cmplx=random_math_complex_intervals(rand_complexity,2,nil,{"s","c_mul(p,vec2(move_dist,global_seeds.x))","params.xy","params.zw"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,15,"(R)/2+(R)*c_sin(vec2(2*M_PI,1)*(R)+R)")
 	--str_cmplx=random_math_fourier_complex(7,rand_complexity)
 	--str_cmplx=random_math_complex_series(4,random_math_complex_intervals(rand_complexity,5))
-	--str_cmplx="c_inv(((s)-((c_cos((vec2(global_seed,0))+(s)))-(c_asin(s))))-(c_conj(c_cos(c_inv(s)))))"
-	--str_cmplx="c_inv((s-c_cos(vec2(global_seed,0)+s)+c_asin(s+params.xy))-c_conj(c_mul(c_cos(c_inv(s)),params.zw)))"
-	--str_cmplx="c_cos(c_inv(s-params.zw+p*vec2(move_dist,global_seed)))-params.xy"
-	--str_cmplx=random_math_complex(rand_complexity,nil,{"c_pow(s,vec2(1,global_seed*2))"})
+	--str_cmplx="c_inv(((s)-((c_cos((vec2(global_seeds.x,0))+(s)))-(c_asin(s))))-(c_conj(c_cos(c_inv(s)))))"
+	--str_cmplx="c_inv((s-c_cos(vec2(global_seeds.x,0)+s)+c_asin(s+params.xy))-c_conj(c_mul(c_cos(c_inv(s)),params.zw)))"
+	--str_cmplx="c_cos(c_inv(s-params.zw+p*vec2(move_dist,global_seeds.x)))-params.xy"
+	--str_cmplx=random_math_complex(rand_complexity,nil,{"c_pow(s,vec2(1,global_seeds.x*2))"})
 	--str_cmplx=random_math_complex_intervals(rand_complexity,10)
-	--str_cmplx="c_mul(params.xy,c_inv(c_mul(c_conj(c_cos(s)),p*vec2(move_dist,global_seed)+params.zw)))"
-	--str_cmplx=str_cmplx.."*value_inside(global_seed,0,0.5)+(s-(s*move_dist)/length(s))*value_inside(global_seed,0.5,1)+(s*floor(global_seed*5)/5)/length(s)"
-	--str_cmplx="c_tan(c_cos(c_tan((((params.xy)-(s))-(c_cos(c_mul(c_atan(params.zw),c_tan((params.zw)+(params.xy))))))-(p*vec2(move_dist*(1-global_seed*global_seed),global_seed)))))"
+	--str_cmplx="c_mul(params.xy,c_inv(c_mul(c_conj(c_cos(s)),p*vec2(move_dist,global_seeds.x)+params.zw)))"
+	--str_cmplx=str_cmplx.."*value_inside(global_seeds.x,0,0.5)+(s-(s*move_dist)/length(s))*value_inside(global_seeds.x,0.5,1)+(s*floor(global_seeds.x*5)/5)/length(s)"
+	--str_cmplx="c_tan(c_cos(c_tan((((params.xy)-(s))-(c_cos(c_mul(c_atan(params.zw),c_tan((params.zw)+(params.xy))))))-(p*vec2(move_dist*(1-global_seeds.x*global_seeds.x),global_seeds.x)))))"
 
 	--str_x=random_math_intervals(true,rand_complexity,6,nil,{"s.x","p.y","params.x","params.y"})
 	--str_y=random_math_intervals(false,rand_complexity,6,nil,{"s.y","p.x","params.z","params.w"})
 
-	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,global_seed*move_dist*M_PI*2))"
-	--str_cmplx="c_cos(s)+p*global_seed+c_mul(s,s)*(1-global_seed)"
+	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,global_seeds.x*move_dist*M_PI*2))"
+	--str_cmplx="c_cos(s)+p*global_seeds.x+c_mul(s,s)*(1-global_seeds.x)"
 	--str_cmplx=random_math_complex(rand_complexity,"c_mul(R,last_s/length(last_s)+c_one())")
 	--local FT=random_math_complex(rand_complexity)
 	--[[
@@ -1829,12 +1837,14 @@ function rand_function(  )
 	--str_cmplx="c_div(c_mul(params.xy,s)+vec2(-0.1,0.2),c_mul(vec2(0.2,0.1),s)+params.zw)"
 	str_cmplx=random_math_complex(rand_complexity,"c_div(c_mul(R,s)+R,c_mul(R,s)+R)")
 	--]=]
+	--str_cmplx="c_conj(c_cos(s+vec2(global_seeds.x*M_PI*2,0))-c_mul(p,params.xy))"
+	--str_cmplx="c_conj(c_cos(s*(0.5+global_seeds.x))-c_mul(p,params.xy))"
 	--mandelbrot?
 	--str_cmplx="c_mul(s,s)+p"
-	--str_cmplx="c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),c_mul(s,s))+p"
-	--str_cmplx="vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))*move_dist+c_mul(s,s)+p"
-	--str_cmplx="c_mul(s,s)+c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),params.xy)"
-	--str_cmplx="c_mul(c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),s),s)+p"
+	--str_cmplx="c_mul(vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)),c_mul(s,s))+p"
+	--str_cmplx="vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2))*move_dist+c_mul(s,s)+p"
+	--str_cmplx="c_mul(s,s)+c_mul(vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)),params.xy)"
+	--str_cmplx="c_mul(c_mul(vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)),s),s)+p"
 
 	--str_cmplx="vec2(0)"
 	--[==[
@@ -1848,8 +1858,8 @@ function rand_function(  )
 		if i%2==0 then
 			vv=1
 		end
-		--str_cmplx=str_cmplx..string.format("+c_mul(vec2(%g,%g)*(1+global_seed),c_mul(s,s)+p)",math.cos(a),math.sin(a))
-		str_cmplx=str_cmplx..string.format("+value_inside(global_seed,%g,%g)*c_mul(vec2(cos(%g),sin(%g)),p)",v,v2,a,a)
+		--str_cmplx=str_cmplx..string.format("+c_mul(vec2(%g,%g)*(1+global_seeds.x),c_mul(s,s)+p)",math.cos(a),math.sin(a))
+		str_cmplx=str_cmplx..string.format("+value_inside(global_seeds.x,%g,%g)*c_mul(vec2(cos(%g),sin(%g)),p)",v,v2,a,a)
 	end
 	--]==]
 	--[==[
@@ -1864,29 +1874,29 @@ function rand_function(  )
 			vv=1
 		end
 		--str_cmplx=str_cmplx..string.format("+c_mul(vec2(%g,%g),c_mul(s,s))",math.cos(a),math.sin(a))
-		--str_cmplx=str_cmplx..string.format("+value_inside(global_seed,%g,%g)*c_mul(vec2(cos(%g),sin(%g)),c_mul(s,s))",v,v2,a,a)
-		str_cmplx=str_cmplx..string.format("+c_mul(vec2(cos(%g+global_seed*M_PI*2),sin(%g+global_seed*M_PI*2)),c_mul(s,s))",v,v2,a,a)
+		--str_cmplx=str_cmplx..string.format("+value_inside(global_seeds.x,%g,%g)*c_mul(vec2(cos(%g),sin(%g)),c_mul(s,s))",v,v2,a,a)
+		str_cmplx=str_cmplx..string.format("+c_mul(vec2(cos(%g+global_seeds.x*M_PI*2),sin(%g+global_seeds.x*M_PI*2)),c_mul(s,s))",v,v2,a,a)
 	end
 	--]==]
 		--[=[
 	--[=[
 	str_cmplx="c_mul(s,s)+p"
-	--str_cmplx="c_mul(s,s)*value_inside(global_seed,0,0.5)+c_mul(s,c_mul(s,s))*value_inside(global_seed,0.5,1)+p"
-	--str_cmplx="mix(c_mul(s,s)+p,c_mul(c_mul(s,s)+p,vec2(cos(2*M_PI*global_seed),sin(2*M_PI*global_seed))),tex_p.y)"
-	--str_cmplx="c_mul(s*(tex_p.y+0.5),s*(tex_s.y+0.5))+p*(global_seed+0.5)"
-	--str_cmplx="c_mul(s,s)+p*(global_seed+0.5)"
-	--str_cmplx="c_mul(s*global_seed,s*(1-global_seed))+p"
-	--str_cmplx="vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))*c_mul(s,s)+c_mul(p,params.zw)"
+	--str_cmplx="c_mul(s,s)*value_inside(global_seeds.x,0,0.5)+c_mul(s,c_mul(s,s))*value_inside(global_seeds.x,0.5,1)+p"
+	--str_cmplx="mix(c_mul(s,s)+p,c_mul(c_mul(s,s)+p,vec2(cos(2*M_PI*global_seeds.x),sin(2*M_PI*global_seeds.x))),tex_p.y)"
+	--str_cmplx="c_mul(s*(tex_p.y+0.5),s*(tex_s.y+0.5))+p*(global_seeds.x+0.5)"
+	--str_cmplx="c_mul(s,s)+p*(global_seeds.x+0.5)"
+	--str_cmplx="c_mul(s*global_seeds.x,s*(1-global_seeds.x))+p"
+	--str_cmplx="vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2))*c_mul(s,s)+c_mul(p,params.zw)"
 	--spiral brot
-	--str_cmplx="c_mul(vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)),c_mul(s,s))+c_mul(p,params.zw)"
+	--str_cmplx="c_mul(vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)),c_mul(s,s))+c_mul(p,params.zw)"
 
-	--str_cmplx="c_mul(s,s)+c_mul(p,vec2(cos((global_seed-0.5)*0.1),sin((global_seed-0.5)*0.1)))"
+	--str_cmplx="c_mul(s,s)+c_mul(p,vec2(cos((global_seeds.x-0.5)*0.1),sin((global_seeds.x-0.5)*0.1)))"
 	--str_cmplx="c_mul(s,s)+p"
 	--[[str_cmplx=[[
 	c_mul(
 		c_mul(s,s),
 		vec2(
-				cos((global_seed-0.5)*0.1),sin((global_seed-0.5)*0.1)
+				cos((global_seeds.x-0.5)*0.1),sin((global_seeds.x-0.5)*0.1)
 			)
 		)+p]]
 
@@ -1895,7 +1905,7 @@ function rand_function(  )
 
 	--[[ julia
 	--str_cmplx="c_mul(s,s)+params.xy"
-	str_cmplx="c_mul(s,s)+c_mul(params.xy,vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI)))"
+	str_cmplx="c_mul(s,s)+c_mul(params.xy,vec2(cos(global_seeds.x*2*M_PI),sin(global_seeds.x*2*M_PI)))"
 	--]]
 	--[[ cubebrot julian
 	str_cmplx="c_mul(s,c_mul(s,s))+c_mul(p,params.zw)+params.xy"
@@ -1972,13 +1982,13 @@ function rand_function(  )
 	--str_preamble="vec2 FT="..FT..";"
 	--[[
 	str_preamble=str_preamble.."vec2 last_s=s;"
-	str_postamble=str_postamble.."s=mix(last_s,s,global_seed);"
+	str_postamble=str_postamble.."s=mix(last_s,s,global_seeds.x);"
 	--]]
 
 	--[[
 
-	--str_preamble=str_preamble.."p=p*0.8+vec2(cos(global_seed*M_PI*2)*p.x-sin(global_seed*M_PI*2)*p.y,cos(global_seed*M_PI*2)*p.y+sin(global_seed*M_PI*2)*p.x)*.2;"
-	str_preamble=str_preamble.."s=s*0.0+vec2(cos(global_seed*M_PI*2)*s.x-sin(global_seed*M_PI*2)*s.y,cos(global_seed*M_PI*2)*s.y+sin(global_seed*M_PI*2)*s.x)*0.6;"
+	--str_preamble=str_preamble.."p=p*0.8+vec2(cos(global_seeds.x*M_PI*2)*p.x-sin(global_seeds.x*M_PI*2)*p.y,cos(global_seeds.x*M_PI*2)*p.y+sin(global_seeds.x*M_PI*2)*p.x)*.2;"
+	str_preamble=str_preamble.."s=s*0.0+vec2(cos(global_seeds.x*M_PI*2)*s.x-sin(global_seeds.x*M_PI*2)*s.y,cos(global_seeds.x*M_PI*2)*s.y+sin(global_seeds.x*M_PI*2)*s.x)*0.6;"
 	--]]
 	--str_preamble=str_preamble.."p=mod(p+move_dist/2,move_dist)-move_dist/2;"
 	--str_preamble=str_preamble.."p=floor(p*move_dist)/move_dist;"
@@ -2018,25 +2028,26 @@ function rand_function(  )
 		end
 		sub_s=string.format("%s*%g",sub_s,1/factorial(i))
 		input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2)
-		--input_s=input_s..string.format("+%s*c_mul(%s,vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)))",sub_s,tex_variants[math.random(1,#tex_variants)])
+		--input_s=input_s..string.format("+%s*c_mul(%s,vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)))",sub_s,tex_variants[math.random(1,#tex_variants)])
 		local v_start=(i-1)/series_size
 		local v_end=i/series_size
-		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)*value_inside(global_seed,%g,%g)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2,v_start,v_end)
+		--input_s=input_s..string.format("+%s*vec2(%.3f,%.3f)*value_inside(global_seeds.x,%g,%g)",sub_s,rand_offset+math.random()*rand_size-rand_size/2,rand_offset+math.random()*rand_size-rand_size/2,v_start,v_end)
 
 		local dx=math.cos((i/series_size)*math.pi*2)
 		local dy=math.sin((i/series_size)*math.pi*2)
-		--input_s=input_s..string.format("+%s*vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2))",sub_s)
+		--input_s=input_s..string.format("+%s*vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2))",sub_s)
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
 	--[[ ORBIFY!
 	--Idea: project to circle inside with sigmoid like func
 	local circle_radius=1
+	local fixed_move_dist=0.6
 	str_postamble=str_postamble..string.format("float DC=length(s)-%g;",circle_radius)
 	-- [==[
 	str_postamble=str_postamble.."vec2 VC=-normalize(s);"
-	str_postamble=str_postamble..string.format("s+=step(0,DC)*VC*(DC+%g*2*(sigmoid(DC*move_dist)));",circle_radius)
-	--str_postamble=str_postamble..string.format("s=(1-step(0,DC))*s+step(0,DC)*(%g)*rotate(VC,M_PI*move_dist*global_seed)*sigmoid(DC*global_seed);",circle_radius)
+	str_postamble=str_postamble..string.format("s+=step(0,DC)*VC*(DC+%g*2*(sigmoid(DC*%g)));",circle_radius,fixed_move_dist)
+	--str_postamble=str_postamble..string.format("s=(1-step(0,DC))*s+step(0,DC)*(%g)*rotate(VC,M_PI*move_dist*global_seeds.x)*sigmoid(DC*global_seeds.x);",circle_radius)
 	--]==]
 	--[[ polar gravity
 	str_preamble=str_preamble.."vec2 np=s;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
@@ -2050,10 +2061,10 @@ function rand_function(  )
 	--str_postamble=str_postamble.."float ls=length(s);s*=(1+sin(ls*move_dist))/2*move_dist;"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);s=last_s+ds*(move_dist/ls);"
 	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*move_dist)/(M_PI/2);s=last_s+ds*(move_dist*vv/ls);"
-	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seed*8))/(M_PI/2);s=last_s+ds*((global_seed*7)*vv/ls);"
-	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-dot(s,s)/global_seed);s=last_s+ds*(move_dist*vv/ls);"
-	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-tex_p.y/npl);s=last_s+c_mul(ds,global_seed_vec)*(vv/(ls*move_dist));"
-	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-tex_p.y/npl);s=last_s+c_mul(ds,global_seed_vec)*(vv*(1-normed_iter)/(ls*move_dist));"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=1-atan(ls*(global_seeds.x*8))/(M_PI/2);s=last_s+ds*((global_seeds.x*7)*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-dot(s,s)/global_seeds.x);s=last_s+ds*(move_dist*vv/ls);"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-tex_p.y/npl);s=last_s+c_mul(ds,global_seeds.x_vec)*(vv/(ls*move_dist));"
+	--str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-tex_p.y/npl);s=last_s+c_mul(ds,global_seeds.x_vec)*(vv*(1-normed_iter)/(ls*move_dist));"
 	str_postamble=str_postamble.."vec2 ds=s-last_s;float ls=length(ds);float vv=exp(-tex_p.y/npl);s=last_s+ds*(vv/(ls*move_dist));"
 	--]]
 	--[[ move towards circle
@@ -2064,7 +2075,7 @@ function rand_function(  )
 	--]]
 	--[[ boost less with distance
 	str_preamble=str_preamble.."s*=move_dist*exp(-1/dot(s,s));"
-	--str_preamble=str_preamble.."s*=global_seed*exp(-1/dot(s,s));"
+	--str_preamble=str_preamble.."s*=global_seeds.x*exp(-1/dot(s,s));"
 	--]]
 	--[[SINK!
 	str_postamble=str_postamble.."p=p*(2-normed_iter);"
@@ -2073,14 +2084,14 @@ function rand_function(  )
 	str_postamble=str_postamble.."s=abs(s);"
 	--]]
 	--[[
-	str_postamble=str_postamble.."s=mix(c_cos(s),c_sin(s),global_seed);"
+	str_postamble=str_postamble.."s=mix(c_cos(s),c_sin(s),global_seeds.x);"
 	--]]
 	--[[ center PRE
 	str_preamble=str_preamble.."s=s-p;"
 	--]]
 	--[[ cosify
 	--str_preamble=str_preamble.."s=cos(s-p)*move_dist+p;"
-	--str_preamble=str_preamble.."s=c_cos((s-p)*global_seed)*move_dist+p;"
+	--str_preamble=str_preamble.."s=c_cos((s-p)*global_seeds.x)*move_dist+p;"
 	str_preamble=str_preamble.."s=c_cos(s-p)*move_dist+p;"
 	--]]
 	--[[ tanify
@@ -2093,11 +2104,11 @@ function rand_function(  )
 	--[[ gaussination
 	--str_postamble=str_postamble.."s=vec2(exp(1/(-s.x*s.x)),exp(1/(-s.y*s.y)));"
 	--str_postamble=str_postamble.."s=s*vec2(exp(move_dist/(-p.x*p.x)),exp(move_dist/(-p.y*p.y)));"
-	str_postamble=str_postamble.."s=vec2(exp(global_seed/(-s.x*s.x)),exp(global_seed/(-s.y*s.y)));"
+	str_postamble=str_postamble.."s=vec2(exp(global_seeds.x/(-s.x*s.x)),exp(global_seeds.x/(-s.y*s.y)));"
 	--]]
 	--[[ invert-ination
-	str_preamble=str_preamble.."s=c_inv(s);"--s=c_mul(s,vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2)));"
-	str_postamble=str_postamble.."s=c_inv(s);"--s=c_mul(s,vec2(cos(-global_seed*M_PI*2),sin(-global_seed*M_PI*2)));"
+	str_preamble=str_preamble.."s=c_inv(s);"--s=c_mul(s,vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)));"
+	str_postamble=str_postamble.."s=c_inv(s);"--s=c_mul(s,vec2(cos(-global_seeds.x*M_PI*2),sin(-global_seeds.x*M_PI*2)));"
 	--]]
 	--[[ Chebyshev polynomial
 	str_preamble=str_preamble.."s=(move_dist+1)*acos(s+p);"
@@ -2108,7 +2119,7 @@ function rand_function(  )
 	str_postamble=str_postamble.."s=acos(s);"
 	--]]
 	--[[ Chebyshev polynomial
-	str_preamble=str_preamble.."s=floor(global_seed*move_dist+1)*c_acos(s);"
+	str_preamble=str_preamble.."s=floor(global_seeds.x*move_dist+1)*c_acos(s);"
 	str_postamble=str_postamble.."s=c_cos(s);"
 	--]]
 	--[[ Chebyshev polynomial2
@@ -2129,11 +2140,11 @@ function rand_function(  )
 	--]]
 	--[[ offset_complex
 	--str_preamble=str_preamble.."s+=params.xy*floor(seed*move_dist+1)/move_dist;s=c_mul(s,params.zw);"
-	str_preamble=str_preamble.."s+=vec2(0.125,-0.25);s=c_mul(s,vec2(global_seed,floor(global_seed*move_dist+1)/move_dist));"
+	str_preamble=str_preamble.."s+=vec2(0.125,-0.25);s=c_mul(s,vec2(global_seeds.x,floor(global_seeds.x*move_dist+1)/move_dist));"
 	--]]
 	--[[ unoffset_complex
 	--str_postamble=str_postamble.."s=c_div(s,params.zw);s-=params.xy*floor(seed*move_dist+1)/move_dist;"
-	str_postamble=str_postamble.."s=c_mul(s,c_inv(params.zw));s-=params.xy*floor(global_seed*move_dist+1)/move_dist;"
+	str_postamble=str_postamble.."s=c_mul(s,c_inv(params.zw));s-=params.xy*floor(global_seeds.x*move_dist+1)/move_dist;"
 	--]]
 	--[[ rotate (p)
 	--str_preamble=str_preamble.."s=vec2(cos(p.x)*s.x-sin(p.x)*s.y,cos(p.x)*s.y+sin(p.x)*s.x);"
@@ -2144,10 +2155,10 @@ function rand_function(  )
 	str_preamble=str_preamble.."vec2 os=s;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/move_dist);"
-	str_postamble=str_postamble.."s/=length(s);s=os+s*dot(tex_s,tex_s)/(move_dist*cos(global_seed*M_PI*2));"
+	str_postamble=str_postamble.."s/=length(s);s=os+s*dot(tex_s,tex_s)/(move_dist*cos(global_seeds.x*M_PI*2));"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
-	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seed*move_dist+1)/move_dist);"
+	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seeds.x*move_dist+1)/move_dist);"
 	--]]
 	--[[ const-delta-like complex
 	str_preamble=str_preamble.."vec2 os=s;"
@@ -2356,7 +2367,7 @@ out vec4 point_out;
 uniform vec2 center;
 uniform vec2 scale;
 uniform int pix_size;
-uniform float global_seed;
+uniform vec4 global_seeds;
 uniform float move_dist;
 uniform vec4 params;
 uniform float normed_iter;
@@ -2609,19 +2620,29 @@ vec2 rotate(vec2 v, float a) {
 
 vec3 func_actual(vec2 s,vec2 p)
 {
-	vec4 tex_p=texture(tex_img,p*scale*move_dist);
-	vec4 tex_s=texture(tex_img,s*scale*move_dist);
-	//vec4 tex_p=texture(tex_img,p*scale);
-	//vec4 tex_s=texture(tex_img,s*scale);
+#if 0
+	vec2 normed_p=(p*scale*move_dist+vec2(1,1))/2;
+	vec2 normed_s=(s*scale*move_dist+vec2(1,1))/2;
+#else
+	vec2 normed_p=(p*scale+vec2(1,1))/2;
+	vec2 normed_s=(s*scale+vec2(1,1))/2;
+#endif
+	vec4 tex_p=texture(tex_img,normed_p);
+	vec4 tex_s=texture(tex_img,normed_s);
+
 	float tex_sl=length(tex_s);
 	float tex_pl=length(tex_p);
+#if 0
 	tex_s=tex_s/(tex_sl+1);
 	tex_p=tex_p/(tex_pl+1);
-	/*
+#endif
+#if 1
 	float lum_white=exp(move_dist);
 	tex_s=(tex_s*(1 + tex_sl / lum_white)) / (tex_sl + 1);
 	tex_p=(tex_p*(1 + tex_pl / lum_white)) / (tex_pl + 1);
-	//*/
+#endif
+	tex_sl/=(tex_sl+1);
+	tex_pl/=(tex_pl+1);
 	//tex_p*=move_dist;
 	//tex_s*=move_dist;
 	//tex_s=tex_s/(exp(-length(tex_s))+1);
@@ -2630,7 +2651,7 @@ vec3 func_actual(vec2 s,vec2 p)
 	//tex_p=1/(exp(-tex_p)+1);
 	//init condition
 	vec2 last_s=s;
-	vec2 global_seed_vec=vec2(cos(global_seed*M_PI*2),sin(global_seed*M_PI*2));
+	vec2 global_seed_vec=vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2));
 	float e=1;
 	%s
 #if ESCAPE_MODE
@@ -2972,7 +2993,7 @@ in vec4 pos_f;
 uniform sampler2D img_tex;
 uniform int pix_size;
 uniform float normed_iter;
-uniform float global_seed;
+uniform vec4 global_seeds;
 
 uniform vec4 palette[50];
 uniform int palette_size;
@@ -3103,7 +3124,7 @@ void main(){
 	start_l=clamp(start_l,0,1);
 	start_l=1-exp(-start_l*start_l);
 	float dist_traveled=length(delta_pos);
-	float color_value=global_seed;
+	float color_value=global_seeds.x;
 	//float color_value=color_value_vornoi(delta_pos);
 	//float color_value=cos(seed.x)*0.5+0.5;
 	//float color_value=cos(seed.y*4*M_PI)*0.5+0.5;
@@ -3130,7 +3151,7 @@ void main(){
 	//c*=(sin(normed_iter*M_PI*8)+0.1);
 	//c*=(sin(start_l*M_PI*8)+0.0);
 	//c*=(start_l-0.5)*2;
-	//c*=sin(global_seed*M_PI*8)+0.3;
+	//c*=sin(global_seeds.x*M_PI*8)+0.3;
 	//color=vec4(exp(-c*0.0001),1);
 	color=vec4(c,1);
 
@@ -3521,7 +3542,7 @@ function visit_iter()
 		samples:get_current():use()
 		visit_tex.t:use(1,not_pixelated)
 		transform_shader:set_i("img_tex",1)
-		transform_shader:set("global_seed",global_seed)
+		transform_shader:set("global_seeds",global_seed,0,0,0)
 		transform_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
 		transform_shader:set("gen_radius",config.gen_radius or 2)
 		transform_shader:raster_discard(true)
@@ -3546,7 +3567,7 @@ function visit_iter()
 		add_visits_shader:set("center",config.cx,config.cy)
 		add_visits_shader:set("scale",config.scale,config.scale*aspect_ratio)
 		add_visits_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
-		add_visits_shader:set("global_seed",global_seed)
+		add_visits_shader:set("global_seeds",global_seed,0,0,0)
 		set_shader_palette(add_visits_shader)
 		if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
 			error("failed to set framebuffer up")
