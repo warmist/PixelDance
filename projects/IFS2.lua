@@ -45,7 +45,7 @@ local size=STATE.size
 local max_palette_size=50
 local need_clear=false
 local oversample=1
-local complex=true
+local complex=false
 local init_zero=true
 local sample_count=math.pow(2,20)
 local not_pixelated=0
@@ -1076,10 +1076,14 @@ end
 
 
 local terminal_symbols={
+--[[
 ["s.x"]=3,["s.y"]=3,["p.x"]=3,["p.y"]=3,
 ["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,
 ["normed_iter"]=0.05,
-["1.0"]=0.1,["0.0"]=0.1
+--]]
+["1.0"]=0.1,
+--["0.0"]=0.1,
+["-1.0"]=0.1,
 }
 local terminal_symbols_alt={
 ["p.x"]=3,["p.y"]=3
@@ -1095,12 +1099,12 @@ local normal_symbols={
 ["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,
 ["abs(R)"]=0.1,["sqrt(abs(R))"]=0.1,["exp(R)"]=0.01,
 ["atan(R,R)"]=0.1,
-["tan(R)"]=0.1,["sin(R)"]=0.1,["cos(R)"]=0.1,
+["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,
 ["acos(R)"]=0.001,["asin(R)"]=0.001,
 ["log(R)"]=0.001,
 --]]
-["(R)/(R)"]=2,["(R)*(R)"]=6,
-["(R)-(R)"]=2,["(R)+(R)"]=2
+["(R)/(R)"]=0.05,["(R)*(R)"]=2,
+["(R)-(R)"]=3,["(R)+(R)"]=3
 }
 
 local terminal_symbols_complex={
@@ -1661,6 +1665,101 @@ function get_forced_insert_complex(  )
 	--]==]
 	return tbl_insert
 end
+function get_forced_insert( )
+	local tbl_insert_x={}
+	local tbl_insert_y={}
+	-- [[ random picks
+	local choices={
+		"s.x","s.x*s.x","s.x*s.x*s.x","s.x*s.x*s.x*s.x",
+		"s.y","s.y*s.y","s.y*s.y*s.y","s.y*s.y*s.y*s.y",
+		"p.x","p.x*p.x","p.x*p.x*p.x","p.x*p.x*p.x*p.x",
+		"p.y","p.y*p.y","p.y*p.y*p.y","p.y*p.y*p.y*p.y",
+	}
+	local NO_PICKS=5
+	for i=1,NO_PICKS do
+		if math.random()>0.5 then
+			table.insert(tbl_insert_x,choices[math.random(1,#choices)])
+		else
+			table.insert(tbl_insert_y,choices[math.random(1,#choices)])
+		end
+	end
+	--]]
+	--[[ direct stuff
+		table.insert(tbl_insert_x,"s.x")
+		table.insert(tbl_insert_x,"p.x")
+		table.insert(tbl_insert_y,"s.y")
+		table.insert(tbl_insert_y,"p.y")
+	--]]
+	--[[ direct params
+		table.insert(tbl_insert_x,"params.x")
+		table.insert(tbl_insert_x,"params.z")
+		table.insert(tbl_insert_y,"params.y")
+		table.insert(tbl_insert_y,"params.w")
+	--]]
+	--[[ flipped stuff
+		table.insert(tbl_insert_x,"s.y")
+		table.insert(tbl_insert_x,"p.y")
+		table.insert(tbl_insert_y,"s.x")
+		table.insert(tbl_insert_y,"p.x")
+	--]]
+	--[[ flipped params
+		table.insert(tbl_insert_x,"params.y")
+		table.insert(tbl_insert_x,"params.w")
+		table.insert(tbl_insert_y,"params.x")
+		table.insert(tbl_insert_y,"params.z")
+	--]]
+	--[[ global seed stuff
+		table.insert(tbl_insert_x,"mix(s.x,s.y,global_seeds.x)")
+		table.insert(tbl_insert_x,"mix(p.x,p.y,global_seeds.x)")
+		table.insert(tbl_insert_y,"mix(s.x,s.y,1-global_seeds.x)")
+		table.insert(tbl_insert_y,"mix(p.x,p.y,1-global_seeds.x)")
+	--]]
+	--[[ global seed stuff2
+		table.insert(tbl_insert_x,"mix(s.x,s.x*s.x,global_seeds.x)")
+		table.insert(tbl_insert_x,"mix(p.x,p.x*p.x,global_seeds.x)")
+		table.insert(tbl_insert_y,"mix(s.y,s.y*s.y,1-global_seeds.x)")
+		table.insert(tbl_insert_y,"mix(p.y,p.y*p.y,1-global_seeds.x)")
+	--]]
+	-- [[ global seed params
+		table.insert(tbl_insert_x,"mix(params.x,params.y,global_seeds.x)")
+		table.insert(tbl_insert_y,"mix(params.x,params.y,global_seeds.x)")
+		table.insert(tbl_insert_x,"mix(params.z,params.w,global_seeds.x)")
+		table.insert(tbl_insert_y,"mix(params.z,params.w,global_seeds.x)")
+	--]]
+	--[[
+	local tbl_insert_x={"s.x+cos(global_seeds.x*M_PI*2)","p.y+params.x","params.x","params.y"}
+	local tbl_insert_y={"s.y+sin(global_seeds.x*M_PI*2)","p.x+params.y","params.z","params.w"}
+	]]--
+
+	--local tbl_insert={"s","p","mix(s*params.xy,s*params.zw,global_seeds.x)","mix(p*params.zw,p*params.xy,global_seeds.x)"}
+	--[[
+	local point_count=3
+	for i=1,point_count do
+		local v=(i-1)/point_count
+		local vr=v*math.pi*2
+		local r=0.1
+		table.insert(tbl_insert_cmplx,string.format("vec2(%g,%g)",math.cos(vr)*r,math.sin(vr)*r))
+	end
+	--]]
+	
+	--[=[
+	local tex_variants_real={
+		-- [[
+		"tex_p.x","tex_p.y","tex_p.z",
+		"tex_s.x","tex_s.y","tex_s.z",
+
+		--]]
+		"atan(tex_s.y,tex_s.x)/M_PI","atan(tex_p.y,tex_p.x)/M_PI",
+		"atan(tex_s.x,tex_s.z)/M_PI","atan(tex_p.x,tex_p.z)/M_PI"
+	}
+	local num_tex=2
+	for i=1,num_tex do
+		table.insert(tbl_insert_x,tex_variants_real[math.random(1,#tex_variants_real)])
+		table.insert(tbl_insert_y,tex_variants_real[math.random(1,#tex_variants_real)])
+	end
+	--]=]
+	return tbl_insert_x,tbl_insert_y
+end
 function new_ast_tree()
 	ast_tree= ast_node(normal_symbols_complex,terminal_symbols_complex)
 	ast_tree.forced=get_forced_insert_complex()
@@ -1749,35 +1848,7 @@ function rand_function(  )
 	local s=random_math(rand_complexity)
 	
 	local tbl_insert_cmplx=get_forced_insert_complex()
-	local tbl_insert_x={"s.x+cos(global_seeds.x*M_PI*2)","p.y+params.x","params.x","params.y"}
-	local tbl_insert_y={"s.y+sin(global_seeds.x*M_PI*2)","p.x+params.y","params.z","params.w"}
-	--[[
-	local point_count=3
-	for i=1,point_count do
-		local v=(i-1)/point_count
-		local vr=v*math.pi*2
-		local r=0.1
-		table.insert(tbl_insert_cmplx,string.format("vec2(%g,%g)",math.cos(vr)*r,math.sin(vr)*r))
-	end
-	--]]
-	
-
-	local tex_variants_real={
-		-- [[
-		"tex_p.x","tex_p.y","tex_p.z",
-		"tex_s.x","tex_s.y","tex_s.z",
-
-		--]]
-		"atan(tex_s.y,tex_s.x)/M_PI","atan(tex_p.y,tex_p.x)/M_PI",
-		"atan(tex_s.x,tex_s.z)/M_PI","atan(tex_p.x,tex_p.z)/M_PI"
-	}
-	-- [[
-	local num_tex=2
-	for i=1,num_tex do
-		table.insert(tbl_insert_x,tex_variants_real[math.random(1,#tex_variants_real)])
-		table.insert(tbl_insert_y,tex_variants_real[math.random(1,#tex_variants_real)])
-	end
-	--]]
+	local tbl_insert_x,tbl_insert_y=get_forced_insert()
 	--]==]
 	--chebyshev_poly_series(10)
 	--str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert)
@@ -3122,7 +3193,7 @@ void main(){
 
 	float start_l=length(start_pos);
 	start_l=clamp(start_l,0,1);
-	start_l=1-exp(-start_l*start_l);
+	//start_l=1-exp(-start_l*start_l/100);
 	float dist_traveled=length(delta_pos);
 	float color_value=global_seeds.x;
 	//float color_value=color_value_vornoi(delta_pos);
@@ -3140,12 +3211,19 @@ void main(){
 	//float color_value=1-exp(-dot(delta_pos,delta_pos)/2.5);
 	//float color_value=mix(start_l,dist_traveled,normed_iter);
 	//float color_value=clamp(dist_traveled/(1+dist_traveled),0,1);
+
+	float intensity2=1;
+	//intensity2=1/clamp(dist_traveled,1,10);//1-clamp(dist_traveled/(1+dist_traveled),0,1);
+	//intensity2=log(clamp(dist_traveled,0,10000)+3);
+	//intensity2=1/clamp(dist_traveled,1,10000);
+	//intensity2=start_l;
+	//intensity2=global_seeds.y;
 	vec3 c;
 	if(palette_xyz==1)
 		c=mix_palette(color_value).xyz;
 	else
 		c=rgb2xyz(mix_palette(color_value).xyz);
-	c*=a*intensity;
+	c*=a*intensity*intensity2;
 	//c+=vec3(0.01);
 	//c*=(sin(start_l*M_PI*16)+0.6);
 	//c*=(sin(normed_iter*M_PI*8)+0.1);
@@ -3542,7 +3620,7 @@ function visit_iter()
 		samples:get_current():use()
 		visit_tex.t:use(1,not_pixelated)
 		transform_shader:set_i("img_tex",1)
-		transform_shader:set("global_seeds",global_seed,0,0,0)
+		transform_shader:set("global_seeds",global_seed,1-cur_visit_iter/config.IFS_steps,0,0)
 		transform_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
 		transform_shader:set("gen_radius",config.gen_radius or 2)
 		transform_shader:raster_discard(true)
@@ -3567,7 +3645,7 @@ function visit_iter()
 		add_visits_shader:set("center",config.cx,config.cy)
 		add_visits_shader:set("scale",config.scale,config.scale*aspect_ratio)
 		add_visits_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
-		add_visits_shader:set("global_seeds",global_seed,0,0,0)
+		add_visits_shader:set("global_seeds",global_seed,1-cur_visit_iter/config.IFS_steps,0,0)
 		set_shader_palette(add_visits_shader)
 		if not visit_tex.t:render_to(visit_tex.w,visit_tex.h) then
 			error("failed to set framebuffer up")
