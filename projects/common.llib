@@ -13,6 +13,7 @@ ffi.cdef[[
 typedef struct { uint8_t r, g, b, a; } rgba_pixel;
 typedef struct { float r, g, b,a; } float_pixel;
 typedef struct { float r, g; } float_half_pixel;
+typedef struct { uint32_t r, g, b,a; } uint_pixel;
 void free_image(char* data);
 char* png_load(const char* path,int* w,int* h,int* comp,int need_comp);
 ]]
@@ -102,6 +103,7 @@ FLTA_PIX=1
 F_PIX=2
 FL_PIX=3
 U8_PIX=4
+U32_PIX=5
 
 size_of_data={
 	[RGBA_PIX]=4*1,
@@ -109,6 +111,7 @@ size_of_data={
 	[F_PIX]=4*1,
 	[FL_PIX]=4*2,
 	[U8_PIX]=1,
+	[U32_PIX]=4*4,
 }
 
 make_image_buffer= make_buffer("rgba_pixel",RGBA_PIX,{0,0,0,255})
@@ -116,6 +119,7 @@ make_flt_buffer= make_buffer("float_pixel",FLTA_PIX,{0,0,0,1})
 make_float_buffer=make_buffer("float",F_PIX,0)
 make_flt_half_buffer=make_buffer("float_half_pixel",FL_PIX,{0,0})
 make_char_buffer=make_buffer("uint8_t",U8_PIX,0)
+make_u32_buffer=make_buffer("uint_pixel",U32_PIX,{0,0,0,0})
 
 make_matrix=make_float_buffer
 function make_ident_matrix( w,h )

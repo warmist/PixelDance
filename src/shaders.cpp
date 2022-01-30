@@ -220,10 +220,18 @@ static int push_attribute(lua_State* L)
 	}
 	//if (data == nullptr)
 	//	luaL_error(L,"Incorrect second argument: expected pointer to array");
-    const char* name = luaL_checkstring(L, 3);
-	auto pos_idx = glGetAttribLocation(s->id, name);
-    if (pos_idx == -1)
-        luaL_error(L, "Attribute %s not found in shader", name);
+    int pos_idx;
+    if (lua_type(L, 3) == LUA_TNUMBER)
+    {
+        pos_idx = luaL_checkinteger(L, 3);
+    }
+    else
+    {
+        const char* name = luaL_checkstring(L, 3);
+        pos_idx = glGetAttribLocation(s->id, name);
+        if (pos_idx == -1)
+            luaL_error(L, "Attribute %s not found in shader", name);
+    }
 	auto float_count=luaL_checkint(L,4);
     int attrib_type = luaL_optint(L, 5, GL_FLOAT);
     int attrib_stride = luaL_optint(L, 6, 0);
@@ -247,13 +255,22 @@ static int push_iattribute(lua_State* L)
     {
         data = lua_topointer(L, 2); //TODO: check pointer?
     }
-    const char* name = luaL_checkstring(L, 3);
     //TODO: all data==nullptr does not make sense anymore when doing bind-vao
     //if (data == nullptr)
     //    luaL_error(L, "Incorrect second argument: expected pointer to array");
-    auto pos_idx = glGetAttribLocation(s->id, name);
-    if (pos_idx == -1)
-        luaL_error(L, "Attribute %s not found in shader", name);
+    int pos_idx;
+    int ttype = lua_type(L, 3);
+    if (ttype == LUA_TNUMBER)
+    {
+        pos_idx = luaL_checkinteger(L, 3);
+    }
+    else
+    {
+        const char* name = luaL_checkstring(L, 3);
+        pos_idx = glGetAttribLocation(s->id, name);
+        if (pos_idx == -1)
+            luaL_error(L, "Attribute %s not found in shader", name);
+    }
     auto float_count = luaL_checkint(L, 4);
     int attrib_type = luaL_optint(L, 5, GL_UNSIGNED_INT);
     int attrib_stride = luaL_optint(L, 6, 0);
