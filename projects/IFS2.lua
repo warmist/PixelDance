@@ -2256,19 +2256,23 @@ function rand_function(  )
 	str_preamble=str_preamble.."s+=params.xy;"
 	--]]
 	--[==[ mobius transform
+	local mob_count=3
 	local mob={}
-	for i=1,8*3 do
+	for i=1,8*mob_count do
 		table.insert(mob,math.random()*2-1)
 	end
 	--params.xy=a params.zw=b, m1,m2=c,gvec=d
-	--[[
-	str_preamble=str_preamble..string.format("s=mix(s,mobius(vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),s),value_inside(global_seeds.x,0,0.333));",mob[1],mob[2],mob[3],mob[4],mob[5],mob[6],mob[7],mob[8])
-	str_preamble=str_preamble..string.format("s=mix(s,mobius(vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),s),value_inside(global_seeds.x,0.333,0.666));",mob[9],mob[10],mob[11],mob[12],mob[13],mob[14],mob[15],mob[16])
-	str_preamble=str_preamble..string.format("s=mix(s,mobius(vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),s),value_inside(global_seeds.x,0.666,1));",mob[17],mob[18],mob[19],mob[20],mob[21],mob[22],mob[23],mob[24])
+	-- [[
+	for i=0,mob_count-1 do
+		local cval=i/mob_count
+		local nval=(i+1)/mob_count
+		str_preamble=str_preamble..string.format("s=mix(s,mobius(vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),s),value_inside(prand.x,%g,%g));",
+			mob[i*8+1],mob[i*8+2],mob[i*8+3],mob[i*8+4],mob[i*8+5],mob[i*8+6],mob[i*8+7],mob[i*8+8],cval,nval)
+	end
 	--]]
 	--riley recipe: https://github.com/timhutton/mobius-transforms/blob/gh-pages/dfs_recipes.html and Indra's Pearls, p. 258
-	str_preamble=str_preamble..string.format("s=mix(s,mobius(vec2(1,0),vec2(0,0),params.xy,vec2(1,0),s),value_inside(global_seeds.x+seed.y,0,1));")
-	str_preamble=str_preamble..string.format("s=mix(s,mobius(vec2(1,0),vec2(2,0),vec2(0,0),vec2(1,0),s),value_inside(global_seeds.x+seed.y,1,2));")
+	--str_preamble=str_preamble..string.format("s=mix(s,mobius(vec2(1,0),vec2(0,0),vec2(params.x,prand.x),vec2(1,0),s),value_inside(prand.y,0,0.5));")
+	--str_preamble=str_preamble..string.format("s=mix(s,mobius(vec2(1,0),vec2(2,0),vec2(0,0),vec2(1,0),s),value_inside(prand.y,0.5,1));")
 	--str_preamble=string.format("s=c_div(c_mul(params.xy,s)+params.zw,c_mul(vec2(%g,%g),s)+global_seed_vec*move_dist);",m1,m2)
 	--str_preamble=string.format("s=c_div(c_mul(params.xy,s)+params.zw,c_mul(vec2(%g,%g),s)+vec2(%g,%g));",m1,m2,m3,m4)
 	--str_postamble=string.format("s=c_div(c_mul(global_seed_vec,s)-params.zw,-c_mul(vec2(%g,%g),s)+params.xy);",m1,m2)
@@ -2277,8 +2281,9 @@ function rand_function(  )
 	--[[ rotate
 	--str_preamble=str_preamble.."s=vec2(cos(params.z)*s.x-sin(params.z)*s.y,cos(params.z)*s.y+sin(params.z)*s.x);"
 	--str_preamble=str_preamble.."p=vec2(cos(params.z*M_PI*2)*p.x-sin(params.z*M_PI*2)*p.y,cos(params.z*M_PI*2)*p.y+sin(params.z*M_PI*2)*p.x);"
-	str_postamble=str_postamble.."p=vec2(cos(global_seeds.x*M_PI*2)*p.x-sin(global_seeds.x*M_PI*2)*p.y,cos(global_seeds.x*M_PI*2)*p.y+sin(global_seeds.x*M_PI*2)*p.x);"
-	str_postamble=str_postamble.."p=vec2(cos(global_seeds.x*M_PI*2*move_dist)*s.x-sin(global_seeds.x*M_PI*2*move_dist)*s.y,cos(global_seeds.x*M_PI*2*move_dist)*s.y+sin(global_seeds.x*M_PI*2*move_dist)*s.x);"
+	--str_postamble=str_postamble.."p=vec2(cos(global_seeds.x*M_PI*2)*p.x-sin(global_seeds.x*M_PI*2)*p.y,cos(global_seeds.x*M_PI*2)*p.y+sin(global_seeds.x*M_PI*2)*p.x);"
+	--str_postamble=str_postamble.."p=vec2(cos(prand.x*M_PI*2*move_dist)*s.x-sin(prand.x*M_PI*2*move_dist)*s.y,cos(prand.x*M_PI*2*move_dist)*s.y+sin(prand.x*M_PI*2*move_dist)*s.x);"
+	str_postamble=str_postamble.."s=vec2(cos(prand.x*M_PI*2*move_dist)*s.x-sin(prand.x*M_PI*2*move_dist)*s.y,cos(prand.x*M_PI*2*move_dist)*s.y+sin(prand.x*M_PI*2*move_dist)*s.x);"
 	--]]
 	--[[ offset_complex
 	--str_preamble=str_preamble.."s+=params.xy*floor(seed*move_dist+1)/move_dist;s=c_mul(s,params.zw);"
@@ -2798,6 +2803,10 @@ vec2 rotate(vec2 v, float a) {
 vec4 get_rnd_floats(uvec4 p)
 {
 	return p/vec4(4294967295.0);
+}
+vec2 mobius(vec2 a, vec2 b, vec2 c, vec2 d, vec2 z)
+{
+	return c_div(c_mul(a,z)+b,c_mul(c,z)+d);
 }
 //str_other_code
 %s
