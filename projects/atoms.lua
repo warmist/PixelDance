@@ -2,8 +2,8 @@
 
 
 require 'common'
-local win_w=1280
-local win_h=1280
+local win_w=1000
+local win_h=1000
 --[[
     agent is:
         pos (2)
@@ -103,20 +103,13 @@ uniform vec2 rez;
 out vec4 at;
 out vec2 pos;
 uniform float offscreen_draw;
+uniform vec2 offscreen_offset;
 void main()
 {
 	vec2 offset;
 	if(offscreen_draw!=0.0)
 	{
-		if(position.x-pix_size/2<0)
-			offset.x=rez.x;
-		if(position.x+pix_size/2>rez.x)
-			offset.x=-rez.x;
-
-        if(position.y-pix_size/2<0)
-            offset.y=rez.y;
-        if(position.y+pix_size/2>rez.y)
-            offset.y=-rez.y;
+		offset=offscreen_offset*rez;
 	}
 	vec2 real_pos=position.xy+offset;
 	vec2 normed=(real_pos/rez)*2-vec2(1,1);
@@ -145,14 +138,17 @@ vec4 palette(float t,vec4 a,vec4 b,vec4 c,vec4 d)
 }
 #define M_PI 3.14159
 void main(){
+	float max_range=8;
     //center
 	vec2 p = (gl_PointCoord - 0.5)*2;
- 	float r = length(p)*(-1.25)+1.25;
-    r=clamp(r,0,1);
+ 	float r = length(p);//*(-1.25)+1.25;
+    //r=clamp(r,0,1);
+    r*=max_range;
+    r=clamp(r,0,max_range);
 	if(offscreen_draw!=0.0)
 	{
-	    if(pos.x>0 && pos.y>0 && pos.x<rez.x && pos.y<rez.y)
-	    	discard;
+	    //if(pos.x>0 && pos.y>0 && pos.x<rez.x && pos.y<rez.y)
+	    //	discard;
 	}
 	else
 	{
@@ -164,7 +160,20 @@ void main(){
         mult=-1;
     else if(at.z<64)
         mult=1;
-
+    float rinv=1/r;
+    #if 0
+    //* lenard jones potential
+    float s=0.5;
+    float eps=0.8;
+    float A=4*eps*pow(s,12);
+    float B=4*eps*pow(s,6);
+    float v=A/pow(rinv,12)-B/pow(rinv,6);
+    //*/
+#else
+    float v=1*rinv*rinv*rinv-1.7*rinv*rinv+0.024609375; //f(max_range)=0
+#endif
+    //float v=r*r*r-r*r;
+    v=clamp(v,-100,100);
     vec2 p1=p+vec2(cos(at.x),sin(at.x))*0.5;
     float r2=1-length(p1)*length(p1)*4;
     r2=clamp(r2,0,1);
@@ -181,7 +190,7 @@ void main(){
     float r3=1-length(p2)*length(p2)*4;
     r3=clamp(r3,0,1);
     r3*=mult2;
-	color=vec4(r*r,r3,r2,0);//palette(r,vec4(0.5),vec4(0.5),vec4(1.5*at.z,at.z,8*at.z,0),vec4(1,1,0,0))*r;
+	color=vec4(v,0,0,0);//palette(r,vec4(0.5),vec4(0.5),vec4(1.5*at.z,at.z,8*at.z,0),vec4(1,1,0,0))*r;
 }
 ]==])
 function add_fields_fbk(  )
@@ -205,13 +214,14 @@ function add_fields_fbk(  )
     	add_fields_shader:set("offscreen_draw",0)
     	add_fields_shader:draw_points(0,agent_count,4)
     end
-
+    --[[
     agent_buffers.angle_type:get_current():use()
     add_fields_shader:push_attribute(0,"angle_type",4)
+    add_fields_shader:set("offscreen_offset",1,0)
     agent_buffers.pos_speed:get_current():use()
 	add_fields_shader:set("offscreen_draw",1)
 	add_fields_shader:draw_points(0,agent_count,4)
-
+	--]]
 	add_fields_shader:blend_default()
 	__render_to_window()
 	__unbind_buffer()
@@ -235,14 +245,25 @@ vec2 grad_tex(vec2 pos)
     ret.y=textureOffset(tex_main,pos,ivec2(0,1)).x-v;
     return ret;
 }
+float sdfBox(vec2 p, vec2 size)
+{
+    vec2 d = abs(p) - size;  
+	return length(min(-d, vec2(0))) + max(min(-d.x,-d.y), 0.0);
+}
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     //normed=normed/zoom+translate;
 #if 1
     vec4 pixel=texture(tex_main,normed);
-    color=pixel;
+    color.w=1;
+    if(pixel.x>0)
+    	color.xyz=pixel.xyz*0.01;
+    else
+    	color.xyz=vec3(0,0,-pixel.x);
+    //color=abs(pixel*1);
+    //color+=sdfBox(pos.xy,vec2(0.8));
 #else
-	color=vec4(grad_tex(normed)*1000,0,0);
+	color=vec4(grad_tex(normed)*100,0,0);
 #endif
 }
 ]==]
@@ -256,6 +277,7 @@ out vec4 state_out;
 
 uniform sampler2D tex_main;  //signal buffer state
 uniform vec2 rez;
+uniform float friction;
 
 //agent settings uniforms
 float sample_around(vec2 pos)
@@ -280,20 +302,57 @@ vec2 grad_tex(vec2 pos)
     ret.y=textureOffset(tex_main,pos,ivec2(0,1)).x-v;
     return ret;
 }
+vec2 grad_tex2(vec2 pos)
+{
+    vec2 ret;
+    ret.x=textureOffset(tex_main,pos,ivec2(1,0)).x-textureOffset(tex_main,pos,ivec2(-1,0)).x;
+    ret.y=textureOffset(tex_main,pos,ivec2(0,1)).x-textureOffset(tex_main,pos,ivec2(0,-1)).x;
+    return ret/2;
+}
+float sdfBox(vec2 p, vec2 size)
+{
+    vec2 d = abs(p) - size;  
+	return length(min(-d, vec2(0))) + max(min(-d.x,-d.y), 0.0);
+}
+vec2 grad_sdf(vec2 pos)
+{
+	vec2 s=vec2(0.8);
+	float dx=1/rez.x;
+	vec2 ret;
+    float v=sdfBox(pos,s);
+    ret.x=sdfBox(pos+vec2(dx,0),s)-v;
+    ret.y=sdfBox(pos+vec2(0,dx),s)-v;
+    return ret;
+}
 void main(){
+	float max_l=0.5;
 	vec4 state=position;
     vec2 normed_state=(state.xy/rez);
 	vec4 fields=texture(tex_main,normed_state);
 
-	vec2 p=grad_tex(normed_state);//vec2(dFdx(fields.x),dFdy(fields.x));
+	vec2 p=grad_tex2(normed_state);//vec2(dFdx(fields.x),dFdy(fields.x));
+	vec2 ps=grad_sdf(normed_state-vec2(0.5));
+	//state.zw-=ps;
 	state.zw-=p;
+	state.w-=0.01;
+	state.zw*=friction;
 	float l=length(state.zw);
-	if(l>1)
+	if(l>max_l)
 	{
-		state.zw/=l;
+		state.zw/=l/max_l;
 	}
+	if(state.x+state.z>rez.x)
+		state.z*=-1;
+	if(state.y+state.w>rez.y)
+		state.w*=-1;
+	if(state.x+state.z<0)
+		state.z*=-1;
+	if(state.y+state.w<0)
+		state.w*=-1;
 	state.xy+=state.zw;
-	state.xy=mod(state.xy,rez.xy);
+
+	//state.xy=mod(state.xy,rez.xy);
+	state.xy=clamp(state.xy,vec2(0),rez);
 	state_out=state;
 
 }
@@ -311,7 +370,7 @@ function do_agent_logic_fbk(  )
     tex_pixel:use(0)
     agent_logic_shader_fbk:set_i("tex_main",0)
 	agent_logic_shader_fbk:set("rez",map_w,map_h)
-
+	agent_logic_shader_fbk:set("friction",config.friction);
 	agent_logic_shader_fbk:raster_discard(true)
 	local ao=agent_buffers.pos_speed:get_other()
 	ao:use()
@@ -394,7 +453,7 @@ function update()
 		--signal_buf:read_texture(tex_pixel)
 		for x=0,signal_buf.w-1 do
 		for y=0,signal_buf.h-1 do
-			signal_buf:set(x,y,0)
+			signal_buf:set(x,y,{0,0,0,0})
 		end
 		end
 		signal_buf:write_texture(tex_pixel)
