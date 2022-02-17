@@ -15,7 +15,7 @@ local win_h=1000
 --]]
 __set_window_size(win_w,win_h)
 local oversample=1
-local agent_count=5000--1e6
+local agent_count=2--1e6
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -146,9 +146,10 @@ void main(){
 	float max_range=2;
     //center
 	vec2 p = (gl_PointCoord - 0.5)*2;
+	p*=max_range;
  	float r = length(p);//*(-1.25)+1.25;
     //r=clamp(r,0,1);
-    r*=max_range;
+    //r*=max_range;
     r=clamp(r,0,max_range);
 	if(offscreen_draw!=0.0)
 	{
@@ -174,13 +175,27 @@ void main(){
     float B=4*eps*pow(s,6);
     float v=A*pow(rinv,12)-B*pow(rinv,6);
     //*/
-#else
-    float A=4*eps*pow(s,3);
+#elif 0
+    float A=4*eps*pow(s,4);
     float B=4*eps*pow(s,2);
     float imr=1/max_range;
-    float max_range_fix=A*imr*imr*imr-B*imr*imr;
+    float max_range_fix=A*imr*imr*imr-B*imr*imr; //this fix that the potential at max_range==0
     float v=A*rinv*rinv*rinv-B*rinv*rinv-max_range_fix;
+#else
+	//precalc derivate
+	float A=4*eps*pow(s,4);
+    float B=4*eps*pow(s,2);
+    //float imr=1/max_range;
+    //float max_range_fix=A*imr*imr*imr-B*imr*imr; //this fix that the potential at max_range==0
+    float max_range_fix=0;
+
+    float rsq=r*r;
+    vec2 vd=2*p.xy*(B/(rsq*rsq)-2*A/(rsq*rsq*rsq));
+    vd*=step(0.05,r);//smoothstep(0.05,0.2,r); //zero out the center, as we dont want to influence ourself
+    float v=-4*A*rinv*rinv*rinv*rinv*rinv+2*B*rinv*rinv*rinv-max_range_fix;
+    //vd=clamp(vd,vec2(-1),vec2(1));
 #endif
+
     //float v=r*r*r-r*r;
     v=clamp(v,-100,1000);
     vec2 p1=p+vec2(cos(at.x),sin(at.x))*0.5;
@@ -199,7 +214,7 @@ void main(){
     float r3=1-length(p2)*length(p2)*4;
     r3=clamp(r3,0,1);
     r3*=mult2;
-	color=vec4(v,0,0,0);//palette(r,vec4(0.5),vec4(0.5),vec4(1.5*at.z,at.z,8*at.z,0),vec4(1,1,0,0))*r;
+	color=vec4(vd.xy,0,0);//palette(r,vec4(0.5),vec4(0.5),vec4(1.5*at.z,at.z,8*at.z,0),vec4(1,1,0,0))*r;
 }
 ]==])
 function add_fields_fbk(  )
@@ -265,12 +280,21 @@ void main(){
     //normed=normed/zoom+translate;
 #if 1
     vec4 pixel=texture(tex_main,normed);
-    //pixel.xyz*=1;
-    color.w=1;
+    /*//pixel.xyz*=1;
+    //pixel.x=pow(pixel.x,0.002);
     if(pixel.x>0)
-    	color.xyz=pixel.xyz*0.0005;
+    	color.xyz=pixel.xyz*0.005;
     else
-    	color.xyz=vec3(0,0,-pixel.x);
+    	color.xyz=vec3(0,0,-pixel.x*0.5);
+    */
+    //color.xyz=abs(pixel.xyz);
+    float a=atan(pixel.y,pixel.x)/3.14;
+    if(a>0)
+    	color.x=a;
+    else
+    	color.y=-a;
+    color.z=length(pixel.xy)*0.1;
+    color.w=1;
     //color=abs(pixel*1);
     //color+=sdfBox(pos.xy,vec2(0.8));
 #else
@@ -342,10 +366,11 @@ void main(){
     vec2 normed_state=(state.xy/rez);
 	vec4 fields=texture(tex_main,normed_state);
 
-	vec2 p=grad_tex2(normed_state);//vec2(dFdx(fields.x),dFdy(fields.x));
-	vec2 ps=grad_sdf(normed_state-vec2(0.5));
+	//vec2 p=grad_tex2(normed_state);//vec2(dFdx(fields.x),dFdy(fields.x));
+	//vec2 ps=grad_sdf(normed_state-vec2(0.5));
 	//state.zw-=ps;
-	state.zw-=p;
+	//state.zw-=p;
+	state.zw-=fields.xy;
 	state.w-=gravity;
 	state.zw*=friction;
 	float l=length(state.zw);
@@ -353,6 +378,7 @@ void main(){
 	{
 		state.zw/=l/max_l;
 	}
+
 	if(state.x+state.z>rez.x)
 		state.z*=-1;
 	if(state.y+state.w>rez.y)
@@ -361,6 +387,7 @@ void main(){
 		state.z*=-1;
 	if(state.y+state.w<0)
 		state.w*=-1;
+
 	state.xy+=state.zw;
 
 	//state.xy=mod(state.xy,rez.xy);
