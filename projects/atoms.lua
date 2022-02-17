@@ -15,7 +15,7 @@ local win_h=1000
 --]]
 __set_window_size(win_w,win_h)
 local oversample=1
-local agent_count=5--1e6
+local agent_count=5000--1e6
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -82,8 +82,12 @@ config=make_config({
     --system
     {"friction",0.995181,type="floatsci",min=0.99,max=1},
     {"friction_angular",0.995181,type="floatsci",min=0.99,max=1},
+    {"gravity",0.01,type="floatsci",min=0,max=1},
+    {"max_speed",1,type="floatsci",min=0,max=10},
     --agent
     {"ag_field_distance",100,type="int",min=1,max=500},
+    {"param_p",0.01,type="float",min=0.01,max=5},
+    {"param_s",0.01,type="float",min=0.01,max=5},
     },config)
 
 add_fields_shader=shaders.Make(
@@ -132,13 +136,14 @@ uniform vec2 rez;
 uniform int pix_size;
 uniform float trail_amount;
 uniform float offscreen_draw;
+uniform vec2 potential_params;
 vec4 palette(float t,vec4 a,vec4 b,vec4 c,vec4 d)
 {
     return a+b*cos(c+d*t*3.1459);
 }
 #define M_PI 3.14159
 void main(){
-	float max_range=8;
+	float max_range=2;
     //center
 	vec2 p = (gl_PointCoord - 0.5)*2;
  	float r = length(p);//*(-1.25)+1.25;
@@ -161,19 +166,23 @@ void main(){
     else if(at.z<64)
         mult=1;
     float rinv=1/r;
-    #if 0
+    float s=potential_params.y;
+    float eps=potential_params.x;
+#if 0
     //* lenard jones potential
-    float s=0.5;
-    float eps=0.8;
     float A=4*eps*pow(s,12);
     float B=4*eps*pow(s,6);
-    float v=A/pow(rinv,12)-B/pow(rinv,6);
+    float v=A*pow(rinv,12)-B*pow(rinv,6);
     //*/
 #else
-    float v=1*rinv*rinv*rinv-1.7*rinv*rinv+0.024609375; //f(max_range)=0
+    float A=4*eps*pow(s,3);
+    float B=4*eps*pow(s,2);
+    float imr=1/max_range;
+    float max_range_fix=A*imr*imr*imr-B*imr*imr;
+    float v=A*rinv*rinv*rinv-B*rinv*rinv-max_range_fix;
 #endif
     //float v=r*r*r-r*r;
-    v=clamp(v,-100,100);
+    v=clamp(v,-100,1000);
     vec2 p1=p+vec2(cos(at.x),sin(at.x))*0.5;
     float r2=1-length(p1)*length(p1)*4;
     r2=clamp(r2,0,1);
@@ -199,6 +208,7 @@ function add_fields_fbk(  )
     add_fields_shader:blend_add()
 	add_fields_shader:set_i("pix_size",config.ag_field_distance)
 	add_fields_shader:set("rez",map_w,map_h)
+	add_fields_shader:set("potential_params",config.param_p,config.param_s)
 	if not tex_pixel:render_to(map_w,map_h) then
 		error("failed to set framebuffer up")
 	end
@@ -255,9 +265,10 @@ void main(){
     //normed=normed/zoom+translate;
 #if 1
     vec4 pixel=texture(tex_main,normed);
+    //pixel.xyz*=1;
     color.w=1;
     if(pixel.x>0)
-    	color.xyz=pixel.xyz*0.01;
+    	color.xyz=pixel.xyz*0.0005;
     else
     	color.xyz=vec3(0,0,-pixel.x);
     //color=abs(pixel*1);
@@ -278,7 +289,8 @@ out vec4 state_out;
 uniform sampler2D tex_main;  //signal buffer state
 uniform vec2 rez;
 uniform float friction;
-
+uniform float gravity;
+uniform float max_speed;
 //agent settings uniforms
 float sample_around(vec2 pos)
 {
@@ -325,7 +337,7 @@ vec2 grad_sdf(vec2 pos)
     return ret;
 }
 void main(){
-	float max_l=0.5;
+	float max_l=max_speed;
 	vec4 state=position;
     vec2 normed_state=(state.xy/rez);
 	vec4 fields=texture(tex_main,normed_state);
@@ -334,7 +346,7 @@ void main(){
 	vec2 ps=grad_sdf(normed_state-vec2(0.5));
 	//state.zw-=ps;
 	state.zw-=p;
-	state.w-=0.01;
+	state.w-=gravity;
 	state.zw*=friction;
 	float l=length(state.zw);
 	if(l>max_l)
@@ -371,6 +383,8 @@ function do_agent_logic_fbk(  )
     agent_logic_shader_fbk:set_i("tex_main",0)
 	agent_logic_shader_fbk:set("rez",map_w,map_h)
 	agent_logic_shader_fbk:set("friction",config.friction);
+	agent_logic_shader_fbk:set("gravity",config.gravity);
+	agent_logic_shader_fbk:set("max_speed",config.max_speed);
 	agent_logic_shader_fbk:raster_discard(true)
 	local ao=agent_buffers.pos_speed:get_other()
 	ao:use()
