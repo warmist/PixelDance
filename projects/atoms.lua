@@ -15,7 +15,8 @@ local win_h=1000
 --]]
 __set_window_size(win_w,win_h)
 local oversample=1
-local agent_count=2--1e6
+local agent_count=1000
+local use_grad_directly=1
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -143,7 +144,7 @@ vec4 palette(float t,vec4 a,vec4 b,vec4 c,vec4 d)
 }
 #define M_PI 3.14159
 void main(){
-	float max_range=2;
+	float max_range=3;
     //center
 	vec2 p = (gl_PointCoord - 0.5)*2;
 	p*=max_range;
@@ -181,6 +182,8 @@ void main(){
     float imr=1/max_range;
     float max_range_fix=A*imr*imr*imr-B*imr*imr; //this fix that the potential at max_range==0
     float v=A*rinv*rinv*rinv-B*rinv*rinv-max_range_fix;
+    v=clamp(v,-100,1000);
+    color=vec4(v,0,0,0);
 #else
 	//precalc derivate
 	float A=4*eps*pow(s,4);
@@ -189,15 +192,32 @@ void main(){
     //float max_range_fix=A*imr*imr*imr-B*imr*imr; //this fix that the potential at max_range==0
     float max_range_fix=0;
 
-    float rsq=r*r;
-    vec2 vd=2*p.xy*(B/(rsq*rsq)-2*A/(rsq*rsq*rsq));
+    //float rsq=r*r;
+    float rsq_inv=rinv*rinv;
+ 	float v=A*rinv*rinv*rinv*rinv-B*rinv*rinv;//-max_range_fix;
+ 	float max_inv=1/(max_range*max_range);
+ 	vec2 vd_max=2*p.xy*(B*max_inv*max_inv-2*A*max_inv*max_inv*max_inv);
+    vec2 vd=2*p.xy*(B*rsq_inv*rsq_inv-2*A*rsq_inv*rsq_inv*rsq_inv)-vd_max;
+    vd*=vec2(1,-1); 
+    //vec2 vd=2*p.xy*(B/(rsq*rsq)-2*A/(rsq*rsq*rsq))*rinv;
     vd*=step(0.05,r);//smoothstep(0.05,0.2,r); //zero out the center, as we dont want to influence ourself
-    float v=-4*A*rinv*rinv*rinv*rinv*rinv+2*B*rinv*rinv*rinv-max_range_fix;
+    //vd*=1-smoothstep(max_range*0.95,max_range,r);
+    v=clamp(v,-100,1000);
+
+    /*
+    float vdl=length(vd);
+    float max_l=10;
+    if(vdl>max_l)
+	{
+		vd/=vdl/max_l;
+	}
+	*/
     //vd=clamp(vd,vec2(-1),vec2(1));
+    color=vec4(vd.xy,v,0);
 #endif
 
     //float v=r*r*r-r*r;
-    v=clamp(v,-100,1000);
+    
     vec2 p1=p+vec2(cos(at.x),sin(at.x))*0.5;
     float r2=1-length(p1)*length(p1)*4;
     r2=clamp(r2,0,1);
@@ -214,7 +234,8 @@ void main(){
     float r3=1-length(p2)*length(p2)*4;
     r3=clamp(r3,0,1);
     r3*=mult2;
-	color=vec4(vd.xy,0,0);//palette(r,vec4(0.5),vec4(0.5),vec4(1.5*at.z,at.z,8*at.z,0),vec4(1,1,0,0))*r;
+	//palette(r,vec4(0.5),vec4(0.5),vec4(1.5*at.z,at.z,8*at.z,0),vec4(1,1,0,0))*r;
+	//
 }
 ]==])
 function add_fields_fbk(  )
@@ -234,7 +255,7 @@ function add_fields_fbk(  )
 	end
     if true then
         agent_buffers.angle_type:get_current():use()
-        add_fields_shader:push_attribute(0,"angle_type",4)
+        add_fields_shader:push_attribute(0,1,4)
     	agent_buffers.pos_speed:get_current():use()
     	add_fields_shader:set("offscreen_draw",0)
     	add_fields_shader:draw_points(0,agent_count,4)
@@ -259,6 +280,7 @@ in vec3 pos;
 
 uniform ivec2 rez;
 uniform sampler2D tex_main;
+uniform float use_grad_directly;
 
 uniform vec4 color_back;
 uniform vec4 color_fore;
@@ -270,16 +292,36 @@ vec2 grad_tex(vec2 pos)
     ret.y=textureOffset(tex_main,pos,ivec2(0,1)).x-v;
     return ret;
 }
+vec2 grad_tex2(vec2 pos)
+{
+    vec2 ret;
+    ret.x=textureOffset(tex_main,pos,ivec2(1,0)).x-textureOffset(tex_main,pos,ivec2(-1,0)).x;
+    ret.y=textureOffset(tex_main,pos,ivec2(0,1)).x-textureOffset(tex_main,pos,ivec2(0,-1)).x;
+    return ret/2;
+}
+vec2 grad_tex3(vec2 pos)
+{
+    vec2 ret;
+    ret.x=textureOffset(tex_main,pos,ivec2(1,0)).z-textureOffset(tex_main,pos,ivec2(-1,0)).z;
+    ret.y=textureOffset(tex_main,pos,ivec2(0,1)).z-textureOffset(tex_main,pos,ivec2(0,-1)).z;
+    return ret/2;
+}
 float sdfBox(vec2 p, vec2 size)
 {
     vec2 d = abs(p) - size;  
 	return length(min(-d, vec2(0))) + max(min(-d.x,-d.y), 0.0);
 }
+vec2 apply_limits(vec2 p)
+{
+	float edge_size=0.1;
+	return vec2(-1,0)*smoothstep(1-edge_size,1,p.x)+vec2(1,0)*(1-smoothstep(0,edge_size,p.x))
+	+vec2(0,1)*smoothstep(1-edge_size,1,p.y)+vec2(0,-1)*(1-smoothstep(0,edge_size,p.y));
+}
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
     //normed=normed/zoom+translate;
-#if 1
-    vec4 pixel=texture(tex_main,normed);
+#if 0
+    vec4 pixel=vec4(0,0,0,1);//texture(tex_main,normed);
     /*//pixel.xyz*=1;
     //pixel.x=pow(pixel.x,0.002);
     if(pixel.x>0)
@@ -288,17 +330,30 @@ void main(){
     	color.xyz=vec3(0,0,-pixel.x*0.5);
     */
     //color.xyz=abs(pixel.xyz);
-    float a=atan(pixel.y,pixel.x)/3.14;
+    //vec2 p=grad_tex2(normed);
+    vec2 p=texture(tex_main,normed).xy;
+
+    if(use_grad_directly==0)
+    	p=grad_tex3(normed);
+
+    float a=atan(p.y,p.x)/3.14;
+    //float a=length(p);
     if(a>0)
     	color.x=a;
     else
     	color.y=-a;
-    color.z=length(pixel.xy)*0.1;
+    color.z=length(p.xy)*0.1;
+    //color.xy*=length(p.xy);
     color.w=1;
     //color=abs(pixel*1);
     //color+=sdfBox(pos.xy,vec2(0.8));
 #else
-	color=vec4(grad_tex(normed)*100,0,0);
+	float v=texture(tex_main,normed).z;
+	if(v>0)
+		color=vec4(v*0.001,0,0,1);
+	else
+		color=vec4(0,0,-v*0.05,1);
+	color.xyz+=vec3(length(apply_limits(normed.xy)));
 #endif
 }
 ]==]
@@ -315,6 +370,7 @@ uniform vec2 rez;
 uniform float friction;
 uniform float gravity;
 uniform float max_speed;
+uniform float use_grad_directly;
 //agent settings uniforms
 float sample_around(vec2 pos)
 {
@@ -345,9 +401,16 @@ vec2 grad_tex2(vec2 pos)
     ret.y=textureOffset(tex_main,pos,ivec2(0,1)).x-textureOffset(tex_main,pos,ivec2(0,-1)).x;
     return ret/2;
 }
+vec2 grad_tex3(vec2 pos)
+{
+    vec2 ret;
+    ret.x=textureOffset(tex_main,pos,ivec2(1,0)).z-textureOffset(tex_main,pos,ivec2(-1,0)).z;
+    ret.y=textureOffset(tex_main,pos,ivec2(0,1)).z-textureOffset(tex_main,pos,ivec2(0,-1)).z;
+    return ret/2;
+}
 float sdfBox(vec2 p, vec2 size)
 {
-    vec2 d = abs(p) - size;  
+    vec2 d = abs(p) - size;
 	return length(min(-d, vec2(0))) + max(min(-d.x,-d.y), 0.0);
 }
 vec2 grad_sdf(vec2 pos)
@@ -360,24 +423,37 @@ vec2 grad_sdf(vec2 pos)
     ret.y=sdfBox(pos+vec2(0,dx),s)-v;
     return ret;
 }
+vec2 apply_limits(vec2 p)
+{
+	float edge_size=0.1;
+	return vec2(-1,0)*smoothstep(1-edge_size,1,p.x)+vec2(1,0)*(1-smoothstep(0,edge_size,p.x))
+		+vec2(0,-1)*smoothstep(1-edge_size,1,p.y)+vec2(0,1)*(1-smoothstep(0,edge_size,p.y));
+}
 void main(){
 	float max_l=max_speed;
 	vec4 state=position;
     vec2 normed_state=(state.xy/rez);
 	vec4 fields=texture(tex_main,normed_state);
 
-	//vec2 p=grad_tex2(normed_state);//vec2(dFdx(fields.x),dFdy(fields.x));
+	vec2 p=grad_tex3(normed_state);//vec2(dFdx(fields.x),dFdy(fields.x));
+
+	//state.zw-=clamp(fields.xy,vec2(-1),vec2(1));
+	if(use_grad_directly==0)
+		state.zw-=p;
+	else
+		state.zw-=fields.xy;
+
 	//vec2 ps=grad_sdf(normed_state-vec2(0.5));
 	//state.zw-=ps;
-	//state.zw-=p;
-	state.zw-=fields.xy;
 	state.w-=gravity;
+	state.zw+=apply_limits(clamp(normed_state,vec2(-1),vec2(1)))*10;
 	state.zw*=friction;
 	float l=length(state.zw);
 	if(l>max_l)
 	{
 		state.zw/=l/max_l;
 	}
+	/*
 
 	if(state.x+state.z>rez.x)
 		state.z*=-1;
@@ -387,11 +463,11 @@ void main(){
 		state.z*=-1;
 	if(state.y+state.w<0)
 		state.w*=-1;
-
+	*/
 	state.xy+=state.zw;
 
-	//state.xy=mod(state.xy,rez.xy);
-	state.xy=clamp(state.xy,vec2(0),rez);
+	state.xy=mod(state.xy,rez.xy);
+	//state.xy=clamp(state.xy,vec2(0),rez);
 	state_out=state;
 
 }
@@ -406,12 +482,13 @@ void main()
 function do_agent_logic_fbk(  )
 
 	agent_logic_shader_fbk:use()
-    tex_pixel:use(0)
+    tex_pixel:use(0,0,1)
     agent_logic_shader_fbk:set_i("tex_main",0)
 	agent_logic_shader_fbk:set("rez",map_w,map_h)
 	agent_logic_shader_fbk:set("friction",config.friction);
 	agent_logic_shader_fbk:set("gravity",config.gravity);
 	agent_logic_shader_fbk:set("max_speed",config.max_speed);
+	agent_logic_shader_fbk:set("use_grad_directly",use_grad_directly)
 	agent_logic_shader_fbk:raster_discard(true)
 	local ao=agent_buffers.pos_speed:get_other()
 	ao:use()
@@ -578,12 +655,13 @@ function update()
     --if config.draw then
 
     draw_shader:use()
-    tex_pixel:use(0)
+    tex_pixel:use(0,0,1)
 
     draw_shader:set_i("tex_main",0)
     draw_shader:set_i("rez",map_w,map_h)
     draw_shader:set("color_back",config.color_back[1],config.color_back[2],config.color_back[3],config.color_back[4])
     draw_shader:set("color_fore",config.color_fore[1],config.color_fore[2],config.color_fore[3],config.color_fore[4])
+    draw_shader:set("use_grad_directly",use_grad_directly)
     draw_shader:draw_quad()
     --end
     if need_save then
