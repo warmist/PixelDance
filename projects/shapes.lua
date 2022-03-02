@@ -36,6 +36,7 @@ out vec4 color;
 in vec3 pos;
 
 uniform vec2 rez;
+uniform vec4 params;
 //sdfs
 float sdCircle( vec2 p, float r )
 {
@@ -147,10 +148,16 @@ float F(vec2 pos)
 	float v=length(pos-c);
 	//*/
 	//*
-	float a=0.5;
-	float b=0.2;
-	float c=0.00;
-	float v=abs(a*pos.x*pos.x+b*pos.y+c)/sqrt(a*a+b*b);
+	float x=pos.x;
+	float y=pos.y;
+
+	float a=(params.x+1)/2;
+	float b=params.y;
+	float c=params.z;
+	float d=-b;
+	float e=1-a-c;
+
+	float v=abs(a*x*x*x*x+b*x*x*x+c*x*x+d*x+e-y);//abs(a*pos.x*pos.x+c-pos.y)/sqrt(a*a+b*b);
 	//*/
 	return v;
 }
@@ -162,25 +169,42 @@ vec2 grad( in vec2 x )
 }
 void main(){
 	float aspect=rez.x/rez.y;
-	float s=0.25;
+	float s=2;
 	vec2 p=pos.xy*vec2(1,1/aspect);
 	float v=F(p*s);
 	//vec2 g=grad(p);
 	//float de=abs(v)/length(g);
 	float w=0.003*s;
-	float line_thick=0.05;
+	float line_thick=0.01;
 	float lv=v;
 	float ldist=0.3;
 	//lv=abs(fract(lv/ldist+0.5)-0.5)*ldist;
 	lv=smoothstep(line_thick+w,line_thick-w,lv);
 	//lv=abs(v)/(length(g));
+	/*
+	lv+=0.4*(1-smoothstep(0,w,abs(pos.x)));
+	lv+=0.2*(1-smoothstep(0,w,abs(pos.x*s+1)));
+	lv+=0.2*(1-smoothstep(0,w,abs(pos.x*s-1)));
+	lv+=0.4*(1-smoothstep(0,w,abs(pos.y)));
+	lv+=0.2*(1-smoothstep(0,w,abs(pos.y*s+1)));
+	lv+=0.2*(1-smoothstep(0,w,abs(pos.y*s-1)));
+	*/
 	color=vec4(vec3(lv),1);
 }
 ]==]
-
+params=params or {0,0,0,0,0,0,0}
+function randomize_params(  )
+	local h=2
+	for i=1,#params do
+		params[i]=math.random()*h-h/2
+	end
+end
 function gui(  )
 	imgui.Begin("Shapes")
 	draw_config(config)
+	if imgui.Button("Randomize") then
+		randomize_params()
+	end
 	if imgui.Button("Save") then
 		need_save=true
 	end
@@ -204,9 +228,15 @@ function update( )
 	gui()
 	__no_redraw()
 	__clear()
-	shapes_shader:use()
-	shapes_shader:set("rez",size[1],size[2])
-	shapes_shader:draw_quad()
+
+	--for i=1,10 do
+		shapes_shader:use()
+		shapes_shader:blend_add()
+		shapes_shader:set("rez",size[1],size[2])
+		shapes_shader:set("params",params[1],params[2],params[3],params[4])
+		shapes_shader:draw_quad()
+		--randomize_params()
+	--end
 	if need_save then
 		save_img()
 		need_save=nil
