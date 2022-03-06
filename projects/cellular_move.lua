@@ -11,7 +11,7 @@ require 'bit'
 local win_w=1024
 local win_h=1024
 
-__set_window_size(win_w,win_h)
+--__set_window_size(win_w,win_h)
 local oversample=1/8
 
 local map_w=math.floor(win_w*oversample)
@@ -52,6 +52,7 @@ config=make_config({
     {"block_size",10,type="int",min=0,max=50,watch=true},
     {"block_count",3,type="int",min=0,max=8,watch=true},
     {"block_offset",4,type="int",min=0,max=100,watch=true},
+    {"angle",0,type="int",min=0,max=180,watch=true},
     {"long_dist_mode",0,type="choice",choices={"simple","single","multiple"}},
     {"long_dist_range",2,type="int",min=0,max=5},
     {"long_dist_offset",0,type="int",min=0,max=7},
@@ -575,6 +576,7 @@ function gen_one_color( name,tbl,version)
     table.insert(tbl,v2)
     table.insert(tbl,v3)
 end
+local color_not_set=true
 function scratch_update(  )
     --clear the texture
     local t=scratch_tex:get()
@@ -601,7 +603,7 @@ function scratch_update(  )
     place_pixels_shader:set("translate",0,0)
     place_pixels_shader:set('value_range',g_min_age or 0,g_max_age or 0)
     place_pixels_shader:set("transient_cutoff",config.transient_cutoff)
-    if need_rand_color then
+    if need_rand_color or color_table==nil then
         local sformat="palette(pa,vec3(%g,%g,%g),vec3(%g,%g,%g),vec3(%g,%g,%g),vec3(%g,%g,%g));"
         local res={}
         gen_one_color("c1",res)
@@ -609,9 +611,17 @@ function scratch_update(  )
         gen_one_color("c3",res,2)
         gen_one_color("c4",res,2)
         --palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
-        print(string.format(sformat,unpack(res)))
+        --print(string.format(sformat,unpack(res)))
         color_table=res
         need_rand_color=false
+        color_not_set=false
+    end
+    if color_not_set and color_table then
+        for i=0,3 do
+            --print(i)
+            place_pixels_shader:set("c"..(i+1),color_table[i*3+1],color_table[i*3+2],color_table[i*3+3])
+        end
+        color_not_set=false
     end
     place_pixels_shader:push_attribute(particles_age.d,"particle_age",1,GL_FLOAT)
     place_pixels_shader:draw_points(particles_pos.d,current_particle_count)
@@ -712,7 +722,7 @@ local animation_data={
     sim_tick_current=0,
     sim_tick_max=1000,
     sav_tick_current=0,
-    sav_tick_max=25,
+    sav_tick_max=180,
     animating=false,
 }
 function animation_metatick(  )
@@ -722,10 +732,11 @@ function animation_metatick(  )
         a.animating=false
     end
 
-    config.block_offset=config.block_offset-1
-    if config.block_offset<10 then
+    --config.block_offset=config.block_offset-1
+    config.angle=config.angle+5
+    if config.angle>=180 then
         a.animating=false
-        config.block_offset=10
+        config.angle=0
     end
     is_remade=true
     need_save=true
@@ -744,6 +755,61 @@ function animation_start(  )
     a.sav_tick_current=0
     a.animating=true
 end
+
+function histogram( data,max_len)
+    local max=0
+    local max_namel=0
+    local sum=0
+    for k,v in pairs(data) do
+        if max<v then
+            max=v
+        end
+        sum=sum+v
+        local n=tostring(k)
+        if #n>max_namel then
+            max_namel=#n
+        end
+    end
+
+    for k,v in pairs(data) do
+        local vn=v/max
+        local vc=math.floor(vn*max_len)
+        local vl=max_len-vc
+        print(string.format("%"..max_namel.."s ",k)..string.rep('#',vc)..string.rep(' ',vl)..
+            string.format("  %3d%%",(v/sum)*100))
+    end
+end
+function add_count( tbl,e )
+    if tbl[e]==nil then
+        tbl[e]=1
+    else
+        tbl[e]=tbl[e]+1
+    end
+end
+local sim_thread
+function simulate_decay(  )
+    local decay_data={}
+    local no_repeats=1000
+    local no_sim_ticks=40
+    is_remade=true
+    for i=1,no_repeats do
+        for j=1,no_sim_ticks do
+            coroutine.yield()
+        end
+        local radius=math.ceil((math.sqrt(2*config.block_size-1)+1)/2)
+        local c,m=count_in_radius(map_w/2,map_h/2,radius+config.long_dist_range/2)
+        print("Count:",c,c/m,"Iter:",i)
+        add_count(decay_data,c)
+        is_remade=true
+        need_clear=true
+        if (i%50)==49 then
+            histogram(decay_data,20)
+        end
+        coroutine.yield()
+    end
+    histogram(decay_data,20)
+    sim_thread=nil
+end
 function mask_has_dir(m,d)
     return bit.band(m,math.pow(2,d-1))==0
 end
@@ -756,6 +822,24 @@ function generate_free_dir( mask )
     end
     print("failed to find free dir for ",mask)
     return 0
+end
+function count_in_radius(cx,cy,rad )
+    local lx=cx-math.floor(rad/2)
+    local hx=cy+math.ceil(rad/2)
+    local count=0
+    local visited=0
+    for x=lx,hx do
+        local dx=x-cx
+        local ly=math.floor(cx-math.sqrt(rad*rad-dx*dx))
+        local hy=math.ceil(cx+math.sqrt(rad*rad-dx*dx))
+        for y=ly,hy do
+            if static_layer:get(x,y).a~=0 then
+                count=count+1
+            end
+            visited=visited+1
+        end
+    end
+    return count,visited
 end
 function generate_rules( rule_tbl,overwrite )
     local pt=classify_patterns()
@@ -830,6 +914,88 @@ function generate_rules( rule_tbl,overwrite )
         --]]
     end
 end
+function generate_atom_layer( n )
+    if n==0 then return {{0,0}} end
+    local ret={}
+    local y=0
+    for x=n,1,-1 do
+        table.insert(ret,{x,y})
+        y=y-1
+    end
+    --y=y+1
+    for x=0,-n+1,-1 do
+        table.insert(ret,{x,y})
+        y=y+1
+    end
+    --y=y+1
+    for x=-n,-1,1 do
+        table.insert(ret,{x,y})
+        y=y+1
+    end
+    --y=y-1
+
+    for x=0,n-1,1 do
+        table.insert(ret,{x,y})
+        y=y-1
+    end
+
+    return ret
+end
+for i=1,10 do
+    print(#generate_atom_layer(i))
+end
+function diamond_spiral( t )
+    --TODO
+    --[[
+        1
+       042
+      93015
+       826
+        7
+    --]]
+    local max_r=15
+    local x=0
+    local y=0
+    if t==0 then return x,y end
+    if t==1 then return x,y end
+
+    local id_start=0
+    local cur_level=0
+    for i=1,max_r do
+        local level_start=((2*i-1)*(2*i-1)+1)/2
+        if t<=level_start then
+            break
+        end
+        cur_level=i
+        id_start=level_start
+    end
+    local remainder=t-id_start
+    local side=math.floor(remainder/cur_level)
+    local side_rem=remainder-side*cur_level
+    print("Start:",t,id_start,cur_level,remainder)
+    print("Side:",side,remainder-side*cur_level)
+    --[[
+        level    count start count per side
+        0th level 1    0      -
+        1st level 4    1      1
+        2nd level 8    5      2
+        3rd level 12  13      3
+        4th level 16  25      4
+    --]]
+    local side_const={1,-1,1,-1}
+    local side_off={-1,-1,1,1}
+    local side_start={1,0,-1,0}
+
+    x=side_start[side]*cur_level
+    print(x)
+end
+function shuffle_table(tbl)
+  for i = #tbl, 2, -1 do
+    local j = math.random(i)
+    tbl[i], tbl[j] = tbl[j], tbl[i]
+  end
+  return tbl
+end
 function update()
     __clear()
     __no_redraw()
@@ -843,6 +1009,11 @@ function update()
         static_layer=nil
         update_buffers()
         need_clear=true
+    end
+    imgui.SameLine()
+    if imgui.Button("Count") then
+        local radius=(math.sqrt(2*config.block_size-1)+1)/2
+        print("Rad:",radius,"Count",count_in_radius(map_w/2,map_h/2,radius*2))
     end
     local sim_done=false
     if imgui.Button("step") then
@@ -920,6 +1091,7 @@ function update()
     if not config.color_by_age then
 
         if imgui.Button("recolor points") then
+            -- [[
             g_max_age=-math.huge
             g_min_age=math.huge
             local max_val=0
@@ -939,6 +1111,20 @@ function update()
                 local v=dist_func(x,y)
                 particles_age:set(i,0,v/(max_val))
             end
+            --]]
+            --[[
+            for i=0,current_particle_count-1 do
+                local p=particles_pos:get(i,0)
+                
+                local x=p.r-math.floor(map_w/2)
+                local y=p.g-math.floor(map_h/2)
+                if x>0 then
+                    particles_age:set(i,0,1)
+                else
+                    particles_age:set(i,0,0)
+                end
+            end
+            --]]
             g_max_age=1
             g_min_age=0
         end
@@ -952,7 +1138,7 @@ function update()
         end
         save_gif_frame()
         giffer=gif_saver(string.format("saved_%d.gif",os.time(os.date("!*t"))),
-            img_buf_save,5000,10)
+            img_buf_save,5000,1)
     end
     imgui.SameLine()
     if imgui.Button("Stop Gif") then
@@ -972,11 +1158,15 @@ function update()
             static_layer:set(x,y,{0,0,0,0})
         end
         end
+        local no_places=0
+        local cx=math.floor(map_w/2)
+        local cy=math.floor(map_h/2)
         --[==[
-        local count_add={0,2,4,6}
+        local count_add={0,10,4,6}
         local offset_add={0,8,17,22}
-        local bcount_mod={1,1,1,1}
-        local angle_offset={0,math.pi/8,math.pi/4,3*math.pi/8}
+        local bcount_mod={1,3,1,1}
+        --local angle_offset={0,math.pi/8,math.pi/4,3*math.pi/8}
+        local angle_offset=(config.angle/180)*math.pi
         for kk=1,1 do
             local b_count=math.floor(config.block_count*bcount_mod[kk])
             local offset=math.floor(config.block_offset+offset_add[kk])
@@ -984,13 +1174,11 @@ function update()
 
             for i=1,b_count do
                 local v=(i-1)/b_count
-                local cx=math.floor(map_w/2)
-                local cy=math.floor(map_h/2)
-                local bs=config.block_size+count_add[kk]
+                local bs=config.block_size+count_add[i]
                 local hbs=math.floor(bs/2+0.5)
-                local tx=math.floor(math.cos(v*math.pi*2+angle_offset[kk])*offset+0.5)+cx-hbs
-                local ty=math.floor(math.sin(v*math.pi*2+angle_offset[kk])*offset+0.5)+cy-hbs
-                
+                local tx=math.floor(math.cos(v*math.pi*2+angle_offset)*offset+0.5)+cx-hbs
+                local ty=math.floor(math.sin(v*math.pi*2+angle_offset)*offset+0.5)+cy-hbs
+
                 for x=0,bs-1 do
                 for y=0,bs-1 do
                     local ttx=x+tx
@@ -1010,12 +1198,13 @@ function update()
         --]==]
         --[==[
         local not_place_count=0
+        local hbs=math.floor(config.block_size/2+0.5)
+        no_places=math.floor(hbs*hbs*math.pi)
+
         while current_particle_count<config.block_count do
             local cx=math.floor(map_w/2)
             local cy=math.floor(map_h/2)
 
-            local bs=config.block_size
-            local hbs=math.floor(bs/2+0.5)
             local v=math.random()
             local r=math.sqrt(math.random())*hbs
             local tx=math.floor(math.cos(v*math.pi*2)*r+cx)
@@ -1035,10 +1224,38 @@ function update()
             end
         end
         --]==]
+        -- [[
+        local bs=config.block_size
+        local cx_o=cx
+        local cy_o=cy
+        local o=config.block_offset
+        local layer=0
+        local randomize_last=true
+        --print("Radius:",math.log(3*bs+1)/math.log(4))
+        while bs>0 do
+            local l=generate_atom_layer(layer)
+            if randomize_last and #l>=bs then
+                shuffle_table(l)
+            end
+            for i=1,math.min(#l,bs) do
+                local d=l[i]
+                local tx=cx+d[1]
+                local ty=cy+d[2]
+                particles_pos:set(current_particle_count,0,{tx,ty})
+                if config.color_by_age then
+                    particles_age:set(current_particle_count,0,0)
+                end
+                current_particle_count=current_particle_count+1
+                if current_particle_count== max_particle_count-1 then
+                    break
+                end
+            end
+            bs=bs-#l
+            layer=layer+1
+        end
+        --]]
+        --[==[
         
-        -- [==[
-        local cx=math.floor(map_w/2)
-        local cy=math.floor(map_h/2)
 
         local bs=config.block_size
         local cx_o=cx
@@ -1072,7 +1289,7 @@ function update()
             end
         end
         --]==]
-        print("particle count:",current_particle_count)
+        print("particle count:",current_particle_count,current_particle_count/no_places)
         --for i=0,max_particle_count-1 do
            
             --[[
@@ -1155,6 +1372,7 @@ function update()
         --]]
         scratch_update()
         need_clear=true
+        --sim_done=true
     end
     if not config.pause then
         sim_tick()
@@ -1174,13 +1392,29 @@ function update()
             animation_data.animating=false
         end
     end
+    imgui.SameLine()
+    if not sim_thread then
+        if imgui.Button("Simulate") then
+            sim_thread=coroutine.create(simulate_decay)
+        end
+    else
+        if imgui.Button("Stop Simulate") then
+            sim_thread=nil
+        end
+    end
     if imgui.Button("Randomize Color") then
         need_rand_color=true
-
     end
     imgui.End()
     if animation_data.animating and sim_done then
         animation_tick()
+    end
+    if sim_thread and sim_done then
+        --print("!",coroutine.status(sim_thread))
+        local ok,err=coroutine.resume(sim_thread)
+        if not ok then
+            print(err)
+        end
     end
     __render_to_window()
 
@@ -1210,7 +1444,7 @@ function update()
     t2:use(1,0,1)
     t_out:use(2,0,1)
 
-    local want_decaying=true
+    local want_decaying=false
 
     draw_shader:set_i("tex_main",0) --scratch
     draw_shader:set_i("tex_old",1) --old
