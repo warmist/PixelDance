@@ -47,8 +47,8 @@ update_buffers()
 config=make_config({
     {"pause",false,type="bool"},
     {"color_by_age",true,type="bool"},
-    {"transient_cutoff",0.1,type="float",min=0,max=2},
-    {"decay",0.99,type="floatsci",power=0.01},
+    {"transient_cutoff",0,type="float",min=0,max=2},
+    {"decay",0,type="floatsci",power=0.01},
     {"block_size",10,type="int",min=0,max=50,watch=true},
     {"block_count",3,type="int",min=0,max=8,watch=true},
     {"block_offset",4,type="int",min=0,max=100,watch=true},
@@ -259,6 +259,142 @@ function get_nn( pos,dist )
     end
     return value
 end
+function get_nn_smooth( pos,dist )
+    if dist<2 then
+        return get_nn(pos,dist)
+    end
+    local cx=pos.r
+    local cy=pos.g
+    local ret=0
+    local d=math.floor((dist-1)/2)
+    local value=0
+    --dir=1 {1,0}
+    for y=-d,d do
+        local tp=fix_pos({r=cx+dist,g=cy+y})
+        local v=static_layer:get(tp.r,tp.g)
+        if v.a>0 then
+           value=value+math.pow(2,0)
+           break
+        end
+    end
+     --dir=3 {0,1}
+    for x=-d,d do
+        local tp=fix_pos({r=cx+x,g=cy+dist})
+        local v=static_layer:get(tp.r,tp.g)
+        if v.a>0 then
+           value=value+math.pow(2,2)
+           break
+        end
+    end
+     --dir=5 {-1,0}
+    for y=-d,d do
+        local tp=fix_pos({r=cx-dist,g=cy+y})
+        local v=static_layer:get(tp.r,tp.g)
+        if v.a>0 then
+           value=value+math.pow(2,4)
+           break
+        end
+    end
+     --dir=7 {0,-1}
+    for x=-d,d do
+        local tp=fix_pos({r=cx+x,g=cy-dist})
+        local v=static_layer:get(tp.r,tp.g)
+        if v.a>0 then
+           value=value+math.pow(2,6)
+           break
+        end
+    end
+
+    --dir=2 {1,1}
+    local d2_done=false
+    for y=d+1,dist do
+        local tp=fix_pos({r=cx+dist,g=cy+y})
+        local v=static_layer:get(tp.r,tp.g)
+        if v.a>0 then
+           value=value+math.pow(2,1)
+           d2_done=true
+           break
+        end
+    end
+    if not d2_done then
+        for x=d+1,dist do
+            local tp=fix_pos({r=cx+x,g=cy+dist})
+            local v=static_layer:get(tp.r,tp.g)
+            if v.a>0 then
+               value=value+math.pow(2,1)
+               d2_done=true
+               break
+            end
+        end
+    end
+    --dir=4 {-1,1},
+    local d4_done=false
+    for y=d+1,dist do
+        local tp=fix_pos({r=cx-dist,g=cy+y})
+        local v=static_layer:get(tp.r,tp.g)
+        if v.a>0 then
+           value=value+math.pow(2,3)
+           d4_done=true
+           break
+        end
+    end
+    if not d4_done then
+        for x=-dist,d-1 do
+            local tp=fix_pos({r=cx+x,g=cy+dist})
+            local v=static_layer:get(tp.r,tp.g)
+            if v.a>0 then
+               value=value+math.pow(2,3)
+               d4_done=true
+               break
+            end
+        end
+    end
+    --dir=6 {-1,-1},
+    local d6_done=false
+    for y=-dist,d-1 do
+        local tp=fix_pos({r=cx-dist,g=cy+y})
+        local v=static_layer:get(tp.r,tp.g)
+        if v.a>0 then
+           value=value+math.pow(2,5)
+           d6_done=true
+           break
+        end
+    end
+    if not d6_done then
+        for x=-dist,d-1 do
+            local tp=fix_pos({r=cx+x,g=cy-dist})
+            local v=static_layer:get(tp.r,tp.g)
+            if v.a>0 then
+               value=value+math.pow(2,5)
+               d6_done=true
+               break
+            end
+        end
+    end
+    --[8]={1,-1},
+    local d8_done=false
+    for y=-dist,d-1 do
+        local tp=fix_pos({r=cx+dist,g=cy+y})
+        local v=static_layer:get(tp.r,tp.g)
+        if v.a>0 then
+           value=value+math.pow(2,7)
+           d8_done=true
+           break
+        end
+    end
+    if not d8_done then
+        for x=d+1,dist do
+            local tp=fix_pos({r=cx+x,g=cy-dist})
+            local v=static_layer:get(tp.r,tp.g)
+            if v.a>0 then
+               value=value+math.pow(2,7)
+               d8_done=true
+               break
+            end
+        end
+    end
+    return value
+end
 function value_to_nn_string( v )
     local ret=""
     local permutation={4,3,2,5--[[0]],1,6,7,8}
@@ -430,7 +566,7 @@ function calculate_rule( pos )
         v=get_nn(pos)
         return rules[v] or 0
         --]==]
-        -- [==[ normal 
+        --[==[ normal 
         local v=get_nn(pos)
         local r=rules[v]
         if (v==0 or (r==0 and not rule_0_stops)) and config.long_dist_range>=2 then
@@ -452,6 +588,41 @@ function calculate_rule( pos )
                 -- each dist has it's own rules
                     if long_rules[i] then
                         local v=get_nn(pos,i)
+                        if v~=0 then
+                            if long_rules[i][v]~=0 or rule_0_stops then
+                                return long_rules[i][v]
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        return r or 0
+        --]==]
+        -- [==[ Smooth angle thingy
+        local v=get_nn(pos)
+        local r=rules[v]
+        if (v==0 or (r==0 and not rule_0_stops)) and config.long_dist_range>=2 then
+            if config.long_dist_mode==0 then
+            -- three choices here: simple long dist
+                --TODO
+                return calculate_long_range_rule(pos)
+            elseif config.long_dist_mode==1 then
+                --one rule for all dists
+                for i=2,config.long_dist_range do
+                    local v=get_nn_smooth(pos,i)
+                    if v~=0 and long_rules[2] then
+                        if long_rules[2][v]~=0 or rule_0_stops then
+                            return long_rules[2][v]
+                        end
+                    end
+                end
+            else
+                for i=2,config.long_dist_range do
+                -- each dist has it's own rules
+                    if long_rules[i] then
+                        local v=get_nn_smooth(pos,i)
                         if v~=0 then
                             if long_rules[i][v]~=0 or rule_0_stops then
                                 return long_rules[i][v]
