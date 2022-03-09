@@ -49,7 +49,7 @@ config=make_config({
     {"color_by_age",true,type="bool"},
     {"transient_cutoff",0,type="float",min=0,max=2},
     {"decay",0,type="floatsci",power=0.01},
-    {"block_size",10,type="int",min=0,max=50,watch=true},
+    {"block_size",10,type="int",min=0,max=200,watch=true},
     {"block_count",3,type="int",min=0,max=8,watch=true},
     {"block_offset",4,type="int",min=0,max=100,watch=true},
     {"angle",0,type="int",min=0,max=180,watch=true},
@@ -941,13 +941,19 @@ function histogram( data,max_len)
             max_namel=#n
         end
     end
-
+    local sorted={}
     for k,v in pairs(data) do
         local vn=v/max
         local vc=math.floor(vn*max_len)
         local vl=max_len-vc
-        print(string.format("%"..max_namel.."s ",k)..string.rep('#',vc)..string.rep(' ',vl)..
-            string.format("  %3d%%",(v/sum)*100))
+        table.insert(sorted,{k,string.format("%"..max_namel.."s ",k)..string.rep('#',vc)..string.rep(' ',vl)..
+            string.format("  %3d%%",(v/sum)*100)})
+    end
+    table.sort(sorted,function ( a,b )
+        return a[1]>b[1]
+    end)
+    for i,v in ipairs(sorted) do
+        print(v[2])
     end
 end
 function add_count( tbl,e )
@@ -1403,6 +1409,7 @@ function update()
         local layer=0
         local randomize_last=true
         --print("Radius:",math.log(3*bs+1)/math.log(4))
+        print("Radius:",(math.sqrt(2*config.block_size-1)+1)/2)
         while bs>0 do
             local l=generate_atom_layer(layer)
             if randomize_last and #l>=bs then
@@ -1615,7 +1622,7 @@ function update()
     t2:use(1,0,1)
     t_out:use(2,0,1)
 
-    local want_decaying=false
+    local want_decaying=true
 
     draw_shader:set_i("tex_main",0) --scratch
     draw_shader:set_i("tex_old",1) --old
