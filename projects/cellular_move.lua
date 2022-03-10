@@ -54,7 +54,8 @@ config=make_config({
     {"block_offset",4,type="int",min=0,max=100,watch=true},
     {"angle",0,type="int",min=0,max=180,watch=true},
     {"long_dist_mode",0,type="choice",choices={"simple","single","multiple"}},
-    {"long_dist_range",2,type="int",min=0,max=5},
+    {"long_dist_range",2,type="int",min=0,max=50},
+    {"long_dist_range_count",2,type="int",min=0,max=5},
     {"long_dist_offset",0,type="int",min=0,max=7},
     {"zoom",1,type="float",min=1,max=10},
     {"t_x",0,type="float",min=0,max=1},
@@ -269,6 +270,28 @@ function get_nn_smooth( pos,dist )
     local d=math.floor((dist-1)/2)
     local value=0
     --dir=1 {1,0}
+    local single_dir={1,3,5,7}
+    for _,dir in ipairs(single_dir) do
+        local delta=dir_to_dx[dir]
+        for T=-d,d do
+            local dx=dist
+            local dy=T
+            if delta[1]==0 then
+                dx=T
+                dy=dist*delta[2]
+            else
+                dx=dist*delta[1]
+                dy=T
+            end
+            local tp=fix_pos({r=cx+dx,g=cy+dy})
+            local v=static_layer:get(tp.r,tp.g)
+            if v.a>0 then
+               value=value+math.pow(2,dir-1)
+               break
+            end
+        end
+    end
+    --[==[
     for y=-d,d do
         local tp=fix_pos({r=cx+dist,g=cy+y})
         local v=static_layer:get(tp.r,tp.g)
@@ -304,7 +327,57 @@ function get_nn_smooth( pos,dist )
            break
         end
     end
+    --]==]
+    local mixed_dir={2,4,6,8}
+    for _,dir in ipairs(mixed_dir) do
+        local done=false
+        local delta=dir_to_dx[dir]
 
+        local dx
+        local sx,ex
+        local dy
+        local sy,ey
+
+        if delta[1]<0 then
+            sx=-dist
+            ex=-d-1
+        else
+            sx=d+1
+            ex=dist
+        end
+        dx=dist*delta[1]
+
+        if delta[2]<0 then
+            sy=-dist
+            ey=-d-1
+        else
+            sy=d+1
+            ey=dist
+        end
+        dy=dist*delta[2]
+
+        for y=sy,ey do
+            local tp=fix_pos({r=cx+dx,g=cy+y})
+            local v=static_layer:get(tp.r,tp.g)
+            if v.a>0 then
+               value=value+math.pow(2,dir-1)
+               done=true
+               break
+            end
+        end
+        if not done then
+            for x=sx,ex do
+                local tp=fix_pos({r=cx+x,g=cy+dy})
+                local v=static_layer:get(tp.r,tp.g)
+                if v.a>0 then
+                   value=value+math.pow(2,dir-1)
+                   done=true
+                   break
+                end
+            end
+        end
+    end
+    --[==[
     --dir=2 {1,1}
     local d2_done=false
     for y=d+1,dist do
@@ -393,6 +466,7 @@ function get_nn_smooth( pos,dist )
             end
         end
     end
+    --]==]
     return value
 end
 function value_to_nn_string( v )
@@ -620,12 +694,14 @@ function calculate_rule( pos )
                 end
             else
                 for i=2,config.long_dist_range do
+                    local range_id=((i-2)/config.long_dist_range)*config.long_dist_range_count
+                    range_id=math.floor(range_id)+2
                 -- each dist has it's own rules
-                    if long_rules[i] then
+                    if long_rules[range_id] then
                         local v=get_nn_smooth(pos,i)
                         if v~=0 then
-                            if long_rules[i][v]~=0 or rule_0_stops then
-                                return long_rules[i][v]
+                            if long_rules[range_id][v]~=0 or rule_0_stops then
+                                return long_rules[range_id][v]
                             end
                         end
                     end
@@ -1222,7 +1298,7 @@ function update()
         generate_rules(rules)--,{{1,0},{2,0}})
         long_rules={}
         if config.long_dist_mode==2 then
-            for i=2,config.long_dist_range do
+            for i=2,config.long_dist_range_count+2 do
                 long_rules[i]={}
                 long_rules[i][0]=0
                 generate_rules(long_rules[i])
@@ -1622,7 +1698,7 @@ function update()
     t2:use(1,0,1)
     t_out:use(2,0,1)
 
-    local want_decaying=true
+    local want_decaying=(config.decay>0)
 
     draw_shader:set_i("tex_main",0) --scratch
     draw_shader:set_i("tex_old",1) --old
