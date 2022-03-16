@@ -1041,26 +1041,32 @@ function add_count( tbl,e )
 end
 local sim_thread
 function simulate_decay(  )
-    local decay_data={}
-    local no_repeats=1000
-    local no_sim_ticks=40
-    is_remade=true
-    for i=1,no_repeats do
-        for j=1,no_sim_ticks do
+    local start_s=13
+    local end_s=25
+    for bs=start_s,end_s do
+        print("Block size:",bs)
+        config.block_size=bs
+        local decay_data={}
+        local no_repeats=100
+        local no_sim_ticks=40
+        is_remade=true
+        for i=1,no_repeats do
+            for j=1,no_sim_ticks do
+                coroutine.yield()
+            end
+            local radius=math.ceil((math.sqrt(2*config.block_size-1)+1)/2)
+            local c,m=count_in_radius(map_w/2,map_h/2,radius+config.long_dist_range/2)
+            --print("Count:",c,c/m,"Iter:",i)
+            add_count(decay_data,c)
+            is_remade=true
+            need_clear=true
+            --if (i%50)==49 then
+            --    histogram(decay_data,20)
+            --end
             coroutine.yield()
         end
-        local radius=math.ceil((math.sqrt(2*config.block_size-1)+1)/2)
-        local c,m=count_in_radius(map_w/2,map_h/2,radius+config.long_dist_range/2)
-        print("Count:",c,c/m,"Iter:",i)
-        add_count(decay_data,c)
-        is_remade=true
-        need_clear=true
-        if (i%50)==49 then
-            histogram(decay_data,20)
-        end
-        coroutine.yield()
+        histogram(decay_data,20)
     end
-    histogram(decay_data,20)
     sim_thread=nil
 end
 function mask_has_dir(m,d)
@@ -1194,9 +1200,7 @@ function generate_atom_layer( n )
 
     return ret
 end
-for i=1,10 do
-    print(#generate_atom_layer(i))
-end
+
 function diamond_spiral( t )
     --TODO
     --[[
@@ -1485,7 +1489,7 @@ function update()
         local layer=0
         local randomize_last=true
         --print("Radius:",math.log(3*bs+1)/math.log(4))
-        print("Radius:",(math.sqrt(2*config.block_size-1)+1)/2)
+        --print("Radius:",(math.sqrt(2*config.block_size-1)+1)/2)
         while bs>0 do
             local l=generate_atom_layer(layer)
             if randomize_last and #l>=bs then
@@ -1543,7 +1547,7 @@ function update()
             end
         end
         --]==]
-        print("particle count:",current_particle_count,current_particle_count/no_places)
+        --print("particle count:",current_particle_count,current_particle_count/no_places)
         --for i=0,max_particle_count-1 do
            
             --[[
