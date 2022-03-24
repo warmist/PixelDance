@@ -4,6 +4,9 @@
     * if can't move, dont!
     * gen random rules, check out the "dynamics" and "meta-atoms"
     * "permutation city"
+TODO:
+    * add more "states" (i.e. non 1/0 but actually have 1/2/...)
+    * more "laws of conservation"
 --]===]
 require 'common'
 require 'bit'
@@ -53,7 +56,7 @@ config=make_config({
     {"block_count",3,type="int",min=0,max=8,watch=true},
     {"block_offset",4,type="int",min=0,max=100,watch=true},
     {"angle",0,type="int",min=0,max=180,watch=true},
-    {"long_dist_mode",0,type="choice",choices={"simple","single","multiple"}},
+    {"long_dist_mode",0,type="choice",choices={"simple","single","multiple","quadratic"}},
     {"long_dist_range",2,type="int",min=0,max=50},
     {"long_dist_range_count",2,type="int",min=0,max=5},
     {"long_dist_offset",0,type="int",min=0,max=7},
@@ -61,7 +64,7 @@ config=make_config({
     {"t_x",0,type="float",min=0,max=1},
     {"t_y",0,type="float",min=0,max=1},
     },config)
-dist_constraints={}
+
 
 local draw_shader=shaders.Make(
 [==[
@@ -219,6 +222,14 @@ dir_to_dx={
     [7]={0,-1},
     [8]={1,-1},
 }
+function dx_to_dir( dx,dy )
+    local anti_dx={
+        [-1]={[-1]=6,[0]=5,[1]=4},
+        [0]={[-1]=7,[0]=0,[1]=3},
+        [1]={[-1]=7,[0]=1,[1]=2},
+    }
+    return anti_dx[dx][dy]
+end
 --[[
     432
     501
@@ -676,37 +687,25 @@ function calculate_rule( pos )
         --]==]
         -- [==[ Smooth angle thingy
         local v=get_nn(pos)
-        local r=rules[v]
+        local r=rule_lookup[1][v]
         if (v==0 or (r==0 and not rule_0_stops)) and config.long_dist_range>=2 then
             if config.long_dist_mode==0 then
             -- three choices here: simple long dist
                 --TODO
                 return calculate_long_range_rule(pos)
-            elseif config.long_dist_mode==1 then
+            else
                 --one rule for all dists
                 for i=2,config.long_dist_range do
                     local v=get_nn_smooth(pos,i)
-                    if v~=0 and long_rules[2] then
-                        if long_rules[2][v]~=0 or rule_0_stops then
-                            return long_rules[2][v]
-                        end
-                    end
-                end
-            else
-                for i=2,config.long_dist_range do
-                    local range_id=((i-2)/config.long_dist_range)*config.long_dist_range_count
-                    range_id=math.floor(range_id)+2
-                -- each dist has it's own rules
-                    if long_rules[range_id] then
-                        local v=get_nn_smooth(pos,i)
-                        if v~=0 then
-                            if long_rules[range_id][v]~=0 or rule_0_stops then
-                                return long_rules[range_id][v]
-                            end
+                    local r=rule_lookup[i]
+                    if v~=0 and r then
+                        if r[v]~=0 or rule_0_stops then
+                            return r[v]
                         end
                     end
                 end
             end
+
         end
 
         return r or 0
@@ -1003,7 +1002,7 @@ function animation_start(  )
     a.animating=true
 end
 
-function histogram( data,max_len)
+function histogram( data,max_len,h,lh)
     local max=0
     local max_namel=0
     local sum=0
@@ -1023,13 +1022,27 @@ function histogram( data,max_len)
         local vc=math.floor(vn*max_len)
         local vl=max_len-vc
         table.insert(sorted,{k,string.format("%"..max_namel.."s ",k)..string.rep('#',vc)..string.rep(' ',vl)..
-            string.format("  %3d%%",(v/sum)*100)})
+            string.format("  %3d%%",(v/sum)*100),v/sum})
     end
     table.sort(sorted,function ( a,b )
         return a[1]>b[1]
     end)
+    if lh then
+        lh:write("{\n\t")
+    end
     for i,v in ipairs(sorted) do
         print(v[2])
+        if h then
+            h:write(v[2])
+            h:write("\n")
+            h:flush()
+        end
+        if lh then
+            lh:write(string.format("[%d]=%g, ",v[1],v[3]))
+        end
+    end
+    if lh then
+        lh:write("\n\t},\n")
     end
 end
 function add_count( tbl,e )
@@ -1041,10 +1054,14 @@ function add_count( tbl,e )
 end
 local sim_thread
 function simulate_decay(  )
-    local start_s=13
-    local end_s=25
+    local start_s=2
+    local end_s=50
+    local h=io.open("hist_log.txt","a")
+    local lh=io.open("hist_log.ldat","w")
+    lh:write("particle_stats={\n")
     for bs=start_s,end_s do
         print("Block size:",bs)
+        h:write("================Size:",bs,"\n")
         config.block_size=bs
         local decay_data={}
         local no_repeats=100
@@ -1065,8 +1082,12 @@ function simulate_decay(  )
             --end
             coroutine.yield()
         end
-        histogram(decay_data,20)
+        lh:write(string.format("[%d]=",bs))
+        histogram(decay_data,20,h,lh)
     end
+    lh:write("}")
+    lh:close()
+    h:close()
     sim_thread=nil
 end
 function mask_has_dir(m,d)
@@ -1099,6 +1120,40 @@ function count_in_radius(cx,cy,rad )
         end
     end
     return count,visited
+end
+function count_in_sectors(cx,cy,r)
+
+    local ret={[0]=0,0,0,0,0,0,0,0,0}
+
+    local lx=cx-r
+    local hx=cx+r
+    local ly=cy-r
+    local hy=cy+r
+
+    local count=0
+    local visited=0
+
+    for x=0,map_w-1 do
+        local mx=0
+        if x<lx then
+            mx=-1
+        elseif x>hx then
+            mx=1
+        end
+        for y=0,map_h-1 do
+            local my=0
+            if y<ly then
+                my=-1
+            elseif y>hy then
+                my=1
+            end
+            if static_layer:get(x,y).a~=0 then
+                local v=dx_to_dir(mx,my)
+                ret[v]=ret[v]+1
+            end
+        end
+    end
+    return ret
 end
 function generate_rules( rule_tbl,overwrite )
     local pt=classify_patterns()
@@ -1253,6 +1308,22 @@ function shuffle_table(tbl)
   end
   return tbl
 end
+function prime(n)
+    for i = 2, n^(1/2) do
+        if (n % i) == 0 then
+            return false
+        end
+    end
+    return true
+end
+function update_rule_lookup(  )
+    rule_lookup={}
+    for i,v in ipairs(rules) do
+        for i=v.rlow,v.rhigh do
+            rule_lookup[i]=v.rules
+        end
+    end
+end
 function update()
     __clear()
     __no_redraw()
@@ -1270,7 +1341,12 @@ function update()
     imgui.SameLine()
     if imgui.Button("Count") then
         local radius=(math.sqrt(2*config.block_size-1)+1)/2
-        print("Rad:",radius,"Count",count_in_radius(map_w/2,map_h/2,radius*2))
+        --print("Rad:",radius,"Count",count_in_radius(map_w/2,map_h/2,radius*2))
+        print("Rad:",radius)
+        local c=count_in_sectors(math.floor(map_w/2),math.floor(map_h/2),radius*1.5)
+        for i=0,8 do
+            print(" "..i.." "..c[i])
+        end
     end
     local sim_done=false
     if imgui.Button("step") then
@@ -1279,7 +1355,8 @@ function update()
     end
     if imgui.Button("rand rules") then
         rules={}
-        rules[0]=0
+        local close_rules={}
+        close_rules[0]=0
         --[[
         for i=1,255 do
             rules[i]=math.random(0,8)
@@ -1299,24 +1376,50 @@ function update()
         end
         --]]
         -- [==[
-        generate_rules(rules)--,{{1,0},{2,0}})
-        long_rules={}
+        generate_rules(close_rules)--,{{1,0},{2,0}})
+        table.insert(rules,{rlow=1,rhigh=1,rules=close_rules})
+        
         if config.long_dist_mode==2 then
-            for i=2,config.long_dist_range_count+2 do
-                long_rules[i]={}
-                long_rules[i][0]=0
-                generate_rules(long_rules[i])
+            local range_size=math.floor(config.long_dist_range/(config.long_dist_range_count))
+            for i=1,config.long_dist_range_count do
+                local new_rules={}
+                new_rules[0]=0
+                generate_rules(new_rules)
+                if i==1 then
+                    rules[#rules].rhigh=rules[#rules].rlow
+                else
+                    rules[#rules].rhigh=rules[#rules].rlow+range_size
+                end
+                table.insert(rules,{rlow=rules[#rules].rhigh+1,rules=new_rules})
             end
         elseif config.long_dist_mode==1 then
-            local i=2
-            long_rules[i]={}
-            long_rules[i][0]=0
-            generate_rules(long_rules[i])
+            local new_rules={}
+            new_rules[0]=0
+            generate_rules(new_rules)
+            rules[#rules].rhigh=rules[#rules].rlow
+            table.insert(rules,{rlow=rules[#rules].rhigh+1,rules=new_rules})
+        elseif config.long_dist_mode==3 then
+            local lmax=math.floor(math.sqrt(config.long_dist_range))
+            for i=1,config.long_dist_range_count do
+                local new_rules={}
+                new_rules[0]=0
+                generate_rules(new_rules)
+                if i==1 then
+                    rules[#rules].rhigh=rules[#rules].rlow
+                else
+                    rules[#rules].rhigh=math.floor(math.pow(i*lmax/(config.long_dist_range_count+1),2))+1
+                end
+                table.insert(rules,{rlow=rules[#rules].rhigh+1,rules=new_rules})
+            end
         end
+        rules[#rules].rhigh=config.long_dist_range
+        update_rule_lookup()
         --]==]
         is_remade=true
         need_clear=true
     end
+    imgui.SameLine()
+    --[[
     if imgui.Button("save rules") then
         local f=io.open("rules.txt","w")
         for i=1,255 do
@@ -1331,8 +1434,32 @@ function update()
             f:close()
         end
     end
+    --]]
+    if imgui.Button("save rules") then
+        local f=io.open("rules.lrul","w")
+        f:write(string.format(
+[[
+config.long_dist_range=%d
+config.long_dist_mode=%d
+config.long_dist_range_count=%d
+config.long_dist_offset=%d
+]]
+,config.long_dist_range,config.long_dist_mode,config.long_dist_range_count,config.long_dist_offset))
+        f:write("rules={\n")
+        for i,v in ipairs(rules) do
+            f:write(string.format("\t{ rlow=%d, rhigh=%d, rules={\n\t\t",v.rlow,v.rhigh))
+            for i=1,255 do
+                if v.rules[i]~=0 then
+                    f:write(string.format("[%d]=%d, ",i,v.rules[i]))
+                end
+            end
+            f:write("}\n\t},\n")
+        end
+        f:write("}")
+        f:close()
+    end
     imgui.SameLine()
-    if imgui.Button("load rules") then
+    --[[if imgui.Button("load rules") then
         local f=io.open("rules.txt","r")
         for i=1,255 do
             local ii,v=f:read("*n","*n")
@@ -1344,6 +1471,17 @@ function update()
             rules[ii]=v
         end
         f:close()
+    end--]]
+    if imgui.Button("load rules") then
+        dofile"rules.lrul"
+        for k,v in pairs(rules) do
+            for i=1,255 do
+                if v.rules[i]==nil then
+                    v.rules[i]=0
+                end
+            end
+        end
+        update_rule_lookup()
     end
     if not config.color_by_age then
 
@@ -1386,6 +1524,7 @@ function update()
             g_min_age=0
         end
     end
+    imgui.SameLine()
     if imgui.Button("clear rules") then
         rules={}
     end
@@ -1488,10 +1627,24 @@ function update()
         local o=config.block_offset
         local layer=0
         local randomize_last=true
+        local do_skip_layer= function (l)
+            --[[ even
+                return l%2==1
+            --]]
+            --[[ odd
+                return l%2==0
+            --]]
+            --return l%3==0
+            --return prime(l)
+        end
         --print("Radius:",math.log(3*bs+1)/math.log(4))
         --print("Radius:",(math.sqrt(2*config.block_size-1)+1)/2)
         while bs>0 do
             local l=generate_atom_layer(layer)
+            while do_skip_layer(layer) do
+                layer=layer+1
+                l=generate_atom_layer(layer)
+            end
             if randomize_last and #l>=bs then
                 shuffle_table(l)
             end
