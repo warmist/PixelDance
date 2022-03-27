@@ -23,6 +23,7 @@ local map_h=math.floor(win_h*oversample)
 local aspect_ratio=win_w/win_h
 local map_aspect_ratio=map_w/map_h
 local size=STATE.size
+local MAX_ATOM_TYPES=4
 
 is_remade=false
 local dist_logic_type="simple"
@@ -49,7 +50,6 @@ update_buffers()
 
 config=make_config({
     {"pause",false,type="bool"},
-    {"color_by_age",true,type="bool"},
     {"transient_cutoff",0,type="float",min=0,max=2},
     {"decay",0,type="floatsci",power=0.01},
     {"block_size",10,type="int",min=0,max=200,watch=true},
@@ -107,13 +107,13 @@ void main(){
 #endif
     vec4 pix_old=texture(tex_old,(pos.xy+vec2(1,1))/2);
     //float decay=0.0;
-    float a=pixel.a;
+    //float a=pixel.a;
     //vec3 c=pixel.xyz*a+pix_old.xyz*(1-a)-vec3(0.003);
-    vec3 c=pixel.xyz*a+pix_old.xyz*(1-a)*decay;
-    c=clamp(c,0,1);
-    color=vec4(c,1);
+    //vec3 c=pixel.xyz*a+pix_old.xyz*(1-a)*decay;
+    //c=clamp(c,0,1);
+    //color=vec4(c,1);
     //color=vec4(mix(pixel.xyz,pix_old.xyz,0.6),1);
-    //color=vec4(pixel.xyz,1);
+    color=vec4(pixel.xyz,1);
     //color=vec4(1,0,0,1);
 }
 ]==])
@@ -186,7 +186,7 @@ void main(){
             //c=vec3(1);
             //discard;
     }
-    col=vec4(c,1);
+    col=vec4(c,particle_age);
     //if(col.a!=0)
     //    col.a=1;
     /*
@@ -258,6 +258,13 @@ function displace_by_dir_nn( pos,dir,dist )
     ret.g=round(ret.g+dx[2]*dist)
     return fix_pos(ret)
 end
+function add_dir_to_ret( ret,dir,value )
+    if value==0 then
+        ret[dir]="*"
+    else
+        ret[dir]=tostring(round((value/255)*(MAX_ATOM_TYPES-1)))
+    end
+end
 function get_nn( pos,dist )
     --local ret={}
     local value=0
@@ -271,13 +278,24 @@ function get_nn( pos,dist )
     end
     return value
 end
+function get_nn_ex( pos,dist )
+    --local ret={}
+    local value=0
+    local ret={}
+    for i=1,8 do
+        local t=displace_by_dir_nn(pos,i,dist)
+        local v=static_layer:get(t.r,t.g)
+        add_dir_to_ret(ret,i,v.a)
+    end
+    return table.concat(ret, "")
+end
 function get_nn_smooth( pos,dist )
     if dist<2 then
-        return get_nn(pos,dist)
+        return get_nn_ex(pos,dist)
     end
+    local ret={"*","*","*","*","*","*","*","*"}
     local cx=pos.r
     local cy=pos.g
-    local ret=0
     local d=math.floor((dist-1)/2)
     local value=0
     --dir=1 {1,0}
@@ -297,48 +315,11 @@ function get_nn_smooth( pos,dist )
             local tp=fix_pos({r=cx+dx,g=cy+dy})
             local v=static_layer:get(tp.r,tp.g)
             if v.a>0 then
-               value=value+math.pow(2,dir-1)
+               add_dir_to_ret(ret,dir,v.a)
                break
             end
         end
     end
-    --[==[
-    for y=-d,d do
-        local tp=fix_pos({r=cx+dist,g=cy+y})
-        local v=static_layer:get(tp.r,tp.g)
-        if v.a>0 then
-           value=value+math.pow(2,0)
-           break
-        end
-    end
-     --dir=3 {0,1}
-    for x=-d,d do
-        local tp=fix_pos({r=cx+x,g=cy+dist})
-        local v=static_layer:get(tp.r,tp.g)
-        if v.a>0 then
-           value=value+math.pow(2,2)
-           break
-        end
-    end
-     --dir=5 {-1,0}
-    for y=-d,d do
-        local tp=fix_pos({r=cx-dist,g=cy+y})
-        local v=static_layer:get(tp.r,tp.g)
-        if v.a>0 then
-           value=value+math.pow(2,4)
-           break
-        end
-    end
-     --dir=7 {0,-1}
-    for x=-d,d do
-        local tp=fix_pos({r=cx+x,g=cy-dist})
-        local v=static_layer:get(tp.r,tp.g)
-        if v.a>0 then
-           value=value+math.pow(2,6)
-           break
-        end
-    end
-    --]==]
     local mixed_dir={2,4,6,8}
     for _,dir in ipairs(mixed_dir) do
         local done=false
@@ -371,7 +352,7 @@ function get_nn_smooth( pos,dist )
             local tp=fix_pos({r=cx+dx,g=cy+y})
             local v=static_layer:get(tp.r,tp.g)
             if v.a>0 then
-               value=value+math.pow(2,dir-1)
+               add_dir_to_ret(ret,dir,v.a)
                done=true
                break
             end
@@ -381,104 +362,15 @@ function get_nn_smooth( pos,dist )
                 local tp=fix_pos({r=cx+x,g=cy+dy})
                 local v=static_layer:get(tp.r,tp.g)
                 if v.a>0 then
-                   value=value+math.pow(2,dir-1)
+                   add_dir_to_ret(ret,dir,v.a)
                    done=true
                    break
                 end
             end
         end
     end
-    --[==[
-    --dir=2 {1,1}
-    local d2_done=false
-    for y=d+1,dist do
-        local tp=fix_pos({r=cx+dist,g=cy+y})
-        local v=static_layer:get(tp.r,tp.g)
-        if v.a>0 then
-           value=value+math.pow(2,1)
-           d2_done=true
-           break
-        end
-    end
-    if not d2_done then
-        for x=d+1,dist do
-            local tp=fix_pos({r=cx+x,g=cy+dist})
-            local v=static_layer:get(tp.r,tp.g)
-            if v.a>0 then
-               value=value+math.pow(2,1)
-               d2_done=true
-               break
-            end
-        end
-    end
-    --dir=4 {-1,1},
-    local d4_done=false
-    for y=d+1,dist do
-        local tp=fix_pos({r=cx-dist,g=cy+y})
-        local v=static_layer:get(tp.r,tp.g)
-        if v.a>0 then
-           value=value+math.pow(2,3)
-           d4_done=true
-           break
-        end
-    end
-    if not d4_done then
-        for x=-dist,d-1 do
-            local tp=fix_pos({r=cx+x,g=cy+dist})
-            local v=static_layer:get(tp.r,tp.g)
-            if v.a>0 then
-               value=value+math.pow(2,3)
-               d4_done=true
-               break
-            end
-        end
-    end
-    --dir=6 {-1,-1},
-    local d6_done=false
-    for y=-dist,d-1 do
-        local tp=fix_pos({r=cx-dist,g=cy+y})
-        local v=static_layer:get(tp.r,tp.g)
-        if v.a>0 then
-           value=value+math.pow(2,5)
-           d6_done=true
-           break
-        end
-    end
-    if not d6_done then
-        for x=-dist,d-1 do
-            local tp=fix_pos({r=cx+x,g=cy-dist})
-            local v=static_layer:get(tp.r,tp.g)
-            if v.a>0 then
-               value=value+math.pow(2,5)
-               d6_done=true
-               break
-            end
-        end
-    end
-    --[8]={1,-1},
-    local d8_done=false
-    for y=-dist,d-1 do
-        local tp=fix_pos({r=cx+dist,g=cy+y})
-        local v=static_layer:get(tp.r,tp.g)
-        if v.a>0 then
-           value=value+math.pow(2,7)
-           d8_done=true
-           break
-        end
-    end
-    if not d8_done then
-        for x=d+1,dist do
-            local tp=fix_pos({r=cx+x,g=cy-dist})
-            local v=static_layer:get(tp.r,tp.g)
-            if v.a>0 then
-               value=value+math.pow(2,7)
-               d8_done=true
-               break
-            end
-        end
-    end
-    --]==]
-    return value
+
+    return table.concat(ret, "")
 end
 function value_to_nn_string( v )
     local ret=""
@@ -500,6 +392,25 @@ function value_to_nn_string( v )
         else
             ret=ret..'o'
         end
+    end
+    return ret
+end
+function value_to_nn_string_ex( v )
+    local ret=""
+    local permutation={4,3,2,5--[[0]],1,6,7,8}
+
+    local id=0
+    for i=1,8 do
+        if (id)%3==0 then
+            ret=ret.."\n"
+        end
+        if i==5 then
+            ret=ret.."X"
+            id=id+1
+        end
+        id=id+1
+        local vv=permutation[i]
+        ret=ret..v:sub(vv,vv)
     end
     return ret
 end
@@ -686,9 +597,9 @@ function calculate_rule( pos )
         return r or 0
         --]==]
         -- [==[ Smooth angle thingy
-        local v=get_nn(pos)
+        local v=get_nn_ex(pos,1)
         local r=rule_lookup[1][v]
-        if (v==0 or (r==0 and not rule_0_stops)) and config.long_dist_range>=2 then
+        if (v=="********" or (r==0 and not rule_0_stops)) and config.long_dist_range>=2 then
             if config.long_dist_mode==0 then
             -- three choices here: simple long dist
                 --TODO
@@ -760,40 +671,11 @@ function particle_step(  )
             pos.r=tpos.r
             pos.g=tpos.g
             particles_pos:set(i,0,pos)
-            if config.color_by_age then
-                --particles_age:set(i,0,0)
-                local a=particles_age:get(i,0)
-                a=a*0.99
-                particles_age:set(i,0,a)
-                --if not no_0_age then
-                --    min_age=0
-                --end
-                if a>max_age then max_age=a end
-                if not no_0_age then
-                    if a<min_age then min_age=a end
-                end
-               --local a=particles_age:get(i,0)
-               --particles_age:set(i,0,a+0.002)
-            end
         else
             --movement_layer_target:set(tpos.r,tpos.g,tp-1)
             local a=particles_age:get(i,0)
-            if config.color_by_age then
-               --particles_age:set(i,0,0)
-                a=a+0.001
-                particles_age:set(i,0,a)
-                if a>config.transient_cutoff then
-                    if a>max_age then max_age=a end
-                    if a<min_age then min_age=a end
-                end
-            end
         end
     end
-    if config.color_by_age then
-        g_min_age=min_age
-        g_max_age=max_age
-    end
-    return min_age,max_age
 end
 if tex_pixel==nil then
     update_buffers()
@@ -842,7 +724,7 @@ function scratch_update(  )
     if not t:render_to(static_layer.w,static_layer.h) then
         error("failed to set framebuffer up")
     end
-
+    place_pixels_shader:blend_disable()
     place_pixels_shader:set_i("pix_size",1)
     place_pixels_shader:set("res",map_w,map_h)
     place_pixels_shader:set("zoom",1*map_aspect_ratio,-1)
@@ -919,6 +801,10 @@ function rotate_pattern_left(p)
     end
     return ret
 end
+function rotate_pattern_left_ex(p)
+    return p:sub(2)..p:sub(1,1)
+    
+end
 function rotate_dir( d,r )
     if d==0 then
         return 0
@@ -959,6 +845,63 @@ function classify_patterns()
     end
     return ret_patern_store
 end
+
+function iter_choices( items,item_count )
+    if item_count==1 then
+        return items
+    end
+
+    local ret={}
+    local nitems=iter_choices(items,item_count-1)
+
+    for i,v1 in ipairs(items) do
+        for _,v2 in ipairs(nitems) do
+            table.insert(ret,v1..v2)
+        end
+    end
+    return ret
+end
+function classify_patterns_adv(no_states)
+    --print("=========================")
+    local store_id=1
+    local ret_patern_store={}
+    local pattern_store={}
+    local state_tbl={"*"}
+
+    for i=0,no_states-1 do
+        table.insert(state_tbl,tostring(i))
+    end
+
+    local all_choices=iter_choices(state_tbl,8)
+
+    for i,v in ipairs(all_choices) do
+        local old_pattern
+        local rotation=0
+        local rp=v
+        for j=1,8 do
+            rp=rotate_pattern_left_ex(rp)
+            local sp=pattern_store[rp]
+            if sp then
+                old_pattern={id=sp.id,sym=sp.sym,rot=j,has_free_dir=sp.has_free_dir}
+                ret_patern_store[v]=old_pattern
+                break
+            end
+            if rp==v then
+                rotation=j
+                break
+            end
+        end
+        if not old_pattern then
+            local has_free_dir=v:find("*")~=nil
+            pattern_store[v]={id=store_id,sym=rotation,rot=0,has_free_dir=has_free_dir}
+            store_id=store_id+1
+            ret_patern_store[v]=pattern_store[v]
+        end
+    end
+    return ret_patern_store
+end
+
+
 function dist_func( x,y )
     --local v=(math.abs(x)+math.abs(y))
     local v=math.sqrt(x*x+y*y)
@@ -1103,6 +1046,19 @@ function generate_free_dir( mask )
     print("failed to find free dir for ",mask)
     return 0
 end
+function mask_has_dir_ex(m,d)
+    return string.sub(m,d,d)=="*"
+end
+function generate_free_dir_ex( mask )
+    for i=1,1000 do
+        local d=math.random(1,8)
+        if mask_has_dir_ex(mask,d) then
+            return d
+        end
+    end
+    print("failed to find free dir for ",mask)
+    return 0
+end
 function count_in_radius(cx,cy,rad )
     local lx=cx-math.floor(rad/2)
     local hx=cy+math.ceil(rad/2)
@@ -1228,6 +1184,78 @@ function generate_rules( rule_tbl,overwrite )
         --]]
     end
 end
+function generate_rules_ex( rule_tbl,patterns,overwrite )
+    local pt_rules={}
+    for i,v in pairs(patterns) do
+        --[[
+        if pt_rules[v.id]==nil then
+            if v.sym==8  then
+                pt_rules[v.id]={math.random(0,8),i}
+            else
+                pt_rules[v.id]={0,i}
+            end
+        end
+        --]]
+        local chance_0=0.5
+        if pt_rules[v.id]==nil then
+            if v.sym==8 and v.has_free_dir then
+                if math.random()>chance_0 then
+                    pt_rules[v.id]={generate_free_dir_ex(i),i}
+                else
+                    pt_rules[v.id]={0,i}
+                end
+            else
+                pt_rules[v.id]={0,i}
+            end
+        end
+    end
+
+    if overwrite then
+        for i,v in ipairs(overwrite) do
+            pt_rules[v[1]]={v[2],i}
+        end
+    end
+
+    local already_printed={}
+    local only_print_non0=true
+    local short_rules={}
+    for i,v in pairs(patterns) do
+        if not already_printed[v.id] then
+            if v.sym==8 then
+                local actual_dir=rotate_dir(pt_rules[v.id][1],v.rot)
+                local is_free
+                if actual_dir~=0 then
+                    is_free=mask_has_dir_ex(pt_rules[v.id][2],actual_dir)
+                else
+                    is_free=false
+                end
+                if not only_print_non0 or is_free then
+                    print("Group id:",v.id)
+                    print(concat_byline(value_to_nn_string_ex(pt_rules[v.id][2]),dir_to_arrow_string(actual_dir)))
+                    table.insert(short_rules,{v.id,actual_dir})
+                end
+                already_printed[v.id]=true
+            end
+        end
+    end
+    local r="rules:"
+    for i,v in ipairs(short_rules) do
+        if i~=1 then
+            r=r..","
+        end
+        r=r..v[1]..":"..v[2]
+    end
+    print(r)
+    for i,v in pairs(patterns) do
+        -- [[
+        if v.sym==8  then
+            rule_tbl[i]=rotate_dir(pt_rules[v.id][1],v.rot)
+        else
+            rule_tbl[i]=0
+        end
+        --]]
+    end
+end
 function generate_atom_layer( n )
     if n==0 then return {{0,0}} end
     local ret={}
@@ -1324,6 +1352,73 @@ function update_rule_lookup(  )
         end
     end
 end
+function rand_rules(  )
+    rules={}
+    local patterns=classify_patterns_adv(MAX_ATOM_TYPES)
+    local close_rules={}
+    close_rules[0]=0
+    --[[
+    for i=1,255 do
+        rules[i]=math.random(0,8)
+    end
+    --]]
+    --[[
+    for i=1,8 do
+        rules[math.pow(2,i)]=math.random(0,8)
+    end
+
+    for i=1,8 do
+        for j=1,8 do
+            if i~=j then
+                rules[math.pow(2,i)+math.pow(2,j)]=math.random(0,8)
+            end
+        end
+    end
+    --]]
+    -- [==[
+    generate_rules_ex(close_rules,patterns)--,{{1,0},{2,0}})
+    table.insert(rules,{rlow=1,rhigh=1,rules=close_rules})
+
+
+    if config.long_dist_mode==2 then
+        local range_size=math.floor(config.long_dist_range/(config.long_dist_range_count))
+        for i=1,config.long_dist_range_count do
+            local new_rules={}
+            new_rules[0]=0
+            generate_rules_ex(new_rules,patterns)
+            if i==1 then
+                rules[#rules].rhigh=rules[#rules].rlow
+            else
+                rules[#rules].rhigh=rules[#rules].rlow+range_size
+            end
+            table.insert(rules,{rlow=rules[#rules].rhigh+1,rules=new_rules})
+        end
+    elseif config.long_dist_mode==1 then
+        local new_rules={}
+        new_rules[0]=0
+        generate_rules_ex(new_rules,patterns)
+        rules[#rules].rhigh=rules[#rules].rlow
+        table.insert(rules,{rlow=rules[#rules].rhigh+1,rules=new_rules})
+    elseif config.long_dist_mode==3 then
+        local lmax=math.floor(math.sqrt(config.long_dist_range))
+        for i=1,config.long_dist_range_count do
+            local new_rules={}
+            new_rules[0]=0
+            generate_rules_ex(new_rules,patterns)
+            if i==1 then
+                rules[#rules].rhigh=rules[#rules].rlow
+            else
+                rules[#rules].rhigh=math.floor(math.pow(i*lmax/(config.long_dist_range_count+1),2))+1
+            end
+            table.insert(rules,{rlow=rules[#rules].rhigh+1,rules=new_rules})
+        end
+    end
+    rules[#rules].rhigh=config.long_dist_range
+    update_rule_lookup()
+    --]==]
+    is_remade=true
+    need_clear=true
+end
 function update()
     __clear()
     __no_redraw()
@@ -1354,69 +1449,7 @@ function update()
         sim_done=true
     end
     if imgui.Button("rand rules") then
-        rules={}
-        local close_rules={}
-        close_rules[0]=0
-        --[[
-        for i=1,255 do
-            rules[i]=math.random(0,8)
-        end
-        --]]
-        --[[
-        for i=1,8 do
-            rules[math.pow(2,i)]=math.random(0,8)
-        end
-
-        for i=1,8 do
-            for j=1,8 do
-                if i~=j then
-                    rules[math.pow(2,i)+math.pow(2,j)]=math.random(0,8)
-                end
-            end
-        end
-        --]]
-        -- [==[
-        generate_rules(close_rules)--,{{1,0},{2,0}})
-        table.insert(rules,{rlow=1,rhigh=1,rules=close_rules})
-        
-        if config.long_dist_mode==2 then
-            local range_size=math.floor(config.long_dist_range/(config.long_dist_range_count))
-            for i=1,config.long_dist_range_count do
-                local new_rules={}
-                new_rules[0]=0
-                generate_rules(new_rules)
-                if i==1 then
-                    rules[#rules].rhigh=rules[#rules].rlow
-                else
-                    rules[#rules].rhigh=rules[#rules].rlow+range_size
-                end
-                table.insert(rules,{rlow=rules[#rules].rhigh+1,rules=new_rules})
-            end
-        elseif config.long_dist_mode==1 then
-            local new_rules={}
-            new_rules[0]=0
-            generate_rules(new_rules)
-            rules[#rules].rhigh=rules[#rules].rlow
-            table.insert(rules,{rlow=rules[#rules].rhigh+1,rules=new_rules})
-        elseif config.long_dist_mode==3 then
-            local lmax=math.floor(math.sqrt(config.long_dist_range))
-            for i=1,config.long_dist_range_count do
-                local new_rules={}
-                new_rules[0]=0
-                generate_rules(new_rules)
-                if i==1 then
-                    rules[#rules].rhigh=rules[#rules].rlow
-                else
-                    rules[#rules].rhigh=math.floor(math.pow(i*lmax/(config.long_dist_range_count+1),2))+1
-                end
-                table.insert(rules,{rlow=rules[#rules].rhigh+1,rules=new_rules})
-            end
-        end
-        rules[#rules].rhigh=config.long_dist_range
-        update_rule_lookup()
-        --]==]
-        is_remade=true
-        need_clear=true
+        rand_rules()
     end
     imgui.SameLine()
     --[[
@@ -1483,47 +1516,6 @@ config.long_dist_offset=%d
         end
         update_rule_lookup()
     end
-    if not config.color_by_age then
-
-        if imgui.Button("recolor points") then
-            -- [[
-            g_max_age=-math.huge
-            g_min_age=math.huge
-            local max_val=0
-            for i=0,current_particle_count-1 do
-                local p=particles_pos:get(i,0)
-                
-                local x=p.r-math.floor(map_w/2)
-                local y=p.g-math.floor(map_h/2)
-                local v=dist_func(x,y)
-                if max_val<v then max_val=v end
-            end
-            for i=0,current_particle_count-1 do
-                local p=particles_pos:get(i,0)
-                
-                local x=p.r-math.floor(map_w/2)
-                local y=p.g-math.floor(map_h/2)
-                local v=dist_func(x,y)
-                particles_age:set(i,0,v/(max_val))
-            end
-            --]]
-            --[[
-            for i=0,current_particle_count-1 do
-                local p=particles_pos:get(i,0)
-                
-                local x=p.r-math.floor(map_w/2)
-                local y=p.g-math.floor(map_h/2)
-                if x>0 then
-                    particles_age:set(i,0,1)
-                else
-                    particles_age:set(i,0,0)
-                end
-            end
-            --]]
-            g_max_age=1
-            g_min_age=0
-        end
-    end
     imgui.SameLine()
     if imgui.Button("clear rules") then
         rules={}
@@ -1582,9 +1574,6 @@ config.long_dist_offset=%d
                     if static_layer:get(ttx,tty).a==0 then
                         static_layer:set(ttx,tty,{1,1,1,1})
                         particles_pos:set(current_particle_count,0,{ttx,tty})
-                        if config.color_by_age then
-                            particles_age:set(current_particle_count,0,0)
-                        end
                         current_particle_count=current_particle_count+1
                     end
                 end
@@ -1608,9 +1597,6 @@ config.long_dist_offset=%d
             if static_layer:get(tx,ty).a==0 then
                 static_layer:set(tx,ty,{1,1,1,1})
                 particles_pos:set(current_particle_count,0,{tx,ty})
-                if config.color_by_age then
-                    particles_age:set(current_particle_count,0,0)
-                end
                 current_particle_count=current_particle_count+1
             else
                 not_place_count=not_place_count+1
@@ -1640,6 +1626,7 @@ config.long_dist_offset=%d
         --print("Radius:",math.log(3*bs+1)/math.log(4))
         --print("Radius:",(math.sqrt(2*config.block_size-1)+1)/2)
         while bs>0 do
+            local atom_type=math.random(1,MAX_ATOM_TYPES)
             local l=generate_atom_layer(layer)
             while do_skip_layer(layer) do
                 layer=layer+1
@@ -1653,9 +1640,7 @@ config.long_dist_offset=%d
                 local tx=cx+d[1]
                 local ty=cy+d[2]
                 particles_pos:set(current_particle_count,0,{tx,ty})
-                if config.color_by_age then
-                    particles_age:set(current_particle_count,0,0)
-                end
+                particles_age:set(current_particle_count,0,atom_type/MAX_ATOM_TYPES)
                 current_particle_count=current_particle_count+1
                 if current_particle_count== max_particle_count-1 then
                     break
