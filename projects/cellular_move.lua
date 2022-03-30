@@ -260,11 +260,19 @@ function displace_by_dir_nn( pos,dir,dist )
     return fix_pos(ret)
 end
 function add_dir_to_ret( ret,dir,value )
-    if value==0 then
-        ret[dir]="*"
-    else
-        ret[dir]=tostring(round((value/255)*(MAX_ATOM_TYPES-1)))
+    local nval=round((value/255)*(MAX_ATOM_TYPES-1))
+    --last
+    --ret[dir]=round((value/255)*(MAX_ATOM_TYPES))
+    --max
+    ret[dir]=math.max(ret[dir],nval)
+    --min
+    --[[
+    if nval>0 then
+        ret[dir]=math.min(ret[dir],nval)
     end
+    --]]
+    --avg
+    --todo
 end
 function get_nn( pos,dist )
     --local ret={}
@@ -279,22 +287,33 @@ function get_nn( pos,dist )
     end
     return value
 end
+function ids_to_string( tbl )
+    for i,v in ipairs(tbl) do
+        if v==0 then
+            tbl[i]="*"
+        else
+            tbl[i]=tostring(v-1)
+        end
+    end
+    return table.concat( tbl, "" )
+end
 function get_nn_ex( pos,dist )
     --local ret={}
     local value=0
-    local ret={}
+    local ret={0,0,0,0,0,0,0,0}
     for i=1,8 do
         local t=displace_by_dir_nn(pos,i,dist)
         local v=static_layer:get(t.r,t.g)
         add_dir_to_ret(ret,i,v.a)
     end
-    return table.concat(ret, "")
+    return ids_to_string(ret)
 end
+
 function get_nn_smooth( pos,dist )
     if dist<2 then
         return get_nn_ex(pos,dist)
     end
-    local ret={"*","*","*","*","*","*","*","*"}
+    local ret={0,0,0,0,0,0,0,0}
     local cx=pos.r
     local cy=pos.g
     local d=math.floor((dist-1)/2)
@@ -316,7 +335,7 @@ function get_nn_smooth( pos,dist )
             local v=static_layer:get(tp.r,tp.g)
             if v.a>0 then
                add_dir_to_ret(ret,dir,v.a)
-               break
+               --break
             end
         end
     end
@@ -351,11 +370,11 @@ function get_nn_smooth( pos,dist )
         for y=sy,ey do
             local tp=fix_pos({r=cx+dx,g=cy+y})
             local v=static_layer:get(tp.r,tp.g)
-            print(dir,tp.r-cx,tp.g-cy,round((v.a/255)*(MAX_ATOM_TYPES-1)))
+            --print(dir,tp.r-cx,tp.g-cy,round((v.a/255)*(MAX_ATOM_TYPES-1)))
             if v.a>0 then
                add_dir_to_ret(ret,dir,v.a)
-               done=true
-               break
+               --done=true
+               --break
             end
         end
         if not done then
@@ -364,14 +383,14 @@ function get_nn_smooth( pos,dist )
                 local v=static_layer:get(tp.r,tp.g)
                 if v.a>0 then
                    add_dir_to_ret(ret,dir,v.a)
-                   done=true
-                   break
+                   --done=true
+                   --break
                 end
             end
         end
     end
 
-    return table.concat(ret, "")
+    return ids_to_string(ret)
 end
 function value_to_nn_string( v )
     local ret=""
@@ -598,6 +617,7 @@ function calculate_rule( pos )
         --]==]
         -- [==[ Smooth angle thingy
         local v=get_nn_ex(pos,1)
+        --print(v)
         local r=rule_lookup[1][v]
         if (v=="********" or (r==0 and not rule_0_stops)) and config.long_dist_range>=2 then
             if config.long_dist_mode==0 then
@@ -607,10 +627,10 @@ function calculate_rule( pos )
                 --one rule for all dists
                 for i=2,config.long_dist_range do
                     local v=get_nn_smooth(pos,i)
-                    print("===================")
-                    print(v)
+                    --print("===================")
+                    --print(v)
                     local r=rule_lookup[i]
-                    if v~=0 and r then
+                    if v~="********" and r then
                         if r[v]~=0 or rule_0_stops then
                             return r[v]
                         end
