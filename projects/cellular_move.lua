@@ -52,6 +52,7 @@ config=make_config({
     {"pause",false,type="bool"},
     {"transient_cutoff",0,type="float",min=0,max=2},
     {"decay",0,type="floatsci",power=0.01},
+    {"seed",0,type="int",min=0,max=200000,watch=true},
     {"block_size",10,type="int",min=0,max=200,watch=true},
     {"block_count",3,type="int",min=0,max=8,watch=true},
     {"block_offset",4,type="int",min=0,max=100,watch=true},
@@ -297,8 +298,6 @@ function get_nn_smooth( pos,dist )
     local cx=pos.r
     local cy=pos.g
     local d=math.floor((dist-1)/2)
-    local value=0
-    --dir=1 {1,0}
     local single_dir={1,3,5,7}
     for _,dir in ipairs(single_dir) do
         local delta=dir_to_dx[dir]
@@ -313,6 +312,7 @@ function get_nn_smooth( pos,dist )
                 dy=T
             end
             local tp=fix_pos({r=cx+dx,g=cy+dy})
+            --print(dx,dy,dir,tp.r,tp.g)
             local v=static_layer:get(tp.r,tp.g)
             if v.a>0 then
                add_dir_to_ret(ret,dir,v.a)
@@ -351,6 +351,7 @@ function get_nn_smooth( pos,dist )
         for y=sy,ey do
             local tp=fix_pos({r=cx+dx,g=cy+y})
             local v=static_layer:get(tp.r,tp.g)
+            print(dir,tp.r-cx,tp.g-cy,round((v.a/255)*(MAX_ATOM_TYPES-1)))
             if v.a>0 then
                add_dir_to_ret(ret,dir,v.a)
                done=true
@@ -495,14 +496,13 @@ function calculate_long_range_rule( pos )
 
     for r=2,config.long_dist_range do --original
     --for r=config.long_dist_range,2,-1 do --inverted
+        local ret=get_nn_smooth(pos,r)
         local count_in_range=0
         local last_dir=0
-        for j=1,8 do
-            local tpos=displace_by_dir_nn(pos,j,r)
-            local sl=static_layer:get(tpos.r,tpos.g)
-            if sl.a>0 then
+        for i=1,8 do
+            if ret[i]~="*" then
                 count_in_range=count_in_range+1
-                last_dir=j
+                last_dir=i
             end
         end
         if count_in_range>1 then
@@ -602,12 +602,13 @@ function calculate_rule( pos )
         if (v=="********" or (r==0 and not rule_0_stops)) and config.long_dist_range>=2 then
             if config.long_dist_mode==0 then
             -- three choices here: simple long dist
-                --TODO
                 return calculate_long_range_rule(pos)
             else
                 --one rule for all dists
                 for i=2,config.long_dist_range do
                     local v=get_nn_smooth(pos,i)
+                    print("===================")
+                    print(v)
                     local r=rule_lookup[i]
                     if v~=0 and r then
                         if r[v]~=0 or rule_0_stops then
@@ -1625,6 +1626,7 @@ config.long_dist_offset=%d
         end
         --print("Radius:",math.log(3*bs+1)/math.log(4))
         --print("Radius:",(math.sqrt(2*config.block_size-1)+1)/2)
+        math.randomseed (config.seed)
         while bs>0 do
             local atom_type=math.random(1,MAX_ATOM_TYPES)
             local l=generate_atom_layer(layer)
