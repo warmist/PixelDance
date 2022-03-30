@@ -23,7 +23,7 @@ local map_h=math.floor(win_h*oversample)
 local aspect_ratio=win_w/win_h
 local map_aspect_ratio=map_w/map_h
 local size=STATE.size
-local MAX_ATOM_TYPES=4
+local MAX_ATOM_TYPES=5
 
 is_remade=false
 local dist_logic_type="simple"
@@ -1179,8 +1179,8 @@ function generate_rules( rule_tbl,overwrite )
                     is_free=false
                 end
                 if not only_print_non0 or is_free then
-                    print("Group id:",v.id)
-                    print(concat_byline(value_to_nn_string(pt_rules[v.id][2]),dir_to_arrow_string(actual_dir)))
+                    --print("Group id:",v.id)
+                    --print(concat_byline(value_to_nn_string(pt_rules[v.id][2]),dir_to_arrow_string(actual_dir)))
                     table.insert(short_rules,{v.id,actual_dir})
                 end
                 already_printed[v.id]=true
@@ -1194,7 +1194,7 @@ function generate_rules( rule_tbl,overwrite )
         end
         r=r..v[1]..":"..v[2]
     end
-    print(r)
+    --print(r)
     for i,v in pairs(pt) do
         -- [[
         if v.sym==8  then
@@ -1230,7 +1230,6 @@ function generate_rules_ex( rule_tbl,patterns,overwrite )
             end
         end
     end
-
     if overwrite then
         for i,v in ipairs(overwrite) do
             pt_rules[v[1]]={v[2],i}
@@ -1251,14 +1250,16 @@ function generate_rules_ex( rule_tbl,patterns,overwrite )
                     is_free=false
                 end
                 if not only_print_non0 or is_free then
-                    print("Group id:",v.id)
-                    print(concat_byline(value_to_nn_string_ex(pt_rules[v.id][2]),dir_to_arrow_string(actual_dir)))
+                    --print("Group id:",v.id)
+                    --print(concat_byline(value_to_nn_string_ex(pt_rules[v.id][2]),dir_to_arrow_string(actual_dir)))
                     table.insert(short_rules,{v.id,actual_dir})
                 end
                 already_printed[v.id]=true
             end
         end
     end
+    
+    --[[
     local r="rules:"
     for i,v in ipairs(short_rules) do
         if i~=1 then
@@ -1266,7 +1267,8 @@ function generate_rules_ex( rule_tbl,patterns,overwrite )
         end
         r=r..v[1]..":"..v[2]
     end
-    print(r)
+    ]]
+    --print(r)
     for i,v in pairs(patterns) do
         -- [[
         if v.sym==8  then
@@ -1376,6 +1378,7 @@ end
 function rand_rules(  )
     rules={}
     local patterns=classify_patterns_adv(MAX_ATOM_TYPES)
+
     local close_rules={}
     close_rules[0]=0
     --[[
@@ -1399,7 +1402,6 @@ function rand_rules(  )
     -- [==[
     generate_rules_ex(close_rules,patterns)--,{{1,0},{2,0}})
     table.insert(rules,{rlow=1,rhigh=1,rules=close_rules})
-
 
     if config.long_dist_mode==2 then
         local range_size=math.floor(config.long_dist_range/(config.long_dist_range_count))
@@ -1649,6 +1651,7 @@ config.long_dist_offset=%d
         math.randomseed (config.seed)
         while bs>0 do
             local atom_type=math.random(1,MAX_ATOM_TYPES)
+            --atom_type=(math.pow(atom_type,5))*MAX_ATOM_TYPES
             local l=generate_atom_layer(layer)
             while do_skip_layer(layer) do
                 layer=layer+1
@@ -1662,7 +1665,8 @@ config.long_dist_offset=%d
                 local tx=cx+d[1]
                 local ty=cy+d[2]
                 particles_pos:set(current_particle_count,0,{tx,ty})
-                particles_age:set(current_particle_count,0,atom_type/MAX_ATOM_TYPES)
+                local variation=0--0.025*math.random()/(MAX_ATOM_TYPES+1);
+                particles_age:set(current_particle_count,0,atom_type/MAX_ATOM_TYPES+variation)
                 current_particle_count=current_particle_count+1
                 if current_particle_count== max_particle_count-1 then
                     break
