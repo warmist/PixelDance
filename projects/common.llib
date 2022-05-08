@@ -606,3 +606,31 @@ function gif_saver:frame( buffer,delay )
 	end
 end
 
+
+
+
+function signum(number)
+   if number > 0 then
+      return 1
+   elseif number < 0 then
+      return -1
+   else
+      return 0
+   end
+end
+function sgn(number)
+   if number > 0 then
+      return 1
+   elseif number < 0 then
+      return -1
+   else
+      return 1
+   end
+end
+function factorial(n)
+    if (n == 0) then
+        return 1
+    else
+        return n * factorial(n - 1)
+    end
+end
