@@ -49,7 +49,7 @@ void main(){
 
     if(count_steps>0)
         col=floor(col*count_steps)/count_steps;
-#if 0
+#if 1
     color = vec4(palette(col),1);
 #else
     col=pow(col,2.2);
@@ -70,44 +70,121 @@ function draw_grid(  )
         need_save=nil
     end
 end
-func_t=func_t or 0
+cur_x=cur_x or {x=0,y=0}
 cur_pos=cur_pos or {x=0,y=0}
 state_count=0
 states=states or {}
-function pos_f( t )
-    local radius=35
-    local p=16
-    local r2=3
-    --return math.cos(t)*radius+math.cos(t*p)*radius/r2+math.cos(t*p*3)*radius/3,math.sin(t)*radius+math.sin(t*p)*radius/r2+math.sin(t*p*3)*radius/3
-    return math.cos(t)*radius+math.cos(t*p)*radius/r2,math.sin(t)*radius+math.sin(t*p)*radius/r2
+cells={} or cells
+cell_grid={} or cell_grid
+cur_col=0.5
+function reinit()
+    grid:clear()
+    states={}
+    state_count=0
+    cells={}
+    cur_x={x=0,y=0}
+    cur_pos=nil
+    cur_col=0.5
 end
-function set_new_pos( nx,ny )
-    if states[nx+ny*grid.w]==nil then
-        states[nx+ny*grid.w]=true
-        state_count=state_count+1
+function connect_cell( a,b )
+    a.links[b]=true
+    b.links[a]=true
+end
+function find_cell( p )
+    local x=math.floor(p.x+0.5)+math.floor(grid.w/2)
+    local y=math.floor(p.y+0.5)+math.floor(grid.h/2)
+    local idx=x+y*grid.w
+    if cell_grid[idx] then
+        return cell_grid[idx]
+    else
+        local nc={links={}}
+        cell_grid[idx]=nc
+        return nc
     end
-    grid:set(cur_pos.x,cur_pos.y,0.8)
-    cur_pos={x=nx,y=ny}
-    --grid:set(cur_pos.x,cur_pos.y,1)
 end
-function advance_func(  )
-    local cx=math.floor(grid.w/2)
-    local cy=math.floor(grid.h/2)
-    local max_step=100
-    local dt=0.00001
-    local nx,ny
+function pos_f( in_pos )
+    local t=in_pos.x
+    local u=in_pos.y
+
+    local radius=35
+    local p=5
+    local r2=2+u
+    --return math.cos(t)*radius+math.cos(t*p)*radius/r2+math.cos(t*p*3)*radius/3,math.sin(t)*radius+math.sin(t*p)*radius/r2+math.sin(t*p*3)*radius/3
+    --return math.cos(t)*radius+math.cos(t*p)*radius/r2,math.sin(t)*radius+math.sin(t*p)*radius/r2
+    local x=math.cos(t)*radius+math.cos(t*p)*radius/r2+math.cos(t*p*p)*radius/(r2*r2)
+    local y=math.sin(t)*radius+math.sin(t*p)*radius/r2+math.sin(t*p*p)*radius/(r2*r2)
+
+    return {x=x,y=y}
+end
+function draw_point( p,v )
+    local x=math.floor(p.x+0.5)+math.floor(grid.w/2)
+    local y=math.floor(p.y+0.5)+math.floor(grid.h/2)
+    grid:set(x,y,v)
+end
+function advance(coord,dir,dist)
+    local ret={}
+    for k,v in pairs(dir) do
+        ret[k]=v*dist+coord[k]
+    end
+    return ret
+end
+function find_next_step( f, ypos, xpos, dir )
+    local max_step=100000
+    local dt=0.001
     for i=1,max_step do
-        nx,ny=pos_f(func_t+dt*i)
-        nx=math.floor(nx+0.5)+cx
-        ny=math.floor(ny+0.5)+cy
-        if nx~=cur_pos.x or ny~=cur_pos.y then
-            set_new_pos(nx,ny)
-            func_t=func_t+dt*i
-            return true
+        local new_x=advance(xpos,dir,dt*i)
+        local new_y=f(new_x)
+        if math.floor(new_y.x+0.5)~=math.floor(ypos.x+0.5) or
+           math.floor(new_y.y+0.5)~=math.floor(ypos.y+0.5) then
+            return new_x, new_y,i
         end
     end
-    func_t=func_t+dt*max_step
-    return false
+    return false,advance(xpos,dir,dt*max_step)
+end
+function add_cells_around(f, cell )
+    local dirs={
+        {x=1,y=0},{x=-1,y=0},{x=0,y=1},{x=0,y=-1}
+    }
+    for _,d in ipairs(dirs) do
+        local nx,ny=find_next_step(f,cell.ypos,cell.xpos,d)
+        if nx then
+            local c=find_cell(ny)
+            c.xpos=nx
+            c.ypos=ny
+            connect_cell(cell,c)
+        end
+    end
+end
+function draw_and_links( c,m,l )
+    draw_point(c.ypos,m)
+    for k,v in pairs(c.links) do
+        draw_point(k.ypos,l)
+    end
+end
+function advance_func( dir )
+    if cur_pos==nil then
+        cur_pos={x=0,y=0}
+    else
+        local oc=find_cell(cur_pos)
+        if oc and oc.xpos then
+            draw_and_links(oc,0.4,0.2)
+        end
+    end
+    local new_x,new_y,i=find_next_step(pos_f,cur_pos,cur_x,dir)
+    if not new_x then
+        cur_x=new_y
+    else
+        --print(cur_pos.x,cur_pos.y,cur_x.x,cur_x.y,i)
+        local c=find_cell(cur_pos)
+        if c.xpos ==nil then
+            c.xpos=new_x
+            c.ypos=cur_pos
+        end
+        cur_x=new_x
+        cur_pos=new_y
+        add_cells_around(pos_f,c)
+        draw_and_links(c,1,cur_col)
+    end
 end
 function save_img(  )
     img_buf=img_buf or make_image_buffer(size[1],size[2])
@@ -126,13 +203,18 @@ function update()
         need_save=true
     end
     if imgui.Button "Clear" then
+        reinit()
+    end
+    if imgui.Button "Clear Grid" then
         grid:clear()
-        states={}
-        state_count=0
+    end
+    if imgui.Button "Advance" then
+        advance_func({x=0,y=1})
+        cur_col=math.random()
     end
     imgui.Text(string.format("Unique states:%d",state_count))
     imgui.End()
-    advance_func()
+    advance_func({x=1,y=0})
     draw_grid(  )
     if need_save then
         save_img()
