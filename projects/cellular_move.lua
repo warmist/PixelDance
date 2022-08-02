@@ -53,7 +53,7 @@ config=make_config({
     {"transient_cutoff",0,type="float",min=0,max=2},
     {"decay",0,type="floatsci",power=0.01},
     {"seed",0,type="int",min=0,max=200000,watch=true},
-    {"block_size",10,type="int",min=0,max=200,watch=true},
+    {"block_size",10,type="int",min=0,max=500,watch=true},
     {"block_count",3,type="int",min=0,max=8,watch=true},
     {"block_offset",4,type="int",min=0,max=100,watch=true},
     {"angle",0,type="int",min=0,max=180,watch=true},
@@ -1376,6 +1376,10 @@ function update_rule_lookup(  )
     end
 end
 function rand_rules(  )
+    math.randomseed(os.time())
+    math.random()
+    math.random()
+    math.random()
     rules={}
     local patterns=classify_patterns_adv(MAX_ATOM_TYPES)
 
@@ -1643,8 +1647,10 @@ config.long_dist_offset=%d
             --[[ odd
                 return l%2==0
             --]]
-            --return l%3==0
-            --return prime(l)
+            --return l%3~=0
+            return (l*l+2*l)%3~=0
+            --return prime(l*l+1)
+            --return not prime(l*l+1)
         end
         --print("Radius:",math.log(3*bs+1)/math.log(4))
         --print("Radius:",(math.sqrt(2*config.block_size-1)+1)/2)
