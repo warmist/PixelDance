@@ -87,8 +87,8 @@ function pos_f( in_pos )
     local r2=2
     --return math.cos(t)*radius+math.cos(t*p)*radius/r2+math.cos(t*p*3)*radius/3,math.sin(t)*radius+math.sin(t*p)*radius/r2+math.sin(t*p*3)*radius/3
     --return math.cos(t)*radius+math.cos(t*p)*radius/r2,math.sin(t)*radius+math.sin(t*p)*radius/r2
-    local x=math.cos(t)*radius--+math.cos(t*p)*radius/r2+math.cos(t*p*p)*radius/(r2*r2)
-    local y=math.sin(t)*radius--+math.sin(t*p)*radius/r2+math.sin(t*p*p)*radius/(r2*r2)
+    local x=math.cos(t)*radius+math.cos(t*p)*radius/r2+math.cos(t*p*p)*radius/(r2*r2)
+    local y=math.sin(t)*radius+math.sin(t*p)*radius/r2+math.sin(t*p*p)*radius/(r2*r2)
 
     return {x=x,y=y}
 end
@@ -142,7 +142,7 @@ function dist_sq( a,b )
     return ret
 end
 function find_next_step( f, ypos, xpos, dir )
-    local max_step=10
+    local max_step=1000
     local dt=0.001
     local candidates={
         {x=1,y=0},{x=0,y=1},{x=-1,y=0},{x=0,y=-1},
@@ -154,12 +154,13 @@ function find_next_step( f, ypos, xpos, dir )
     end
     local best_t=0
     local best_trg=ypos
-    local best_dist=5--dist_sq(ypos,{x=math.floor(ypos.x),y=math.floor(ypos.y)})
+    local best_dist=math.huge--dist_sq(ypos,{x=math.floor(ypos.x),y=math.floor(ypos.y)})
     local best_cid=0
     for i=1,max_step do
         local new_x=advance(xpos,dir,dt*i)
         local new_y=f(new_x)
         --print(string.format("Step: %d",i))
+        local min_dist=math.huge
         for cid,v in ipairs(candidates) do
             local dsq=dist_sq(new_y,v)
             --print(string.format("\tcid:%d dsq:%g",cid,dsq))
@@ -169,12 +170,18 @@ function find_next_step( f, ypos, xpos, dir )
                 best_t=dt*i
                 best_cid=cid
             end
+            if dsq<min_dist then
+                min_dist=dsq
+            end
         end
+        --[[if min_dist>100 then
+            break
+        end]]
     end
-    print(best_dist,best_t,best_t/dt,best_cid)
-    if best_dist>0.05 then
+    --print(best_dist,best_t,best_t/dt,best_cid,ypos.x,ypos.y,xpos.x,xpos.y)
+    --[[if best_dist>0.05 then
         return false,advance(xpos,dir,dt*max_step)
-    end
+    end]]
     return advance(xpos,dir,dt*best_t),best_trg
 end
 function add_cells_around(f, cell )
@@ -268,6 +275,7 @@ function update()
     if imgui.Button "Clear Grid" then
         grid:clear()
     end
+    --[[
     if (imgui.Button "Advance" or steps >4000 )and config.Advance then
         local new_x,new_y,i=find_next_step(pos_f,start_pos,start_x,{x=1,y=0})
         if new_x then
@@ -285,6 +293,7 @@ function update()
         end
         steps=0
     end
+    --]]
     if imgui.Button "Color" then
         color_cells_by_links()
     end
