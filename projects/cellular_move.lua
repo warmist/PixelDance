@@ -239,7 +239,6 @@ end
 rules=rules or {
 
 }
-long_rules=long_rules or {}
 function rnd( v )
     return math.random()*v*2-v
 end
@@ -526,26 +525,26 @@ function calculate_long_range_rule( pos )
         end
         if count_in_range>1 then
             if rule_0_stops then
-                return 0 --more than one direction to move, so don't
+                return {0,0} --more than one direction to move, so don't
             end
         elseif count_in_range==1 then
             --if r>4 then
             --    return rotate_dir(last_dir,config.long_dist_offset)
             --else
             if last_dir~=0 or rule_0_stops then
-                return rotate_dir(last_dir,config.long_dist_offset)
+                return {rotate_dir(last_dir,config.long_dist_offset),0}
             end
             --end
         end
     end
-    return 0 --couldn't find any thing
+    return {0,0} --couldn't find any thing
 end
 
 
 
 function calculate_rule( pos )
     if #rules==0 then
-        return math.random(0,8)
+        return {math.random(0,8),0}
     else
 
         --[==[ inverted order (first check farthest then closer)
@@ -619,7 +618,7 @@ function calculate_rule( pos )
         local v=get_nn_ex(pos,1)
         --print(v)
         local r=rule_lookup[1][v]
-        if (v=="********" or (r==0 and not rule_0_stops)) and config.long_dist_range>=2 then
+        if (v=="********" or (r[1]==0 and not rule_0_stops)) and config.long_dist_range>=2 then
             if config.long_dist_mode==0 then
             -- three choices here: simple long dist
                 return calculate_long_range_rule(pos)
@@ -631,7 +630,7 @@ function calculate_rule( pos )
                     --print(v)
                     local r=rule_lookup[i]
                     if v~="********" and r then
-                        if r[v]~=0 or rule_0_stops then
+                        if r[v][1]~=0 or rule_0_stops then
                             return r[v]
                         end
                     end
@@ -639,8 +638,7 @@ function calculate_rule( pos )
             end
 
         end
-
-        return r or 0
+        return r or {0,0}
         --]==]
     end
 end
@@ -666,13 +664,13 @@ function particle_step(  )
     for i=0,current_particle_count-1 do
         local pos=fix_pos(particles_pos:get(i,0))
         local dir=calculate_rule(pos)
-        local tpos=displace_by_dir(pos,dir)
+        local tpos=displace_by_dir(pos,dir[1])
         local sl=static_layer:get(tpos.r,tpos.g)
         if sl.a>0 then
-            dir=0
-            tpos=displace_by_dir(pos,dir)
+            dir={0,0}
+            tpos=displace_by_dir(pos,dir[1])
         end
-        trg_pos[i]={dir,tpos}
+        trg_pos[i]={dir[1],tpos,dir[2]}
         local tp=movement_layer_target:get(tpos.r,tpos.g)
         if tp<254 then
             tp=tp+1
@@ -687,14 +685,20 @@ function particle_step(  )
         --local tpos=displace_by_dir(pos,dir)
         local tpos=trg_pos[i][2]
         local dir=trg_pos[i][1]
+        local change=trg_pos[i][3]
         local tp=movement_layer_target:get(tpos.r,tpos.g)
         if tp<2 and dir~=0 then
             pos.r=tpos.r
             pos.g=tpos.g
             particles_pos:set(i,0,pos)
+            local a=particles_age:get(i,0)
+            --a=(a+change)%(MAX_ATOM_TYPES-1)+1
+            local nval=a*MAX_ATOM_TYPES--round((a/255)*(MAX_ATOM_TYPES-1))
+            nval=(nval+change-1)%(MAX_ATOM_TYPES-1)+1
+            --print(a,nval,change,nval/MAX_ATOM_TYPES)
+            particles_age:set(i,0,nval/MAX_ATOM_TYPES)
         else
             --movement_layer_target:set(tpos.r,tpos.g,tp-1)
-            local a=particles_age:get(i,0)
         end
     end
 end
@@ -1221,18 +1225,18 @@ function generate_rules_ex( rule_tbl,patterns,overwrite )
         if pt_rules[v.id]==nil then
             if v.sym==8 and v.has_free_dir then
                 if math.random()>chance_0 then
-                    pt_rules[v.id]={generate_free_dir_ex(i),i}
+                    pt_rules[v.id]={generate_free_dir_ex(i),i,math.random(0,MAX_ATOM_TYPES-1)}
                 else
-                    pt_rules[v.id]={0,i}
+                    pt_rules[v.id]={0,i,0}
                 end
             else
-                pt_rules[v.id]={0,i}
+                pt_rules[v.id]={0,i,0}
             end
         end
     end
     if overwrite then
         for i,v in ipairs(overwrite) do
-            pt_rules[v[1]]={v[2],i}
+            pt_rules[v[1]]={v[2],i,0}
         end
     end
 
@@ -1272,9 +1276,9 @@ function generate_rules_ex( rule_tbl,patterns,overwrite )
     for i,v in pairs(patterns) do
         -- [[
         if v.sym==8  then
-            rule_tbl[i]=rotate_dir(pt_rules[v.id][1],v.rot)
+            rule_tbl[i]={rotate_dir(pt_rules[v.id][1],v.rot),pt_rules[v.id][3]}
         else
-            rule_tbl[i]=0
+            rule_tbl[i]={0,0}
         end
         --]]
     end
@@ -1641,7 +1645,7 @@ config.long_dist_offset=%d
         local layer=0
         local randomize_last=true
         local do_skip_layer= function (l)
-            --[[ even
+            -- [[ even
                 return l%2==1
             --]]
             --[[ odd
