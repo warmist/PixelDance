@@ -98,14 +98,24 @@ struct l_kd_2d_t
 };
 
 static l_kd_2d_t* check2(lua_State* L, int id) { return reinterpret_cast<l_kd_2d_t*>(luaL_checkudata(L, id, "kd_2d")); }
+lua_Number optional_lua_number(lua_State* L, int idx, lua_Number def)
+{
+    if (lua_isnil(L, idx))
+    {
+        lua_pop(L, 1);
+        return def;
+    }
+    else
+        return lua_tonumber(L, idx);
+}
 void get_point3(lua_State* L, int idx,float& x,float& y,float& z)
 {
     lua_rawgeti(L, idx, 1);
-    x = lua_tonumber(L, -1);
+    x = optional_lua_number(L, -1, 0);
     lua_rawgeti(L, idx, 2);
-    y = lua_tonumber(L, -1);
+    y = optional_lua_number(L, -1, 0);
     lua_rawgeti(L, idx, 3);
-    z = lua_tonumber(L, -1);
+    z = optional_lua_number(L, -1, 0);
 }
 static int add_point3(lua_State* L)
 {
@@ -114,7 +124,7 @@ static int add_point3(lua_State* L)
     if (lua_istable(L, 2))
     {
         float x, y, z;
-        get_point3(L, -1, x, y, z);
+        get_point3(L, 2, x, y, z);
         p->cloud.pts.emplace_back(PointCloud3d<float>::Point{ x, y, z });
         auto pid = p->cloud.pts.size() - 1;
         p->tree.addPoints(pid,pid);
@@ -133,8 +143,9 @@ static int knn_lookup3(lua_State* L)
     get_point3(L, 3, f[0], f[1], f[2]);
     KNNResultSet<float> rez(num);
     
-    std::vector<size_t> indexes;
-    std::vector<float> distances;
+    std::vector<size_t> indexes(num);
+    std::vector<float> distances(num);
+
     rez.init(indexes.data(), distances.data());
     bool full=p->tree.findNeighbors(rez, f,SearchParams(10));
     lua_newtable(L);
@@ -208,9 +219,9 @@ static int make_tree3(lua_State* L) {
 void get_point2(lua_State* L, int idx, float& x, float& y)
 {
     lua_rawgeti(L, idx, 1);
-    x = lua_tonumber(L, -1);
+    x = optional_lua_number(L, -1, 0);
     lua_rawgeti(L, idx, 2);
-    y = lua_tonumber(L, -1);
+    y = optional_lua_number(L, -1, 0);
 }
 static int add_point2(lua_State* L)
 {

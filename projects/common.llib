@@ -403,7 +403,11 @@ end
 
 -- scalar multiplication and division is '*' and '/' respectively
 function Point.__mul(s,p)
-  return Point( s*p[1], s*p[2], s*p[3] )
+	if type(s)=="number" then
+  		return Point( s*p[1], s*p[2], s*p[3] )
+  	else
+  		return Point( s[1]*p, s[2]*p, s[3]*p )
+  	end
 end
 
 function Point.__div(p,s)
@@ -434,9 +438,9 @@ end
 function Point.set(pt,x,y,z)
   if type(x) == 'table'  then --and getmetatable(x) == Point
      local po = x
-     x = po[1]
-     y = po[2]
-     z = po[3]
+     x = po[1] or 0
+     y = po[2] or 0
+     z = po[3] or 0
   end
   pt[1] = x
   pt[2] = y
@@ -478,6 +482,118 @@ function Point.rotate(p,angle,pivot)
   ret[2]=ynew+pivot[2]
   return ret
 end
+
+-------------------------------------------
+function GenPointN( N ) --ndimensional vector
+	local Point = class(function(pt,...)
+		local arg={...}
+		local count=#arg
+		if count==0 then
+	   		pt:set(0)
+	   	elseif count==1 and type(arg[1])=="table" then
+	   		pt:set(arg[1])
+	   	else
+	   		pt:set(...)
+	   	end
+	end)
+
+	function Point.get(p)
+	  return unpack(p)
+	end
+
+	function Point.__add(p1,p2)
+		local tbl={}
+		for i=1,N do
+			tbl[i]=p1[i]+p2[i]
+		end
+	  	return Point(tbl)
+	end
+
+	function Point.__sub(p1,p2)
+		local tbl={}
+		for i=1,N do
+			tbl[i]=p1[i]-p2[i]
+		end
+	  	return Point(tbl)
+	end
+
+-- unitary minus  (e.g in the expression f(-p))
+	function Point.__unm(p)
+		local tbl={}
+		for i=1,N do
+			tbl[i]=-p[i]
+		end
+		return Point(tbl)
+	end
+
+-- scalar multiplication and division is '*' and '/' respectively
+	function Point.__mul(a1,a2)
+  		local tbl={}
+  		local s=a1
+  		local p=a2
+  		if type(a2)=="number" then
+  			s=a2
+  			p=a1
+  		end
+		for i=1,N do
+			tbl[i]=p[i]*s
+		end
+
+	  	return Point(tbl)
+	end
+
+	function Point.__div(p,s)
+  		local tbl={}
+		for i=1,N do
+			tbl[i]=p[i]/s
+		end
+	  	return Point(tbl)
+	end
+
+-- dot product is '..'
+	function Point.__concat(p1,p2)
+  		local sum=0
+		for i=1,N do
+			sum=sum+p1[i]*p2[i]
+		end
+	  	return sum
+	end
+
+	function Point.normalize(p)
+		local l = p:len()
+		return p/l
+	end
+
+	function Point.set(pt,...)
+		local arg={...}
+	  	if type(arg[1]) == 'table'  then --and getmetatable(x) == Point
+	  		local tbl=arg[1]
+	     	for i=1,N do
+				pt[i]=tbl[i] or 0
+			end
+	  	else
+	  		for i=1,N do
+				pt[i]=arg[i] or 0
+			end
+		end
+	end
+	local pt_format=string.format("(%s)",string.rep("%f",N,","))
+	function Point.__tostring(p)
+	  return string.format(pt_format,unpack(p))
+	end
+
+	function Point.len_sq(p)
+	  return p..p
+	end
+
+	function Point.len(p)
+	  return math.sqrt(p:len_sq())
+	end
+
+	return Point
+end
+
+
 -------------------------------------------
 GL_BYTE=			0x1400
 GL_UNSIGNED_BYTE=	0x1401

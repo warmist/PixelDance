@@ -1,0 +1,35 @@
+require "common"
+
+kdgrid=class(function(g,dimensions,min_dist)
+   g.kd=kd_tree.Make(dimensions)
+   g.dim=dimensions
+   g.min_dist=min_dist*min_dist or 1
+   g.data={}
+   g.point_count=0
+ end
+)
+
+function kdgrid.set(g, pt,value)
+	local hits=g.kd:knn(1,pt)
+	if #hits==0 or hits[1][2]>g.min_dist then
+		--add new grid point
+		g.point_count=g.point_count+1
+		g.data[g.point_count]=value
+		g.kd:add(pt)
+	else
+		g.data[hits[1][1]+1]=value
+	end
+end
+
+function kdgrid.get(g,pt)
+	local hits=g.kd:knn(1,pt)
+	if #hits==0 or hits[1][2]>g.min_dist then
+		return nil
+	end
+	return g.data[hits[1][1]+1]
+end
+function kdgrid.clear(g)
+	g.data={}
+	g.point_count=0
+	g.kd=kd_tree.Make(g.dim)
+end
