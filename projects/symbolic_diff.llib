@@ -1,0 +1,206 @@
+require "common"
+
+expression=class(function (e)
+	e:init()
+end)
+
+function expression.init( e )
+	e.root=nil
+	e.variables={}
+end
+
+function expression.add_variable(e, name )
+	e.variables[name]=true
+end
+
+function expression.get_partial_derivative(e, var_name )
+	if e.variables[var_name]==nil then
+		error("invalid variable")
+	end
+	local ret=expression()
+	ret.root=e.root:diff(var_name)
+	for k,v in pairs(e.variables) do
+		ret:add_variable(k)
+	end
+	return ret
+end
+
+function expression.calculate(e, variables )
+	return e.root:apply(variables)
+end
+function expression.__tostring(e)
+	return e.root:str()
+end
+
+symbolic_node=class(function ( n,type,data )
+	n:init(type,data)
+end)
+--[[
+	need to support:
+		+-*/
+		x^n
+		sin/cos/tan
+
+		tostring()
+
+		e.g:
+			x^2+3y^5-cos(x+y+xy)
+]]
+function symbolic_node.init(n,type,data)
+	n.type=type
+	local init_table={
+		--terminal nodes:
+		constant=function(data)
+			n.const=data
+			n.apply=function ( n ,variables)
+				return n.const
+			end
+			n.diff=function ( n ,var_name)
+				return symbolic_node("constant",0)
+			end
+			n.str=function ( n )
+				return tostring(n.const)
+			end
+		end,
+		variable=function ( data )
+			n.var_name=data
+			n.apply=function ( n,variables )
+				return variables[n.var_name]
+			end
+			n.diff=function ( n,var_name )
+				if var_name==n.var_name then
+					return symbolic_node("constant",1)
+				else
+					return symbolic_node("constant",0)
+				end
+			end
+			n.str=function ( n )
+				return tostring(n.var_name)
+			end
+		end,
+		--non-terminal
+		sum=function ( data ) -- x+y+...
+			n.entries=data
+			n.apply=function ( n,variables )
+				local ret=0
+				for i,v in ipairs(n.entries) do
+					ret=ret+v:apply(variables)
+				end
+				return ret
+			end
+			n.diff=function (n, var_name)
+				local new_entries={}
+				for i,v in ipairs(n.entries) do
+					new_entries[i]=v:diff(var_name)
+				end
+				return symbolic_node("sum",new_entries)
+			end
+			n.str=function ( n )
+				local s={}
+				for i,v in ipairs(n.entries) do
+					s[i]=v:str()
+				end
+				return table.concat( s, "+" )
+			end
+		end,
+		mult=function ( data ) -- xyz...
+			n.entries=data
+			n.apply=function ( n ,variables)
+				local ret=1
+				for i,v in ipairs(n.entries) do
+					ret=ret*v:apply(variables)
+				end
+				return ret
+			end
+			n.diff=function ( n,var_name )
+				local new_entries={}
+				for i=1,#n.entries do
+					local nn={}
+					for j=1,#n.entries do
+						if i~=j then
+							nn[j]=n.entries[j] --probably need copy here!
+						else
+							nn[j]=n.entries[j]:diff(var_name)
+						end
+					end
+					new_entries[i]=symbolic_node("mult",nn)
+				end
+				return symbolic_node("sum",new_entries)
+			end
+			n.str=function ( n )
+				local s={}
+				for i,v in ipairs(n.entries) do
+					s[i]=v:str()
+				end
+				return table.concat( s, "*" )
+			end
+		end,
+		--[[math_func=function ( data ) --sin/cos/exp/pow/etc...
+			n.func=data[1]
+			n.rest=data[2]
+			n.apply=function ( n,variables )
+				local v=n.rest:apply(variables)
+				return n.func(v)
+			end
+			n.diff=function ( n,var_name )
+				return symbolic_node("mult",
+					{symbolic_node("math_func",{func_diff(n.func),n.rest}), --TODO: need copy here
+					 n.rest:diff(var_name)
+					})
+			end
+			n.str=function(n)
+				return string.format("%s(%s)",func_str(n.func),n.rest:str())
+			end
+		end
+		]]
+		pow=function(data) -- x^n (where n is int)
+			n.entry=data[1]
+			n.pow=data[2]
+			n.apply=function ( n ,variables)
+				return math.pow(n.entry:apply(variables),n.pow)
+			end
+			n.diff=function ( n,var_name )
+				local e={}
+				e[1]=symbolic_node("constant",n.pow)
+				e[2]=symbolic_node("pow",{n.entry,n.pow-1})
+				e[3]=n.entry:diff(var_name)
+				return symbolic_node("mult",e)
+			end
+			n.str=function ( n )
+				return string.format("%s^%s",n.entry:str(),n.pow)
+			end
+		end,
+		sin=function ( data )
+			n.entry=data
+			n.apply=function ( n ,variables)
+				return math.sin(n.entry:apply(variables)))
+			end
+			n.diff=function ( n,var_name )
+				return symbolic_node("mult",{
+					symbolic_node("cos",n.entry),
+					n.entry:diff(var_name)
+				})
+			end
+			n.str=function ( n )
+				return string.format("sin(%s)",n.entry:str())
+			end
+		end,
+		cos=function ( data )
+			n.entry=data
+			n.apply=function ( n ,variables)
+				return math.cos(n.entry:apply(variables)))
+			end
+			n.diff=function ( n,var_name )
+				return symbolic_node("mult",{
+					symbolic_node("constant",-1),
+					symbolic_node("sin",n.entry),
+					n.entry:diff(var_name)
+				})
+			end
+			n.str=function ( n )
+				return string.format("cos(%s)",n.entry:str())
+			end
+		end
+	}
+	init_table[type](data)
+end

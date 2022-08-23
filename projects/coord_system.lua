@@ -1,5 +1,6 @@
 require 'common'
 require 'kdgrid'
+require "symbolic_diff"
 config=make_config({
     {"Advance",true}
     },config)
@@ -89,8 +90,8 @@ function pos_f( in_pos )
     local r=math.cos(t*9)*(5-v)+radius+math.sin(t*3)*(1+v*2)
     --return math.cos(t)*radius+math.cos(t*p)*radius/r2+math.cos(t*p*3)*radius/3,math.sin(t)*radius+math.sin(t*p)*radius/r2+math.sin(t*p*3)*radius/3
     --return math.cos(t)*radius+math.cos(t*p)*radius/r2,math.sin(t)*radius+math.sin(t*p)*radius/r2
-    local x=math.cos(t+p)*radius+math.cos(t*p)*radius/r2+math.cos(t*p*p)*(radius-v)/(r2*r2)
-    local y=math.sin(t+p)*radius+math.sin(t*p)*radius/r2+math.sin(t*p*p)*(radius-v)/(r2*r2)
+    local x=math.cos(t+p)*radius+math.cos(t*p)*radius/r2+math.cos(t*p*p)*(radius)/(r2*r2)
+    local y=math.sin(t+p)*radius+math.sin(t*p)*radius/r2+math.sin(t*p*p)*(radius)/(r2*r2)
     --local x=math.cos(phi)*r
     --local y=math.sin(phi)*r
     return Point(x,y)
@@ -103,14 +104,14 @@ function reinit()
     cur_x=point(0)
     cur_col=0.5
     start_x=point(0)
-    xcells_grid=kdgrid(NUM_FUNCTION_DIMENSIONS,0.05)
+    xcells_grid=kdgrid(NUM_FUNCTION_DIMENSIONS,0.01)
     start_y=pos_f(start_x)
     cur_y=pos_f(start_x)
     cell_grid={}
 end
---if cur_x==nil then
+if cur_x==nil then
     reinit()
---end
+end
 
 function connect_cell( a,b )
     a.links[b]=true
@@ -146,9 +147,9 @@ function find_next_step_bisect( f, start_y, start_x, dir )
         s.x=advance(start_x,dir,s.t)
         s.y=f(s.x)
     end
-    local t_eps=0.000001
+    local t_eps=0.0001
     local max_step=10000
-    local start_step=0.01
+    local start_step=0.00003
     local segment_min={t=0,y=start_y,x=start_x}
     local segment_max={t=start_step}
     function print_state( i )
@@ -420,9 +421,10 @@ function update()
             cur_x=start_x
             --for i=1,3 do--]]
             local a=point(cur_x)
-            print(cur_x)
+            local b=point(cur_y)
+            --print(cur_x)
                 advance_func(point{0,1,1})
-            print(cur_x,a-cur_x)
+            print("dx:",cur_x,a-cur_x,"dy:",b-cur_y)
             --cur_x[2]=cur_x[2]+0.1
             --cur_x[3]=cur_x[3]+0.1
         --[[    --end
@@ -435,6 +437,15 @@ function update()
         steps=0
     end
     --]]
+    if imgui.Button "Diff" then
+        local e=expression()
+        e:add_variable("x")
+        e:add_variable("y")
+        e.root=symbolic_node("mult",{symbolic_node("pow",{symbolic_node("variable","x"),3}),symbolic_node("constant",-5)})
+        print(e)
+        print("dx:",e:get_partial_derivative("x"))
+        print("dy:",e:get_partial_derivative("y"))
+    end
     if imgui.Button "Color" then
         color_cells_by_links()
     end
