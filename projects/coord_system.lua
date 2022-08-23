@@ -78,22 +78,66 @@ function draw_grid(  )
         need_save=nil
     end
 end
-
+local f_radius=60
+local f_p=5
+local f_r2=0.5
 function pos_f( in_pos )
     local t=in_pos[1]
     local u=in_pos[2]
     local v=in_pos[3]
-    local radius=60-u*8
-    local p=5
-    local r2=2
-    local phi=t
-    local r=math.cos(t*9)*(5-v)+radius+math.sin(t*3)*(1+v*2)
-    --return math.cos(t)*radius+math.cos(t*p)*radius/r2+math.cos(t*p*3)*radius/3,math.sin(t)*radius+math.sin(t*p)*radius/r2+math.sin(t*p*3)*radius/3
-    --return math.cos(t)*radius+math.cos(t*p)*radius/r2,math.sin(t)*radius+math.sin(t*p)*radius/r2
-    local x=math.cos(t+p)*radius+math.cos(t*p)*radius/r2+math.cos(t*p*p)*(radius)/(r2*r2)
-    local y=math.sin(t+p)*radius+math.sin(t*p)*radius/r2+math.sin(t*p*p)*(radius)/(r2*r2)
+
+    --local phi=t
+    --local r=math.cos(t*9)*(5-v)+radius+math.sin(t*3)*(1+v*2)
     --local x=math.cos(phi)*r
     --local y=math.sin(phi)*r
+
+    local h=f_r2
+    local p=f_p
+    local r=f_radius
+
+    local x=(math.cos(t)+math.cos(t*f_p)*h+math.cos(t*f_p*f_p+v)*h*h)*(r-u)
+    local y=(math.sin(t)+math.sin(t*f_p)*h+math.sin(t*f_p*f_p+v)*h*h)*(r-u)
+    return Point(x,y)
+end
+function pos_f_t( in_pos )
+    local t=in_pos[1]
+    local u=in_pos[2]
+    local v=in_pos[3]
+
+    local h=f_r2
+    local p=f_p
+    local r=f_radius
+
+    local x=-(math.sin(t)+math.sin(p*t)*h*p+math.sin(p*p*t+v)*h*h*p*p)*(r-u)
+    local y=(math.cos(t)+math.cos(p*t)*h*p+math.cos(p*p*t+v)*h*h*p*p)*(r-u)
+
+    return Point(x,y)
+end
+function pos_f_u( in_pos )
+    local t=in_pos[1]
+    local u=in_pos[2]
+    local v=in_pos[3]
+
+    local h=f_r2
+    local p=f_p
+    local r=f_radius
+
+    local x=-(math.cos(t)+math.cos(t*f_p)*h+math.cos(t*f_p*f_p+v)*h*h)
+    local y=-(math.sin(t)+math.sin(t*f_p)*h+math.sin(t*f_p*f_p+v)*h*h)
+
+    return Point(x,y)
+end
+function pos_f_v( in_pos )
+    local t=in_pos[1]
+    local u=in_pos[2]
+    local v=in_pos[3]
+
+    local h=f_r2
+    local p=f_p
+    local r=f_radius
+
+    local x=-(math.sin(t*f_p*f_p+v)*h*h)*(r-u)
+    local y=(math.cos(t*f_p*f_p+v)*h*h)*(r-u)
     return Point(x,y)
 end
 function reinit()
@@ -437,15 +481,6 @@ function update()
         steps=0
     end
     --]]
-    if imgui.Button "Diff" then
-        local e=expression()
-        e:add_variable("x")
-        e:add_variable("y")
-        e.root=symbolic_node("mult",{symbolic_node("pow",{symbolic_node("variable","x"),3}),symbolic_node("constant",-5)})
-        print(e)
-        print("dx:",e:get_partial_derivative("x"))
-        print("dy:",e:get_partial_derivative("y"))
-    end
     if imgui.Button "Color" then
         color_cells_by_links()
     end
