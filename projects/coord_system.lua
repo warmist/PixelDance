@@ -1,8 +1,9 @@
 require 'common'
 require 'kdgrid'
-require "symbolic_diff"
+
 config=make_config({
-    {"Advance",true}
+    {"Advance",true},
+    {"CellStep",false}
     },config)
 
 --[[
@@ -16,6 +17,8 @@ local size=STATE.size
 local zoom=4
 
 grid=grid or make_float_buffer(math.floor(size[1]/zoom),math.floor(size[2]/zoom))
+grid2=grid2 or make_float_buffer(math.floor(size[1]/zoom),math.floor(size[2]/zoom))
+local cur_grid=grid
 local draw_shader=shaders.Make[==[
 #version 330
 #line 13
@@ -70,7 +73,7 @@ grid_tex =grid_tex or textures.Make()
 function draw_grid(  )
     draw_shader:use()
     grid_tex:use(0)
-    grid:write_texture(grid_tex)
+    cur_grid:write_texture(grid_tex)
     draw_shader:set_i("tex_main",0)
     draw_shader:draw_quad()
     if need_save then
@@ -78,7 +81,7 @@ function draw_grid(  )
         need_save=nil
     end
 end
-local f_radius=60
+local f_radius=45
 local f_p=5
 local f_r2=0.5
 function pos_f( in_pos )
@@ -95,8 +98,12 @@ function pos_f( in_pos )
     local p=f_p
     local r=f_radius
 
-    local x=(math.cos(t)+math.cos(t*f_p)*h+math.cos(t*f_p*f_p+v)*h*h)*(r-u)
-    local y=(math.sin(t)+math.sin(t*f_p)*h+math.sin(t*f_p*f_p+v)*h*h)*(r-u)
+    local x=(math.cos(t)-0.2*math.cos(t*p+v*0.2+1.7))*(r-u+math.cos(t*p*2)*10)
+    local y=(math.sin(t)-0.2*math.cos(t*p+v*0.2+1.8))*(r-u+math.cos(t*p*2)*10)
+    --local x=(math.cos(t+u)+math.cos(t*f_p+v*v)*h+math.cos(t*f_p*f_p+v)*h*h)*(r-u*u)
+    --local y=(math.sin(t+u)+math.sin(t*f_p+v*v)*h+math.sin(t*f_p*f_p+v)*h*h)*(r-u*u)
+    --local x=(math.cos(t)+math.cos(t*f_p)*h+math.cos(t*f_p*f_p+v)*h*h)*(r-u)
+    --local y=(math.sin(t)+math.sin(t*f_p)*h+math.sin(t*f_p*f_p+v)*h*h)*(r-u)
     return Point(x,y)
 end
 function pos_f_t( in_pos )
@@ -177,7 +184,13 @@ end
 function draw_point( p,v )
     local x=math.floor(p[1]+0.5)+math.floor(grid.w/2)
     local y=math.floor(p[2]+0.5)+math.floor(grid.h/2)
-    grid:set(x,y,v)
+    cur_grid:set(x,y,v)
+end
+function get_point( p,g)
+    g=g or cur_grid_
+    local x=math.floor(p[1]+0.5)+math.floor(grid.w/2)
+    local y=math.floor(p[2]+0.5)+math.floor(grid.h/2)
+    return g:get(x,y)
 end
 function advance(coord,dir,dist)
     return coord+dir*dist
@@ -191,9 +204,9 @@ function find_next_step_bisect( f, start_y, start_x, dir )
         s.x=advance(start_x,dir,s.t)
         s.y=f(s.x)
     end
-    local t_eps=0.0001
+    local t_eps=0.00001
     local max_step=10000
-    local start_step=0.00003
+    local start_step=0.0001
     local segment_min={t=0,y=start_y,x=start_x}
     local segment_max={t=start_step}
     function print_state( i )
@@ -438,6 +451,48 @@ end
 start_y=Point{0,0}
 start_x=point{0,0}
 steps=0
+function cell_update( last_grid )
+    local rules={
+        [0]=0,
+        1,
+        1,
+        1,
+        0,
+        0,
+        1,
+    }
+    for k,v in pairs(xcells_grid.data) do
+        local c=find_cell(v.y)
+        local ypos=c.ypos
+        local count=0
+        for i,v in pairs(v.links) do
+            local fc=find_cell(v.y)
+            local p=get_point(fc.ypos,last_grid)
+            if p>0.5 then
+                count=count+1
+            end
+        end
+        local res=rules[count]
+        local last_v=get_point(ypos,last_grid)
+        if last_v>0.5 then
+            if res>0.5 then
+                local v=last_v+0.01
+                if v>1 then v=1 end
+                draw_point(ypos,v)
+            else
+                draw_point(ypos,0.49)
+            end
+        else
+            if res>0.5 then
+                draw_point(ypos,0.51)
+            else
+                local v=last_v-0.01
+                if v<0 then v=0 end
+                draw_point(ypos,v)
+            end
+        end
+    end
+end
 function update()
     __clear()
     __no_redraw()
@@ -452,6 +507,7 @@ function update()
     end
     if imgui.Button "Clear Grid" then
         grid:clear()
+        grid2:clear()
     end
     -- [[
     if (imgui.Button "Advance" or cur_x[1] >math.pi*2 )and config.Advance then
@@ -479,6 +535,17 @@ function update()
         
         --]]
         steps=0
+    end
+    if config.CellStep then
+        local last_grid
+        if cur_grid==grid then
+            cur_grid=grid2
+            last_grid=grid
+        else
+            cur_grid=grid
+            last_grid=grid2
+        end
+        cell_update(last_grid)
     end
     --]]
     if imgui.Button "Color" then
