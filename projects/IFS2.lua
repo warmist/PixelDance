@@ -28,8 +28,8 @@ win_h=win_h or 0
 
 aspect_ratio=aspect_ratio or 1
 function update_size()
-	local trg_w=2560*size_mult
-	local trg_h=1440*size_mult
+	local trg_w=1024*2*size_mult
+	local trg_h=1024*2*size_mult
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
 	if win_w~=trg_w or win_h~=trg_h then
@@ -170,7 +170,7 @@ config=make_config({
 	--{"gen_radius",2,type="float",min=0,max=10},
 
 	{"gamma",1,type="float",min=0.01,max=5},
-	{"exposure",1,type="float",min=-10,max=10},
+	{"exposure",1,type="float",min=-13,max=10},
 	{"white_point",1,type="float",min=-0.01,max=10},
 	--[[ other tonemapping
 
@@ -1141,7 +1141,8 @@ local terminal_symbols_complex={
 --["params.xy"]=1,["params.zw"]=1,
 --["(c_one()*normed_iter)"]=0.05,["(c_i()*normed_iter)"]=0.05,
 --["(c_one()*global_seed)"]=0.05,["(c_i()*global_seed)"]=0.05,
---["vec2(cos(global_seed*2*M_PI),sin(global_seed*2*M_PI))"]=0.5,
+--["(c_one()*prand.x)"]=0.05,["(c_i()*prand.x)"]=0.05,
+--["vec2(cos(prand.x*2*M_PI),sin(prand.x*2*M_PI))*move_dist"]=0.5,
 ["c_one()"]=0.1,["c_i()"]=0.1,
 }
 local terminal_symbols_complex_const={
@@ -1609,7 +1610,8 @@ animate=false
 --ast_tree=ast_tree or ast_node(normal_symbols_complex,terminal_symbols_complex)
 
 function get_forced_insert_complex(  )
-	local tbl_insert={"s","p"}
+	local tbl_insert={}
+	--local tbl_insert={"s","p"}
 	--local tbl_insert={"s","p","params.xy","params.zw"}
 	--{"s","p","vec2(cos(global_seeds.x*2*M_PI),sin(global_seeds.x*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seeds.x,0)","vec2(0,1-global_seeds.x)"})
 	--{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seeds.x*2*M_PI),sin(global_seeds.x*2*M_PI)))","params.zw"})
@@ -1634,13 +1636,64 @@ function get_forced_insert_complex(  )
 	--local tbl_insert={"c_mul(mix(s,p,global_seeds.x),mix(p,s,global_seeds.x))","c_mul(mix(c_mul(s,s),c_mul(p,p),global_seeds.x*global_seeds.x),mix(c_mul(p,p),c_mul(s,s),global_seeds.x*global_seeds.x))","params.xy","params.zw"}
 	table.insert(tbl_insert,"params.xy")
 	table.insert(tbl_insert,"params.zw")
+	--table.insert(tbl_insert,"vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2))*prand.x")
+	--table.insert(tbl_insert,"vec2(cos(prand.x*M_PI*2+tex_s.x),sin(prand.x*M_PI*2+tex_s.x))*move_dist")
+	--table.insert(tbl_insert,"vec2(cos(prand.y*M_PI*2),sin(prand.y*M_PI*2))*move_dist")
 	--table.insert(tbl_insert,"vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))")
-	table.insert(tbl_insert,"vec2(prand.x,0)")
-	--[[
-	table.insert(tbl_insert,"mix(c_mul(s,params.xy),c_mul(s,params.zw),prand.x)")
-	table.insert(tbl_insert,"mix(c_mul(p,params.xw),c_mul(p,params.xy),prand.x)")
+	--table.insert(tbl_insert,"vec2(cos(prand.x*prand.x*4),sin(prand.x*prand.x*4))")
+	--table.insert(tbl_insert,"vec2(cos(prand.y*M_PI*2),sin(prand.y*M_PI*2))*(1-prand.x)*move_dist")
+	--table.insert(tbl_insert,"vec2(prand.x,0)")
+	--table.insert(tbl_insert,"prand.x*s+prand.x*prand.x*p+prand.x*prand.x*prand.x")
+	-- [[
+	--table.insert(tbl_insert,"mix(c_mul(s,params.xy),c_mul(s,params.zw),prand.x)")
+	--table.insert(tbl_insert,"mix(c_mul(s,params.xy),c_mul(s,params.zw),prand.x*prand.x)")
+	table.insert(tbl_insert,"mix(c_mul(s-p,params.xy),c_mul(s-p,params.zw),prand.x)")
+	--table.insert(tbl_insert,"mix(c_mul(p,params.xy),c_mul(p,params.zw),prand.x)")
+	--table.insert(tbl_insert,"mix(c_mul(mix(s,p,prand.y),params.xw),c_mul(mix(s,p,prand.y),params.xy),prand.x)")
 
 	--]]
+	local rand_choices={
+		"s","c_mul(s,s)","c_mul(c_mul(s,s),s)","c_mul(c_mul(s,s),c_mul(s,s))",
+		"p","c_mul(p,p)","c_mul(c_mul(p,p),p)","c_mul(c_mul(p,p),c_mul(p,p))",
+		"c_mul(p,s)","c_mul(c_mul(p,s),p)","c_mul(c_mul(p,s),c_mul(p,s))",
+		"c_mul(p,s)","c_mul(c_mul(p,s),s)","c_mul(c_mul(p,s),c_mul(s,s))",
+	}
+	local NO_PICKS=5
+	for i=1,NO_PICKS do
+		table.insert(tbl_insert,rand_choices[math.random(1,#rand_choices)])
+	end
+	--[=[
+	local mob_count=8
+	local mob={}
+	for i=1,8*mob_count do
+		table.insert(mob,math.random()*2-1)
+	end
+	--params.xy=a params.zw=b, m1,m2=c,gvec=d
+	-- [[
+	for i=0,mob_count-1 do
+		local cval=i/mob_count
+		local nval=(i+1)/mob_count
+		table.insert(tbl_insert,string.format("mix(vec2(1,0),mobius(vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),s),value_inside(prand.x,%g,%g))",
+			mob[i*8+1],mob[i*8+2],mob[i*8+3],mob[i*8+4],mob[i*8+5],mob[i*8+6],mob[i*8+7],mob[i*8+8],cval,nval))
+	end
+	--[[
+	for i=1,10 do
+	table.insert(tbl_insert,
+		string.format("mobius(vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),s)",
+			math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1))
+	end
+	--]]
+	-- [[
+	table.insert(tbl_insert,
+		string.format("mobius(params.xy,params.zw,vec2(%g,%g),vec2(%g,%g),s)",
+			math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1))
+	--]]
+	--[[
+	table.insert(tbl_insert,
+		string.format("mobius(vec2(%g,%g),vec2(prand.x,0),vec2(%g,%g),vec2(%g,%g),s)",
+			math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1))
+	--]]
+	--]=]
 	--[[
 	table.insert(tbl_insert,"vec2(global_seeds.x,0)")
 	--table.insert(tbl_insert,"vec2(0,1-global_seeds.x)")
@@ -1650,6 +1703,7 @@ function get_forced_insert_complex(  )
 	--table.insert(tbl_insert,"mix(s,p,global_seeds.x)")
 	--table.insert(tbl_insert,"c_mul(mix(s,p,global_seeds.x),mix(s,p,1-global_seeds.x))")
 	--table.insert(tbl_insert,"((global_seeds.x*2-1)*(move_dist*c_mul(s,s)+s+p))")
+	--table.insert(tbl_insert,"((prand.x*2-1)*(move_dist*c_mul(s,s)+s+p))")
 	--[[
 	table.insert(tbl_insert,"vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2))")
 	--]]
@@ -1679,8 +1733,9 @@ function get_forced_insert_complex(  )
 
 	local num_tex=2
 	for i=1,num_tex do
+		table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2)))")
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)))")
-		table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
+		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)))")
 		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
 		--table.insert(tbl_insert_x,tex_variants[math.random(1,#tex_variants)])
@@ -2160,7 +2215,7 @@ function rand_function(  )
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	-- [===[ ORBIFY!
+	--[===[ ORBIFY!
 	--Idea: project to circle inside with sigmoid like func
 	local circle_radius=1
 	local fixed_move_dist=0.6
@@ -2310,7 +2365,7 @@ function rand_function(  )
 	--]]
 	--[[ const-delta-like complex
 	str_preamble=str_preamble.."vec2 os=s;"
-	str_postamble=str_postamble.."s=c_div(s,os);"
+	str_postamble=str_postamble.."s=c_div(s,os)*move_dist;"
 	--]]
 	--[[ normed-like
 	str_preamble=str_preamble.."float l=length(s);"
@@ -2355,6 +2410,10 @@ function rand_function(  )
 	--[[ crazyness
 	str_postamble=str_postamble.."p=tp;"
 	--]]
+	-- [[noise
+	str_postamble=str_postamble.."s+=vec2(cos(prand.y*M_PI*2),sin(prand.y*M_PI*2))*(1-exp(-prand.x*prand.x))*move_dist;"
+	--str_postamble=str_postamble.."s+=vec2(cos(prand.y*M_PI*2),sin(prand.y*M_PI*2))*prand.x*move_dist;"
+	--]]
 	--[[ clamp
 	str_postamble=str_postamble.."s=clamp(s,vec2(-1),vec2(1));"
 	--]]
@@ -2365,7 +2424,7 @@ function rand_function(  )
 	str_postamble=str_postamble.."float sll=length(s);"
 	str_postamble=str_postamble.."s=s/(smoothstep(0.8,1,sll)*sll+(1-smoothstep(0.8,1,sll))*(1+log(sll)));"
 	--]]
-	-- [[ clamp len log
+	--[[ clamp len log
 	str_postamble=str_postamble.."float sll=length(s);"
 	str_postamble=str_postamble.."s=s*((step(sll,1)*sll+(1-step(sll,1))*(1+log(sll)))/sll);"
 	--]]
@@ -2814,7 +2873,7 @@ vec2 mobius(vec2 a, vec2 b, vec2 c, vec2 d, vec2 z)
 vec3 func_actual(vec2 s,vec2 p)
 {
 	vec4 prand=get_rnd_floats(rnd_data);
-#if 0
+#if 1
 	vec2 normed_p=(p*scale*move_dist+vec2(1,1))/2;
 	vec2 normed_s=(s*scale*move_dist+vec2(1,1))/2;
 #else
@@ -2826,11 +2885,11 @@ vec3 func_actual(vec2 s,vec2 p)
 
 	float tex_sl=length(tex_s);
 	float tex_pl=length(tex_p);
-#if 0
+#if 1
 	tex_s=tex_s/(tex_sl+1);
 	tex_p=tex_p/(tex_pl+1);
 #endif
-#if 1
+#if 0
 	float lum_white=exp(move_dist);
 	tex_s=(tex_s*(1 + tex_sl / lum_white)) / (tex_sl + 1);
 	tex_p=(tex_p*(1 + tex_pl / lum_white)) / (tex_pl + 1);
@@ -3331,6 +3390,11 @@ void main(){
 	float dist_traveled=length(delta_pos);
 	//float color_value=global_seeds.x;
 	float color_value=rnd_f.x;
+	//float color_value=(cos((rnd_f.x*rnd_f.x+1)*3.14*3)*0.5+0.5);
+	//float color_value=(cos(rnd_f.x*3.14*10)*0.5+0.5)*rnd_f.x;
+	//float color_value=cos((1-rnd_f.x*rnd_f.x)*3.14*4)*0.5+0.5;
+	//float color_value=1-fract(exp((1-rnd_f.x)*4));
+	//float color_value=abs(rnd_f.x-0.5)*2;//;//cos(rnd_f.x*3.14*8)*0.5+0.5;
 	//float color_value=color_value_vornoi(delta_pos);
 	//float color_value=cos(seed.x)*0.5+0.5;
 	//float color_value=cos(seed.y*4*M_PI)*0.5+0.5;
@@ -3353,6 +3417,7 @@ void main(){
 	//intensity2=1/clamp(dist_traveled,1,10000);
 	//intensity2=start_l;
 	//intensity2=global_seeds.y;
+	//intensity2=rnd_f.y;
 	vec3 c;
 	if(palette_xyz==1)
 		c=mix_palette(color_value).xyz;
@@ -3867,7 +3932,7 @@ function visit_iter()
 		cur_visit_iter=cur_visit_iter+1
 	end
 --]==]
-	if need_clear or cur_visit_iter>3 then
+	if need_clear or cur_visit_iter>0 then
 		add_visits_shader:use()
 		local cs=samples:get_current()
 		cs:use()
