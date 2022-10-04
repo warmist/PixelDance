@@ -21,6 +21,7 @@ local size=STATE.size
 
 is_remade=false
 local block_size=8--640,320,160,80
+
 print("Block count:",(map_w/block_size)*(map_h/block_size))
 function update_img_buf(  )
     local nw=math.floor(map_w)
@@ -80,6 +81,7 @@ void main(){
         color=vec4(sun_color.xyz*lit,1);
     else
         color=vec4(pixel.xyz+sun_color.xyz*lit,1);
+
 }
 ]==]
 function is_valid_coord( x,y )
@@ -1389,13 +1391,12 @@ function update()
     if config.draw then
 
     draw_shader:use()
-    tex_pixel:use(0,0,1)
 
     --tex_pixel.t:set(size[1]*oversample,size[2]*oversample,3)
     img_buf:write_texture(tex_pixel)
-    tex_sun:use(1,0,1)
     sun_buffer:write_texture(tex_sun)
-
+    tex_pixel:use(0,0,1)
+    tex_sun:use(1,0,1)
     draw_shader:set_i("tex_main",0)
     draw_shader:set_i("tex_sun",1)
     draw_shader:set_i("rez",map_w,map_h)
