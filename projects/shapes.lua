@@ -134,6 +134,22 @@ float F2(vec2 pos)
 	//	v=abs(v-0.025)-0.025;
 	return v;
 }
+float p(float x)
+{
+	float a0=params.x;
+	float a1=params.y;
+	float a2=0.5;
+	float a3=params.z;
+	float a4=params.w;
+
+	float a=-(6.0/5.0)*(a0+a1+a2+a3+a4);
+	float b=(6.0/4.0)*(a0*(a1+a2+a3+a4)+a1*(a2+a3+a4)+a2*(a3+a4));
+	float c=-(6.0/3.0)*(a0*a1*(a2+a3+a4)+a0*a2*a3+a1*a2*(a3+a4)+a0*a3*a4+a1*a3*a4+a2*a3*a4);
+	float d=3*(a0*a1*a2*a3+a0*a1*a2*a4+a0*a1*a3*a4+a0*a2*a3*a4+a1*a2*a3*a4);
+	float e=-(a0*a1*a2*a3*a4);
+
+	return (((((x+a)*x+b)*x+c)*x+d)*x+e)*x;
+}
 float F(vec2 pos)
 {
 
@@ -147,7 +163,7 @@ float F(vec2 pos)
 	vec2 c=vec2(0.1,0.1);
 	float v=length(pos-c);
 	//*/
-	//*
+	/*
 	float x=pos.x;
 	float y=pos.y;
 
@@ -159,6 +175,7 @@ float F(vec2 pos)
 
 	float v=abs(a*x*x*x*x+b*x*x*x+c*x*x+d*x+e-y);//abs(a*pos.x*pos.x+c-pos.y)/sqrt(a*a+b*b);
 	//*/
+	float v=abs(p(pos.x)-pos.y);
 	return v;
 }
 vec2 grad( in vec2 x )
@@ -169,7 +186,7 @@ vec2 grad( in vec2 x )
 }
 void main(){
 	float aspect=rez.x/rez.y;
-	float s=2;
+	float s=20;
 	vec2 p=pos.xy*vec2(1,1/aspect);
 	float v=F(p*s);
 	//vec2 g=grad(p);
@@ -181,14 +198,14 @@ void main(){
 	//lv=abs(fract(lv/ldist+0.5)-0.5)*ldist;
 	lv=smoothstep(line_thick+w,line_thick-w,lv);
 	//lv=abs(v)/(length(g));
-	/*
-	lv+=0.4*(1-smoothstep(0,w,abs(pos.x)));
+	//*
+	lv+=0.4*(1-smoothstep(0,w,abs(pos.x*s)));
 	lv+=0.2*(1-smoothstep(0,w,abs(pos.x*s+1)));
 	lv+=0.2*(1-smoothstep(0,w,abs(pos.x*s-1)));
-	lv+=0.4*(1-smoothstep(0,w,abs(pos.y)));
+	lv+=0.4*(1-smoothstep(0,w,abs(pos.y*s)));
 	lv+=0.2*(1-smoothstep(0,w,abs(pos.y*s+1)));
 	lv+=0.2*(1-smoothstep(0,w,abs(pos.y*s-1)));
-	*/
+	//*/
 	color=vec4(vec3(lv),1);
 }
 ]==]

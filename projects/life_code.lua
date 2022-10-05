@@ -38,7 +38,19 @@ function update_buffers(  )
         is_remade=true
     end
 end
-
+local num_bits_for_type=2
+local mask_for_type_encode=bit.lshift(3,8-num_bits_for_type+1)
+function encode_type( vx,vy,t )
+	local mnt,exp=math.frexp(vx)
+	exp=exp+bit.lshift(t,8-num_bits_for_type+1)
+	return math.ldexp(mnt,exp),vy
+end
+function decode_type( vx,vy )
+	local mnt,exp=math.frexp(vx)
+	local t=bit.rshift(bit.band(exp,mask_for_type_encode),8-num_bits_for_type+1)
+	exp=bit.band(exp,bit.bnot(mask_for_type_encode))
+	return math.ldexp(mnt,exp),vy,t
+end
 if agent_data==nil or agent_data.w~=agent_count then
 	agent_data=make_flt_buffer(agent_count,1)
 	agent_buffers={buffer_data.Make(),buffer_data.Make(),current=1,other=2,flip=function( t )
@@ -58,7 +70,9 @@ if agent_data==nil or agent_data.w~=agent_count then
 	end}
 
 	for i=0,agent_count-1 do
-			agent_data:set(i,0,{math.random()*map_w,math.random()*map_h,math.random()*math.pi*2,0})
+			local type=math.random(0,num_colors-1)
+			local vx,vy=encode_type(0,0,type)
+			agent_data:set(i,0,{math.random()*map_w,math.random()*map_h,vx,vy})
 	end
 	for i=1,2 do
 		agent_buffers[i]:use()
@@ -111,10 +125,21 @@ function draw()
 	
 end
 function update()
-	logic_tick()
+	if not config.pause then
+		logic_tick()
+	end
 	draw()
 	imgui.Begin("Life Code")
 	draw_config(config)
 	draw_color_config()
+	if imgui.Button("Hello world") then
+		local r=math.random()*100-50
+		print(r)
+		for i=0,3 do
+			local rr=encode_type(r,0,i)
+			local rrr,v,ri=decode_type(rr,0)
+			print('\t',i,rr,ri,rrr)
+		end
+	end
 	imgui.End()
 end

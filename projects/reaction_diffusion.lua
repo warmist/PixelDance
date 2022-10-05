@@ -807,10 +807,10 @@ void main(){
 ]==]
 local terminal_symbols={["c.x"]=10,["c.y"]=10,["c.z"]=10,["c.w"]=10,["1.0"]=0.1,["0.0"]=0.1}
 local normal_symbols={
-["max(R,R)"]=0.05,["min(R,R)"]=0.05,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,
+["max(R,R)"]=0.5,["min(R,R)"]=0.5,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,
 ["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,
 ["cos(R)"]=1,
-["log(R+1.0)"]=1,
+["log(R+1.0)"]=0.5,
 ["(R)/(R+1)"]=0.1,["(R)*(R)"]=20,["(R)-(R)"]=20,["(R)+(R)"]=20}
 
 
@@ -1222,7 +1222,7 @@ function gui(  )
 		reset_buffers("chaos")
 	end
 	if imgui.Button("RandMath") then
-		thingy_string=random_math(12,nil,{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
+		thingy_string=random_math(24,nil,{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
 		print(thingy_string)
 		--eval_thingy_string()
 		update_diffuse()

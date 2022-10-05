@@ -764,7 +764,7 @@ float func(vec2 pos)
 
 	float max_a=4;
 	float r=0.4;
-	#if 0
+	#if 1
 		if(length(pos+vec2(0,0.9))<0.005)
 			return ab_vec.x*(fract(fn1*time)*2-1)
 			+ab_vec.y*(fract(fn2*time)*2-1);
@@ -786,9 +786,9 @@ float func(vec2 pos)
 			}
 		return ret/10;
 	#endif
-	#if 1
-		//if(time<max_time)
-		//if(pos.x<-0.35)
+	#if 0
+		if(time<max_time)
+		if(pos.x<-0.35)
 			return (
 		ab_vec.x*sin(fn1
 		//+pos.x*M_PI*2*nm_vec.x
@@ -1291,7 +1291,7 @@ void main(){
 			v=boundary_condition(pos.xy,dir);*/
 	}
 	float l=clamp(length(pos.xy),0,1);
-	float radiation=0.999;
+	float radiation=0.9999;
 	if(sh_v<=0)
 		v=calc_new_value(pos.xy,avg_c);
 	else if(sh_v3<=0)
