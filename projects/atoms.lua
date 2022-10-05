@@ -15,7 +15,8 @@ local win_h=1000
 --]]
 __set_window_size(win_w,win_h)
 local oversample=1
-local agent_count=1000
+local max_agent_count=50000
+cur_agent_count=cur_agent_count or 0
 local use_grad_directly=1
 
 local map_w=math.floor(win_w*oversample)
@@ -50,15 +51,15 @@ function make_double_buffer(  )
         return t[t.other]
     end}
 end
-if agent_data==nil or agent_data.count~=agent_count then
-    agent_data={count=agent_count}
-	agent_data.pos_speed=make_flt_buffer(agent_count,1)
-    agent_data.angle_type=make_flt_buffer(agent_count,1)
+if agent_data==nil or agent_data.count~=max_agent_count then
+    agent_data={count=max_agent_count}
+	agent_data.pos_speed=make_flt_buffer(max_agent_count,1)
+    agent_data.angle_type=make_flt_buffer(max_agent_count,1)
     agent_buffers={}
 	agent_buffers.pos_speed=make_double_buffer()
     agent_buffers.angle_type=make_double_buffer()
 
-	for i=0,agent_count-1 do
+	for i=0,max_agent_count-1 do
         local ang=math.random()*math.pi*2
         local vx=math.cos(ang)
         local vy=math.sin(ang)
@@ -67,10 +68,10 @@ if agent_data==nil or agent_data.count~=agent_count then
 	end
 	for i=1,2 do
 		agent_buffers.pos_speed[i]:use()
-		agent_buffers.pos_speed[i]:set(agent_data.pos_speed.d,agent_count*4*4)
+		agent_buffers.pos_speed[i]:set(agent_data.pos_speed.d,max_agent_count*4*4)
 
         agent_buffers.angle_type[i]:use()
-        agent_buffers.angle_type[i]:set(agent_data.angle_type.d,agent_count*4*4)
+        agent_buffers.angle_type[i]:set(agent_data.angle_type.d,max_agent_count*4*4)
 	end
     __unbind_buffer()
 end
@@ -124,6 +125,7 @@ void main()
     gl_Position.w = 1.0;
 
     at=angle_type;
+    at.x=position.z;
     pos=real_pos;
 }
 ]==],
@@ -135,16 +137,16 @@ in vec2 pos;
 out vec4 color;
 uniform vec2 rez;
 uniform int pix_size;
-uniform float trail_amount;
 uniform float offscreen_draw;
 uniform vec2 potential_params;
+uniform float timer;
 vec4 palette(float t,vec4 a,vec4 b,vec4 c,vec4 d)
 {
     return a+b*cos(c+d*t*3.1459);
 }
 #define M_PI 3.14159
 void main(){
-	float max_range=3;
+	float max_range=1;
     //center
 	vec2 p = (gl_PointCoord - 0.5)*2;
 	p*=max_range;
@@ -167,9 +169,16 @@ void main(){
         mult=-1;
     else if(at.z<64)
         mult=1;
+
     float rinv=1/r;
     float s=potential_params.y;
     float eps=potential_params.x;
+    //eps+=0.05*mult;
+	float my_angle=at.x;
+	float angle=atan(p.y,p.x);
+    float lobes=2;
+    float angular_mod1=1;//(1+cos(angle*lobes+my_angle)*0.5);
+    float angular_mod2=1;//(1+cos(angle*lobes+my_angle+M_PI)*1);
 #if 0
     //* lenard jones potential
     float A=4*eps*pow(s,12);
@@ -185,24 +194,27 @@ void main(){
     v=clamp(v,-100,1000);
     color=vec4(v,0,0,0);
 #else
+
 	//precalc derivate
 	float A=4*eps*pow(s,4);
     float B=4*eps*pow(s,2);
-    //float imr=1/max_range;
-    //float max_range_fix=A*imr*imr*imr-B*imr*imr; //this fix that the potential at max_range==0
-    float max_range_fix=0;
+    float imr=1/max_range;
+
+    float max_range_fix=A*imr*imr*imr-B*imr*imr; //this fix that the potential at max_range==0
+    //float max_range_fix=0;
 
     //float rsq=r*r;
     float rsq_inv=rinv*rinv;
- 	float v=A*rinv*rinv*rinv*rinv-B*rinv*rinv;//-max_range_fix;
+ 	float v=A*rinv*rinv*rinv*rinv*angular_mod1-B*rinv*rinv*angular_mod2-max_range_fix;
+ 	//v*=angular_mod;
  	float max_inv=1/(max_range*max_range);
  	vec2 vd_max=2*p.xy*(B*max_inv*max_inv-2*A*max_inv*max_inv*max_inv);
     vec2 vd=2*p.xy*(B*rsq_inv*rsq_inv-2*A*rsq_inv*rsq_inv*rsq_inv)-vd_max;
     vd*=vec2(1,-1); 
     //vec2 vd=2*p.xy*(B/(rsq*rsq)-2*A/(rsq*rsq*rsq))*rinv;
-    vd*=step(0.05,r);//smoothstep(0.05,0.2,r); //zero out the center, as we dont want to influence ourself
+    vd*=step(0.00002,r);//smoothstep(0.05,0.2,r); //zero out the center, as we dont want to influence ourself
     //vd*=1-smoothstep(max_range*0.95,max_range,r);
-    v=clamp(v,-100,1000);
+    v=clamp(v,-1e4,1e4);
 
     /*
     float vdl=length(vd);
@@ -238,6 +250,8 @@ void main(){
 	//
 }
 ]==])
+
+local timer=0
 function add_fields_fbk(  )
 	add_fields_shader:use()
 	tex_pixel:use(0)
@@ -245,6 +259,8 @@ function add_fields_fbk(  )
 	add_fields_shader:set_i("pix_size",config.ag_field_distance)
 	add_fields_shader:set("rez",map_w,map_h)
 	add_fields_shader:set("potential_params",config.param_p,config.param_s)
+	add_fields_shader:set("timer",timer)
+	timer=timer+1;
 	if not tex_pixel:render_to(map_w,map_h) then
 		error("failed to set framebuffer up")
 	end
@@ -258,7 +274,7 @@ function add_fields_fbk(  )
         add_fields_shader:push_attribute(0,1,4)
     	agent_buffers.pos_speed:get_current():use()
     	add_fields_shader:set("offscreen_draw",0)
-    	add_fields_shader:draw_points(0,agent_count,4)
+    	add_fields_shader:draw_points(0,cur_agent_count,4)
     end
     --[[
     agent_buffers.angle_type:get_current():use()
@@ -266,7 +282,7 @@ function add_fields_fbk(  )
     add_fields_shader:set("offscreen_offset",1,0)
     agent_buffers.pos_speed:get_current():use()
 	add_fields_shader:set("offscreen_draw",1)
-	add_fields_shader:draw_points(0,agent_count,4)
+	add_fields_shader:draw_points(0,cur_agent_count,4)
 	--]]
 	add_fields_shader:blend_default()
 	__render_to_window()
@@ -313,7 +329,7 @@ float sdfBox(vec2 p, vec2 size)
 }
 vec2 apply_limits(vec2 p)
 {
-	float edge_size=0.1;
+	float edge_size=0.05;
 	return vec2(-1,0)*smoothstep(1-edge_size,1,p.x)+vec2(1,0)*(1-smoothstep(0,edge_size,p.x))
 	+vec2(0,1)*smoothstep(1-edge_size,1,p.y)+vec2(0,-1)*(1-smoothstep(0,edge_size,p.y));
 }
@@ -350,24 +366,26 @@ void main(){
 #else
 	float v=texture(tex_main,normed).z;
 	if(v>0)
-		color=vec4(v*0.001,0,0,1);
+		color=vec4(v*0.0005,0,0,1);
 	else
-		color=vec4(0,0,-v*0.05,1);
-	color.xyz+=vec3(length(apply_limits(normed.xy)));
+		color=vec4(0,0,-v*0.5,1);
+	//color.xyz+=vec3(length(apply_limits(normed.xy)));
+	//color.xyz+=vec3(isnan(length(texture(tex_main,normed))));
 #endif
 }
 ]==]
 local agent_logic_shader_fbk=shaders.Make(
 [==[
-
 #version 330
 #line 388
+#define M_PI 3.14159
 layout(location = 0) in vec4 position;
 out vec4 state_out;
 
 uniform sampler2D tex_main;  //signal buffer state
 uniform vec2 rez;
 uniform float friction;
+uniform float friction_angular;
 uniform float gravity;
 uniform float max_speed;
 uniform float use_grad_directly;
@@ -425,7 +443,7 @@ vec2 grad_sdf(vec2 pos)
 }
 vec2 apply_limits(vec2 p)
 {
-	float edge_size=0.1;
+	float edge_size=0.05;
 	return vec2(-1,0)*smoothstep(1-edge_size,1,p.x)+vec2(1,0)*(1-smoothstep(0,edge_size,p.x))
 		+vec2(0,-1)*smoothstep(1-edge_size,1,p.y)+vec2(0,1)*(1-smoothstep(0,edge_size,p.y));
 }
@@ -433,18 +451,120 @@ void main(){
 	float max_l=max_speed;
 	vec4 state=position;
     vec2 normed_state=(state.xy/rez);
-	vec4 fields=texture(tex_main,normed_state);
-
+    vec2 speed;
+#if 1
 	vec2 p=grad_tex3(normed_state);//vec2(dFdx(fields.x),dFdy(fields.x));
+	state.w-=length(p)*sin(atan(-p.y,p.x)+state.z);
+	speed=-p;
+	//state.zw-=p;
+#else
+	vec2 p=texture(tex_main,normed_state);
+	bvec2 nn=isnan(p.xy);
+	if(nn.x || nn.y)
+		p.xy=vec2(0,0);
+	//state.zw-=p.xy;
+	speed=-p;
+	//state.zw-=clamp(p.xy,vec2(-1),vec2(1));
+#endif
+	speed.y-=gravity;
+	speed+=apply_limits(clamp(normed_state,vec2(-1),vec2(1)))*10;
+	speed*=friction;
+	float l=length(speed);
+	if(l>max_l)
+	{
+		speed/=l/max_l;
+	}
+	float max_angular_speed=0.1*max_l;
+	state.w=clamp(state.w,-max_angular_speed,max_angular_speed);
+	
+	/*
 
+	if(state.x+state.z>rez.x)
+		state.z*=-1;
+	if(state.y+state.w>rez.y)
+		state.w*=-1;
+	if(state.x+state.z<0)
+		state.z*=-1;
+	if(state.y+state.w<0)
+		state.w*=-1;
+	*/
+	state.xy+=speed;
+
+	//state.xy=mod(state.xy,rez.xy);
+
+	state.xy=clamp(state.xy,vec2(0),rez);
+	state.w*=friction_angular;
+	state.z=mod(state.z+state.w,M_PI*2);
+	state_out=state;
+
+}
+]==]
+,[===[
+void main()
+{
+
+}
+]===],"state_out")
+--[===[
+local agent_torque_shader_fbk=shaders.Make(
+[==[
+#version 330
+#line 496
+layout(location = 0) in vec4 position;
+layout(location = 1) in vec4 angle_type;
+out vec4 angle_type_out;
+
+uniform sampler2D tex_main;  //signal buffer state
+uniform vec2 rez;
+uniform float friction;
+uniform float max_speed;
+uniform float use_grad_directly;
+
+vec2 grad_tex(vec2 pos)
+{
+    vec2 ret;
+    float v=textureOffset(tex_main,pos,ivec2(0,0)).x;
+    ret.x=textureOffset(tex_main,pos,ivec2(1,0)).x-v;
+    ret.y=textureOffset(tex_main,pos,ivec2(0,1)).x-v;
+    return ret;
+}
+vec2 grad_tex2(vec2 pos)
+{
+    vec2 ret;
+    ret.x=textureOffset(tex_main,pos,ivec2(1,0)).x-textureOffset(tex_main,pos,ivec2(-1,0)).x;
+    ret.y=textureOffset(tex_main,pos,ivec2(0,1)).x-textureOffset(tex_main,pos,ivec2(0,-1)).x;
+    return ret/2;
+}
+vec2 grad_tex3(vec2 pos)
+{
+    vec2 ret;
+    ret.x=textureOffset(tex_main,pos,ivec2(1,0)).z-textureOffset(tex_main,pos,ivec2(-1,0)).z;
+    ret.y=textureOffset(tex_main,pos,ivec2(0,1)).z-textureOffset(tex_main,pos,ivec2(0,-1)).z;
+    return ret/2;
+}
+
+vec2 apply_limits(vec2 p)
+{
+	float edge_size=0.1;
+	return vec2(-1,0)*smoothstep(1-edge_size,1,p.x)+vec2(1,0)*(1-smoothstep(0,edge_size,p.x))
+		+vec2(0,-1)*smoothstep(1-edge_size,1,p.y)+vec2(0,1)*(1-smoothstep(0,edge_size,p.y));
+}
+void main(){
+	float max_l=max_speed;
+	vec4 state=angle_type;
+    vec2 normed_pos=(pos_speed.xy/rez);
+    //toque=EqdSin(theta)// cross(p,e)
+#if 1
+	vec2 p=grad_tex3(normed_pos);//vec2(dFdx(fields.x),dFdy(fields.x));
+	state.zw-=p;
+#else
+	vec4 fields=texture(tex_main,normed_state);
+	bvec2 nn=isnan(fields.xy);
+	if(nn.x || nn.y)
+		fields.xy=vec2(0,0);
+	state.zw-=fields.xy;
 	//state.zw-=clamp(fields.xy,vec2(-1),vec2(1));
-	if(use_grad_directly==0)
-		state.zw-=p;
-	else
-		state.zw-=fields.xy;
-
-	//vec2 ps=grad_sdf(normed_state-vec2(0.5));
-	//state.zw-=ps;
+#endif
 	state.w-=gravity;
 	state.zw+=apply_limits(clamp(normed_state,vec2(-1),vec2(1)))*10;
 	state.zw*=friction;
@@ -466,19 +586,19 @@ void main(){
 	*/
 	state.xy+=state.zw;
 
-	state.xy=mod(state.xy,rez.xy);
-	//state.xy=clamp(state.xy,vec2(0),rez);
+	//state.xy=mod(state.xy,rez.xy);
+	state.xy=clamp(state.xy,vec2(0),rez);
 	state_out=state;
 
 }
 ]==]
-,[===[
+,[==[
 void main()
 {
 
 }
-]===],"state_out")
-
+]==],"state_out")
+--]===]
 function do_agent_logic_fbk(  )
 
 	agent_logic_shader_fbk:use()
@@ -486,6 +606,7 @@ function do_agent_logic_fbk(  )
     agent_logic_shader_fbk:set_i("tex_main",0)
 	agent_logic_shader_fbk:set("rez",map_w,map_h)
 	agent_logic_shader_fbk:set("friction",config.friction);
+	agent_logic_shader_fbk:set("friction_angular",config.friction_angular);
 	agent_logic_shader_fbk:set("gravity",config.gravity);
 	agent_logic_shader_fbk:set("max_speed",config.max_speed);
 	agent_logic_shader_fbk:set("use_grad_directly",use_grad_directly)
@@ -496,10 +617,10 @@ function do_agent_logic_fbk(  )
 
 	local ac=agent_buffers.pos_speed:get_current()
 	ac:use()
-	agent_logic_shader_fbk:draw_points(0,agent_count,4,1)
+	agent_logic_shader_fbk:draw_points(0,cur_agent_count,4,1)
 	__flush_gl()
 	agent_logic_shader_fbk:raster_discard(false)
-	--__read_feedback(agent_data.d,agent_count*agent_count*4*4)
+	--__read_feedback(agent_data.d,cur_agent_count*cur_agent_count*4*4)
 	--print(agent_data:get(0,0).r)
 	agent_buffers.pos_speed:flip()
 	__unbind_buffer()
@@ -507,18 +628,25 @@ end
 function agents_tocpu()
 	--tex_agent:use(0)
 	--agent_data:read_texture(tex_agent)
-	agent_buffers.pos_speed:get_current():use()
-	agent_buffers.pos_speed:get_current():get(agent_data.pos_speed.d,agent_count*4*4)
+	local ps=agent_buffers.pos_speed:get_current()
+	ps:use()
+	ps:read(agent_data.pos_speed.d,cur_agent_count*4*4)
 end
 function agents_togpu()
 	--tex_agent:use(0)
 	--agent_data:write_texture(tex_agent)
 
 	agent_buffers.pos_speed:get_current():use()
-	agent_buffers.pos_speed:get_current():set(agent_data.pos_speed.d,agent_count*4*4)
+	agent_buffers.pos_speed:get_current():set(agent_data.pos_speed.d,cur_agent_count*4*4)
+	agent_buffers.pos_speed:flip()
+	agent_buffers.pos_speed:get_current():use()
+	agent_buffers.pos_speed:get_current():set(agent_data.pos_speed.d,cur_agent_count*4*4)
     agent_buffers.angle_type:get_current():use()
-    agent_buffers.angle_type:get_current():set(agent_data.angle_type.d,agent_count*4*4)
-	__unbind_buffer()
+    agent_buffers.angle_type:get_current():set(agent_data.angle_type.d,cur_agent_count*4*4)
+    agent_buffers.angle_type:flip()
+    agent_buffers.angle_type:get_current():use()
+    agent_buffers.angle_type:get_current():set(agent_data.angle_type.d,cur_agent_count*4*4)
+    __unbind_buffer()
 end
 function fill_buffer(  )
 	tex_pixel:use(0)
@@ -577,8 +705,34 @@ function update()
 		signal_buf:write_texture(tex_pixel)
     end
     imgui.SameLine()
+    if imgui.Button("Add") then
+    	agents_tocpu()
+    	for i=1,1000 do
+    		if cur_agent_count<max_agent_count then
+		    	--cur_agent_count=cur_agent_count+1
+				local ang=math.random()*math.pi*2
+				local i=cur_agent_count
+		        local vx=math.cos(ang)
+		        local vy=math.sin(ang)
+				agent_data.pos_speed:set(i,0,
+					{math.random(0,map_w-1),
+					 math.random(0,map_h-1),
+					 math.random()*math.pi*2,--vx,
+					 math.random()*0.1,--vy
+					})
+		        agent_data.angle_type:set(i,0,
+		            {math.random()*math.pi*2,
+		             0,
+		             math.random()*255,
+		             0})
+		        cur_agent_count=cur_agent_count+1
+	       end
+    	end
+    	print(cur_agent_count)
+    	agents_togpu()
+    end
     if imgui.Button("Agentswarm") then
-    	for i=0,agent_count-1 do
+    	for i=0,cur_agent_count-1 do
     		-- [[
             local ang=math.random()*math.pi*2
             local vx=math.cos(ang)
@@ -586,8 +740,9 @@ function update()
     		agent_data.pos_speed:set(i,0,
     			{math.random(0,map_w-1),
     			 math.random(0,map_h-1),
-    			 vx,
-    			 vy})
+    			 math.random()*math.pi*2,--vx,
+    			 math.random()*0.1,--vy
+    			})
             agent_data.angle_type:set(i,0,
                 {math.random()*math.pi*2,
                  0,
@@ -643,9 +798,12 @@ function update()
     	agents_togpu()
     end
     imgui.SameLine()
-    if imgui.Button("ReloadBuffer") then
-		background_tex=nil
-		make_background_texture()
+    if imgui.Button("Print Particles") then
+		agents_tocpu()
+		for i=0,cur_agent_count-1 do
+			local v=agent_data.pos_speed.d[i]
+			print(string.format("P:%g %g S: %g %g",v.r,v.g,v.b,v.a))
+		end
 	end
     imgui.End()
     -- [[
