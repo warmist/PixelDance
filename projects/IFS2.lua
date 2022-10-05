@@ -172,7 +172,7 @@ config=make_config({
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"exposure",1,type="float",min=-13,max=10},
 	{"white_point",1,type="float",min=-0.01,max=10},
-	--[[ other tonemapping
+	--[[ other(uchimura) tonemapping
 
 	{"max_bright",1.0,type="float",min=0,max=2},
 	{"contrast",1.0,type="float",min=0,max=2},
@@ -339,6 +339,15 @@ float Tonemap_ACES(float x) {
     const float e = 0.14;
     return (x * (a * x + b)) / (x * (c * x + d) + e);
 }
+float Tonemap_ACES2(float x,float wp) {
+    // Narkowicz 2015, "ACES Filmic Tone Mapping Curve"
+    float a = 2.51+wp;
+    const float b = 0.03;
+    const float c = 2.43;
+    const float d = 0.59;
+    const float e = 0.14;
+    return (x * (a * x + b)) / (x * (c * x + d) + e);
+}
 //https://www.shadertoy.com/view/WdjSW3
 float Tonemap_Uchimura(float x, float P, float a, float m, float l, float c, float b) {
     // Uchimura 2017, "HDR theory and practice"
@@ -388,7 +397,10 @@ vec3 tonemap(vec3 light,float cur_exp)
 	//Y=log(Y+1)/log(min_max.y+1);
 #if 0
 	//Y=Tonemap_Uchimura(Y);
-	Y=Tonemap_ACES(Y);
+	if(white_point<0)
+		Y=Tonemap_ACES(Y);
+	else
+		Y=Tonemap_ACES2(Y,lum_white);
 #else
 	if(white_point<0)
     	Y = Y / (1 + Y); //simple compression
@@ -415,7 +427,8 @@ vec3 tonemap(vec3 light,float cur_exp)
     if(ret.y>1)ret.y=1;
     if(ret.z>1)ret.z=1;
 	//*/
-    return mix(ret,vec3(1),s);
+    //return mix(ret,vec3(1),s);
+    return ret;
 }
 vec3 YxyToXyz(vec3 v)
 {
@@ -557,7 +570,7 @@ function draw_visits(  )
 	set_shader_palette(display_shader)
 	display_shader:set("min_max",lmin[2],lmax[2])
 
-	--[[
+	--[[ uchimura tonemapping
 	display_shader:set("uchimura_params[0]",config.max_bright)
 	display_shader:set("uchimura_params[1]",config.contrast)
 	display_shader:set("uchimura_params[2]",config.linear_start)
@@ -1733,7 +1746,7 @@ function get_forced_insert_complex(  )
 
 	local num_tex=2
 	for i=1,num_tex do
-		table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2)))")
+		table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist)")
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)))")
 		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)))")
@@ -2213,7 +2226,7 @@ function rand_function(  )
 	--str_postamble=str_postamble..string.format("s=(1-step(0,DC))*s+step(0,DC)*(%g)*rotate(VC,M_PI*move_dist*global_seeds.x)*sigmoid(DC*global_seeds.x);",circle_radius)
 	--]==]
 	--]===]
-	-- [==[ polar gravity
+	--[==[ polar gravity
 	str_preamble=str_preamble.."vec2 np=s;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."vec2 np=p;float npl=abs(sqrt(dot(np,np))-0.5)+1;npl*=npl;"
 	--str_preamble=str_preamble.."vec2 np=tex_s.yz;float npl=abs(sqrt(dot(np,np)))+0.5;npl*=npl;"
@@ -2236,7 +2249,7 @@ function rand_function(  )
 	--[[ move towards circle
 	str_postamble=str_postamble.."vec2 tow_c=s+vec2(cos(normed_iter*M_PI*2),sin(normed_iter*M_PI*2))*move_dist;s=(dot(tow_c,s)*tow_c/length(tow_c));"
 	--]]
-		-- [[ rand scale/offset
+	--[[ rand scale/offset
 
 	local r1=math.random()*2-1
 	local r2=math.random()*2-1
@@ -2255,9 +2268,11 @@ function rand_function(  )
 	-- [[ mod
 	--str_postamble=str_postamble.."s=mod(s+0.5,1)-0.5;"
 	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1+(prand.x-0.5)*0.005)-0.5,-M_PI/4);"
-	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y,1+(prand.x-0.5)*0.005);s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
-	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y,1+(prand.x-0.5)*0.005)*2-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
-	str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,2+(prand.x-0.5)*0.005)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
+	str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5,-M_PI/4);"
+	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y,1+(prand.x-0.5)*0.05);s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
+	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y,1+(prand.x-0.5)*0.05)*2-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
+	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,2+(smoothstep(-1,1,prand.x-0.5)-0.5)*0.01)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
+	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,2)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
 	--]]
 
 	--[[ boost
