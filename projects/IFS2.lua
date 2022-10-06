@@ -427,8 +427,8 @@ vec3 tonemap(vec3 light,float cur_exp)
     if(ret.y>1)ret.y=1;
     if(ret.z>1)ret.z=1;
 	//*/
-    //return mix(ret,vec3(1),s);
-    return ret;
+    return mix(ret,vec3(1),s);
+    //return ret;
 }
 vec3 YxyToXyz(vec3 v)
 {
@@ -2249,30 +2249,45 @@ function rand_function(  )
 	--[[ move towards circle
 	str_postamble=str_postamble.."vec2 tow_c=s+vec2(cos(normed_iter*M_PI*2),sin(normed_iter*M_PI*2))*move_dist;s=(dot(tow_c,s)*tow_c/length(tow_c));"
 	--]]
-	--[[ rand scale/offset
+	-- [[ rand scale/offset
 
 	local r1=math.random()*2-1
 	local r2=math.random()*2-1
 	local l=math.sqrt(r1*r1+r2*r2)
+	r1=r1/l
+	r2=r2/l
 	local r3=math.random()*2-1
 	local r4=math.random()*2-1
 	local l2=math.sqrt(r3*r3+r4*r4)
+	r3=r3/l2
+	r4=r4/l2
 	local r5=math.random()*2-1
 	local r6=math.random()*2-1
 	local l3=math.sqrt(r5*r5+r6*r6)
-	--str_preamble=str_preamble..("s=vec2(dot(s,vec2(%.3f,%.3f)),dot(s,vec2(%.3f,%.3f)))+vec2(%3.f,%.3f);"):format(r1/l,r2/l,r3/l2,r4/l2,r5/l3,r6/l3)
-	str_preamble=str_preamble..("s=s+vec2(%3.f,%.3f);"):format(r5/l3,r6/l3)
-	str_postamble=str_postamble..("s=s-vec2(%3.f,%.3f);"):format(r5/l3,r6/l3)
+	r5=r5/l3
+	r6=r6/l3
+	--str_preamble=str_preamble..("s=mix(s,vec2(dot(s,vec2(%.3f,%.3f)),dot(s,vec2(%.3f,%.3f)))+vec2(%.3f,%.3f),prand.x*move_dist);"):format(r1,r2,r3,r4,r5,r6)
+	str_preamble=str_preamble..("s=mix(s,vec2(dot(s,vec2(%.3f,%.3f)),dot(s,vec2(%.3f,%.3f)))+vec2(%.3f,%.3f),1-normed_iter);"):format(r1,r2,r3,r4,r5,r6)
+	--str_preamble=str_preamble..("s=vec2(dot(s,vec2(%.3f,%.3f)),dot(s,vec2(%.3f,%.3f)))+vec2(%.3f,%.3f);"):format(r1,r2,r3,r4,r5,r6)
+	--str_preamble=str_preamble..("s=s*vec2(%.3f,%.3f)+vec2(%.3f,%.3f);"):format(r1,r2,r5,r6)
+	
+	--str_preamble=str_preamble..("s=mix(s,s*vec2(%.3f,%.3f)+vec2(%.3f,%.3f),prand.x*move_dist);"):format(r1,r2,r5,r6)
+	--str_postamble=str_postamble..("s=(s-vec2(%.3f,%.3f))*vec2(%.3f,%.3f);"):format(r5,r6,1/r1,1/r2)
+	--TODO Revert the preamble transform str_postamble=str_postamble..("s=vec2(dot(s,vec2(%.3f,%.3f)),dot(s,vec2(%.3f,%.3f)))+vec2(%.3f,%.3f);"):format(r1/l,r2/l,r3/l2,r4/l2,r5,r6)
+	--str_preamble=str_preamble..("s=s+vec2(%.4f,%.4f);"):format(r5,r6)
+	--str_postamble=str_postamble..("s=s-vec2(%.4f,%.4f);"):format(r5,r6)
+	
 
 	--]]
-	-- [[ mod
+	--[[ mod
 	--str_postamble=str_postamble.."s=mod(s+0.5,1)-0.5;"
 	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1+(prand.x-0.5)*0.005)-0.5,-M_PI/4);"
-	str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5,-M_PI/4);"
+	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5,-M_PI/4);"
 	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y,1+(prand.x-0.5)*0.05);s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
 	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y,1+(prand.x-0.5)*0.05)*2-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
 	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,2+(smoothstep(-1,1,prand.x-0.5)-0.5)*0.01)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
-	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,2)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
+	str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,2)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
+	--str_postamble=str_postamble.."vec2 ps1=vec2(atan(s.y,s.x),length(s));ps1.y=mod(ps1.y+1,2)-1;s=vec2(cos(ps1.x),sin(ps1.x))*ps1.y;"
 	--]]
 
 	--[[ boost

@@ -7,6 +7,7 @@
 TODO:
     * add more "states" (i.e. non 1/0 but actually have 1/2/...)
     * more "laws of conservation"
+    * simulate for each seed id and avg over them/do histogram?/probablity cloud?
 --]===]
 require 'common'
 require 'bit'
@@ -1645,7 +1646,7 @@ config.long_dist_offset=%d
         local layer=0
         local randomize_last=true
         local do_skip_layer= function (l)
-            -- [[ even
+            --[[ even
                 return l%2==1
             --]]
             --[[ odd
