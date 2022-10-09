@@ -1022,6 +1022,99 @@ function add_count( tbl,e )
     end
 end
 local sim_thread
+function add_particles( buf )
+    for i=0,current_particle_count-1 do
+        local p=particles_pos:get(i,0)
+        buf:set(p.r,p.g,buf:get(p.r,p.g)+1)
+    end
+end
+function add_particles_complex( buf,theta,r )
+    local c=math.cos(theta)*(r or 1)
+    local s=math.sin(theta)*(r or 1)
+    for i=0,current_particle_count-1 do
+        local p=particles_pos:get(i,0)
+        local v=buf:get(p.r,p.g)
+        buf:set(p.r,p.g,{v.r+c,v.g+s})
+    end
+end
+function remap_and_save( buf )
+    local w=static_layer.w
+    local h=static_layer.h
+    local img_buf=make_image_buffer(w,h)
+    local max=0
+    for x=0,w-1 do
+        for y=0,h-1 do
+            local v=buf:get(x,y)
+            if v>max then max=v end
+        end
+    end
+    for x=0,w-1 do
+        for y=0,h-1 do
+            local v=buf:get(x,y)
+            v=math.floor((v/max)*255)
+            img_buf:set(x,y,{v,v,v,255})
+        end
+    end
+    img_buf:save("out.png")
+end
+function remap_and_save_complex( buf )
+    local w=static_layer.w
+    local h=static_layer.h
+    local img_buf=make_image_buffer(w,h)
+    local max=0
+    for x=0,w-1 do
+        for y=0,h-1 do
+            local v=buf:get(x,y)
+            local ls=v.r*v.r+v.g*v.g
+            if ls>max then max=ls end
+        end
+    end
+    max=math.sqrt(max)
+    for x=0,w-1 do
+        for y=0,h-1 do
+            local v=buf:get(x,y)
+            v=math.sqrt(v.r*v.r+v.g*v.g)/max
+            v=math.floor(v*255)
+            img_buf:set(x,y,{v,v,v,255})
+        end
+    end
+    img_buf:save("out.png")
+end
+function simulate_cloud2(  )
+    local bc_start=364
+    local bc_end=440
+    local max_seed=100
+    local buffer=make_flt_half_buffer(static_layer.w,static_layer.h)
+    for i=bc_start,bc_end do
+        config.block_size=i
+        for k=0,max_seed do
+            config.seed=k
+            is_remade=true
+            local no_sim_ticks=100
+            for j=1,no_sim_ticks do
+                coroutine.yield()
+            end
+            add_particles_complex(buffer,math.pi*(i-bc_start)/(bc_end-bc_start))
+        end
+    end
+    remap_and_save_complex(buffer)
+    sim_thread=nil
+end
+function simulate_cloud(  )
+    local num_seeds=100
+    local buffer=make_float_buffer(static_layer.w,static_layer.h)
+    for i=1,num_seeds do
+        config.seed=i
+        is_remade=true
+        local no_sim_ticks=400
+        for j=1,no_sim_ticks do
+            coroutine.yield()
+        end
+        add_particles(buffer)
+    end
+    remap_and_save(buffer)
+    sim_thread=nil
+end
 function simulate_decay(  )
     local start_s=2
     local end_s=50
@@ -1372,6 +1465,19 @@ function prime(n)
     end
     return true
 end
+function is_triangular( k )
+    local v=8*k+1
+    local vs=math.floor(math.sqrt(v))
+
+    return v==vs*vs
+end
+function is_triangular2( k )
+    --sequence in form 1on,1off, 2on,2off, 3on,3off...
+    local v=(math.sqrt(1+4*k)-1)/2
+    local off=v-math.floor(v)
+    return off<0.5
+
+end
 function update_rule_lookup(  )
     rule_lookup={}
     for i,v in ipairs(rules) do
@@ -1653,13 +1759,15 @@ config.long_dist_offset=%d
                 return l%2==0
             --]]
             --return l%3~=0
-            return (l*l+2*l)%3~=0
+            --return (l*l+2*l)%3~=0
             --return prime(l*l+1)
             --return not prime(l*l+1)
+            return is_triangular2(l)
         end
         --print("Radius:",math.log(3*bs+1)/math.log(4))
         --print("Radius:",(math.sqrt(2*config.block_size-1)+1)/2)
         math.randomseed (config.seed)
+        last_layer_fill=0
         while bs>0 do
             local atom_type=math.random(1,MAX_ATOM_TYPES)
             --atom_type=(math.pow(atom_type,5))*MAX_ATOM_TYPES
@@ -1682,6 +1790,11 @@ config.long_dist_offset=%d
                 if current_particle_count== max_particle_count-1 then
                     break
                 end
+            end
+            if bs>#l then
+                last_layer_fill=1
+            else
+                last_layer_fill=bs/#l
             end
             bs=bs-#l
             layer=layer+1
@@ -1828,7 +1941,8 @@ config.long_dist_offset=%d
     imgui.SameLine()
     if not sim_thread then
         if imgui.Button("Simulate") then
-            sim_thread=coroutine.create(simulate_decay)
+           -- sim_thread=coroutine.create(simulate_decay)
+            sim_thread=coroutine.create(simulate_cloud2)
         end
     else
         if imgui.Button("Stop Simulate") then

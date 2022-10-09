@@ -1707,9 +1707,11 @@ function get_forced_insert_complex(  )
 			math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1))
 	--]]
 	--]=]
-	--[[
-	table.insert(tbl_insert,"vec2(global_seeds.x,0)")
-	--table.insert(tbl_insert,"vec2(0,1-global_seeds.x)")
+	-- [[
+	table.insert(tbl_insert,"vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist")
+	--table.insert(tbl_insert,"vec2(prand.x,0)")
+	--table.insert(tbl_insert,"vec2(prand.y,0)")
+	--table.insert(tbl_insert,"vec2(0,1-prand.x)")
 	--]]
 	--table.insert(tbl_insert,"vec2(length(p),length(s))")
 	--table.insert(tbl_insert,"mix(params.xy,params.zw,global_seeds.x)")
@@ -1729,7 +1731,7 @@ function get_forced_insert_complex(  )
 		table.insert(tbl_insert,string.format("vec2(%g,%g)*global_seeds.x",math.cos(v)*dist,math.sin(v)*dist))
 	end
 	--]]
-	-- [==[
+	--[==[
 	local tex_variants={
 		-- [[
 		"tex_p.xy","tex_p.yz","tex_p.zx",
@@ -2249,7 +2251,7 @@ function rand_function(  )
 	--[[ move towards circle
 	str_postamble=str_postamble.."vec2 tow_c=s+vec2(cos(normed_iter*M_PI*2),sin(normed_iter*M_PI*2))*move_dist;s=(dot(tow_c,s)*tow_c/length(tow_c));"
 	--]]
-	-- [[ rand scale/offset
+	--[[ rand scale/offset
 
 	local r1=math.random()*2-1
 	local r2=math.random()*2-1
@@ -2267,7 +2269,7 @@ function rand_function(  )
 	r5=r5/l3
 	r6=r6/l3
 	--str_preamble=str_preamble..("s=mix(s,vec2(dot(s,vec2(%.3f,%.3f)),dot(s,vec2(%.3f,%.3f)))+vec2(%.3f,%.3f),prand.x*move_dist);"):format(r1,r2,r3,r4,r5,r6)
-	str_preamble=str_preamble..("s=mix(s,vec2(dot(s,vec2(%.3f,%.3f)),dot(s,vec2(%.3f,%.3f)))+vec2(%.3f,%.3f),1-normed_iter);"):format(r1,r2,r3,r4,r5,r6)
+	--str_preamble=str_preamble..("s=mix(s,vec2(dot(s,vec2(%.3f,%.3f)),dot(s,vec2(%.3f,%.3f)))+vec2(%.3f,%.3f),1-normed_iter);"):format(r1,r2,r3,r4,r5,r6)
 	--str_preamble=str_preamble..("s=vec2(dot(s,vec2(%.3f,%.3f)),dot(s,vec2(%.3f,%.3f)))+vec2(%.3f,%.3f);"):format(r1,r2,r3,r4,r5,r6)
 	--str_preamble=str_preamble..("s=s*vec2(%.3f,%.3f)+vec2(%.3f,%.3f);"):format(r1,r2,r5,r6)
 	
@@ -2276,17 +2278,60 @@ function rand_function(  )
 	--TODO Revert the preamble transform str_postamble=str_postamble..("s=vec2(dot(s,vec2(%.3f,%.3f)),dot(s,vec2(%.3f,%.3f)))+vec2(%.3f,%.3f);"):format(r1/l,r2/l,r3/l2,r4/l2,r5,r6)
 	--str_preamble=str_preamble..("s=s+vec2(%.4f,%.4f);"):format(r5,r6)
 	--str_postamble=str_postamble..("s=s-vec2(%.4f,%.4f);"):format(r5,r6)
+	--str_preamble=str_preamble..("s=s+vec2(%.4f,%.4f)*(tex_s.x+(prand.x-0.5)*0.05);"):format(r5,r6)
+	--str_postamble=str_postamble..("s=s-vec2(%.4f,%.4f)*(tex_s.x+(prand.x-0.5)*0.05);"):format(r5,r6)
+	str_preamble=str_preamble..("s=rotate(s,%.4f*M_PI*(tex_s.x+(prand.x-0.5)*0.05));"):format(math.random()*2-1)
+	str_postamble=str_postamble..("s=rotate(s,(-1)*%.4f*M_PI*(tex_s.x+(prand.x-0.5)*0.05));"):format(math.random()*2-1)
 	
 
 	--]]
+	-- [[ const-delta-like
+	str_preamble=str_preamble.."vec2 os=s;"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/(1+global_seeds.x));"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/(1+prand.x));"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*dot(tex_s,tex_s)/(move_dist*cos(global_seeds.x*M_PI*2));"
+	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
+	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*(max(abs(tex_s.x-tex_p.x),abs(tex_s.y-tex_p.y))+0.5);"
+	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
+	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seeds.x*move_dist+1)/move_dist);"
+	--str_postamble=str_postamble.."s/=length(s);s=os+rotate(s,(prand.x-0.5)*M_PI*2)*move_dist;"
+	--str_postamble=str_postamble.."s/=length(s);s=os+rotate(s,(prand.x-0.5)*M_PI*2*move_dist)*move_dist;"
+	--str_postamble=str_postamble.."s/=length(s);s=rotate(rotate(os,(prand.x-0.5)*M_PI*2)+s*move_dist,-(prand.x-0.5)*M_PI*2);"
+	--str_postamble=str_postamble.."s/=length(s);s=os+rotate(s,(prand.y-0.5)*M_PI*2*move_dist)*(prand.x-0.5)*move_dist;"
+	--]]
+	--[[ const-delta-like complex
+	str_preamble=str_preamble.."vec2 os=s;"
+	--str_postamble=str_postamble.."s=c_div(s,os)*move_dist;"
+	str_postamble=str_postamble.."s=c_div(s,os)*(max(abs(tex_s.x-tex_p.x),abs(tex_s.y-tex_p.y))+0.5);"
+	--]]
+	--[[ normed-like
+	str_preamble=str_preamble.."float l=length(s);"
+	str_postamble=str_postamble.."s/=l;s*=move_dist;"
+	--]]
+	--[[ normed-like2
+	str_preamble=str_preamble..""
+	str_postamble=str_postamble.."s/=length(s);s*=move_dist;s+=p;"
+	--]]
+	--[[ mod triangle
+	str_postamble=str_postamble.."s"
+	--]]
 	--[[ mod
 	--str_postamble=str_postamble.."s=mod(s+0.5,1)-0.5;"
+	--str_postamble=str_postamble.."s=mod(s+0.5,max(abs(tex_s.x-tex_p.x),abs(tex_s.y-tex_p.y))*prand.x+1)-0.5;"
+	str_postamble=str_postamble.."s=rotate(s,M_PI/4)+0.5;"
+	str_postamble=str_postamble.."s=mod(s,1+(prand.x-0.5)*0.005)-0.5;"
+	str_postamble=str_postamble.."s=rotate(s,M_PI/4)+0.5;"
+	str_postamble=str_postamble.."s=mod(s,1+(prand.x-0.5)*0.005)-0.5;"
+	str_postamble=str_postamble.."s=rotate(s,M_PI/2);"
 	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1+(prand.x-0.5)*0.005)-0.5,-M_PI/4);"
-	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5,-M_PI/4);"
-	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y,1+(prand.x-0.5)*0.05);s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
+	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,(max(abs(tex_s.x-tex_p.x),abs(tex_s.y-tex_p.y)-1)*2+(prand.x)))-0.5,-M_PI/4);"
+	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y,1+(prand.x-0.5)*0.005);s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
 	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y,1+(prand.x-0.5)*0.05)*2-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
 	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,2+(smoothstep(-1,1,prand.x-0.5)-0.5)*0.01)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
-	str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,2)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
+	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,2)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
+	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,tex_s.x+1)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
+	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,(max(abs(tex_s.x-tex_p.x),abs(tex_s.y-tex_p.y))+0.5*(prand.x)))-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
 	--str_postamble=str_postamble.."vec2 ps1=vec2(atan(s.y,s.x),length(s));ps1.y=mod(ps1.y+1,2)-1;s=vec2(cos(ps1.x),sin(ps1.x))*ps1.y;"
 	--]]
 
@@ -2396,32 +2441,7 @@ function rand_function(  )
 	--str_preamble=str_preamble.."s=vec2(cos(p.y)*s.x-sin(p.y)*s.y,cos(p.y)*s.y+sin(p.y)*s.x);"
 	str_preamble=str_preamble.."s=vec2(cos(normed_iter*M_PI*2)*s.x-sin(normed_iter*M_PI*2)*s.y,cos(normed_iter*M_PI*2)*s.y+sin(normed_iter*M_PI*2)*s.x);"
 	--]]
-	--[[ const-delta-like
-	str_preamble=str_preamble.."vec2 os=s;"
-	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
-	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/(1+global_seeds.x));"
-	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/(1+prand.x));"
-	--str_postamble=str_postamble.."s/=length(s);s=os+s*dot(tex_s,tex_s)/(move_dist*cos(global_seeds.x*M_PI*2));"
-	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist;"
-	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
-	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seeds.x*move_dist+1)/move_dist);"
-	--str_postamble=str_postamble.."s/=length(s);s=os+rotate(s,(prand.x-0.5)*M_PI*2)*move_dist;"
-	--str_postamble=str_postamble.."s/=length(s);s=os+rotate(s,(prand.x-0.5)*M_PI*2*move_dist)*move_dist;"
-	str_postamble=str_postamble.."s/=length(s);s=rotate(rotate(os,(prand.x-0.5)*M_PI*2)+s*move_dist,-(prand.x-0.5)*M_PI*2);"
-	--str_postamble=str_postamble.."s/=length(s);s=os+rotate(s,(prand.y-0.5)*M_PI*2*move_dist)*(prand.x-0.5)*move_dist;"
-	--]]
-	--[[ const-delta-like complex
-	str_preamble=str_preamble.."vec2 os=s;"
-	str_postamble=str_postamble.."s=c_div(s,os)*move_dist;"
-	--]]
-	--[[ normed-like
-	str_preamble=str_preamble.."float l=length(s);"
-	str_postamble=str_postamble.."s/=l;s*=move_dist;"
-	--]]
-	--[[ normed-like2
-	str_preamble=str_preamble..""
-	str_postamble=str_postamble.."s/=length(s);s*=move_dist;s+=p;"
-	--]]
+
 	--[[ polar-like
 	str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
 	str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
@@ -2921,7 +2941,7 @@ vec2 mobius(vec2 a, vec2 b, vec2 c, vec2 d, vec2 z)
 vec3 func_actual(vec2 s,vec2 p)
 {
 	vec4 prand=get_rnd_floats(rnd_data);
-#if 0
+#if 1
 	vec2 normed_p=(p*scale*move_dist+vec2(1,1))/2;
 	vec2 normed_s=(s*scale*move_dist+vec2(1,1))/2;
 #else
@@ -3139,7 +3159,7 @@ make_visit_shader(true)
 add_visits_shader=shaders.Make(
 [==[
 #version 330
-#line 2809
+#line 3162
 layout(location = 0) in vec4 pos;
 layout(location = 1) in uvec4 rnd_data;
 
@@ -3201,7 +3221,7 @@ vec2 mapping(vec2 p)
 		//*/
 
 
-		///* code for group p4
+		/* code for group p4
 		float index=mod(r.x,2)+mod(r.y,2)*2;
 		float rot=0;
 		if(index==1)
@@ -3220,7 +3240,7 @@ vec2 mapping(vec2 p)
 		p=tRotate(p,rot*M_PI/2.0);
 		//*/
 
-		/*
+		//*
 		if(mod(r.x,2)!=0)
 		{
 			p.x*=-1;
@@ -3465,7 +3485,9 @@ void main(){
 	//intensity2=1/clamp(dist_traveled,1,10000);
 	//intensity2=start_l;
 	//intensity2=global_seeds.y;
+	//intensity2=rnd_f.y*2-1;
 	//intensity2=rnd_f.y;
+	//intensity2=cos(rnd_f.y*4)+cos(rnd_f.y*7)*0.5+cos(rnd_f.y*12)*0.25;
 	//intensity2=smoothstep(0,0.1,1-normed_iter);
 	vec3 c;
 	if(palette_xyz==1)
@@ -3473,6 +3495,7 @@ void main(){
 	else
 		c=rgb2xyz(mix_palette(color_value).xyz);
 	c*=a*intensity*intensity2;
+	//c=max(vec3(0),c);
 	//c+=vec3(0.01);
 	//c*=(sin(start_l*M_PI*16)+0.6);
 	//c*=(sin(normed_iter*M_PI*8)+0.1);
