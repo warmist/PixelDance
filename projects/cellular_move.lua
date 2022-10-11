@@ -1080,6 +1080,41 @@ function remap_and_save_complex( buf )
     end
     img_buf:save("out.png")
 end
+function count_by_type()
+    local ret={}
+    local w=static_layer.w
+    local h=static_layer.h
+    for x=0,w-1 do
+        for y=0,h-1 do
+            local a=static_layer:get(x,y).a
+            if ret[a] then
+                ret[a]=ret[a]+1
+            else
+                ret[a]=1
+            end
+        end
+    end
+    return ret
+end
+function simulate_cloud3(  )
+    local max_seed=1000
+    local buffer=make_flt_half_buffer(static_layer.w,static_layer.h)
+
+    for k=0,max_seed do
+        config.seed=k
+        is_remade=true
+        local no_sim_ticks=100
+        for j=1,no_sim_ticks do
+            coroutine.yield()
+        end
+        local ret=count_by_type()
+        local c_last=ret[255] or 0
+        add_particles_complex(buffer,math.pi*(c_last)/(4))
+    end
+
+    remap_and_save_complex(buffer)
+    sim_thread=nil
+end
 function simulate_cloud2(  )
     local bc_start=364
     local bc_end=440
@@ -1101,12 +1136,12 @@ function simulate_cloud2(  )
     sim_thread=nil
 end
 function simulate_cloud(  )
-    local num_seeds=100
+    local num_seeds=500
     local buffer=make_float_buffer(static_layer.w,static_layer.h)
     for i=1,num_seeds do
         config.seed=i
         is_remade=true
-        local no_sim_ticks=400
+        local no_sim_ticks=100
         for j=1,no_sim_ticks do
             coroutine.yield()
         end
@@ -1557,6 +1592,61 @@ function rand_rules(  )
     is_remade=true
     need_clear=true
 end
+function place_atom_wlayers( target_x,target_y,size,seed )
+    local bs=size
+    local cx_o=target_x
+    local cy_o=target_y
+    local layer=0
+    local randomize_last=true
+    local do_skip_layer= function (l)
+        --[[ even
+            return l%2==1
+        --]]
+        --[[ odd
+            return l%2==0
+        --]]
+        --return l%3~=0
+        --return (l*l+2*l)%3~=0
+        --return prime(l*l+1)
+        --return not prime(l*l+1)
+        return is_triangular2(l)
+    end
+    --print("Radius:",math.log(3*bs+1)/math.log(4))
+    --print("Radius:",(math.sqrt(2*config.block_size-1)+1)/2)
+    math.randomseed (seed or config.seed)
+    last_layer_fill=0
+    while bs>0 do
+        --atom_type=(math.pow(atom_type,5))*MAX_ATOM_TYPES
+        local l=generate_atom_layer(layer)
+        while do_skip_layer(layer) do
+            layer=layer+1
+            l=generate_atom_layer(layer)
+        end
+        local atom_type=math.random(1,MAX_ATOM_TYPES)
+        if randomize_last and #l>=bs then
+            shuffle_table(l)
+        end
+        for i=1,math.min(#l,bs) do
+            local d=l[i]
+            local tx=cx_o+d[1]
+            local ty=cy_o+d[2]
+            particles_pos:set(current_particle_count,0,{tx,ty})
+            local variation=0--0.025*math.random()/(MAX_ATOM_TYPES+1);
+            particles_age:set(current_particle_count,0,atom_type/MAX_ATOM_TYPES+variation)
+            current_particle_count=current_particle_count+1
+            if current_particle_count== max_particle_count-1 then
+                break
+            end
+        end
+        if bs>#l then
+            last_layer_fill=1
+        else
+            last_layer_fill=bs/#l
+        end
+        bs=bs-#l
+        layer=layer+1
+    end
+end
 function update()
     __clear()
     __no_redraw()
@@ -1744,61 +1834,16 @@ config.long_dist_offset=%d
             end
         end
         --]==]
+        --[[
+        place_atom_wlayers(cx,cy,config.block_size,config.seed)
+        --]]
         -- [[
-        local bs=config.block_size
-        local cx_o=cx
-        local cy_o=cy
-        local o=config.block_offset
-        local layer=0
-        local randomize_last=true
-        local do_skip_layer= function (l)
-            --[[ even
-                return l%2==1
-            --]]
-            --[[ odd
-                return l%2==0
-            --]]
-            --return l%3~=0
-            --return (l*l+2*l)%3~=0
-            --return prime(l*l+1)
-            --return not prime(l*l+1)
-            return is_triangular2(l)
-        end
-        --print("Radius:",math.log(3*bs+1)/math.log(4))
-        --print("Radius:",(math.sqrt(2*config.block_size-1)+1)/2)
-        math.randomseed (config.seed)
-        last_layer_fill=0
-        while bs>0 do
-            local atom_type=math.random(1,MAX_ATOM_TYPES)
-            --atom_type=(math.pow(atom_type,5))*MAX_ATOM_TYPES
-            local l=generate_atom_layer(layer)
-            while do_skip_layer(layer) do
-                layer=layer+1
-                l=generate_atom_layer(layer)
-            end
-            if randomize_last and #l>=bs then
-                shuffle_table(l)
-            end
-            for i=1,math.min(#l,bs) do
-                local d=l[i]
-                local tx=cx+d[1]
-                local ty=cy+d[2]
-                particles_pos:set(current_particle_count,0,{tx,ty})
-                local variation=0--0.025*math.random()/(MAX_ATOM_TYPES+1);
-                particles_age:set(current_particle_count,0,atom_type/MAX_ATOM_TYPES+variation)
-                current_particle_count=current_particle_count+1
-                if current_particle_count== max_particle_count-1 then
-                    break
-                end
-            end
-            if bs>#l then
-                last_layer_fill=1
-            else
-                last_layer_fill=bs/#l
-            end
-            bs=bs-#l
-            layer=layer+1
-        end
+        local delta=config.block_offset
+        local angle_offset=(config.angle/180)*math.pi
+        local c=math.cos(angle_offset)*delta
+        local s=math.sin(angle_offset)*delta
+        place_atom_wlayers(math.floor(cx-c),math.floor(cy-s),config.block_size,config.seed)
+        place_atom_wlayers(math.floor(cx+c),math.floor(cy+s),config.block_size,config.seed)
         --]]
         --[==[
         
@@ -1942,7 +1987,9 @@ config.long_dist_offset=%d
     if not sim_thread then
         if imgui.Button("Simulate") then
            -- sim_thread=coroutine.create(simulate_decay)
-            sim_thread=coroutine.create(simulate_cloud2)
+           --sim_thread=coroutine.create(simulate_cloud2)
+           sim_thread=coroutine.create(simulate_cloud3)
+           --sim_thread=coroutine.create(simulate_cloud)
         end
     else
         if imgui.Button("Stop Simulate") then
@@ -1960,7 +2007,8 @@ config.long_dist_offset=%d
         --print("!",coroutine.status(sim_thread))
         local ok,err=coroutine.resume(sim_thread)
         if not ok then
-            print(err)
+            print("Error:",err)
+            sim_thread=nil
         end
     end
     __render_to_window()

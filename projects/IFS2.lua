@@ -517,6 +517,7 @@ void main_complex()
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec2 complex_value=texture(tex_main,normed).xy;
 	float lum_white=white_point*white_point;
+#if 0 //radius
 	float Y=length(complex_value);
 	//Y=(Y-min_max.x)/(min_max.y-min_max.x);
 	Y=(log(Y+1)-log(min_max.x+1))/(log(min_max.y+1)-log(min_max.x+1));
@@ -529,6 +530,26 @@ void main_complex()
 	vec3 ccol=mix_palette2(1-Y).xyz;
 	//ccol.y=length(complex_value);
 	color = vec4(tonemap_simple(ccol,1),1);
+	//color.xyz=vec3(Y);
+#elif 1 //mixed
+	float Y=length(complex_value);
+	float T=atan(complex_value.y,complex_value.x)/M_PI+0.5;
+
+	//Y=(Y-min_max.x)/(min_max.y-min_max.x);
+	Y=(log(Y+1)-log(min_max.x+1))/(log(min_max.y+1)-log(min_max.x+1));
+	//Y=log(Y+2.8);
+	Y=Y*exp(exposure);//(exp(avg_lum));
+	//Y=Y*exposure;
+	Y=pow(Y,v_gamma);
+	//Y=Y/(Y+1);
+	//Y = (Y*(1 + Y / lum_white)) / (Y + 1);
+	vec3 ccol=mix_palette2(T).xyz;
+	ccol.y*=Y;
+	color = vec4(tonemap_simple(ccol,1),1);
+#else //angle
+	float Y=atan(complex_value.y,complex_value.x)/M_PI+0.5;
+	color.xyz=vec3(Y);
+#endif
 	color.a=1;
 }
 void main()
@@ -1775,7 +1796,7 @@ function get_forced_insert_complex(  )
 	--]]
 	--]=]
 	-- [[
-	--table.insert(tbl_insert,"vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist")
+	table.insert(tbl_insert,"vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist")
 	--table.insert(tbl_insert,"vec2(cos(prand.y*M_PI*2),sin(prand.y*M_PI*2))*move_dist")
 	--table.insert(tbl_insert,"vec2(prand.x,0)")
 	--table.insert(tbl_insert,"vec2(prand.y,0)")
@@ -2068,8 +2089,10 @@ function rand_function(  )
 	--str_cmplx="c_mul(c_div((c_div(s,c_cos((params.xy)-(s))))-(s),(c_div((c_conj(s))+(c_div(p,c_cos(p))),((s)-(s))+(c_atan((params.xy)-(p)))))-(c_conj(p))),c_tan(((c_div((s)+(p),(s)+(params.xy)))-((p)+(c_conj(s))))-(p)))"
 	--str_cmplx="c_conj(c_tan(((p)+(c_conj((s)-(c_conj((p)+(p))))))+((((c_inv(c_inv(s)))-(c_conj(s)))-(c_sin((c_mul(c_sin((params.zw)+(p)),p))+(s))))-(((s)+(s))+((p)+(((c_div(p,p))+(s))+(s)))))))"
 	--]]
+
 	--[[ nice tri-lobed shape
-		str_cmplx="c_div(c_conj(p),(s)-(p))"
+		--str_cmplx="c_div(c_conj(p),(s)-(p))"
+		str_cmplx="c_div(c_conj(p),(s)-c_mul(p,vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))))"
 	--]]
 	--[[
 	local pts={}
@@ -2263,7 +2286,7 @@ function rand_function(  )
 	--]]
 
 
-	-- [[ complex seriesize
+	--[[ complex seriesize
 	local series_size=5
 	local rand_offset=0.01
 	local rand_size=0.025
@@ -2389,7 +2412,7 @@ function rand_function(  )
 	--[[ mod triangle
 	str_postamble=str_postamble.."s"
 	--]]
-	-- [[ mod
+	--[[ mod
 	--str_postamble=str_postamble.."s=mod(s+0.5,1)-0.5;"
 	--str_postamble=str_postamble.."s=mod(s+0.5,max(abs(tex_s.x-tex_p.x),abs(tex_s.y-tex_p.y))*prand.x+1)-0.5;"
 	--[=[str_postamble=str_postamble.."s=rotate(s,M_PI/4)+0.5;"
@@ -3269,10 +3292,10 @@ vec2 mapping(vec2 p)
 {
 	//float aspect_ratio=scale.y/scale.x;
 	//return tRotate(p,M_PI/2)*vec2(1,aspect_ratio);
-	return p; //normal - do nothing
+	//return p; //normal - do nothing
 	//return abs(p)-vec2(1);
 	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
-	///*
+	/*
 	if(length(p)<50) //modulo, but no artifacts because far away points are far away
 	{
 		float size=2.005; //0.005 overdraw as it smooths the tiling when using non 1 sized points
@@ -3566,6 +3589,8 @@ void main(){
 	//intensity2=rnd_f.x;
 	//intensity2=cos(rnd_f.y*4)+cos(rnd_f.y*7)*0.5+cos(rnd_f.y*12)*0.25;
 	//intensity2=smoothstep(0,0.1,1-normed_iter);
+	//intensity2=1-normed_iter;
+	intensity2=normed_iter;
 	vec3 c;
 	/*
 	if(palette_xyz==1)
