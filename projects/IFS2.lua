@@ -554,10 +554,10 @@ void main_complex()
 }
 void main()
 {
-#if 0
-	main_normal();
-#else
+#if COMPLEX_POINT_OUTPUT
 	main_complex();
+#else
+	main_normal();
 #endif
 }
 ]==]
@@ -617,11 +617,11 @@ function find_min_max( tex,buf )
 		local lum=math.sqrt(v.g*v.g+v.r*v.r)
 		if llmin>lum then llmin=lum end
 		if llmax<lum then llmax=lum end
-		avg_lum=avg_lum+lum
+		--avg_lum=avg_lum+lum
 		--local lum=math.abs(v.g)
 		--local lum=math.abs(v.g)+math.abs(v.r)+math.abs(v.b)
 		--if lum > config.min_value then
-			--avg_lum=avg_lum+math.log(1+lum)
+			avg_lum=avg_lum+math.log(1+lum)
 			count=count+1
 		--end
 	end
@@ -1713,7 +1713,7 @@ animate=false
 function get_forced_insert_complex(  )
 	--local tbl_insert={}
 	--local tbl_insert={"s","p"}
-	--local tbl_insert={"s","p","params.xy","params.zw"}
+	local tbl_insert={"s","p","params.xy","params.zw"}
 	--{"s","p","vec2(cos(global_seeds.x*2*M_PI),sin(global_seeds.x*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seeds.x,0)","vec2(0,1-global_seeds.x)"})
 	--{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seeds.x*2*M_PI),sin(global_seeds.x*2*M_PI)))","params.zw"})
 	--{"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seeds.x)","vec2(cos(length(p)*M_PI*4+global_seeds.x),sin(length(p)*M_PI*4+global_seeds.x))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
@@ -1727,7 +1727,7 @@ function get_forced_insert_complex(  )
 	--local tbl_insert={"mix(c_mul(c_mul(s,s),s),c_mul(c_mul(p,p),p),global_seeds.x)","c_mul(s,p)","params.xy","params.zw"}
 	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seeds.x*global_seeds.x*8))"} --"(p*(global_seeds.x+0.5))/length(p)"
 
-	local tbl_insert={"s*(length(s-p)*prand.x)","p","params.xy","params.zw"}
+	--local tbl_insert={"s*(length(s-p)*prand.x)","p","params.xy","params.zw"}
 	--local tbl_insert={"params.xy+s*params.z+p*params.w+c_mul(s,p)*global_seeds.x"}
 	--local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seeds.x-0.5)*M_PI*2*move_dist),sin((global_seeds.x-0.5)*M_PI*2*move_dist))"} --"(p*(global_seeds.x+0.5))/length(p)"
 	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seeds.x*global_seeds.x*3))"} --"(p*(global_seeds.x+0.5))/length(p)"
@@ -1796,7 +1796,7 @@ function get_forced_insert_complex(  )
 	--]]
 	--]=]
 	-- [[
-	--table.insert(tbl_insert,"vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist")
+	table.insert(tbl_insert,"vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist")
 	--table.insert(tbl_insert,"vec2(cos(prand.y*M_PI*2),sin(prand.y*M_PI*2))*move_dist")
 	--table.insert(tbl_insert,"vec2(prand.x,0)")
 	--table.insert(tbl_insert,"vec2(prand.y,0)")
@@ -1823,7 +1823,7 @@ function get_forced_insert_complex(  )
 	--]]
 	-- [==[
 	local tex_variants={
-		--[[
+		-- [[
 		"tex_p.xy","tex_p.yz","tex_p.zx",
 		"tex_s.xy","tex_s.yz","tex_s.zx",
 		"vec2(tex_s.x,tex_p.x)","vec2(tex_s.y,tex_p.y)","vec2(tex_s.z,tex_p.z)",
@@ -1834,8 +1834,8 @@ function get_forced_insert_complex(  )
 		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI","vec2(atan(tex_p.y,tex_p.x),atan(tex_s.y,tex_s.x))/M_PI",
 		"vec2(atan(tex_s.x,tex_s.z),atan(tex_p.x,tex_p.z))/M_PI","vec2(atan(tex_p.x,tex_p.z),atan(tex_s.x,tex_s.z))/M_PI"
 		--]]
-		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI",
-		"vec2(length(tex_s.xy),length(tex_p.xy))",
+		--"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI",
+		--"vec2(length(tex_s.xy),length(tex_p.xy))",
 	}
 
 	local num_tex=2
@@ -2415,7 +2415,21 @@ function rand_function(  )
 	--[[ mod triangle
 	str_postamble=str_postamble.."s"
 	--]]
-	-- [[ mod
+	--[[ SU(2)
+	local r1,r2=gaussian2(0,1,0,1)
+	local r3,r4=gaussian2(0,1,0,1)
+	local r=math.sqrt(r1*r1+r2*r2+r3*r3+r4*r4)
+	r1=r1/r
+	r2=r2/r
+	r3=r3/r
+	r4=r4/r
+	--[[
+	str_preamble=str_preamble..string.format("vec2 s2=c_one();su2_mat_mult(s,s2,vec2(%.3f,%.3f),vec2(%.3f,%.3f));",r1,r2,r3,r4)
+	str_postamble=str_postamble..string.format("su2_mat_mult(s,s2,vec2(%.3f,%.3f),vec2(%.3f,%.3f));",r1,-r2,-r3,-r4)
+	--]]
+	--str_postamble=str_postamble..string.format("vec2 sM=s;vec2 sM2=c_one();su2_mat_mult(sM,sM2,vec2(%.3f,%.3f),vec2(%.3f,%.3f));s-=(s-sM)*move_dist;",r1,r2,r3,r4)
+	--]]
+	--[[ mod
 	--str_postamble=str_postamble.."s=mod(s+0.5,1)-0.5;"
 	--str_postamble=str_postamble.."s=mod(s+0.5,max(abs(tex_s.x-tex_p.x),abs(tex_s.y-tex_p.y))*prand.x+1)-0.5;"
 	--[=[str_postamble=str_postamble.."s=rotate(s,M_PI/4)+0.5;"
@@ -2423,14 +2437,14 @@ function rand_function(  )
 	str_postamble=str_postamble.."s=rotate(s,M_PI/4)+0.5;"
 	str_postamble=str_postamble.."s=mod(s,1+(prand.x-0.5)*0.005)-0.5;"
 	str_postamble=str_postamble.."s=rotate(s,M_PI/2);"]=]
-	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5,-M_PI/4);"
+	str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5,-M_PI/4);"
 	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1+(length(tex_p)*prand.x)*0.05)-0.5,-M_PI/4);"
 	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1+(prand.x-0.5)*0.005)-0.5,-M_PI/4);"
 	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,(max(abs(tex_s.x-tex_p.x),abs(tex_s.y-tex_p.y)-1)*2+(prand.x)))-0.5,-M_PI/4);"
 	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y,1+(prand.x-0.5)*0.005);s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
 	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y,1+(prand.x-0.5)*0.05)*2-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
 	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,2+(smoothstep(-1,1,prand.x-0.5)-0.5)*0.01)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
-	str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,2)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
+	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,2)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
 	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,tex_s.x+1)-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
 	--str_postamble=str_postamble.."vec2 ps=vec2(atan(s.y,s.x),length(s));ps.y=mod(ps.y+1,(max(abs(tex_s.x-tex_p.x),abs(tex_s.y-tex_p.y))+0.5*(prand.x)))-1;s=vec2(cos(ps.x),sin(ps.x))*ps.y;"
 	--str_postamble=str_postamble.."vec2 ps1=vec2(atan(s.y,s.x),length(s));ps1.y=mod(ps1.y+1,2)-1;s=vec2(cos(ps1.x),sin(ps1.x))*ps1.y;"
@@ -2638,7 +2652,7 @@ function gui()
 	palette_chooser()
 	draw_config(config)
 	if config.size_mult then
-		size_mult=1
+		size_mult=2
 	else
 		size_mult=0.5
 	end
@@ -3035,6 +3049,15 @@ vec4 get_rnd_floats(uvec4 p)
 vec2 mobius(vec2 a, vec2 b, vec2 c, vec2 d, vec2 z)
 {
 	return c_div(c_mul(a,z)+b,c_mul(c,z)+d);
+}
+void su2_mat_mult(inout vec2 s,inout vec2 v,vec2 a,vec2 b)
+{
+	vec2 abar=c_conj(a);
+	vec2 bbar=c_conj(b);
+	vec2 s2=c_mul(s,a)-c_mul(v,bbar);
+	vec2 v2=c_mul(s,b)+c_mul(v,abar);
+	s=s2;
+	v=v2;
 }
 //str_other_code
 %s
@@ -3595,16 +3618,17 @@ void main(){
 	//intensity2=1-normed_iter;
 	//intensity2=normed_iter;
 	vec3 c;
-	/*
+#if COMPLEX_POINT_OUTPUT
+	c.x=cos(color_value*M_PI*2)*intensity*intensity2;
+	c.y=sin(color_value*M_PI*2)*intensity*intensity2;
+	c.z=0;
+#else
 	if(palette_xyz==1)
 		c=mix_palette(color_value).xyz;
 	else
 		c=rgb2xyz(mix_palette(color_value).xyz);
-	*/
-	//c*=a*intensity*intensity2;
-	c.x=cos(color_value*M_PI*2)*intensity*intensity2;
-	c.y=sin(color_value*M_PI*2)*intensity*intensity2;
-	c.z=0;
+	c*=a*intensity*intensity2;
+#endif
 	//c=max(vec3(0),c);
 	//c+=vec3(0.01);
 	//c*=(sin(start_l*M_PI*16)+0.6);
