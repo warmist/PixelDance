@@ -552,6 +552,7 @@ void main_complex()
 #endif
 	color.a=1;
 }
+#define COMPLEX_POINT_OUTPUT 0
 void main()
 {
 #if COMPLEX_POINT_OUTPUT
@@ -1796,7 +1797,7 @@ function get_forced_insert_complex(  )
 	--]]
 	--]=]
 	-- [[
-	table.insert(tbl_insert,"vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist")
+	--table.insert(tbl_insert,"vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist")
 	--table.insert(tbl_insert,"vec2(cos(prand.y*M_PI*2),sin(prand.y*M_PI*2))*move_dist")
 	--table.insert(tbl_insert,"vec2(prand.x,0)")
 	--table.insert(tbl_insert,"vec2(prand.y,0)")
@@ -1823,7 +1824,7 @@ function get_forced_insert_complex(  )
 	--]]
 	-- [==[
 	local tex_variants={
-		-- [[
+		--[[
 		"tex_p.xy","tex_p.yz","tex_p.zx",
 		"tex_s.xy","tex_s.yz","tex_s.zx",
 		"vec2(tex_s.x,tex_p.x)","vec2(tex_s.y,tex_p.y)","vec2(tex_s.z,tex_p.z)",
@@ -1834,13 +1835,13 @@ function get_forced_insert_complex(  )
 		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI","vec2(atan(tex_p.y,tex_p.x),atan(tex_s.y,tex_s.x))/M_PI",
 		"vec2(atan(tex_s.x,tex_s.z),atan(tex_p.x,tex_p.z))/M_PI","vec2(atan(tex_p.x,tex_p.z),atan(tex_s.x,tex_s.z))/M_PI"
 		--]]
-		--"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI",
-		--"vec2(length(tex_s.xy),length(tex_p.xy))",
+		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI",
+		"vec2(length(tex_s.xy),length(tex_p.xy))",
 	}
 
 	local num_tex=2
 	for i=1,num_tex do
-		table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*move_dist)")
+		table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*move_dist*prand.x)")
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist)")
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)))")
 		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
@@ -2429,6 +2430,13 @@ function rand_function(  )
 	--]]
 	--str_postamble=str_postamble..string.format("vec2 sM=s;vec2 sM2=c_one();su2_mat_mult(sM,sM2,vec2(%.3f,%.3f),vec2(%.3f,%.3f));s-=(s-sM)*move_dist;",r1,r2,r3,r4)
 	--]]
+	-- [[ symetry
+
+	str_postamble=str_postamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
+	str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
+	--str_preamble=str_preamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
+	--str_preamble=str_preamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
+	--]]
 	--[[ mod
 	--str_postamble=str_postamble.."s=mod(s+0.5,1)-0.5;"
 	--str_postamble=str_postamble.."s=mod(s+0.5,max(abs(tex_s.x-tex_p.x),abs(tex_s.y-tex_p.y))*prand.x+1)-0.5;"
@@ -2437,7 +2445,9 @@ function rand_function(  )
 	str_postamble=str_postamble.."s=rotate(s,M_PI/4)+0.5;"
 	str_postamble=str_postamble.."s=mod(s,1+(prand.x-0.5)*0.005)-0.5;"
 	str_postamble=str_postamble.."s=rotate(s,M_PI/2);"]=]
-	str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5,-M_PI/4);"
+	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5,-M_PI/4);"
+	--str_postamble=str_postamble.."float ls=log(length(s)+1)/2;s=rotate(mod(rotate(s,M_PI/4)+ls,ls*2)-ls,-M_PI/4);"
+	--str_postamble=str_postamble.."float ls=log(length(s)+1);s=mod(s+ls/2,1)-ls/2;"
 	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1+(length(tex_p)*prand.x)*0.05)-0.5,-M_PI/4);"
 	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1+(prand.x-0.5)*0.005)-0.5,-M_PI/4);"
 	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,(max(abs(tex_s.x-tex_p.x),abs(tex_s.y-tex_p.y)-1)*2+(prand.x)))-0.5,-M_PI/4);"
@@ -2652,7 +2662,7 @@ function gui()
 	palette_chooser()
 	draw_config(config)
 	if config.size_mult then
-		size_mult=2
+		size_mult=1
 	else
 		size_mult=0.5
 	end
@@ -3618,6 +3628,7 @@ void main(){
 	//intensity2=1-normed_iter;
 	//intensity2=normed_iter;
 	vec3 c;
+#define COMPLEX_POINT_OUTPUT 0
 #if COMPLEX_POINT_OUTPUT
 	c.x=cos(color_value*M_PI*2)*intensity*intensity2;
 	c.y=sin(color_value*M_PI*2)*intensity*intensity2;
