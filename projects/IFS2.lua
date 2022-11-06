@@ -555,6 +555,7 @@ void main_complex()
 #define COMPLEX_POINT_OUTPUT 0
 void main()
 {
+#define COMPLEX_POINT_OUTPUT 0
 #if COMPLEX_POINT_OUTPUT
 	main_complex();
 #else
@@ -2416,7 +2417,7 @@ function rand_function(  )
 	--[[ mod triangle
 	str_postamble=str_postamble.."s"
 	--]]
-	--[[ SU(2)
+	-- [[ SU(2)
 	local r1,r2=gaussian2(0,1,0,1)
 	local r3,r4=gaussian2(0,1,0,1)
 	local r=math.sqrt(r1*r1+r2*r2+r3*r3+r4*r4)
@@ -2429,6 +2430,9 @@ function rand_function(  )
 	str_postamble=str_postamble..string.format("su2_mat_mult(s,s2,vec2(%.3f,%.3f),vec2(%.3f,%.3f));",r1,-r2,-r3,-r4)
 	--]]
 	--str_postamble=str_postamble..string.format("vec2 sM=s;vec2 sM2=c_one();su2_mat_mult(sM,sM2,vec2(%.3f,%.3f),vec2(%.3f,%.3f));s-=(s-sM)*move_dist;",r1,r2,r3,r4)
+	--str_postamble=str_postamble..string.format("vec2 al=vec2(%.3f,%.3f);vec2 be=vec2(%.3f,%.3f);s=c_div(c_mul(s,al)-c_conj(be),c_mul(s,be)+c_conj(al));",r1,r2,r3,r4)
+	str_postamble=str_postamble..string.format("vec2 al=global_seeds.xy;vec2 be=tex_s.xy;float ral=sqrt(dot(al,al)+dot(be,be)+0.1);al/=ral;be/=ral;s=c_div(c_mul(s,al)-c_conj(be),c_mul(s,be)+c_conj(al));")
+	--str_postamble=str_postamble..string.format("vec2 al=global_seeds.xy;vec2 be=prand.xy;s=c_div(c_mul(s,al)-c_conj(be),c_mul(s,be)+c_conj(al));")
 	--]]
 	-- [[ symetry
 
@@ -3972,7 +3976,7 @@ function generate_shuffling( num_steps )
 		end
 	end
 	--]]
-	-- [[ vanilla
+	--[[ vanilla
 	for i=1,num_steps do
 		global_seed_shuffling[i]=math.random()
 	end
@@ -3991,7 +3995,7 @@ function generate_shuffling( num_steps )
 		global_seed_shuffling[i]=(global_seed_shuffling[i]-min_value)/(max_value-min_value)
 	end
 	--]]
-	--[[ constantly biggening
+	-- [[ constantly biggening
 	local v=math.random()
 	for i=1,num_steps do
 		global_seed_shuffling[i]=v
@@ -4105,6 +4109,7 @@ function visit_iter()
 	if #global_seed_shuffling==0 and config.shuffle_size>0 then
 		generate_shuffling(config.shuffle_size)
 	end
+	local last_global_seed=0
 	if config.shuffle_size<=0 then
 		global_seed=math.random()
 	else
@@ -4118,7 +4123,7 @@ function visit_iter()
 			end
 			global_seed_id=1
 		end
-
+		last_global_seed=global_seed or 0
 		global_seed=global_seed_shuffling[global_seed_id]
 	end
 	local max_iter=1
@@ -4133,7 +4138,7 @@ function visit_iter()
 
 		visit_tex.t:use(1,not_pixelated)
 		transform_shader:set_i("img_tex",1)
-		transform_shader:set("global_seeds",global_seed,1-cur_visit_iter/config.IFS_steps,0,0)
+		transform_shader:set("global_seeds",global_seed,last_global_seed,0,0)
 		transform_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
 		transform_shader:set("gen_radius",config.gen_radius or 2)
 		transform_shader:raster_discard(true)

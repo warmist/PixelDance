@@ -14,6 +14,7 @@ typedef struct { uint8_t r, g, b, a; } rgba_pixel;
 typedef struct { float r, g, b,a; } float_pixel;
 typedef struct { float r, g; } float_half_pixel;
 typedef struct { uint32_t r, g, b,a; } uint_pixel;
+typedef struct { float d[4]; } float4;
 void free_image(char* data);
 char* png_load(const char* path,int* w,int* h,int* comp,int need_comp);
 ]]
@@ -128,6 +129,7 @@ make_float_buffer=make_buffer("float",F_PIX,0)
 make_flt_half_buffer=make_buffer("float_half_pixel",FL_PIX,{0,0})
 make_char_buffer=make_buffer("uint8_t",U8_PIX,0)
 make_u32_buffer=make_buffer("uint_pixel",U32_PIX,{0,0,0,0})
+make_f4_buffer= make_buffer("float4",FLTA_PIX,{0,0,0,1})
 
 make_matrix=make_float_buffer
 function make_ident_matrix( w,h )
@@ -723,30 +725,10 @@ function gif_saver:frame( buffer,delay )
 end
 
 
-
-
-function signum(number)
-   if number > 0 then
-      return 1
-   elseif number < 0 then
-      return -1
-   else
-      return 0
-   end
-end
-function sgn(number)
-   if number > 0 then
-      return 1
-   elseif number < 0 then
-      return -1
-   else
-      return 1
-   end
-end
-function factorial(n)
-    if (n == 0) then
-        return 1
-    else
-        return n * factorial(n - 1)
-    end
+function shuffle_table(tbl)
+  for i = #tbl, 2, -1 do
+    local j = math.random(i)
+    tbl[i], tbl[j] = tbl[j], tbl[i]
+  end
+  return tbl
 end
