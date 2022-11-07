@@ -1,0 +1,69 @@
+
+local function signum(number)
+   if number > 0 then
+      return 1
+   elseif number < 0 then
+      return -1
+   else
+      return 0
+   end
+end
+local function sgn(number)
+   if number > 0 then
+      return 1
+   elseif number < 0 then
+      return -1
+   else
+      return 1
+   end
+end
+function factorial(n)
+    if (n == 0) then
+        return 1
+    else
+        return n * factorial(n - 1)
+    end
+end
+function clamp( x,l,h )
+	if x>h then return h end
+	if x<l then return l end
+	return x
+end
+
+function pmod2( x,y ,sizex,sizey)
+	local hsizex=sizex*0.5
+	local hsizey=sizey*0.5
+	local cx=math.floor((x+hsizex)/sizex)
+	x=(x+hsizex)%sizex - hsizex
+	local cy=math.floor((y+hsizey)/sizey)
+	y=(y+hsizey)%sizey - hsizey
+	return x,y,cx,cy;
+end
+
+local phi=(1+math.sqrt(5))/2
+local phi_small=phi-1
+
+function urand( v )
+   v =v or 1
+   return math.random()*(2*v)-v
+end
+
+function round(n)
+    return n % 1 >= 0.5 and math.ceil(n) or math.floor(n)
+end
+
+function random_in_circle( dist )
+   local r=math.sqrt(math.random())*dist
+   local a=math.random()*math.pi*2
+   return round(math.cos(a)*r),round(math.sin(a)*r)
+end
+
+
+function prime(n)
+    for i = 2, n^(1/2) do
+        if (n % i) == 0 then
+            return false
+        end
+    end
+    return true
+end
