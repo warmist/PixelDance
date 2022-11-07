@@ -35,7 +35,12 @@ function edge_other( e,n )
 	if e[1]==n then return e[2]
 	else return e[1] end
 end
-
+function remove_node( network,e )
+	network.nodes[e]=nil
+	for k,v in pairs(e.edges) do
+		unlink_edge(k)
+	end
+end
 
 function clone_tbl( tbl )
 	local ret={}
@@ -79,10 +84,24 @@ function apply_rule( network, rule, matched )
 			end
 		end
 	end
+	if rule.remove_node then
+		for i,v in ipairs(rule.remove_node) do
+			local a=matched[v]
+			if a then
+				remove_node(network,a)
+			end
+		end
+	end
+	if rule.add_node then
+		for i,v in ipairs(rule.add_node) do
+			matched[v.id]=add_node(network,v.data)
+		end
+	end
 	if rule.add_edge then
 		for i,v in ipairs(rule.add_edge) do
 			local a=matched[v[1]]
 			local b=matched[v[2]]
+			--print(a,b,v[1],v[2])
 			if not has_edge(a,b) then
 				local new_edge={a,b}
 				a.edges[new_edge]=true
@@ -137,7 +156,7 @@ function apply_random(network,rule)
 
 	for i,v in ipairs(nlist) do
 		local ok,matched=can_apply_rule(network,v,rule.match)
-		print(ok,matched)
+		--print(ok,matched)
 		if ok then
 			return apply_rule(network,rule.apply,matched)
 		end
@@ -180,7 +199,7 @@ function update_edge_state( matching,rule,edge_state,not_edge_state )
 		end
 	end
 
-	for i,v in ipairs(rule.not_edges) do
+	for i,v in ipairs(rule.not_edges or {}) do
 		local n1=matching[v[1]]
 		local n2=matching[v[2]]
 		if n1==nil and n2==nil then

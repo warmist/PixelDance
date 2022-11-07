@@ -100,9 +100,9 @@ function set_or_add( tbl,key,pos )
 		tbl[key]=pos
 	end
 end
-function calc_force( p1,p2 )
-	local opt_edge=0.3
-	local springiness=0.001
+function calc_force( p1,p2,str )
+	local opt_edge=0.1*str
+	local springiness=0.0001
 
 
 	local dx=p1[1]-p2[1]
@@ -122,6 +122,11 @@ function calc_force( p1,p2 )
 	--F=-kv
 	return {force*dir_x,force*dir_y}
 end
+function calc_angular_force( center,around )
+	--try to move points so that angles are about the same
+
+
+end
 function simulate( dt )
 	local max_radius=0.9
 
@@ -140,7 +145,7 @@ function simulate( dt )
 		local p1=k[1].pos
 		local p2=k[2].pos
 		--F=-kv
-		local F=calc_force(p1,p2)
+		local F=calc_force(p1,p2,1)
 		set_or_add(node_forces,k[1],{-F[1],-F[2]})
 		set_or_add(node_forces,k[2],{F[1],F[2]})
 	end
@@ -153,15 +158,141 @@ function simulate( dt )
 	center[1]=center[1]/count
 	center[2]=center[2]/count
 	for k,v in pairs(network.nodes) do
-		local F=calc_force(k.pos,center)
+		local F=calc_force(k.pos,center,6)
 		set_or_add(node_forces,k,{-F[1],-F[2]})
+
 	end
 	for k,v in pairs(node_forces) do
 		k.pos[1]=k.pos[1]+v[1]-center[1]
 		k.pos[2]=k.pos[2]+v[2]-center[2]
 	end
 end
+function generate_all_edges( nodes )
+	local ret={}
+	for i=1,#nodes do
+		for j=i+1,#nodes do
+			table.insert(ret,{nodes[i],nodes[j]})
+		end
+	end
+	return ret
+end
+function tconcat( tbl,visitor,seperator )
+	local ret=""
+	for i=1,#tbl do
+		if i==1 then
+			ret=visitor(tbl,i)
+		else
+			ret=ret..seperator..visitor(tbl,i)
+		end
+	end
+	return ret
+end
+function print_rule( r )
+	print("Rule:",r)
+	print("\tMatch:")
+	local node_str=table.concat(r.match.nodes,",")
+	print("\t\tNodes:"..node_str)
+	local f_edge=function (e,i)
+		if e==nil or e[i]==nil then
+			return "ERR"
+		elseif e[i][1]==nil or e[i][2]==nil then
+			return "EERR"
+		end
+		return string.format("{%d - %d}",e[i][1],e[i][2])
+	end
+	local edge_str=tconcat(r.match.edges,f_edge,",")
+	print("\t\tEdges:"..edge_str)
+	local not_edge_str=tconcat(r.match.not_edges,f_edge,",")
+	print("\t\tNot edges:"..not_edge_str)
+	local f_add_node=function (e,i )
+		return string.format("%d",e[i].id)
+	end
+	print("\tApply:")
+	local add_node_str=tconcat(r.apply.add_node,f_add_node,",")
+	print("\t\tAdd nodes:"..add_node_str)
+	local add_edge_str=tconcat(r.apply.add_edge,f_edge,",")
+	print("\t\tAdd edge:"..add_edge_str)
 
+end
+function random_rule(  )
+	local ret={match={},apply={}}
+	local m=ret.match
+	m.nodes={}
+	m.edges={}
+	m.not_edges={}
+	local a=ret.apply
+	--TODO: remove nodes
+	--TODO: remove edge
+	a.add_node={}
+	a.add_edge={}
+	local edge_count=math.random(1,4)
+	local max_count=math.random(3,9)
+	local not_edge_count=math.random(0,2)
+
+	local add_node_count=math.random(0,2)
+	local add_new_node_edges=math.random(1,3)
+	local add_new_not_edges=math.random(1,3)
+	local add_new_other_edges=math.random(1,3)
+	for i=1,max_count do
+		table.insert(m.nodes,i)
+	end
+	local all_edges=generate_all_edges(m.nodes)
+	if add_new_other_edges>#all_edges-edge_count-not_edge_count then
+		add_new_node_edges=#all_edges-edge_count-not_edge_count-1
+	end
+	shuffle_table(all_edges)
+	for i=1,edge_count do
+		table.insert(m.edges,all_edges[i])
+	end
+	for i=1,not_edge_count do
+		table.insert(m.not_edges,all_edges[i+edge_count])
+	end
+
+	for i=1,add_node_count do
+		table.insert(a.add_node,
+			{id=max_count+i,
+				data={name="node_??",pos={math.random()*1-0.5,math.random()*1-0.5}}})
+	end
+	if add_node_count>0 then
+		for i=1,add_new_node_edges do
+			table.insert(a.add_edge,{a.add_node[math.random(1,#a.add_node)].id,m.nodes[math.random(1,#m.nodes)]})
+		end
+	end
+	if not_edge_count>0 then
+		for i=1,add_new_node_edges do
+			table.insert(a.add_edge,m.not_edges[i])
+		end
+	end
+	for i=1,add_new_other_edges do
+		table.insert(a.add_edge,all_edges[i+edge_count+not_edge_count])
+	end
+	print_rule(ret)
+	return ret
+end
+function check_rule( rr )
+	local ok={}
+	for i=1,#rr.match.nodes do
+		ok[rr.match.nodes[i]]=false
+	end
+	for i,v in ipairs(rr.match.edges) do
+		ok[v[1]]=true
+		ok[v[2]]=true
+	end
+	--[==[
+	for i,v in ipairs(rr.match.not_edges) do
+		ok[v[1]]=true
+		ok[v[2]]=true
+	end
+	--]==]
+	local good=true
+	for k,v in pairs(ok) do
+		if not v then
+			print("Unreferenced node:"..k)
+			good=false
+		end
+	end
+	return good
+end
 function update(  )
 
 	imgui.Begin("Graphs N Crafts")
@@ -170,12 +301,30 @@ function update(  )
 		img_buf:clear()
 	end
 	if imgui.Button("Apply Rule") then
+		--[[local rule={
+			--match={nodes={1,2,3,4},edges={{1,2},{2,3},{3,4}},not_edges={{1,4}}},
+			match={nodes={1,2,3},edges={{1,2},{2,3}}},
+	 	 	apply={add_node={{id=4,data={name="node_??",pos={math.random()*2-1,math.random()*2-1}}}},add_edge={{4,1},{4,2},{4,3}}}
+		}]]
+		local rr=random_rule()
+		if check_rule(rr) then
+			apply_random(network,rr)
+			network.clean=false
+		end
+	end
+	if imgui.Button("Remove Dense Stuff") then
 		local rule={
-			match={nodes={1,2,3,4},edges={{1,2},{2,3},{3,4}},not_edges={{1,4}}},
-	 	 	apply={remove_edge={{2,3}}}
+			match={nodes={1,2,3,4},edges={{1,2},{1,3},{1,4},{1,5}}},
+	 	 	apply={remove_node={1}}
 		}
 		apply_random(network,rule)
 		network.clean=false
+	end
+	if imgui.Button("Untangle") then
+		for k,v in pairs(network.nodes) do
+			k.pos[1]=math.random()*2-1
+			k.pos[2]=math.random()*2-1
+		end
 	end
 	if imgui.Button("Clear Objects") then
 		new_network()
