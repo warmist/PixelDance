@@ -1825,24 +1825,26 @@ function get_forced_insert_complex(  )
 	--]]
 	-- [==[
 	local tex_variants={
-		--[[
+		-- [[
 		"tex_p.xy","tex_p.yz","tex_p.zx",
 		"tex_s.xy","tex_s.yz","tex_s.zx",
 		"vec2(tex_s.x,tex_p.x)","vec2(tex_s.y,tex_p.y)","vec2(tex_s.z,tex_p.z)",
 		"vec2(tex_s.x,tex_p.y)","vec2(tex_s.y,tex_p.z)","vec2(tex_s.z,tex_p.x)",
 		"vec2(tex_s.x,tex_p.z)","vec2(tex_s.y,tex_p.x)","vec2(tex_s.z,tex_p.y)",
 		--]]
-		--[[
+		-- [[
 		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI","vec2(atan(tex_p.y,tex_p.x),atan(tex_s.y,tex_s.x))/M_PI",
 		"vec2(atan(tex_s.x,tex_s.z),atan(tex_p.x,tex_p.z))/M_PI","vec2(atan(tex_p.x,tex_p.z),atan(tex_s.x,tex_s.z))/M_PI"
 		--]]
+		--[[
 		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI",
 		"vec2(length(tex_s.xy),length(tex_p.xy))",
+		--]]
 	}
 
 	local num_tex=2
 	for i=1,num_tex do
-		table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*move_dist*prand.x)")
+		table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*prand.x)")
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist)")
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)))")
 		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
@@ -2431,13 +2433,16 @@ function rand_function(  )
 	--]]
 	--str_postamble=str_postamble..string.format("vec2 sM=s;vec2 sM2=c_one();su2_mat_mult(sM,sM2,vec2(%.3f,%.3f),vec2(%.3f,%.3f));s-=(s-sM)*move_dist;",r1,r2,r3,r4)
 	--str_postamble=str_postamble..string.format("vec2 al=vec2(%.3f,%.3f);vec2 be=vec2(%.3f,%.3f);s=c_div(c_mul(s,al)-c_conj(be),c_mul(s,be)+c_conj(al));",r1,r2,r3,r4)
-	str_postamble=str_postamble..string.format("vec2 al=global_seeds.xy;vec2 be=tex_s.xy;float ral=sqrt(dot(al,al)+dot(be,be)+0.1);al/=ral;be/=ral;s=c_div(c_mul(s,al)-c_conj(be),c_mul(s,be)+c_conj(al));")
+	--str_postamble=str_postamble..string.format("vec2 al=global_seeds.xy;vec2 be=tex_s.xy;float ral=sqrt(dot(al,al)+dot(be,be)+0.1);al/=ral;be/=ral;s=c_div(c_mul(s,al)-c_conj(be),c_mul(s,be)+c_conj(al));")
 	--str_postamble=str_postamble..string.format("vec2 al=global_seeds.xy;vec2 be=prand.xy;s=c_div(c_mul(s,al)-c_conj(be),c_mul(s,be)+c_conj(al));")
 	--]]
-	-- [[ symetry
+	-- [[ symmetry
 
-	str_postamble=str_postamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
-	str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
+	--str_postamble=str_postamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
+	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
+	str_postamble=str_postamble.."s=from_barycentric(mod_barycentric(to_barycentric(s).xy+0.5)-0.5);"
+	--str_postamble=str_postamble.."float pry=(floor(prand.y*4)/3);vec2 ppr=(1-step(pry,0))*vec2(cos(pry*M_PI*2),sin(pry*M_PI*2));"
+	--str_postamble=str_postamble.."s=s+ppr;"
 	--str_preamble=str_preamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
 	--str_preamble=str_preamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
 	--]]
@@ -2793,7 +2798,7 @@ if transform_shader==nil or force then
 	transform_shader=shaders.Make(
 string.format([==[
 #version 330
-#line 2343
+#line 2801
 //escape_mode_str
 #define ESCAPE_MODE %s
 layout(location = 0) in vec4 position;
@@ -3073,6 +3078,95 @@ void su2_mat_mult(inout vec2 s,inout vec2 v,vec2 a,vec2 b)
 	s=s2;
 	v=v2;
 }
+
+vec3 Barycentric(vec2 p, vec2 a,vec2 b,vec2 c)
+{
+	vec2 v0=b-a;
+	vec2 v1=c-a;
+	vec2 v2=p-a;
+    
+    float d00 = dot(v0,v0);
+    float d01 = dot(v0,v1);
+    float d11 = dot(v1,v1);
+    float d20 = dot(v2,v0);
+    float d21 = dot(v2,v1);
+    
+    float denom = d00 * d11 - d01 * d01;
+    float retx=(d11 * d20 - d01 * d21) / denom;
+    float rety=(d00 * d21 - d01 * d20) / denom;
+    float retz= 1.0 - retx - rety;
+    return vec3(retx,rety,retz);
+}
+vec3 to_barycentric(vec2 p)
+{
+	float angle_offset=0;
+	float a_d=M_PI*2/3.0;
+
+	vec2 p1=vec2(cos(angle_offset),sin(angle_offset));
+	vec2 p2=vec2(cos(a_d+angle_offset),sin(a_d+angle_offset));
+	vec2 p3=vec2(cos(-a_d+angle_offset),sin(-a_d+angle_offset));
+
+	return Barycentric(p,p1,p2,p3);
+}
+vec2 from_barycentric(vec2 p)
+{
+	float angle_offset=0;
+
+	float a_d=M_PI*2/3.0;
+
+	vec2 p1=vec2(cos(angle_offset),sin(angle_offset));
+	vec2 p2=vec2(cos(a_d+angle_offset),sin(a_d+angle_offset));
+	vec2 p3=vec2(cos(-a_d+angle_offset),sin(-a_d+angle_offset));
+
+	float rx=p1.x*p.x+p2.x*p.y+p3.x*(1-p.x-p.y);
+	float ry=p1.y*p.x+p2.y*p.y+p3.y*(1-p.x-p.y);
+	return vec2(rx,ry);
+}
+//float mod(float x,float y) { return x-y*floor(x/y); }
+vec2 mod_barycentric(vec2 p)
+{
+	//uvw xyz
+	float z=1-p.x-p.y;
+	if(p.y<0)
+	{
+		z=mod(z,1);
+		p.x=mod(p.x,1);
+		p.y=mod(1-z-p.x,1);
+	}
+	else if(p.x<0)
+	{
+		p.y=mod(p.y,1);
+		z=mod(z,1);
+		p.x=mod(1-p.y-z,1);
+	}
+	else
+	{
+		p.y=mod(p.y,1);
+		p.x=mod(p.x,1);
+		//z=mod(1-p.y-p.x,1);
+	}
+	return p;
+}
+/*
+function from_barycentric(px,py,pz)
+
+	local angle_offset=0;
+	local a_d=math.pi*2/3.0
+
+	local p1x=math.cos(angle_offset)
+	local p1y=math.sin(angle_offset)
+
+	local p2x=math.cos(a_d+angle_offset)
+	local p2y=math.sin(a_d+angle_offset)
+
+	local p3x=math.cos(-a_d+angle_offset)
+	local p3y=math.sin(-a_d+angle_offset)
+
+	local rx=p1x*px+p2x*py+p3x*pz
+	local ry=p1y*px+p2y*py+p3y*pz
+	return rx,ry
+end*/
+
 //str_other_code
 %s
 
@@ -3297,7 +3391,7 @@ make_visit_shader(true)
 add_visits_shader=shaders.Make(
 [==[
 #version 330
-#line 3162
+#line 3305
 layout(location = 0) in vec4 pos;
 layout(location = 1) in uvec4 rnd_data;
 
