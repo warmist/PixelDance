@@ -28,8 +28,14 @@ win_h=win_h or 0
 
 aspect_ratio=aspect_ratio or 1
 function update_size()
+	--[[
 	local trg_w=1024*2*size_mult
 	local trg_h=1024*2*size_mult
+	--]]
+	-- [[
+	local trg_w=2560*size_mult
+	local trg_h=1440*size_mult
+	--]]
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
 	if win_w~=trg_w or win_h~=trg_h then
@@ -1755,6 +1761,7 @@ function get_forced_insert_complex(  )
 	--table.insert(tbl_insert,"mix(c_mul(mix(s,p,prand.y),params.xw),c_mul(mix(s,p,prand.y),params.xy),prand.x)")
 
 	--]]
+	--[[
 	local rand_choices={
 		"s","c_mul(s,s)","c_mul(c_mul(s,s),s)","c_mul(c_mul(s,s),c_mul(s,s))",
 		"p","c_mul(p,p)","c_mul(c_mul(p,p),p)","c_mul(c_mul(p,p),c_mul(p,p))",
@@ -1765,6 +1772,7 @@ function get_forced_insert_complex(  )
 	for i=1,NO_PICKS do
 		table.insert(tbl_insert,rand_choices[math.random(1,#rand_choices)])
 	end
+	--]]
 	--[=[
 	local mob_count=8
 	local mob={}
@@ -1836,7 +1844,7 @@ function get_forced_insert_complex(  )
 		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI","vec2(atan(tex_p.y,tex_p.x),atan(tex_s.y,tex_s.x))/M_PI",
 		"vec2(atan(tex_s.x,tex_s.z),atan(tex_p.x,tex_p.z))/M_PI","vec2(atan(tex_p.x,tex_p.z),atan(tex_s.x,tex_s.z))/M_PI"
 		--]]
-		--[[
+		--[[ COMPLEX output tex sampling
 		"vec2(atan(tex_s.y,tex_s.x),atan(tex_p.y,tex_p.x))/M_PI",
 		"vec2(length(tex_s.xy),length(tex_p.xy))",
 		--]]
@@ -1845,6 +1853,7 @@ function get_forced_insert_complex(  )
 	local num_tex=2
 	for i=1,num_tex do
 		table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*prand.x)")
+		--table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*move_dist*prand.x)")
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist)")
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)))")
 		--table.insert(tbl_insert,tex_variants[math.random(1,#tex_variants)])
@@ -2419,7 +2428,7 @@ function rand_function(  )
 	--[[ mod triangle
 	str_postamble=str_postamble.."s"
 	--]]
-	-- [[ SU(2)
+	--[[ SU(2)
 	local r1,r2=gaussian2(0,1,0,1)
 	local r3,r4=gaussian2(0,1,0,1)
 	local r=math.sqrt(r1*r1+r2*r2+r3*r3+r4*r4)
