@@ -1859,7 +1859,8 @@ function get_forced_insert_complex(  )
 
 	local num_tex=2
 	for i=1,num_tex do
-		table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*prand.x)")
+		table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)].."))")
+		--table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*prand.x)")
 		--table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*move_dist*prand.x)")
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist)")
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)))")
@@ -2465,10 +2466,10 @@ function rand_function(  )
 	--]]
 	-- [[ symmetry
 
-	str_preamble=str_preamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
-	--str_preamble=str_preamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
-	str_preamble=str_preamble.."s=mod(rotate(s,-pry*M_PI*2)+0.5,1)-0.5+ppr;"
-	--str_preamble=str_preamble.."s=from_barycentric(mod_barycentric(to_barycentric(s).xy+0.5)-0.5);"
+	--str_postamble=str_postamble.."float pry=(floor(prand.y*4)/3);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
+	str_postamble=str_postamble.."float pry=(floor(prand.y*4)/3);vec2 ppr=(1-step(pry,0))*vec2(cos(pry*M_PI*2),sin(pry*M_PI*2))*2;"
+	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
+	str_postamble=str_postamble.."s=from_barycentric(mod_barycentric(to_barycentric(s+p*prand.x).xy+0.5)-0.5)+ppr-p*prand.x;s=rotate(s,M_PI/3);"
 	--str_postamble=str_postamble.."float pry=(floor(prand.y*4)/3);vec2 ppr=(1-step(pry,0))*vec2(cos(pry*M_PI*2),sin(pry*M_PI*2));"
 	--str_postamble=str_postamble.."s=s+ppr;"
 	--str_preamble=str_preamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
@@ -3257,25 +3258,22 @@ vec2 from_barycentric(vec2 p)
 //float mod(float x,float y) { return x-y*floor(x/y); }
 vec2 mod_barycentric(vec2 p)
 {
-	//uvw xyz
-	float z=1-p.x-p.y;
-	if(p.y<0)
+	p.x=mod(p.x,1);
+	p.y=mod(p.y,1);
+	if(p.x+p.y>1)
 	{
-		z=mod(z,1);
-		p.x=mod(p.x,1);
-		p.y=mod(1-z-p.x,1);
-	}
-	else if(p.x<0)
-	{
-		p.y=mod(p.y,1);
-		z=mod(z,1);
-		p.x=mod(1-p.y-z,1);
-	}
-	else
-	{
-		p.y=mod(p.y,1);
-		p.x=mod(p.x,1);
-		//z=mod(1-p.y-p.x,1);
+		
+		//p.y=0;
+		float lx=p.x;
+		p.x=p.y;
+		p.y=lx;
+		if(p.x>p.y)
+			p.x=1-p.x;
+		else
+			p.y=1-p.y;
+
+		//p.x-=above/2;
+		//p.y-=above/2;
 	}
 	return p;
 }
