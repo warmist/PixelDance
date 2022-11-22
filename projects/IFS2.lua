@@ -622,7 +622,8 @@ function find_min_max( tex,buf )
 		if v.g>lmax[2] then lmax[2]=v.g end
 		if v.b>lmax[3] then lmax[3]=v.b end
 		--local lum=math.sqrt(v.g*v.g+v.r*v.r+v.b*v.b)--math.abs(v.g+v.r+v.b)
-		local lum=math.sqrt(v.g*v.g+v.r*v.r)
+		--local lum=math.sqrt(v.g*v.g+v.r*v.r)
+		local lum=v.g
 		if llmin>lum then llmin=lum end
 		if llmax<lum then llmax=lum end
 		--avg_lum=avg_lum+lum
@@ -1720,8 +1721,8 @@ animate=false
 
 function get_forced_insert_complex(  )
 	--local tbl_insert={}
-	--local tbl_insert={"s","p"}
-	local tbl_insert={"s","p","params.xy","params.zw"}
+	local tbl_insert={"s","p"}
+	--local tbl_insert={"s","p","params.xy","params.zw"}
 	--{"s","p","vec2(cos(global_seeds.x*2*M_PI),sin(global_seeds.x*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seeds.x,0)","vec2(0,1-global_seeds.x)"})
 	--{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seeds.x*2*M_PI),sin(global_seeds.x*2*M_PI)))","params.zw"})
 	--{"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seeds.x)","vec2(cos(length(p)*M_PI*4+global_seeds.x),sin(length(p)*M_PI*4+global_seeds.x))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
@@ -1757,11 +1758,17 @@ function get_forced_insert_complex(  )
 	--table.insert(tbl_insert,"mix(c_mul(s,params.xy),c_mul(s,params.zw),prand.x)")
 	--table.insert(tbl_insert,"mix(c_mul(s,params.xy),c_mul(s,params.zw),prand.x*prand.x)")
 	--table.insert(tbl_insert,"mix(c_mul(s-p,params.xy),c_mul(s-p,params.zw),prand.x)")
+	--table.insert(tbl_insert,"mix(c_mul(s,params.xy),c_mul(s,params.zw),1-prand.x)")
 	--table.insert(tbl_insert,"mix(c_mul(p,params.xy),c_mul(p,params.zw),prand.x)")
 	--table.insert(tbl_insert,"mix(c_mul(mix(s,p,prand.y),params.xw),c_mul(mix(s,p,prand.y),params.xy),prand.x)")
+	--table.insert(tbl_insert,"rotate(s-p,M_PI*2*prand.x)+p")
+	--table.insert(tbl_insert,"rotate(s/(0.01+length(s)),M_PI*2*prand.x*move_dist)")
+	--table.insert(tbl_insert,"(normalize(p-s)*prand.x*move_dist)")
+	--table.insert(tbl_insert,"(dot(normalize(s),normalize(p))*prand.x*move_dist*s)")
+	table.insert(tbl_insert,"((last_s-s)*prand.x*move_dist)")
 
 	--]]
-	--[[
+	--[==[
 	local rand_choices={
 		"s","c_mul(s,s)","c_mul(c_mul(s,s),s)","c_mul(c_mul(s,s),c_mul(s,s))",
 		"p","c_mul(p,p)","c_mul(c_mul(p,p),p)","c_mul(c_mul(p,p),c_mul(p,p))",
@@ -1772,7 +1779,7 @@ function get_forced_insert_complex(  )
 	for i=1,NO_PICKS do
 		table.insert(tbl_insert,rand_choices[math.random(1,#rand_choices)])
 	end
-	--]]
+	--]==]
 	--[=[
 	local mob_count=8
 	local mob={}
@@ -1831,7 +1838,7 @@ function get_forced_insert_complex(  )
 		table.insert(tbl_insert,string.format("vec2(%g,%g)*global_seeds.x",math.cos(v)*dist,math.sin(v)*dist))
 	end
 	--]]
-	-- [==[
+	--[==[
 	local tex_variants={
 		-- [[
 		"tex_p.xy","tex_p.yz","tex_p.zx",
@@ -2037,13 +2044,24 @@ function ast_terminate( reterm )
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
 	str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seeds.x*move_dist+1)/move_dist);"
 	--]]
+	-- [[ symmetry
+
+	str_preamble=str_preamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
+	--str_preamble=str_preamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
+	str_preamble=str_preamble.."s=mod(rotate(s,-pry*M_PI*2)+0.5,1)-0.5+ppr;"
+	--str_preamble=str_preamble.."s=from_barycentric(mod_barycentric(to_barycentric(s).xy+0.5)-0.5);"
+	--str_postamble=str_postamble.."float pry=(floor(prand.y*4)/3);vec2 ppr=(1-step(pry,0))*vec2(cos(pry*M_PI*2),sin(pry*M_PI*2));"
+	--str_postamble=str_postamble.."s=s+ppr;"
+	--str_preamble=str_preamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
+	--str_preamble=str_preamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
+	--]]
 	-- [[ ORBIFY!
 	--Idea: project to circle inside with sigmoid like func
 	local circle_radius=1
-	str_postamble=str_postamble..string.format("float DC=length(s)-%g;",circle_radius)
+	str_preamble=str_preamble..string.format("float DC=length(s)-%g;",circle_radius)
 	-- [==[
-	str_postamble=str_postamble.."vec2 VC=-normalize(s);"
-	str_postamble=str_postamble..string.format("s+=step(0,DC)*VC*(DC+%g*2*(sigmoid(DC*move_dist)));",circle_radius)
+	str_preamble=str_preamble.."vec2 VC=-normalize(s);"
+	str_preamble=str_preamble..string.format("s+=step(0,DC)*VC*(DC+%g*2*(sigmoid(DC*move_dist)));",circle_radius)
 	--str_postamble=str_postamble..string.format("s=(1-step(0,DC))*s+step(0,DC)*(%g)*rotate(VC,M_PI*move_dist*global_seeds.x)*sigmoid(DC*global_seeds.x);",circle_radius)
 	--]==]
 	--[==[
@@ -2447,9 +2465,10 @@ function rand_function(  )
 	--]]
 	-- [[ symmetry
 
-	--str_postamble=str_postamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
-	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
-	str_postamble=str_postamble.."s=from_barycentric(mod_barycentric(to_barycentric(s).xy+0.5)-0.5);"
+	str_preamble=str_preamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
+	--str_preamble=str_preamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
+	str_preamble=str_preamble.."s=mod(rotate(s,-pry*M_PI*2)+0.5,1)-0.5+ppr;"
+	--str_preamble=str_preamble.."s=from_barycentric(mod_barycentric(to_barycentric(s).xy+0.5)-0.5);"
 	--str_postamble=str_postamble.."float pry=(floor(prand.y*4)/3);vec2 ppr=(1-step(pry,0))*vec2(cos(pry*M_PI*2),sin(pry*M_PI*2));"
 	--str_postamble=str_postamble.."s=s+ppr;"
 	--str_preamble=str_preamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
@@ -2675,6 +2694,99 @@ function rand_function(  )
 end
 
 local cur_visit_iter=0
+local sim_thread
+function find_bbox_img_buf()
+	local min_val=5
+	img_buf:read_frame()
+	local bbox={img_buf.w-1,img_buf.h-1,0,0}
+
+	for x=0,img_buf.w-1 do
+	for y=0,img_buf.h-1 do
+		local v=img_buf:get(x,y)
+		local lv=(v.r+v.g+v.b)/3
+		
+		if lv>min_val then
+			if bbox[1]>x then bbox[1]=x end
+			if bbox[2]>y then bbox[2]=y end
+			if bbox[3]<x then bbox[3]=x end
+			if bbox[4]<y then bbox[4]=y end
+		end
+	end
+	end
+	print("BBOX:",bbox[1],bbox[2],bbox[3],bbox[4])
+	return bbox
+end
+function find_bbox_tex( min_val )
+	local bbox={visit_tex.w-1,visit_tex.h-1,0,0}
+
+	for x=0,visit_tex.w-1 do
+	for y=0,visit_tex.h-1 do
+		local v=buf:get(x,y)
+		local lv=math.log(v.g+1)
+		--if math.random()>0.99 then
+		--	print(lv,avg,x,y)
+		--end
+		if lv>min_val then
+			if bbox[1]>x then bbox[1]=x end
+			if bbox[2]>y then bbox[2]=y end
+			if bbox[3]<x then bbox[3]=x end
+			if bbox[4]<y then bbox[4]=y end
+		end
+	end
+	end
+	print("BBOX:",bbox[1],bbox[2],bbox[3],bbox[4])
+	return bbox
+end
+function sim_zoom_center(  )
+	local max_iter=100
+	local max_zoom_iter=100
+	local min_avg=1.5 --how much of avg to call non-empty-pixel
+	local max_iter_save=1000
+	--local border=math.floor(0.1*visit_tex.w)
+	for mutate_iter=1,max_zoom_iter do
+		ast_mutate()
+		ast_terminate()
+		config.scale=0.25
+		need_clear=true
+		for i=1,max_iter do
+			if i==max_iter then
+				count_visits=10000
+			end
+			coroutine.yield()
+		end
+		local tex=visit_tex.t
+		local buf=visit_buf
+		local _,_1,avg=find_min_max(tex,buf)
+
+		tex:use(0,not_pixelated)
+		buf:read_texture(tex)
+		--local bbox=find_bbox_tex(min_avg*avg)
+		local bbox=find_bbox_img_buf(min_avg*avg)
+		print("BBOX:",bbox[1],bbox[2],bbox[3],bbox[4])
+
+		local new_x=(bbox[1]+bbox[3])/2
+		local new_y=(bbox[2]+bbox[4])/2
+
+		new_x=(new_x/size[1]-0.5)*2
+		new_y=(-new_y/size[2]+0.5)*2
+
+		local new_scale=math.max(size[1]/(bbox[3]-bbox[1]),size[2]/(bbox[4]-bbox[2]))
+		print(new_x,new_y,new_scale)
+		config.scale=config.scale*new_scale
+		config.cx=((-new_x)+config.cx)*new_scale
+		config.cy=((new_y)+config.cy)*new_scale
+		need_clear=true
+		-- [[
+		for k=1,max_iter_save do
+			coroutine.yield()
+		end
+		need_save=true
+		--]]
+		print("Done, iter:",mutate_iter)
+		coroutine.yield()
+	end
+	sim_thread=nil
+end
 function gui()
 	imgui.Begin("IFS play")
 	palette_chooser()
@@ -2733,7 +2845,18 @@ function gui()
 
 		_,rand_complexity=imgui.SliderInt("Complexity",rand_complexity,1,15)
 	end
-
+	 if not sim_thread then
+        if imgui.Button("Simulate") then
+           sim_thread=coroutine.create(sim_zoom_center)
+        end
+    else
+        if imgui.Button("Stop Simulate") then
+            sim_thread=nil
+        end
+    end
+    if imgui.Button("BBOX") then
+    	find_bbox_img_buf()
+    end
 	if imgui.Button("Animate") then
 		animate=true
 		need_clear=true
@@ -3698,7 +3821,9 @@ void main(){
 	//start_l=1-exp(-start_l*start_l/100);
 	float dist_traveled=length(delta_pos);
 	//float color_value=global_seeds.x;
+	//float color_value=abs(rnd_f.x*2-1);
 	float color_value=rnd_f.x;
+	//float color_value=abs(fract(rnd_f.x*3)*2-1);
 	//float color_value=normed_iter;
 	//float color_value=(cos((rnd_f.x*rnd_f.x+1)*3.14*3)*0.5+0.5);
 	//float color_value=(cos(rnd_f.x*3.14*10)*0.5+0.5)*rnd_f.x;
@@ -4351,6 +4476,7 @@ function fake_tonemap( v )
 	Y=Y/(1+Y)
 	return Y/v.g
 end
+
 function update_real(  )
 	__no_redraw()
 	if animate then
@@ -4385,6 +4511,14 @@ function update_real(  )
 	else
 		visit_iter()
 	end
+    if sim_thread then
+        --print("!",coroutine.status(sim_thread))
+        local ok,err=coroutine.resume(sim_thread)
+        if not ok then
+            print("Error:",err)
+            sim_thread=nil
+        end
+    end
 
 	local scale=config.scale
 	local cx,cy=config.cx,config.cy
