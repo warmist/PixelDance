@@ -51,7 +51,7 @@ local size=STATE.size
 local max_palette_size=50
 local need_clear=false
 local oversample=1
-local complex=true
+local complex=false
 local init_zero=true
 local sample_count=math.pow(2,20)
 local not_pixelated=0
@@ -1215,14 +1215,14 @@ end
 
 
 local terminal_symbols={
+["s.x"]=1,["s.y"]=1,["p.x"]=1,["p.y"]=1,
 --[[
-["s.x"]=3,["s.y"]=3,["p.x"]=3,["p.y"]=3,
 ["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,
 ["normed_iter"]=0.05,
 --]]
-["1.0"]=0.1,
+["1.0"]=0.5,
 --["0.0"]=0.1,
-["-1.0"]=0.1,
+["-1.0"]=0.5,
 }
 local terminal_symbols_alt={
 ["p.x"]=3,["p.y"]=3
@@ -1235,15 +1235,15 @@ local terminal_symbols_param={
 local normal_symbols={
 -- [[
 ["max(R,R)"]=0.05,["min(R,R)"]=0.05,
-["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,
+["mod(R,R)"]=0.1,["fract(R)"]=0.001,["floor(R)"]=0.001,
 ["abs(R)"]=0.1,["sqrt(abs(R))"]=0.1,["exp(R)"]=0.01,
 ["atan(R,R)"]=0.1,
-["tan(R)"]=1,["sin(R)"]=1,["cos(R)"]=1,
-["acos(R)"]=0.001,["asin(R)"]=0.001,
-["log(R)"]=0.001,
+["tan(R)"]=0.1,["sin(R)"]=0.1,["cos(R)"]=0.1,
+["acos(R)"]=0.01,["asin(R)"]=0.01,
+["log(abs(R)+1)"]=0.01,
 --]]
-["(R)/(R)"]=0.05,["(R)*(R)"]=2,
-["(R)-(R)"]=3,["(R)+(R)"]=3
+["(R)/(R)"]=0.05,["(R)*(R)"]=3,
+["(R)-(R)"]=2,["(R)+(R)"]=2
 }
 
 local terminal_symbols_complex={
@@ -1416,18 +1416,27 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 		if math.random()>0.5 then
 			dy=-dy
 		end
-		local dx2=math.random()*0.5-0.25
-		local dy2=math.random()*0.5-0.25
-		--]]
-		--[[
+
+		local r=math.sqrt(math.random())
+		local ang=math.random()*math.pi*2
+		local dx2=math.cos(ang)*r
+		local dy2=math.sin(ang)*r
 		local dx=math.cos(istart*math.pi*2)*1
 		local dy=math.sin(istart*math.pi*2)*1
 		--]]
 		-- [[
+
+		local dx2=math.random()*0.5-0.25
+		local dy2=math.random()*0.5-0.25
+
+		local dx=(math.random()*1.0-0.5)*0.05
+		local dy=(math.random()*1.0-0.5)*0.05
+		--]]
+		--[[
 		local dx=0
 		local dy=0
 		--]]
-		ret=ret.."("..rc..string.format("+vec2(%g,%g))*value_inside(prand.x,%g,%g)",dx,dy,istart,iend)
+		ret=ret..string.format("(c_mul(%s,vec2(%g,%g))+vec2(%g,%g))*value_inside(prand.y,%g,%g)",rc,dx2,dy2,dx,dy,istart,iend)
 		--[[
 		if i==1 then
 			ret=ret..string.format("(c_mul(%s,vec2(%g,%g))+vec2(%g,%g))*value_inside(global_seeds.x,%g,%g)",rc,dx,dy,dx2,dy2,istart,iend)
@@ -1766,18 +1775,23 @@ function get_forced_insert_complex(  )
 	--table.insert(tbl_insert,"(normalize(p-s)*prand.x*move_dist)")
 	--table.insert(tbl_insert,"(dot(normalize(s),normalize(p))*prand.x*move_dist*s)")
 	table.insert(tbl_insert,"((last_s-s)*prand.x*move_dist)")
-
+	--table.insert(tbl_insert,"rotate(s-last_s,M_PI*2*prand.x)+last_s")
+	--table.insert(tbl_insert,"dot(normalize(last_s-p),normalize(s-p))*(s-p)*prand.x*move_dist")
+	--table.insert(tbl_insert,"(to_polar(last_s-s).y-prand.x*move_dist)*last_s")
+	--table.insert(tbl_insert,"from_polar((mix(to_polar(s-p),prand.xx,move_dist)))+p")
 	--]]
-	--[==[
-	local rand_choices={
-		"s","c_mul(s,s)","c_mul(c_mul(s,s),s)","c_mul(c_mul(s,s),c_mul(s,s))",
-		"p","c_mul(p,p)","c_mul(c_mul(p,p),p)","c_mul(c_mul(p,p),c_mul(p,p))",
-		"c_mul(p,s)","c_mul(c_mul(p,s),p)","c_mul(c_mul(p,s),c_mul(p,s))",
-		"c_mul(p,s)","c_mul(c_mul(p,s),s)","c_mul(c_mul(p,s),c_mul(s,s))",
-	}
-	local NO_PICKS=5
-	for i=1,NO_PICKS do
-		table.insert(tbl_insert,rand_choices[math.random(1,#rand_choices)])
+	-- [==[
+	do
+		local rand_choices={
+			"s","c_mul(s,s)","c_mul(c_mul(s,s),s)","c_mul(c_mul(s,s),c_mul(s,s))",
+			"p","c_mul(p,p)","c_mul(c_mul(p,p),p)","c_mul(c_mul(p,p),c_mul(p,p))",
+			"c_mul(p,s)","c_mul(c_mul(p,s),p)","c_mul(c_mul(p,s),c_mul(p,s))",
+			"c_mul(p,s)","c_mul(c_mul(p,s),s)","c_mul(c_mul(p,s),c_mul(s,s))",
+		}
+		local NO_PICKS=5
+		for i=1,NO_PICKS do
+			table.insert(tbl_insert,rand_choices[math.random(1,#rand_choices)])
+		end
 	end
 	--]==]
 	--[=[
@@ -1898,7 +1912,7 @@ end
 function get_forced_insert( )
 	local tbl_insert_x={}
 	local tbl_insert_y={}
-	-- [[ random picks
+	--[[ random picks
 	local choices={
 		"s.x","s.x*s.x","s.x*s.x*s.x","s.x*s.x*s.x*s.x",
 		"s.y","s.y*s.y","s.y*s.y*s.y","s.y*s.y*s.y*s.y",
@@ -1914,7 +1928,7 @@ function get_forced_insert( )
 		end
 	end
 	--]]
-	--[[ direct stuff
+	-- [[ direct stuff
 		table.insert(tbl_insert_x,"s.x")
 		table.insert(tbl_insert_x,"p.x")
 		table.insert(tbl_insert_y,"s.y")
@@ -1926,7 +1940,7 @@ function get_forced_insert( )
 		table.insert(tbl_insert_y,"params.y")
 		table.insert(tbl_insert_y,"params.w")
 	--]]
-	--[[ flipped stuff
+	-- [[ flipped stuff
 		table.insert(tbl_insert_x,"s.y")
 		table.insert(tbl_insert_x,"p.y")
 		table.insert(tbl_insert_y,"s.x")
@@ -1944,11 +1958,18 @@ function get_forced_insert( )
 		table.insert(tbl_insert_y,"mix(s.x,s.y,1-global_seeds.x)")
 		table.insert(tbl_insert_y,"mix(p.x,p.y,1-global_seeds.x)")
 	--]]
-	-- [[ global seed stuff2
+	--[[ global seed stuff2
 		table.insert(tbl_insert_x,"mix(s.y*s.y,s.x*s.x,global_seeds.x)")
 		table.insert(tbl_insert_x,"mix(p.y*p.y,p.x*p.x,global_seeds.x)")
 		--table.insert(tbl_insert_y,"mix(s.y,s.y*s.y,1-global_seeds.x)")
 		--table.insert(tbl_insert_y,"mix(p.y,p.y*p.y,1-global_seeds.x)")
+	--]]
+
+	--[[ local rand stuff2
+		table.insert(tbl_insert_x,"mix(s.y*s.y,s.x*s.x,prand.x*move_dist)")
+		table.insert(tbl_insert_x,"mix(p.y*p.y,p.x*p.x,prand.x*move_dist)")
+		table.insert(tbl_insert_y,"mix(s.y,s.y*s.y,1-prand.x*move_dist)")
+		table.insert(tbl_insert_y,"mix(p.y,p.y*p.y,1-prand.x*move_dist)")
 	--]]
 	--[[ global seed params
 		table.insert(tbl_insert_x,"mix(params.x,params.y,global_seeds.x)")
@@ -1971,21 +1992,25 @@ function get_forced_insert( )
 		table.insert(tbl_insert_cmplx,string.format("vec2(%g,%g)",math.cos(vr)*r,math.sin(vr)*r))
 	end
 	--]]
-	
+	table.insert(tbl_insert_x,"((rotate(s-p,M_PI/4)+p).x*prand.x*move_dist)")
+	table.insert(tbl_insert_y,"((rotate(s-p,M_PI/4)+p).y*prand.x*move_dist)")
+	table.insert(tbl_insert_x,"((rotate(s-p,M_PI/4)+p).y*prand.x*move_dist)")
+	table.insert(tbl_insert_y,"((rotate(s-p,M_PI/4)+p).x*prand.x*move_dist)")
 	--[=[
 	local tex_variants_real={
-		-- [[
+		--[[
 		"tex_p.x","tex_p.y","tex_p.z",
 		"tex_s.x","tex_s.y","tex_s.z",
-
 		--]]
-		"atan(tex_s.y,tex_s.x)/M_PI","atan(tex_p.y,tex_p.x)/M_PI",
-		"atan(tex_s.x,tex_s.z)/M_PI","atan(tex_p.x,tex_p.z)/M_PI"
+		"(atan(tex_s.y,tex_s.x)/M_PI)","(atan(tex_p.y,tex_p.x)/M_PI)",
+		"(atan(tex_s.x,tex_s.z)/M_PI)","(atan(tex_p.x,tex_p.z)/M_PI)"
 	}
 	local num_tex=2
 	for i=1,num_tex do
-		table.insert(tbl_insert_x,tex_variants_real[math.random(1,#tex_variants_real)])
-		table.insert(tbl_insert_y,tex_variants_real[math.random(1,#tex_variants_real)])
+		--table.insert(tbl_insert_x,tex_variants_real[math.random(1,#tex_variants_real)])
+		--table.insert(tbl_insert_y,tex_variants_real[math.random(1,#tex_variants_real)])
+		table.insert(tbl_insert_x,tex_variants_real[math.random(1,#tex_variants_real)].."*prand.x*move_dist")
+		table.insert(tbl_insert_y,tex_variants_real[math.random(1,#tex_variants_real)].."*prand.x*move_dist")
 	end
 	--]=]
 	return tbl_insert_x,tbl_insert_y
@@ -2045,7 +2070,7 @@ function ast_terminate( reterm )
 	--str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw));"
 	str_postamble=str_postamble.."s/=length(s);s=os+c_mul(s,vec2(params.zw)*floor(global_seeds.x*move_dist+1)/move_dist);"
 	--]]
-	-- [[ symmetry
+	--[[ symmetry
 
 	str_preamble=str_preamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
 	--str_preamble=str_preamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
@@ -2056,13 +2081,14 @@ function ast_terminate( reterm )
 	--str_preamble=str_preamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
 	--str_preamble=str_preamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
 	--]]
-	-- [[ ORBIFY!
+	--[[ ORBIFY!
 	--Idea: project to circle inside with sigmoid like func
 	local circle_radius=1
 	str_preamble=str_preamble..string.format("float DC=length(s)-%g;",circle_radius)
 	-- [==[
 	str_preamble=str_preamble.."vec2 VC=-normalize(s);"
-	str_preamble=str_preamble..string.format("s+=step(0,DC)*VC*(DC+%g*2*(sigmoid(DC*move_dist)));",circle_radius)
+	str_preamble=str_preamble..string.format("s+=step(0,DC)*VC*(DC+%g*2*(sigmoid(DC*0.2)));",circle_radius)
+	--str_preamble=str_preamble..string.format("s+=step(0,DC)*VC*(DC+%g*2*(sigmoid(DC*move_dist)));",circle_radius)
 	--str_postamble=str_postamble..string.format("s=(1-step(0,DC))*s+step(0,DC)*(%g)*rotate(VC,M_PI*move_dist*global_seeds.x)*sigmoid(DC*global_seeds.x);",circle_radius)
 	--]==]
 	--[==[
@@ -2108,7 +2134,7 @@ function rand_function(  )
 	--str_cmplx="c_inv((s-c_cos(vec2(global_seeds.x,0)+s)+c_asin(s+params.xy))-c_conj(c_mul(c_cos(c_inv(s)),params.zw)))"
 	--str_cmplx="c_cos(c_inv(s-params.zw+p*vec2(move_dist,global_seeds.x)))-params.xy"
 	--str_cmplx=random_math_complex(rand_complexity,nil,{"c_pow(s,vec2(1,global_seeds.x*2))"})
-	--str_cmplx=random_math_complex_intervals(rand_complexity,10)
+	--str_cmplx=random_math_complex_intervals(rand_complexity,25,nil,tbl_insert_cmplx)
 	--str_cmplx="c_mul(params.xy,c_inv(c_mul(c_conj(c_cos(s)),p*vec2(move_dist,global_seeds.x)+params.zw)))"
 	--str_cmplx=str_cmplx.."*value_inside(global_seeds.x,0,0.5)+(s-(s*move_dist)/length(s))*value_inside(global_seeds.x,0.5,1)+(s*floor(global_seeds.x*5)/5)/length(s)"
 	--str_cmplx="c_tan(c_cos(c_tan((((params.xy)-(s))-(c_cos(c_mul(c_atan(params.zw),c_tan((params.zw)+(params.xy))))))-(p*vec2(move_dist*(1-global_seeds.x*global_seeds.x),global_seeds.x)))))"
@@ -2475,7 +2501,7 @@ function rand_function(  )
 	--str_preamble=str_preamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
 	--str_preamble=str_preamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
 	--]]
-	--[[ mod
+	-- [[ mod
 	--str_postamble=str_postamble.."s=mod(s+0.5,1)-0.5;"
 	--str_postamble=str_postamble.."s=mod(s+0.5,max(abs(tex_s.x-tex_p.x),abs(tex_s.y-tex_p.y))*prand.x+1)-0.5;"
 	--[=[str_postamble=str_postamble.."s=rotate(s,M_PI/4)+0.5;"
@@ -2483,7 +2509,7 @@ function rand_function(  )
 	str_postamble=str_postamble.."s=rotate(s,M_PI/4)+0.5;"
 	str_postamble=str_postamble.."s=mod(s,1+(prand.x-0.5)*0.005)-0.5;"
 	str_postamble=str_postamble.."s=rotate(s,M_PI/2);"]=]
-	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5,-M_PI/4);"
+	str_preamble=str_preamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5,-M_PI/4);"
 	--str_postamble=str_postamble.."float ls=log(length(s)+1)/2;s=rotate(mod(rotate(s,M_PI/4)+ls,ls*2)-ls,-M_PI/4);"
 	--str_postamble=str_postamble.."float ls=log(length(s)+1);s=mod(s+ls/2,1)-ls/2;"
 	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1+(length(tex_p)*prand.x)*0.05)-0.5,-M_PI/4);"
@@ -2678,6 +2704,13 @@ function rand_function(  )
 	--[[ force back?
 	str_postamble=str_postamble.."float sll=length(s);float bx=1-2*move_dist*1;float cx=1-move_dist*1*1-bx*1;"
 	str_postamble=str_postamble.."s=s*((step(sll,1)*sll+(1-step(sll,1))*(move_dist*sll*sll+bx*sll+cx))/sll);"
+	--]]
+	--[[ force back to p
+	str_postamble=str_postamble.."s=mix(s,p,move_dist);"
+	--]]
+	--[[ force back to p
+	--str_postamble=str_postamble.."s=(s-p)*(1-smoothstep(10,50,length(s-p)))+p;"
+	str_postamble=str_postamble.."s=(s-vec2(1,1))*(1-smoothstep(100,500,length(s-vec2(1,1))))+vec2(1,1);"
 	--]]
 	print("==============")
 	print(other_code)
@@ -3303,7 +3336,7 @@ end*/
 vec3 func_actual(vec2 s,vec2 p)
 {
 	vec4 prand=get_rnd_floats(rnd_data);
-#if 1
+#if 0
 	vec2 normed_p=(p*scale*move_dist+vec2(1,1))/2;
 	vec2 normed_s=(s*scale*move_dist+vec2(1,1))/2;
 #else
