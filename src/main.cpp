@@ -9,6 +9,7 @@
 #include "lua_buffers.h"
 #include "lua_random.h"
 #include "lua_kd.h"
+#include "lua_opencl.h"
 #include "stb_image.h"
 #include "stb_image_write.h"
 #define WRAP_CPP_EXCEPTIONS
@@ -383,6 +384,7 @@ struct project {
 		lua_open_random(L);
         lua_open_matrix(L);
         lua_open_kd(L);
+        lua_open_opencl(L);
 #ifdef WRAP_CPP_EXCEPTIONS
 		lua_pushlightuserdata(L, (void *)wrap_exceptions);
 		luaJIT_setmode(L, -1, LUAJIT_MODE_WRAPCFUNC | LUAJIT_MODE_ON);

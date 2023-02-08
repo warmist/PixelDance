@@ -3,7 +3,7 @@
 #include <windows.h>
 #include <tchar.h>
 #include <stdio.h>
-
+#include <stdexcept>
 
 
 std::vector<std::string> enum_files(const std::string& path)
