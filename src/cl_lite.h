@@ -31,6 +31,8 @@ typedef double          cl_double;
 #define CL_DEVICE_TYPE_GPU                          (1 << 2)
 #define CL_DEVICE_TYPE_ACCELERATOR                  (1 << 3)
 
+#define CL_PROGRAM_BUILD_LOG                        0x1183
+
 #define CL_DECL __stdcall
 
 #define CL_TYPE_LIST\
@@ -40,7 +42,7 @@ typedef double          cl_double;
     CL_TYPE(command_queue)\
     CL_TYPE(mem)\
     CL_TYPE(program)\
-    CL_TYPE(kernal)\
+    CL_TYPE(kernel)\
     CL_TYPE(event)\
     CL_TYPE(samepler)
 
@@ -48,9 +50,20 @@ typedef double          cl_double;
 CL_TYPE_LIST
 #undef CL_TYPE
 #define CLLITE_CL_LIST \
-    CLE(int32_t, clGetPlatformIDs, uint32_t num_entries, cl_platform_id* platforms,uint32_t* num_platforms) \
-    CLE(int32_t, clGetDeviceIDs,cl_platform_id platform, uint64_t device_type, uint32_t num_entries, cl_device_id* devices, uint32_t* num_devices) \
-
+    CLE(int32_t,    clGetPlatformIDs, uint32_t num_entries, cl_platform_id* platforms,uint32_t* num_platforms) \
+    CLE(int32_t,    clGetDeviceIDs,   cl_platform_id platform, uint64_t device_type, uint32_t num_entries, cl_device_id* devices, uint32_t* num_devices) \
+    CLE(cl_program, clCreateProgramWithSource, cl_context context, uint32_t count,const char** strings,const size_t *lengths,int32_t *errcode_ret) \
+    CLE(int32_t,    clBuildProgram,cl_program program,uint32_t num_devices,const cl_device_id* devices,const char* options,void*,void*) \
+    CLE(int32_t,    clGetProgramBuildInfo,cl_program program, cl_device_id device, uint32_t param_name,size_t param_value_size, void* param_value,size_t* param_value_size_ret)\
+    CLE(cl_kernel,  clCreateKernel,cl_program program,const char* kernel_name,int32_t * errcode_ret)\
+    CLE(cl_context, clCreateContext, const int32_t** properties,uint32_t num_devices,const cl_device_id* devices,void* callback,void* user_data,int32_t* errcode_ret) \
+    CLE(int32_t,    clReleaseContext,cl_context context)\
+    CLE(int32_t,    clReleaseCommandQueue,cl_command_queue command_queue)\
+    CLE(int32_t,    clReleaseMemObject,cl_mem memobj)\
+    CLE(int32_t,    clReleaseProgram,cl_program program)\
+    CLE(int32_t,    clReleaseKernel,cl_kernel kernel)\
+    CLE(cl_command_queue,clCreateCommandQueueWithProperties, cl_context context,cl_device_id device,const int32_t** properties,int32_t* errcode_ret)\
+    CLE(int32_t,    clSetKernelArg,cl_kernel kernel,uint32_t arg_index,size_t arg_size,const void* arg_value)\
 
 
 #define CLE(ret, name, ...) typedef ret CL_DECL name##proc(__VA_ARGS__);name##proc * name;
