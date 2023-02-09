@@ -129,6 +129,11 @@ int lua_build_program(lua_State* L)
 }
 int lua_create_buffer(lua_State* L)
 {
+    //create from:
+    // buffer
+    // opengl buffer
+    // texture
+    // array?
     //clEnqueueWriteBuffer
     //clEnqueueReadBuffer
     //https://registry.khronos.org/OpenCL/sdk/2.2/docs/man/html/clCreateFromGLTexture.html
