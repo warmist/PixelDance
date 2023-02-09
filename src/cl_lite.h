@@ -24,6 +24,17 @@ typedef uint16_t        cl_half;
 typedef float           cl_float;
 typedef double          cl_double;
 
+typedef cl_uint             cl_bool;                     // WARNING!  Unlike cl_ types in cl_platform.h, cl_bool is not guaranteed to be the same size as the bool in kernels.
+typedef cl_ulong            cl_bitfield;
+typedef cl_ulong            cl_properties;
+typedef cl_bitfield         cl_device_type;
+typedef cl_uint             cl_platform_info;
+typedef cl_uint             cl_device_info;
+typedef cl_bitfield         cl_device_fp_config;
+typedef cl_uint             cl_device_mem_cache_type;
+typedef cl_uint             cl_device_local_mem_type;
+typedef cl_bitfield         cl_device_exec_capabilities;
+
 */
 
 #define CL_DEVICE_TYPE_DEFAULT                      (1 << 0)
@@ -32,6 +43,34 @@ typedef double          cl_double;
 #define CL_DEVICE_TYPE_ACCELERATOR                  (1 << 3)
 
 #define CL_PROGRAM_BUILD_LOG                        0x1183
+
+#define CL_MEM_READ_WRITE                           (1 << 0)
+#define CL_MEM_WRITE_ONLY                           (1 << 1)
+#define CL_MEM_READ_ONLY                            (1 << 2)
+#define CL_MEM_USE_HOST_PTR                         (1 << 3)
+#define CL_MEM_ALLOC_HOST_PTR                       (1 << 4)
+#define CL_MEM_COPY_HOST_PTR                        (1 << 5)
+
+#define CL_KERNEL_WORK_GROUP_SIZE                   0x11B0
+#define CL_KERNEL_COMPILE_WORK_GROUP_SIZE           0x11B1
+#define CL_KERNEL_LOCAL_MEM_SIZE                    0x11B2
+#define CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE 0x11B3
+#define CL_KERNEL_PRIVATE_MEM_SIZE                  0x11B4
+#define CL_KERNEL_GLOBAL_WORK_SIZE                  0x11B5
+
+
+//CL opengl extension
+//https://registry.khronos.org/OpenCL/sdk/2.2/docs/man/html/clCreateFromGLBuffer.html
+#define CL_GL_OBJECT_BUFFER                     0x2000
+#define CL_GL_OBJECT_TEXTURE2D                  0x2001
+#define CL_GL_OBJECT_TEXTURE3D                  0x2002
+#define CL_GL_OBJECT_RENDERBUFFER               0x2003
+
+#define CL_GL_OBJECT_TEXTURE2D_ARRAY            0x200E
+#define CL_GL_OBJECT_TEXTURE1D                  0x200F
+#define CL_GL_OBJECT_TEXTURE1D_ARRAY            0x2010
+#define CL_GL_OBJECT_TEXTURE_BUFFER             0x2011
+
 
 #define CL_DECL __stdcall
 
@@ -56,6 +95,7 @@ CL_TYPE_LIST
     CLE(int32_t,    clBuildProgram,cl_program program,uint32_t num_devices,const cl_device_id* devices,const char* options,void*,void*) \
     CLE(int32_t,    clGetProgramBuildInfo,cl_program program, cl_device_id device, uint32_t param_name,size_t param_value_size, void* param_value,size_t* param_value_size_ret)\
     CLE(cl_kernel,  clCreateKernel,cl_program program,const char* kernel_name,int32_t * errcode_ret)\
+    CLE(int32_t,    clCreateKernelsInProgram,cl_program program,uint32_t num_kernels,cl_kernel* kernels,uint32_t* num_kernels_ret)\
     CLE(cl_context, clCreateContext, const int32_t** properties,uint32_t num_devices,const cl_device_id* devices,void* callback,void* user_data,int32_t* errcode_ret) \
     CLE(int32_t,    clReleaseContext,cl_context context)\
     CLE(int32_t,    clReleaseCommandQueue,cl_command_queue command_queue)\
@@ -64,6 +104,17 @@ CL_TYPE_LIST
     CLE(int32_t,    clReleaseKernel,cl_kernel kernel)\
     CLE(cl_command_queue,clCreateCommandQueueWithProperties, cl_context context,cl_device_id device,const int32_t** properties,int32_t* errcode_ret)\
     CLE(int32_t,    clSetKernelArg,cl_kernel kernel,uint32_t arg_index,size_t arg_size,const void* arg_value)\
+    CLE(cl_mem,     clCreateBuffer,cl_context context,uint64_t flags,size_t size,void* host_ptr,int32_t* errcode_ret)\
+    CLE(int32_t,    clEnqueueWriteBuffer,cl_command_queue command_queue,cl_mem buffer,uint32_t blocking_write,size_t offset,size_t size,\
+                const void* ptr,uint32_t num_events_in_wait_list, const cl_event* event_wait_list,cl_event* event)\
+    CLE(int32_t,    clEnqueueReadBuffer,cl_command_queue command_queue,cl_mem buffer,uint32_t blocking_read,size_t offset,size_t size,\
+                void* ptr,uint32_t num_events_in_wait_list,const cl_event* event_wait_list,cl_event* event)\
+    CLE(int32_t,    clGetKernelWorkGroupInfo,cl_kernel kernel,cl_device_id device,uint32_t param_name,\
+                size_t param_value_size,void* param_value,size_t* param_value_size_ret)\
+    CLE(int32_t,    clEnqueueNDRangeKernel,cl_command_queue command_queue,cl_kernel kernel,uint32_t work_dim,const size_t* global_work_offset,\
+                const size_t* global_work_size,const size_t* local_work_size,uint32_t num_events_in_wait_list,const cl_event* event_wait_list,\
+                cl_event* event)\
+    CLE(int32_t,    clFinish,cl_command_queue command_queue)
 
 
 #define CLE(ret, name, ...) typedef ret CL_DECL name##proc(__VA_ARGS__);name##proc * name;
@@ -81,7 +132,7 @@ typedef HANDLE HMODULE;
 
 extern "C" void* __stdcall GetProcAddress(HMODULE,const char*);
 extern "C" void* __stdcall LoadLibraryA(const char*);
-extern "C" void* __stdcall OutputDebugStringA(const char*);
+extern "C" void* __stdcall OutputDebugStringA(const char*); //TODO: remove this
 
 void* load_function(HMODULE module,const char* function_name)
 {

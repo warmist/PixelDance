@@ -68,7 +68,7 @@ static int set_kernel_arg(lua_State* L)
 
     //TODO: switch by T to fill the array...
     //something like get_from_lua<T>(tmp_array,L,arg_offset,num_args);
-    clSetKernelArg(kernel, uloc, sizeof(T) * num_args, tmp_array.size());
+    clSetKernelArg(*kernel, uloc, sizeof(T) * num_args, tmp_array.data());
     return 0;
 }
 
@@ -76,8 +76,6 @@ int lua_build_program(lua_State* L)
 {
     size_t source_len;
     const char* source= luaL_checklstring(L, 1,&source_len);
-    const char* fname = luaL_checkstring(L, 2);
-
     int32_t err;
     cl_program program;
     program=clCreateProgramWithSource(context, 1, &source, &source_len, &err);
@@ -95,30 +93,39 @@ int lua_build_program(lua_State* L)
         clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG,log_size + 1, buffer.data(), NULL);
         luaL_error(L, "error:%s", buffer.data());
     }
-    auto kernel = clCreateKernel(program, fname, &err);
+    uint32_t num_kernels;
+    err=clCreateKernelsInProgram(program, 0, NULL, &num_kernels);
     if (err < 0)
     {
-        luaL_error(L, "Failed to create kernel:%d", err);
+        luaL_error(L, "Failed to create kernel(s):%d", err);
     }
-    auto np = (cl_kernel*)lua_newuserdata(L, sizeof(cl_kernel));
-    *np = kernel;
-    clReleaseProgram(program);
-
-    if (luaL_newmetatable(L, "cl_kernel"))
+    std::vector<cl_kernel> kernels(num_kernels);
+    err = clCreateKernelsInProgram(program, num_kernels, kernels.data(), &num_kernels);
+    if (err < 0)
     {
-        lua_pushcfunction(L, del_kernel);
-        lua_setfield(L, -2, "__gc");
-
-        //TODO could be polimorphic from lua...
-        lua_pushcfunction(L, set_kernel_arg<float>);
-        lua_setfield(L, -2, "set");
-
-        lua_pushvalue(L, -1);
-        lua_setfield(L, -2, "__index");
+        luaL_error(L, "Failed to create kernel(s):%d", err);
     }
-    lua_setmetatable(L, -2);
-  
-    return 1;
+    clReleaseProgram(program);
+    for (uint32_t i = 0; i < num_kernels; i++)
+    {
+        auto np = (cl_kernel*)lua_newuserdata(L, sizeof(cl_kernel));
+        *np = kernels[i];
+
+        if (luaL_newmetatable(L, "cl_kernel"))
+        {
+            lua_pushcfunction(L, del_kernel);
+            lua_setfield(L, -2, "__gc");
+
+            //TODO could be polymorphic from lua...
+            lua_pushcfunction(L, set_kernel_arg<float>);
+            lua_setfield(L, -2, "set");
+
+            lua_pushvalue(L, -1);
+            lua_setfield(L, -2, "__index");
+        }
+        lua_setmetatable(L, -2);
+    }
+    return kernels.size();
 }
 int lua_create_buffer(lua_State* L)
 {
