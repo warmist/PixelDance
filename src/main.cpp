@@ -359,6 +359,76 @@ static int set_window_size(lua_State* L)
 	main_win->setSize(sf::Vector2u(w, h));
 	return 0;
 }
+static int errfile(lua_State* L, const char* what, int fnameindex) {
+    const char* serr = strerror(errno);
+    const char* filename = lua_tostring(L, fnameindex) + 1;
+    lua_pushfstring(L, "cannot %s %s: %s", what, filename, serr);
+    lua_remove(L, fnameindex);
+    return LUA_ERRFILE;
+}
+void parse_and_replace(std::vector<char>& data)
+{
+    std::vector<char> new_data;
+    new_data.reserve(data.size());
+    auto cur_pointer = data.begin();
+    int cur_line_counter = 1;
+    const char line_macro[] = "__LINE__";
+    bool found = false;
+    while (cur_pointer<data.end())
+    {
+        auto pos=std::search(cur_pointer, data.end(), line_macro, line_macro + sizeof(line_macro)-1);
+        if (pos != data.end())
+        {
+            found = true;
+            //skip to macro start
+            new_data.insert(new_data.end(), cur_pointer, pos);
+            //count newlines
+            cur_line_counter+=std::count(cur_pointer, pos, '\n');
+            //insert counter
+            auto s=std::to_string(cur_line_counter);
+            new_data.insert(new_data.end(), s.begin(), s.end());
+            //advance the position
+            cur_pointer = pos + sizeof(line_macro)-1;
+        }
+        else
+        {
+            
+            break;
+        }
+    }
+    if (found)
+    {
+        new_data.insert(new_data.end(), cur_pointer, data.end());
+        new_data.swap(data);
+    }
+}
+int parse_and_replace_macros(lua_State* L,const std::string& path)
+{
+    int status, readstatus;
+    int fnameindex = lua_gettop(L) + 1;  /* index of filename on the stack */
+    lua_pushfstring(L, "@%s", path.c_str());
+    auto f = fopen(path.c_str(), "rb");
+    if (f == NULL) return errfile(L, "open", fnameindex);
+
+    fseek(f, 0, SEEK_END);
+    auto fsize = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    std::vector<char> loaded_file;
+    loaded_file.resize(fsize+1);
+    fread(loaded_file.data(), 1, fsize, f);
+    
+    parse_and_replace(loaded_file);
+    status = luaL_loadbuffer(L, loaded_file.data(),loaded_file.size()-1,lua_tostring(L,-1));
+    readstatus = ferror(f);
+    fclose(f);  /* close file (even in case of errors) */
+    if (readstatus) {
+        lua_settop(L, fnameindex);  /* ignore results from `lua_load' */
+        return errfile(L, "read", fnameindex);
+    }
+    lua_remove(L, fnameindex);
+    return status;
+}
 struct project {
     lua_State *L=nullptr;
     std::string path;
@@ -452,9 +522,10 @@ struct project {
 			is_errored = true;
 			return;
 		}
-        //(luaL_loadfile(L, fn) || lua_pcall(L, 0, LUA_MULTRET, 0))
         
-        if (luaL_loadfile(L,path.c_str()) || docall(L, 0, LUA_MULTRET) != 0)
+       
+        if (parse_and_replace_macros(L, path) || docall(L, 0, LUA_MULTRET) != 0)
+        //if (luaL_loadfile(L,path.c_str()) || docall(L, 0, LUA_MULTRET) != 0)
         {
             size_t len;
             const char* err=lua_tolstring(L, 1, &len);
