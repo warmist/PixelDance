@@ -59,6 +59,8 @@ typedef cl_bitfield         cl_device_exec_capabilities;
 #define CL_KERNEL_GLOBAL_WORK_SIZE                  0x11B5
 
 
+#define CL_CONTEXT_PLATFORM                         0x1084
+
 //CL opengl extension
 //https://registry.khronos.org/OpenCL/sdk/2.2/docs/man/html/clCreateFromGLBuffer.html
 #define CL_GL_OBJECT_BUFFER                     0x2000
@@ -70,6 +72,9 @@ typedef cl_bitfield         cl_device_exec_capabilities;
 #define CL_GL_OBJECT_TEXTURE1D                  0x200F
 #define CL_GL_OBJECT_TEXTURE1D_ARRAY            0x2010
 #define CL_GL_OBJECT_TEXTURE_BUFFER             0x2011
+
+#define CL_GL_CONTEXT_KHR                       0x2008
+#define CL_WGL_HDC_KHR                          0x200B
 
 
 #define CL_DECL __stdcall
@@ -96,7 +101,7 @@ CL_TYPE_LIST
     CLE(int32_t,    clGetProgramBuildInfo,cl_program program, cl_device_id device, uint32_t param_name,size_t param_value_size, void* param_value,size_t* param_value_size_ret)\
     CLE(cl_kernel,  clCreateKernel,cl_program program,const char* kernel_name,int32_t * errcode_ret)\
     CLE(int32_t,    clCreateKernelsInProgram,cl_program program,uint32_t num_kernels,cl_kernel* kernels,uint32_t* num_kernels_ret)\
-    CLE(cl_context, clCreateContext, const int32_t** properties,uint32_t num_devices,const cl_device_id* devices,void* callback,void* user_data,int32_t* errcode_ret) \
+    CLE(cl_context, clCreateContext, const intptr_t* properties,uint32_t num_devices,const cl_device_id* devices,void* callback,void* user_data,int32_t* errcode_ret) \
     CLE(int32_t,    clReleaseContext,cl_context context)\
     CLE(int32_t,    clReleaseCommandQueue,cl_command_queue command_queue)\
     CLE(int32_t,    clReleaseMemObject,cl_mem memobj)\
@@ -114,8 +119,11 @@ CL_TYPE_LIST
     CLE(int32_t,    clEnqueueNDRangeKernel,cl_command_queue command_queue,cl_kernel kernel,uint32_t work_dim,const size_t* global_work_offset,\
                 const size_t* global_work_size,const size_t* local_work_size,uint32_t num_events_in_wait_list,const cl_event* event_wait_list,\
                 cl_event* event)\
-    CLE(int32_t,    clFinish,cl_command_queue command_queue)
-
+    CLE(int32_t,    clFinish,cl_command_queue command_queue)\
+    CLE(cl_mem, clCreateFromGLBuffer,cl_context context,uint32_t flags, unsigned int bufob, int32_t* errcode_ret)\
+    CLE(cl_mem, clCreateFromGLTexture,cl_context context,uint32_t flags,unsigned int target,int miplevel,unsigned int texture,int32_t* errcode_ret)\
+    CLE(int32_t, clEnqueueAcquireGLObjects, cl_command_queue command_queue,uint32_t num_objects,const cl_mem* mem_objects,uint32_t num_events_in_wait_list,const cl_event* event_wait_list,cl_event* event)\
+    CLE(int32_t, clEnqueueReleaseGLObjects, cl_command_queue command_queue,uint32_t num_objects,const cl_mem* mem_objects,uint32_t num_events_in_wait_list,const cl_event* event_wait_list,cl_event* event)
 
 #define CLE(ret, name, ...) typedef ret CL_DECL name##proc(__VA_ARGS__);name##proc * name;
 CLLITE_CL_LIST
