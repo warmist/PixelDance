@@ -197,7 +197,7 @@ __kernel void update_grid(__global float* input,__global float* output,__write_o
 		int offset=pos_to_index(pos);
 		load_data(input+offset,old_pos,old_speed);
 		diffusion(input,old_speed,pos);
-		for(int j=0;j<1;j++)
+		for(int j=0;j<5;j++)
 		{
 			simulation_tick(old_pos,old_speed,new_pos,new_speed);
 			simulation_tick(new_pos,new_speed,old_pos,old_speed);
@@ -208,7 +208,7 @@ __kernel void update_grid(__global float* input,__global float* output,__write_o
 		//for(int k=0;k<3;k++)
 		//	new_speed[k]*=0.99995f;
 		save_data(output+offset,new_pos,new_speed);
-		int di=0;
+		int di=2;
 		float4 col;
 		#if 1
 		col.r=(new_pos[di].r+1)*0.5;
@@ -239,12 +239,12 @@ __kernel void update_grid(__global float* input,__global float* output,__write_o
 		col.r=length(new_speed[0]);
 		col.g=length(new_speed[1]);
 		col.b=length(new_speed[2]);
-		col.rgb*=0.2f;
 		#endif
 		#if 0
 		col.r*=length(new_pos[0]);
 		col.g*=length(new_pos[1]);
 		col.b*=length(new_pos[2]);
+		col.rgb*=0.2f;
 		#endif
 		#if 0
 		float v=system_energy(new_pos,new_speed)/10;
@@ -288,7 +288,7 @@ __kernel void init_grid(__global float* output)
 		output[offset+2]=0;
 
 		output[offset+3]=0;
-		output[offset+4]=0.01f+delta.x*0.001f;
+		output[offset+4]=2.05f+delta.x*0.000005f;
 		output[offset+5]=0;
 		//-------------------
 		output[offset+6]=0;
@@ -304,14 +304,14 @@ __kernel void init_grid(__global float* output)
 		output[offset+14]=1;
 
 		output[offset+15]=0;
-		output[offset+16]=5.0+delta.y*0.001f;
+		output[offset+16]=5.0+delta.y*0.0000025f;
 		output[offset+17]=0;
 		
 
 	}
 }
 ]==]
-local buffers={
+buffers=buffers or {
 	opencl.make_buffer(w*h*4*no_floats_per_pixel),
 	opencl.make_buffer(w*h*4*no_floats_per_pixel)
 }
@@ -345,7 +345,7 @@ function init_buffers(  )
 	init_kernel:set(0,buffers[1])
 	init_kernel:run(w*h)
 end
-init_buffers()
+--init_buffers()
 function save_img(  )
 	local size=STATE.size
     local img_buf_save=make_image_buffer(size[1],size[2])
@@ -365,16 +365,17 @@ function update(  )
 	draw_config(config)
 	--cl tick
 	--setup stuff
-
-	cl_kernel:set(0,buffers[1])
-	cl_kernel:set(1,buffers[2])
-	cl_kernel:set(2,display_buffer)
-	--cl_kernel:set(3,1)
-	--cl_kernel:set(3,time)
-	--  run kernel
-	display_buffer:aquire()
-	cl_kernel:run(w*h)
-	display_buffer:release()
+	if not config.pause then
+		cl_kernel:set(0,buffers[1])
+		cl_kernel:set(1,buffers[2])
+		cl_kernel:set(2,display_buffer)
+		--cl_kernel:set(3,1)
+		--cl_kernel:set(3,time)
+		--  run kernel
+		display_buffer:aquire()
+		cl_kernel:run(w*h)
+		display_buffer:release()
+	end
 	--opengl draw
 	--  read from cl
 	-- actually the kernel writes it itself...
@@ -385,12 +386,17 @@ function update(  )
 	shader:draw_quad()
 	--flip input/output
 	-- [[
-	local b=buffers[2]
-	buffers[2]=buffers[1]
-	buffers[1]=b
+	if not config.pause then
+		local b=buffers[2]
+		buffers[2]=buffers[1]
+		buffers[1]=b
+	end
 	--]]
 	if imgui.Button("Save") then
 		save_img()
+	end
+	if imgui.Button("Reset") then
+		init_buffers()
 	end
 	imgui.End()
 end
