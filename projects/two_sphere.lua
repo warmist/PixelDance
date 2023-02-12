@@ -1,18 +1,34 @@
 require "common"
 local ffi=require "ffi"
 
-local w=64
-local h=64
+local w=512
+local h=512
+
 local no_floats_per_pixel=(3+3)*3 --3 for pos, 3 for speed, times 3 
+
+config=make_config({
+    {"pause",false,type="bool"},
+    {"layer",0,type="int",min=0,max=2},
+    },config)
+
 local cl_kernel,init_kernel=opencl.make_program[==[
 #line __LINE__
-#define W 64
-#define H 64
+#define W 512
+#define H 512
 #define PARTICLE_COUNT 3
-#define TIME_STEP 0.001f
+#define TIME_STEP 0.0001f
 int2 clamp_pos(int2 p)
 {
-	return clamp(p,0,W-1);
+	if(p.x<0)
+		p.x=W-1;
+	if(p.y<0)
+		p.y=H-1;
+	if(p.x>=W)
+		p.x=0;
+	if(p.y>=H)
+		p.y=0;
+	//return clamp(p,0,W-1);
+	return p;
 }
 int pos_to_index(int2 p)
 {
@@ -23,7 +39,7 @@ float3 del_potential(__local float3* qs,int i)
 {
 	float3 ret=(float3)(0,0,0);
 	float3 qi=qs[i];
-	float gamma=1;
+	float gamma=-1;
 	for(int j=0;j<PARTICLE_COUNT;j++)
 	{
 		if(j!=i)
@@ -81,7 +97,7 @@ float system_energy(__local float3* pos,__local float3* speed)
 	float sum=0;
 	float masses=1;
 	float kin_sum=0;
-	float gamma=1;
+	float gamma=-1;
 	for(int i=0;i<PARTICLE_COUNT;i++)
 	{
 		float3 qdot=cross(speed[i],pos[i]);
@@ -136,18 +152,35 @@ float3 laplace(__global float* input,int2 pos)
 	ret+=load_speed_v3(input,pos+(int2)( 0, 0))*(-1.0f);
 	return ret;
 }
+float3 avg_around(__global float* input,int2 pos)
+{
+	float3 ret=(float3)(0,0,0);
+	/*
+	ret+=load_speed_v3(input,pos+(int2)(-1,-1))*0.05f;
+	ret+=load_speed_v3(input,pos+(int2)(-1, 1))*0.05f;
+	ret+=load_speed_v3(input,pos+(int2)( 1,-1))*0.05f;
+	ret+=load_speed_v3(input,pos+(int2)( 1, 1))*0.05f;
+	*/
+	ret+=load_speed_v3(input,pos+(int2)( 0,-1))*0.2f;
+	ret+=load_speed_v3(input,pos+(int2)(-1, 0))*0.2f;
+	ret+=load_speed_v3(input,pos+(int2)( 1, 0))*0.2f;
+	ret+=load_speed_v3(input,pos+(int2)( 0, 1))*0.2f;
+
+	return ret;
+}
 void diffusion(__global float* input,__local float3* speed,int2 pos)
 {
-	float diffusion=0.1f;
+	float diffusion=0.5f;
 	float3 sl=(float3)(length(speed[0]),length(speed[1]),length(speed[2]));
 
-	float3 nl=laplace(input,pos)*TIME_STEP*diffusion+sl;
-	nl/=sl;
+	//float3 nl=laplace(input,pos)*TIME_STEP*diffusion+sl;
+	float3 nl=((avg_around(input,pos)+sl*0.2f)/sl)*diffusion+(1-diffusion);
+
 	speed[0]*=nl.x;
 	speed[1]*=nl.y;
 	speed[2]*=nl.z;
 }
-__kernel void update_grid(__global float* input,__global float* output,__write_only image2d_t output_tex)
+__kernel void update_grid(__global float* input,__global float* output,__write_only image2d_t output_tex )
 {
 	__local float3 old_pos[PARTICLE_COUNT];
 	__local float3 old_speed[PARTICLE_COUNT];
@@ -163,8 +196,8 @@ __kernel void update_grid(__global float* input,__global float* output,__write_o
 		pos.y=i/W;
 		int offset=pos_to_index(pos);
 		load_data(input+offset,old_pos,old_speed);
-		//diffusion(input,old_speed,pos);
-		for(int j=0;j<100;j++)
+		diffusion(input,old_speed,pos);
+		for(int j=0;j<1;j++)
 		{
 			simulation_tick(old_pos,old_speed,new_pos,new_speed);
 			simulation_tick(new_pos,new_speed,old_pos,old_speed);
@@ -172,13 +205,30 @@ __kernel void update_grid(__global float* input,__global float* output,__write_o
 		}
 		//for(int k=0;k<3;k++)
 		//	normalize(new_pos[i]);
+		//for(int k=0;k<3;k++)
+		//	new_speed[k]*=0.99995f;
 		save_data(output+offset,new_pos,new_speed);
-
+		int di=0;
 		float4 col;
 		#if 1
+		col.r=(new_pos[di].r+1)*0.5;
+		col.g=(new_pos[di].g+1)*0.5;
+		col.b=(new_pos[di].b+1)*0.5;
+		#endif
+		#if 0
+		col.r=(new_pos[0].r+1)*0.5;
+		col.g=(new_pos[0].g+1)*0.5;
+		col.b=(new_pos[0].b+1)*0.5;
+		#endif
+		#if 0
 		col.r=(new_pos[0].r+1)*0.5;
 		col.g=(new_pos[1].r+1)*0.5;
 		col.b=(new_pos[2].r+1)*0.5;
+		#endif
+		#if 0
+		col.r=(dot(new_pos[0],new_pos[1])+1)*0.5;
+		col.g=(dot(new_pos[1],new_pos[2])+1)*0.5;
+		col.b=(dot(new_pos[2],new_pos[0])+1)*0.5;
 		#endif
 		#if 0
 		col.r=(new_pos[0].r+1)*0.5;
@@ -238,14 +288,14 @@ __kernel void init_grid(__global float* output)
 		output[offset+2]=0;
 
 		output[offset+3]=0;
-		output[offset+4]=0.05f;
+		output[offset+4]=0.01f+delta.x*0.001f;
 		output[offset+5]=0;
 		//-------------------
 		output[offset+6]=0;
 		output[offset+7]=-1;
 		output[offset+8]=0;
 
-		output[offset+9]=0.05f;
+		output[offset+9]=0.5f;
 		output[offset+10]=0;
 		output[offset+11]=0;
 		//-------------------
@@ -254,7 +304,7 @@ __kernel void init_grid(__global float* output)
 		output[offset+14]=1;
 
 		output[offset+15]=0;
-		output[offset+16]=0.1+v*0.5;
+		output[offset+16]=5.0+delta.y*0.001f;
 		output[offset+17]=0;
 		
 
@@ -296,15 +346,30 @@ function init_buffers(  )
 	init_kernel:run(w*h)
 end
 init_buffers()
+function save_img(  )
+	local size=STATE.size
+    local img_buf_save=make_image_buffer(size[1],size[2])
+    local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
+    for k,v in pairs(config or {}) do
+        if type(v)~="table" then
+            config_serial=config_serial..string.format("config[%q]=%s\n",k,v)
+        end
+    end
+    img_buf_save:read_frame()
+    img_buf_save:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
+end
 function update(  )
 	__no_redraw()
 	__clear()
+	imgui.Begin("TwoSphere doc")
+	draw_config(config)
 	--cl tick
 	--setup stuff
 
 	cl_kernel:set(0,buffers[1])
 	cl_kernel:set(1,buffers[2])
 	cl_kernel:set(2,display_buffer)
+	--cl_kernel:set(3,1)
 	--cl_kernel:set(3,time)
 	--  run kernel
 	display_buffer:aquire()
@@ -324,4 +389,8 @@ function update(  )
 	buffers[2]=buffers[1]
 	buffers[1]=b
 	--]]
+	if imgui.Button("Save") then
+		save_img()
+	end
+	imgui.End()
 end
