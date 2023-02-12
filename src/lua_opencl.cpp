@@ -97,13 +97,28 @@ static int set_kernel_arg(lua_State* L)
 int lua_run_kernel(lua_State* L)
 {
     auto kernel = check_kernel(L, 1);
-    size_t count = luaL_checkinteger(L, 2);
+    
     size_t local_size, global_size;
     auto err = clGetKernelWorkGroupInfo(*kernel, device, CL_KERNEL_WORK_GROUP_SIZE, sizeof(local_size), &local_size, NULL);
     if (err)
     {
         luaL_error(L, "Failed to get kernel info:%d", err);
     }
+    
+    size_t count = luaL_checkinteger(L, 2);
+    /*
+    * TODO: multi coord
+    const int arg_offset = 2;
+    int num_args = lua_gettop(L) - arg_offset;
+    std::vector<int> global_sizes; 
+    global_sizes.resize(num_args);
+    int total_count = 1;
+    for (int i = arg_offset; i < num_args;i++)
+    {
+        size_t count = luaL_checkinteger(L, i);
+        global_sizes[i - arg_offset] = count;
+        total_count *= count;
+    }*/
     // Number of total work items - localSize must be devisor
     global_size = ceil(count / (float)local_size) * local_size;
     err=clEnqueueNDRangeKernel(queue, *kernel, 1, NULL, &global_size, &local_size, 0, NULL, NULL);
