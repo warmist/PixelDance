@@ -65,7 +65,7 @@ void get_from_lua(lua_State* L, std::vector<int>& data, int arg_offset, int num_
     data.resize(num_args);
     for (int i = 0; i < num_args; i++)
     {
-        data[i] = luaL_checkint(L, i + arg_offset);
+        data[i] = luaL_checkinteger(L, i + arg_offset);
     }
 }
 
