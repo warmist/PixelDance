@@ -16,8 +16,9 @@ local cl_kernel,init_kernel=opencl.make_program[==[
 #define W 1024
 #define H 1024
 #define PARTICLE_COUNT 3
-#define TIME_STEP 0.0005f
-#define GAMMA (1.0f)
+#define TIME_STEP 0.001f
+#define GAMMA (0.5f)
+#define DIFFUSION 0.0f
 int2 clamp_pos(int2 p)
 {
 	if(p.x<0)
@@ -36,6 +37,7 @@ int pos_to_index(int2 p)
 	int2 p2=clamp_pos(p);
 	return (p2.x+p2.y*W)*2*PARTICLE_COUNT;
 }
+#if 0 //gravity based thing
 float3 del_potential( float3* qs,int i)
 {
 	float3 ret=(float3)(0,0,0);
@@ -53,6 +55,39 @@ float3 del_potential( float3* qs,int i)
 	}
 	return gamma*ret;
 }
+#elif 0
+float3 del_potential( float3* qs,int i)
+{
+	float3 ret=(float3)(0,0,0);
+	float3 qi=qs[i];
+	float gamma=GAMMA;
+	float values[3]={-2,15,2};
+	for(int j=0;j<PARTICLE_COUNT;j++)
+	{
+		if(j!=i)
+		{
+			ret+=2*values[i]*dot(qi,qs[j])*qs[j];
+		}
+	}
+	return gamma*ret;
+}
+#else
+float3 del_potential( float3* qs,int i)
+{
+	float3 ret=(float3)(0,0,0);
+	float3 qi=qs[i];
+	float gamma=GAMMA;
+	float values[3]={-2,1,2};
+	for(int j=0;j<PARTICLE_COUNT;j++)
+	{
+		if(j!=i)
+		{
+			ret+=values[i]*cos(dot(qi,qs[j]))*qs[j];
+		}
+	}
+	return gamma*ret;
+}
+#endif
 void simulation_tick( float3* in_pos, float3* in_speed, float3* out_pos, float3* out_speed)
 {
 	float step_size=TIME_STEP;
@@ -165,7 +200,7 @@ float3 avg_around(__global float4* input,int2 pos)
 }
 void diffusion(__global float4* input, float3* speed,int2 pos)
 {
-	float diffusion=1.0f;
+	float diffusion=DIFFUSION;
 	float3 sl=(float3)(length(speed[0]),length(speed[1]),length(speed[2]));
 
 	//float3 nl=laplace(input,pos)*TIME_STEP*diffusion+sl;
@@ -175,7 +210,7 @@ void diffusion(__global float4* input, float3* speed,int2 pos)
 	speed[1]*=nl.y;
 	speed[2]*=nl.z;
 }
-__kernel void update_grid(__global __read_only float4* input,__global __write_only float4* output,__write_only image2d_t output_tex)
+__kernel void update_grid(__global __read_only float4* input,__global __write_only float4* output,__write_only image2d_t output_tex,int layer_id)
 {
 	float3 old_pos[PARTICLE_COUNT];
 	float3 old_speed[PARTICLE_COUNT];
@@ -215,11 +250,21 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 			save_data(output+offset,new_pos,new_speed);
 		
 		#endif
-		int di=0;
+		int di=layer_id;
 		#if 1
+		col.x=(new_pos[di].x+1)*0.5;
+		col.y=(new_pos[di].x+1)*0.5;
+		col.z=(new_pos[di].x+1)*0.5;
+		#endif
+		#if 0
 		col.x=(new_pos[di].x+1)*0.5;
 		col.y=(new_pos[di].y+1)*0.5;
 		col.z=(new_pos[di].z+1)*0.5;
+		#endif
+		#if 0
+		col.x=(new_speed[di].x+1)*0.5;
+		col.y=(new_speed[di].y+1)*0.5;
+		col.z=(new_speed[di].z+1)*0.5;
 		#endif
 		#if 0
 		col.x=(new_pos[0].x+1)*0.5;
@@ -289,9 +334,9 @@ void set_spherical(float phi, float theta,float speed,float4* out_pos,float4* ou
 	out_speed->x=copysign(z,x);
 	out_speed->y=copysign(z,y);
 	out_speed->z=-copysign(fabs(x)+fabs(y),z);
-	*out_speed*=speed;
+	*out_speed*=speed/length(out_speed->xyz);
 }
-__kernel void init_grid(__global float4* output)
+__kernel void init_grid(__global float4* output,float min_x,float min_y,float max_x,float max_y)
 {
 	float4 old_pos[PARTICLE_COUNT];
 	float4 old_speed[PARTICLE_COUNT];
@@ -320,9 +365,13 @@ __kernel void init_grid(__global float4* output)
 		old_speed[2]=(float4)(pos_normed.x,pos_normed.y,0.6f,0);
 		#endif
 		#if 1
-		set_spherical(delta.x*M_PI_F,0,1,old_pos,old_speed);
-		set_spherical(1,delta.y*M_PI_F,-1.5f,old_pos+1,old_speed+1);
-		set_spherical(-1,-1,-2.0f,old_pos+2,old_speed+2);
+		float x_v=(min_x+pos_normed.x*(max_x-min_x))*M_PI_F*2;
+		float y_v=(min_y+pos_normed.y*(max_y-min_y))*M_PI_F;
+
+		set_spherical(x_v,0.11,4,old_pos,old_speed);
+		set_spherical(-2.45,y_v,-3.0f,old_pos+1,old_speed+1);
+		set_spherical(-1,-1,6.0f,old_pos+2,old_speed+2);
+
 		#endif
 		save_data(output+i*6,old_pos,old_speed);
 		#if 0
@@ -372,19 +421,52 @@ out vec4 color;
 in vec3 pos;
 
 uniform sampler2D tex_main;
-
+//from: https://www.alanzucconi.com/2017/07/15/improving-the-rainbow-2/
+vec3 bump3y (vec3 x, vec3 yoffset)
+{
+    vec3 y = 1 - x * x;
+    y = clamp(y-yoffset,0,1);
+    return y;
+}
+vec3 spectral_zucconi6 (float w)
+{
+    // w: [400, 700]
+    // x: [0,   1]
+    //fixed x = clamp((w - 400.0)/ 300.0,0,1);
+    float x=w;
+    vec3 c1 = vec3(3.54585104, 2.93225262, 2.41593945);
+    vec3 x1 = vec3(0.69549072, 0.49228336, 0.27699880);
+    vec3 y1 = vec3(0.02312639, 0.15225084, 0.52607955);
+    vec3 c2 = vec3(3.90307140, 3.21182957, 3.96587128);
+    vec3 x2 = vec3(0.11748627, 0.86755042, 0.66077860);
+    vec3 y2 = vec3(0.84897130, 0.88445281, 0.73949448);
+    return
+        bump3y(c1 * (x - x1), y1) +
+        bump3y(c2 * (x - x2), y2) ;
+}
 void main()
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	//float v=texture(tex_main,normed).x;
 	//v=pow(v,2.2);
 	//color=vec4(v,v,v,1);
-	color.xyz=texture(tex_main,normed).xyz;
+	//color.xyz=texture(tex_main,normed).xyz;
+	color.xyz=spectral_zucconi6(texture(tex_main,normed).x);
 	color.a=1;
 }
 ]]
+rsize=rsize or 0.08
+start_pos=start_pos or {0.28,0.71}
+local start_rect
+function recal_rect()
+	start_rect={start_pos[1],start_pos[2],start_pos[1]+rsize,start_pos[2]+rsize}
+end
+recal_rect()
 function init_buffers(  )
 	init_kernel:set(0,buffers[1])
+	for i=1,#start_rect do
+		init_kernel:set(i,start_rect[i])
+	end
 	init_kernel:run(w*h)
 end
 init_buffers()
@@ -400,6 +482,41 @@ function save_img(  )
     img_buf_save:read_frame()
     img_buf_save:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
+function is_mouse_down(  )
+	return __mouse.clicked1 and not __mouse.owned1, __mouse.x,__mouse.y
+end
+local last_click
+function check_click(  )
+	local c,x,y=is_mouse_down(  )
+	if c then
+		--mouse to screen
+		
+		x=(x/STATE.size[1])
+		y=(1-y/STATE.size[2])
+		if x>0 and x<1 and
+		   y>0 and y<1 then
+			--screen to world
+			local nx=start_rect[1]+(start_rect[3]-start_rect[1])*x
+			local ny=start_rect[2]+(start_rect[4]-start_rect[2])*y
+			print(nx,ny)
+			if last_click then
+				print("  ",last_click[1]-nx,last_click[2]-ny)
+				local lx=math.min(nx,last_click[1])
+				local ly=math.min(ny,last_click[2])
+				local hx=math.max(nx,last_click[1])
+				local hy=math.max(ny,last_click[2])
+				start_pos={lx,ly}
+				rsize=math.max(hx-lx,hy-ly)
+				recal_rect()
+				init_buffers()
+				last_click=nil
+			else
+				last_click={nx,ny}
+			end
+		end
+		--]]
+	end
+end
 function update(  )
 	__no_redraw()
 	__clear()
@@ -411,7 +528,7 @@ function update(  )
 		cl_kernel:set(0,buffers[1])
 		cl_kernel:set(1,buffers[2])
 		cl_kernel:set(2,display_buffer)
-		--cl_kernel:seti(3,config.layer)
+		cl_kernel:seti(3,config.layer)
 		--cl_kernel:set(3,time)
 		--  run kernel
 		display_buffer:aquire()
@@ -440,5 +557,12 @@ function update(  )
 	if imgui.Button("Reset") then
 		init_buffers()
 	end
+	if imgui.Button("Reset View") then
+		rsize=1
+		start_pos={0,0}
+		recal_rect()
+		init_buffers()
+	end
+	check_click()
 	imgui.End()
 end
