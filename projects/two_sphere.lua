@@ -17,7 +17,7 @@ local cl_kernel,init_kernel=opencl.make_program[==[
 #define H 1024
 #define PARTICLE_COUNT 3
 #define TIME_STEP 0.0005f
-#define GAMMA (-1.0f)
+#define GAMMA (1.0f)
 int2 clamp_pos(int2 p)
 {
 	if(p.x<0)
@@ -195,7 +195,7 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		load_data(input+offset,old_pos,old_speed);
 		#if 1
 		diffusion(input,old_speed,pos);
-		for(int j=0;j<16;j++)
+		for(int j=0;j<4;j++)
 		{
 			simulation_tick(old_pos,old_speed,new_pos,new_speed);
 			simulation_tick(new_pos,new_speed,old_pos,old_speed);
@@ -205,7 +205,14 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		//	normalize(new_pos[i]);
 		for(int k=0;k<3;k++)
 			new_speed[k]*=0.99995f;
-		save_data(output+offset,new_pos,new_speed);
+		bool is_ok=true;
+		for(int i=0;i<3;i++)
+		{
+			if(!isnormal(new_pos[i]).x ||! isnormal(new_pos[i]).y || !isnormal(new_pos[i]).z)
+				is_ok=false;
+		}
+		if(is_ok)
+			save_data(output+offset,new_pos,new_speed);
 		
 		#endif
 		int di=0;
@@ -270,6 +277,20 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		write_imagef(output_tex,pos,col);
 	}
 }
+void set_spherical(float phi, float theta,float speed,float4* out_pos,float4* out_speed)
+{
+	float x=sin(phi)*cos(theta);
+	float y=sin(phi)*sin(theta);
+	float z=cos(phi);
+	out_pos->x=x;
+	out_pos->y=y;
+	out_pos->z=z;
+
+	out_speed->x=copysign(z,x);
+	out_speed->y=copysign(z,y);
+	out_speed->z=-copysign(fabs(x)+fabs(y),z);
+	*out_speed*=speed;
+}
 __kernel void init_grid(__global float4* output)
 {
 	float4 old_pos[PARTICLE_COUNT];
@@ -299,14 +320,9 @@ __kernel void init_grid(__global float4* output)
 		old_speed[2]=(float4)(pos_normed.x,pos_normed.y,0.6f,0);
 		#endif
 		#if 1
-		old_pos[0]=(float4)(1,0,0,0);
-		old_speed[0]=(float4)(0,-1.5f+delta.x*0.00005f,0,0);
-
-		old_pos[1]=(float4)(0,-1,0,0);
-		old_speed[1]=(float4)(0.5f,0,0,0);
-
-		old_pos[2]=(float4)(0,0,1,0);
-		old_speed[2]=(float4)(0,1.5f+delta.y*0.00005f,0,0);
+		set_spherical(delta.x*M_PI_F,0,1,old_pos,old_speed);
+		set_spherical(1,delta.y*M_PI_F,-1.5f,old_pos+1,old_speed+1);
+		set_spherical(-1,-1,-2.0f,old_pos+2,old_speed+2);
 		#endif
 		save_data(output+i*6,old_pos,old_speed);
 		#if 0
