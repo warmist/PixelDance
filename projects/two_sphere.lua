@@ -1,8 +1,8 @@
 require "common"
 local ffi=require "ffi"
 
-local w=512
-local h=512
+local w=1024
+local h=1024
 
 local no_floats_per_pixel=(3+3)*3 --3 for pos, 3 for speed, times 3 
 
@@ -13,10 +13,11 @@ config=make_config({
 
 local cl_kernel,init_kernel=opencl.make_program[==[
 #line __LINE__
-#define W 512
-#define H 512
+#define W 1024
+#define H 1024
 #define PARTICLE_COUNT 3
-#define TIME_STEP 0.0001f
+#define TIME_STEP 0.001f
+#define GAMMA 1.0f
 int2 clamp_pos(int2 p)
 {
 	if(p.x<0)
@@ -39,7 +40,7 @@ float3 del_potential(__local float3* qs,int i)
 {
 	float3 ret=(float3)(0,0,0);
 	float3 qi=qs[i];
-	float gamma=-1;
+	float gamma=GAMMA;
 	for(int j=0;j<PARTICLE_COUNT;j++)
 	{
 		if(j!=i)
@@ -97,7 +98,7 @@ float system_energy(__local float3* pos,__local float3* speed)
 	float sum=0;
 	float masses=1;
 	float kin_sum=0;
-	float gamma=-1;
+	float gamma=GAMMA;
 	for(int i=0;i<PARTICLE_COUNT;i++)
 	{
 		float3 qdot=cross(speed[i],pos[i]);
@@ -194,76 +195,84 @@ __kernel void update_grid(__global float* input,__global float* output,__write_o
 		int2 pos;
 		pos.x=i%W;
 		pos.y=i/W;
+		float4 col;
+
 		int offset=pos_to_index(pos);
 		load_data(input+offset,old_pos,old_speed);
-		diffusion(input,old_speed,pos);
-		for(int j=0;j<5;j++)
+		//diffusion(input,old_speed,pos);
+		for(int j=0;j<0;j++)
 		{
 			simulation_tick(old_pos,old_speed,new_pos,new_speed);
 			simulation_tick(new_pos,new_speed,old_pos,old_speed);
 			simulation_tick(old_pos,old_speed,new_pos,new_speed);
+		}
+		for(int j=0;j<3;j++)
+		{
+			new_pos[j]=old_pos[j];
+			new_speed[j]=old_speed[j];
 		}
 		//for(int k=0;k<3;k++)
 		//	normalize(new_pos[i]);
 		//for(int k=0;k<3;k++)
 		//	new_speed[k]*=0.99995f;
 		save_data(output+offset,new_pos,new_speed);
-		int di=2;
-		float4 col;
+		int di=0;
+		
+		#if 0
+		col.x=(new_pos[di].x+1)*0.5;
+		col.y=(new_pos[di].y+1)*0.5;
+		col.z=(new_pos[di].z+1)*0.5;
+		#endif
+		#if 0
+		col.x=(new_pos[0].x+1)*0.5;
+		col.y=(new_pos[0].y+1)*0.5;
+		col.z=(new_pos[0].z+1)*0.5;
+		#endif
+		#if 0
+		col.x=(new_pos[0].x+1)*0.5;
+		col.y=(new_pos[1].x+1)*0.5;
+		col.z=(new_pos[2].x+1)*0.5;
+		#endif
+		#if 0
+		col.x=(dot(new_pos[0],new_pos[1])+1)*0.5;
+		col.y=(dot(new_pos[1],new_pos[2])+1)*0.5;
+		col.z=(dot(new_pos[2],new_pos[0])+1)*0.5;
+		#endif
+		#if 0
+		col.x=(new_pos[0].x+1)*0.5;
+		col.y=(new_pos[0].y+1)*0.5;
+		col.z=(new_pos[0].z+1)*0.5;
+		#endif
 		#if 1
-		col.r=(new_pos[di].r+1)*0.5;
-		col.g=(new_pos[di].g+1)*0.5;
-		col.b=(new_pos[di].b+1)*0.5;
+		col.x=length(new_speed[0]);
+		col.y=length(new_speed[1]);
+		col.z=length(new_speed[2]);
 		#endif
 		#if 0
-		col.r=(new_pos[0].r+1)*0.5;
-		col.g=(new_pos[0].g+1)*0.5;
-		col.b=(new_pos[0].b+1)*0.5;
-		#endif
-		#if 0
-		col.r=(new_pos[0].r+1)*0.5;
-		col.g=(new_pos[1].r+1)*0.5;
-		col.b=(new_pos[2].r+1)*0.5;
-		#endif
-		#if 0
-		col.r=(dot(new_pos[0],new_pos[1])+1)*0.5;
-		col.g=(dot(new_pos[1],new_pos[2])+1)*0.5;
-		col.b=(dot(new_pos[2],new_pos[0])+1)*0.5;
-		#endif
-		#if 0
-		col.r=(new_pos[0].r+1)*0.5;
-		col.g=(new_pos[0].g+1)*0.5;
-		col.b=(new_pos[0].b+1)*0.5;
-		#endif
-		#if 0
-		col.r=length(new_speed[0]);
-		col.g=length(new_speed[1]);
-		col.b=length(new_speed[2]);
-		#endif
-		#if 0
-		col.r*=length(new_pos[0]);
-		col.g*=length(new_pos[1]);
-		col.b*=length(new_pos[2]);
-		col.rgb*=0.2f;
+		col.x*=length(new_pos[0]);
+		col.y*=length(new_pos[1]);
+		col.z*=length(new_pos[2]);
+		col.xyz*=0.2f;
 		#endif
 		#if 0
 		float v=system_energy(new_pos,new_speed)/10;
-		col.r=v;
-		col.g=v;
-		col.b=v;
+		col.x=v;
+		col.y=v;
+		col.z=v;
 		#endif
 		#if 0
 		float v=1-fabs(system_energy(old_pos,old_speed)-system_energy(new_pos,new_speed));
-		col.r=v;
-		col.g=v;
-		col.b=v;
+		col.x=v;
+		col.y=v;
+		col.z=v;
 		#endif
+
 		#if 0
-		col.r=pos.x/(W*1.0f);
-		col.g=pos.y/(H*1.0f);
-		col.b=0;
+		col.x=pos.x/(W*1.0f);
+		col.y=pos.y/(H*1.0f);
+		col.z=0;
 		#endif
-		col.a=1;
+		col.w=1;
 		write_imagef(output_tex,pos,col);
 	}
 }
@@ -288,7 +297,7 @@ __kernel void init_grid(__global float* output)
 		output[offset+2]=0;
 
 		output[offset+3]=0;
-		output[offset+4]=2.05f+delta.x*0.000005f;
+		output[offset+4]=0.05f+delta.x*0.5f;
 		output[offset+5]=0;
 		//-------------------
 		output[offset+6]=0;
@@ -304,18 +313,19 @@ __kernel void init_grid(__global float* output)
 		output[offset+14]=1;
 
 		output[offset+15]=0;
-		output[offset+16]=5.0+delta.y*0.0000025f;
+		output[offset+16]=0.0+v*2.0f;
 		output[offset+17]=0;
 		
 
 	}
 }
 ]==]
-buffers=buffers or {
+buffers={
 	opencl.make_buffer(w*h*4*no_floats_per_pixel),
 	opencl.make_buffer(w*h*4*no_floats_per_pixel)
 }
-
+print(buffers)
+print(buffers[1])
 texture=textures:Make()
 texture:use(0)
 texture:set(w,h,FLTA_PIX)

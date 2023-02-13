@@ -1,11 +1,11 @@
 require "common"
 local ffi=require "ffi"
-local w=1024
-local h=1024
-local cl_kernel=opencl.make_program[==[
+local w=256
+local h=256
+local cl_kernel,init_grid=opencl.make_program[==[
 #line __LINE__
-#define W 1023
-#define H 1023
+#define W 256
+#define H 256
 int2 clamp_pos(int2 p)
 {
 	return clamp(p,0,W-1);
@@ -25,7 +25,7 @@ float sample_at_pos(__global float* arr,int2 p)
 	return (ceil(ret*255))/255;
 	return ret;
 }
-float sum_around(__global float* arr,int2 pos)
+float sum_around_L(__global float* arr,int2 pos)
 {
 	float ret=0;
 	//ret+=arr[pos.x+pos.y*W];
@@ -43,7 +43,58 @@ float sum_around(__global float* arr,int2 pos)
 	
 	return ret/20.0f;
 }
+float sum_around(__global float* arr,int2 pos)
+{
+	float ret=0;
+	//ret+=arr[pos.x+pos.y*W];
+
+	ret+=sample_at_pos(arr,pos+(int2)( 0, 0));
+
+	ret+=sample_at_pos(arr,pos+(int2)( 0, 1));
+	ret+=sample_at_pos(arr,pos+(int2)( 0,-1));
+	ret+=sample_at_pos(arr,pos+(int2)( 1, 0));
+	ret+=sample_at_pos(arr,pos+(int2)(-1, 0));
+	
+	ret+=sample_at_pos(arr,pos+(int2)( 1, 1));
+	ret+=sample_at_pos(arr,pos+(int2)( 1,-1));
+	ret+=sample_at_pos(arr,pos+(int2)(-1, 1));
+	ret+=sample_at_pos(arr,pos+(int2)(-1,-1));
+	
+	return ret/9.0f;
+}
 __kernel void update_grid(__global float* input,__global float* output,__write_only image2d_t output_tex,float time)
+{
+	int i=get_global_id(0);
+	int max=W*H;//s.w*s.h;
+	int D=64;
+
+	if(i>=0 && i<max)
+	{
+		int2 pos;
+		pos.x=i%W;
+		pos.y=i/W;
+		float v=sum_around(input,pos);
+		if(pos.x>W/2-D/2 && pos.x<W/2+D/2 && pos.y>H/2-D/2 && pos.y<H/2+D/2)
+		{
+			v=-10;
+		}
+		
+		//v=(ceil(v*255))/255;
+		v+=0.0000005f*(pos.x-W/2.0)/W;
+		//v=fmod(v,0.8f);
+		//v=clamp(v,0.0f,1.0f);
+		if(v>1.0f)
+			v=-5.0f;
+		output[i]=v;
+		
+		float4 col;
+		col.x=clamp(fabs(v),0.f,1.0f);
+		col.w=1;
+		write_imagef(output_tex,pos,col);
+		//output_tex[i]=output[i];
+	}
+}
+__kernel void init_grid(__global float* output)
 {
 	int i=get_global_id(0);
 	int max=W*H;//s.w*s.h;
@@ -52,24 +103,16 @@ __kernel void update_grid(__global float* input,__global float* output,__write_o
 		int2 pos;
 		pos.x=i%W;
 		pos.y=i/W;
-		float2 delta;
-		delta=convert_float2(pos-(int2)(W,H)/2)/W;
-		float distance=clamp(1-dot(delta,delta),0.0f,1.0f);
-		float v=sum_around(input,pos);
-		v=(ceil(v*255)+0.125)/255;
-		//v=fmod(v,1);
-		if(v>1)
-			v=0;
-		output[i]=v;
-		
-		float4 col;
-		col.r=v;
-		col.a=1;
-		write_imagef(output_tex,pos,col);
-		//output_tex[i]=output[i];
+
+		float2 delta=convert_float2(pos-(int2)(W,H)/2)/W;
+		float distance=clamp(dot(delta,delta),0.0f,1.0f);
+		if(distance>0.01)
+			output[i]=0.5;
+		else
+			output[i]=0;
+
 	}
 }
-
 ]==]
 local buffers={
 	opencl.make_buffer(w*h*4),
@@ -123,11 +166,16 @@ void main()
 	v=pow(v,2.2);
 	//color=vec4(v,v,v,1);
 	color.xyz=spectral_zucconi6(v);
-	color.a=1;
+	color.w=1;
 }
 ]]
 local time=0
 local size=ffi.new("size")
+function init_buffer(  )
+	init_grid:set(0,buffers[1])
+	init_grid:run(w*h)
+end
+init_buffer()
 function update(  )
 	__no_redraw()
 	__clear()

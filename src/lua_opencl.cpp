@@ -51,8 +51,24 @@ int del_buffer(lua_State* L)
     clReleaseMemObject(*k);
     return 0;
 }
-//template<typename T>
-//static void set_kernel_arg_inner(lua_State* L,cl_kernel k,uint32_t uloc, int arg_start, int num_args);
+
+void get_from_lua(lua_State* L, std::vector<float>& data, int arg_offset, int num_args)
+{
+    data.resize(num_args);
+    for (int i = 0; i < num_args; i++)
+    {
+        data[i] = luaL_checknumber(L, i + arg_offset);
+    }
+}
+void get_from_lua(lua_State* L, std::vector<int>& data, int arg_offset, int num_args)
+{
+    data.resize(num_args);
+    for (int i = 0; i < num_args; i++)
+    {
+        data[i] = luaL_checkint(L, i + arg_offset);
+    }
+}
+
 template<typename T>
 static int set_kernel_arg(lua_State* L)
 {
@@ -86,6 +102,7 @@ static int set_kernel_arg(lua_State* L)
 
         //TODO: switch by T to fill the array...
         //something like get_from_lua<T>(tmp_array,L,arg_offset,num_args);
+        get_from_lua(L, tmp_array, arg_offset, num_args);
         auto err = clSetKernelArg(*kernel, uloc, sizeof(T) * num_args, tmp_array.data());
         if (err)
         {
@@ -140,7 +157,7 @@ int lua_build_program(lua_State* L)
     {
         luaL_error(L, "Failed to create cl program from source:%d", err);
     }
-    err=clBuildProgram(program, 0, nullptr, nullptr, nullptr, nullptr);
+    err=clBuildProgram(program, 0, nullptr, "-w", nullptr, nullptr);
    
     size_t log_size;
     clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
@@ -181,6 +198,9 @@ int lua_build_program(lua_State* L)
             //TODO could be polymorphic from lua...
             lua_pushcfunction(L, set_kernel_arg<float>);
             lua_setfield(L, -2, "set");
+
+            lua_pushcfunction(L, set_kernel_arg<int>);
+            lua_setfield(L, -2, "seti");
 
             lua_pushcfunction(L, lua_run_kernel);
             lua_setfield(L, -2, "run");
