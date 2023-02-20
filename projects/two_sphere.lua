@@ -17,8 +17,9 @@ local cl_kernel,init_kernel=opencl.make_program[==[
 #define H 1024
 #define PARTICLE_COUNT 3
 #define TIME_STEP 0.001f
-#define GAMMA (0.5f)
-#define DIFFUSION 0.0f
+#define GAMMA (1.0f)
+#define GAMMA2 (2.5f)
+#define DIFFUSION 0.3f
 int2 clamp_pos(int2 p)
 {
 	if(p.x<0)
@@ -55,6 +56,65 @@ float3 del_potential( float3* qs,int i)
 	}
 	return gamma*ret;
 }
+#elif 0 //modified (non-singular) gravity
+float3 del_potential( float3* qs,int i)
+{
+	float3 ret=(float3)(0,0,0);
+	float3 qi=qs[i];
+	float gamma=GAMMA;
+
+	for(int j=0;j<PARTICLE_COUNT;j++)
+	{
+		if(j!=i)
+		{
+			float d=dot(qs[j],qi);
+			float dd=2-d*d;
+			float val=1/sqrt(dd*dd*dd);
+			ret+=qs[j]*val;
+		}
+	}
+	return gamma*ret;
+}
+#elif 0 //modified (non-singular) gravity + static potential
+float3 del_potential( float3* qs,int i)
+{
+	float3 ret=(float3)(0,0,0);
+	float3 qi=qs[i];
+	float gamma=GAMMA;
+	float3 static_potential[3]={
+		(float3)(1,0,0),
+		(float3)(0,1,0),
+		(float3)(0,0,1),
+	};
+	for(int j=0;j<PARTICLE_COUNT;j++)
+	{
+		if(j!=i)
+		{
+			float d=dot(qs[j],qi);
+			float dd=2-d*d;
+			float val=1/sqrt(dd*dd*dd);
+			ret+=qs[j]*val;
+		}
+		ret+=static_potential[i];
+	}
+	return gamma*ret;
+}
+#elif 1 //very simple parabola potential with min at vmin
+float3 del_potential( float3* qs,int i)
+{
+	float3 ret=(float3)(0,0,0);
+	float3 qi=qs[i];
+	float gamma=GAMMA;
+	float vmin=0.2f;
+	for(int j=0;j<PARTICLE_COUNT;j++)
+	{
+		if(j!=i)
+		{
+			ret+=2*(dot(qi,qs[j])-vmin)*qs[j];
+		}
+	}
+	return gamma*ret;
+}
 #elif 0
 float3 del_potential( float3* qs,int i)
 {
@@ -77,12 +137,13 @@ float3 del_potential( float3* qs,int i)
 	float3 ret=(float3)(0,0,0);
 	float3 qi=qs[i];
 	float gamma=GAMMA;
-	float values[3]={-2,1,2};
+	float values[3]={1,1,1};
 	for(int j=0;j<PARTICLE_COUNT;j++)
 	{
 		if(j!=i)
 		{
-			ret+=values[i]*cos(dot(qi,qs[j]))*qs[j];
+			float d=dot(qi,qs[j]);
+			ret+=values[i]*cos(d-GAMMA2*d*d)*(1.0f-2.0f*GAMMA2*d)*qs[j];
 		}
 	}
 	return gamma*ret;
@@ -92,18 +153,19 @@ void simulation_tick( float3* in_pos, float3* in_speed, float3* out_pos, float3*
 {
 	float step_size=TIME_STEP;
 
-	float inv_masses=1;//todo: different masses for more fun...
+	//float inv_masses=1;//todo: different masses for more fun...
+	float inv_masses[3]={10,5,1};
 	float3 vecs[PARTICLE_COUNT];
 	for(int i=0;i<PARTICLE_COUNT;i++)
 	{
-		float3 vec=in_speed[i]-step_size*0.5f*inv_masses*(cross(in_pos[i],del_potential(in_pos,i)));
+		float3 vec=in_speed[i]-step_size*0.5f*inv_masses[i]*(cross(in_pos[i],del_potential(in_pos,i)));
 		vecs[i]=vec;
 		out_pos[i]=cross((step_size*vec),in_pos[i])+sqrt(1-step_size*step_size*dot(vec,vec))*in_pos[i];
 	}
 	for(int i=0;i<PARTICLE_COUNT;i++)
 	{
 		float3 vec=vecs[i];
-		out_speed[i]=vec-step_size*inv_masses*0.5f*cross(out_pos[i],del_potential(out_pos,i));
+		out_speed[i]=vec-step_size*inv_masses[i]*0.5f*cross(out_pos[i],del_potential(out_pos,i));
 	}
 }
 void load_data(__global __read_only float4* input, float3* pos, float3* speed)
@@ -229,7 +291,7 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		int offset=i*6;//pos_to_index(pos);
 		load_data(input+offset,old_pos,old_speed);
 		#if 1
-		diffusion(input,old_speed,pos);
+		//diffusion(input,old_speed,pos);
 		for(int j=0;j<4;j++)
 		{
 			simulation_tick(old_pos,old_speed,new_pos,new_speed);
@@ -238,8 +300,8 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		}
 		//for(int k=0;k<3;k++)
 		//	normalize(new_pos[i]);
-		for(int k=0;k<3;k++)
-			new_speed[k]*=0.99995f;
+		//for(int k=0;k<3;k++)
+		//	new_speed[k]*=pow(0.05f,TIME_STEP);
 		bool is_ok=true;
 		for(int i=0;i<3;i++)
 		{
@@ -251,7 +313,7 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		
 		#endif
 		int di=layer_id;
-		#if 1
+		#if 0
 		col.x=(new_pos[di].x+1)*0.5;
 		col.y=(new_pos[di].x+1)*0.5;
 		col.z=(new_pos[di].x+1)*0.5;
@@ -260,6 +322,10 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		col.x=(new_pos[di].x+1)*0.5;
 		col.y=(new_pos[di].y+1)*0.5;
 		col.z=(new_pos[di].z+1)*0.5;
+		#endif
+		#if 0
+		float3 qdot=cross(new_speed[di],new_pos[di]);
+		col.xyz=qdot;
 		#endif
 		#if 0
 		col.x=(new_speed[di].x+1)*0.5;
@@ -276,7 +342,7 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		col.y=(new_pos[1].x+1)*0.5;
 		col.z=(new_pos[2].x+1)*0.5;
 		#endif
-		#if 0
+		#if 1
 		col.x=(dot(new_pos[0],new_pos[1])+1)*0.5;
 		col.y=(dot(new_pos[1],new_pos[2])+1)*0.5;
 		col.z=(dot(new_pos[2],new_pos[0])+1)*0.5;
@@ -327,14 +393,14 @@ void set_spherical(float phi, float theta,float speed,float4* out_pos,float4* ou
 	float x=sin(phi)*cos(theta);
 	float y=sin(phi)*sin(theta);
 	float z=cos(phi);
-	out_pos->x=x;
-	out_pos->y=y;
-	out_pos->z=z;
+	(*out_pos).x=x;
+	(*out_pos).y=y;
+	(*out_pos).z=z;
 
-	out_speed->x=copysign(z,x);
-	out_speed->y=copysign(z,y);
-	out_speed->z=-copysign(fabs(x)+fabs(y),z);
-	*out_speed*=speed/length(out_speed->xyz);
+	(*out_speed).x=copysign(z,x);
+	(*out_speed).y=copysign(z,y);
+	(*out_speed).z=-copysign(fabs(x)+fabs(y),z);
+	(*out_speed)*=speed/length((*out_speed).xyz);
 }
 __kernel void init_grid(__global float4* output,float min_x,float min_y,float max_x,float max_y)
 {
@@ -368,9 +434,9 @@ __kernel void init_grid(__global float4* output,float min_x,float min_y,float ma
 		float x_v=(min_x+pos_normed.x*(max_x-min_x))*M_PI_F*2;
 		float y_v=(min_y+pos_normed.y*(max_y-min_y))*M_PI_F;
 
-		set_spherical(x_v,0.11,4,old_pos,old_speed);
-		set_spherical(-2.45,y_v,-3.0f,old_pos+1,old_speed+1);
-		set_spherical(-1,-1,6.0f,old_pos+2,old_speed+2);
+		set_spherical(0.1,0,2.5*x_v,old_pos,old_speed);
+		set_spherical(-2.45,3,-2.5f*y_v,old_pos+1,old_speed+1);
+		set_spherical(-3,0,1.0f,old_pos+2,old_speed+2);
 
 		#endif
 		save_data(output+i*6,old_pos,old_speed);
@@ -450,13 +516,16 @@ void main()
 	//float v=texture(tex_main,normed).x;
 	//v=pow(v,2.2);
 	//color=vec4(v,v,v,1);
-	//color.xyz=texture(tex_main,normed).xyz;
+	#if 1
+	color.xyz=texture(tex_main,normed).xyz;
+	#else
 	color.xyz=spectral_zucconi6(texture(tex_main,normed).x);
+	#endif
 	color.a=1;
 }
 ]]
-rsize=rsize or 0.08
-start_pos=start_pos or {0.28,0.71}
+rsize=rsize or 1
+start_pos=start_pos or {0,0}
 local start_rect
 function recal_rect()
 	start_rect={start_pos[1],start_pos[2],start_pos[1]+rsize,start_pos[2]+rsize}
