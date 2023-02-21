@@ -1,6 +1,8 @@
 require "common"
 local ffi=require "ffi"
-
+--[[
+	implements ideas from: https://arxiv.org/abs/0707.0022
+]]
 local w=1024
 local h=1024
 
@@ -9,17 +11,29 @@ local no_floats_per_pixel=4*2*3 --4 for pos, 4 for speed, times 3
 config=make_config({
     {"pause",false,type="bool"},
     {"layer",0,type="int",min=0,max=2},
+    {"friction",0.01215,type="floatsci",min=0.005,max=0.02,power=10,watch=true},
     },config)
 
-local cl_kernel,init_kernel=opencl.make_program[==[
+function set_values(s,tbl)
+	return s:gsub("%$([^%$]+)%$",function ( n )
+		return tbl[n]
+	end)
+end
+
+local cl_kernel,init_kernel
+function remake_program()
+cl_kernel,init_kernel=opencl.make_program(set_values([==[
 #line __LINE__
 #define W 1024
 #define H 1024
 #define PARTICLE_COUNT 3
-#define TIME_STEP 0.001f
-#define GAMMA (1.0f)
+
+#define TIME_STEP 0.01f
+#define GAMMA (5.0f)
 #define GAMMA2 (2.5f)
 #define DIFFUSION 0.3f
+#define FRICTION $friction$f
+
 int2 clamp_pos(int2 p)
 {
 	if(p.x<0)
@@ -100,12 +114,12 @@ float3 del_potential( float3* qs,int i)
 	return gamma*ret;
 }
 #elif 1 //very simple parabola potential with min at vmin
-float3 del_potential( float3* qs,int i)
+float3 del_potential( float3* qs,int i,float2 npos)
 {
 	float3 ret=(float3)(0,0,0);
 	float3 qi=qs[i];
-	float gamma=GAMMA;
-	float vmin=0.2f;
+	float gamma=GAMMA*(npos.y-0.5)*2;
+	float vmin=npos.x;
 	for(int j=0;j<PARTICLE_COUNT;j++)
 	{
 		if(j!=i)
@@ -149,7 +163,7 @@ float3 del_potential( float3* qs,int i)
 	return gamma*ret;
 }
 #endif
-void simulation_tick( float3* in_pos, float3* in_speed, float3* out_pos, float3* out_speed)
+void simulation_tick(float2 npos, float3* in_pos, float3* in_speed, float3* out_pos, float3* out_speed)
 {
 	float step_size=TIME_STEP;
 
@@ -158,14 +172,14 @@ void simulation_tick( float3* in_pos, float3* in_speed, float3* out_pos, float3*
 	float3 vecs[PARTICLE_COUNT];
 	for(int i=0;i<PARTICLE_COUNT;i++)
 	{
-		float3 vec=in_speed[i]-step_size*0.5f*inv_masses[i]*(cross(in_pos[i],del_potential(in_pos,i)));
+		float3 vec=in_speed[i]-step_size*0.5f*inv_masses[i]*(cross(in_pos[i],del_potential(in_pos,i,npos)));
 		vecs[i]=vec;
 		out_pos[i]=cross((step_size*vec),in_pos[i])+sqrt(1-step_size*step_size*dot(vec,vec))*in_pos[i];
 	}
 	for(int i=0;i<PARTICLE_COUNT;i++)
 	{
 		float3 vec=vecs[i];
-		out_speed[i]=vec-step_size*inv_masses[i]*0.5f*cross(out_pos[i],del_potential(out_pos,i));
+		out_speed[i]=vec-step_size*inv_masses[i]*0.5f*cross(out_pos[i],del_potential(out_pos,i,npos));
 	}
 }
 void load_data(__global __read_only float4* input, float3* pos, float3* speed)
@@ -272,7 +286,8 @@ void diffusion(__global float4* input, float3* speed,int2 pos)
 	speed[1]*=nl.y;
 	speed[2]*=nl.z;
 }
-__kernel void update_grid(__global __read_only float4* input,__global __write_only float4* output,__write_only image2d_t output_tex,int layer_id)
+__kernel void update_grid(__global __read_only float4* input,__global __write_only float4* output,__write_only image2d_t output_tex,int layer_id,
+	float min_x,float min_y,float max_x,float max_y)
 {
 	float3 old_pos[PARTICLE_COUNT];
 	float3 old_speed[PARTICLE_COUNT];
@@ -286,6 +301,13 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		int2 pos;
 		pos.x=i%W;
 		pos.y=i/W;
+		float2 npos;
+		npos.x=(float)pos.x/(float)W;
+		npos.y=(float)pos.y/(float)H;
+
+		npos.x=npos.x*(max_x-min_x)+min_x;
+		npos.y=npos.y*(max_y-min_y)+min_y;
+
 		float4 col;
 
 		int offset=i*6;//pos_to_index(pos);
@@ -294,14 +316,14 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		//diffusion(input,old_speed,pos);
 		for(int j=0;j<4;j++)
 		{
-			simulation_tick(old_pos,old_speed,new_pos,new_speed);
-			simulation_tick(new_pos,new_speed,old_pos,old_speed);
-			simulation_tick(old_pos,old_speed,new_pos,new_speed);
+			simulation_tick(npos,old_pos,old_speed,new_pos,new_speed);
+			simulation_tick(npos,new_pos,new_speed,old_pos,old_speed);
+			simulation_tick(npos,old_pos,old_speed,new_pos,new_speed);
 		}
 		//for(int k=0;k<3;k++)
 		//	normalize(new_pos[i]);
-		//for(int k=0;k<3;k++)
-		//	new_speed[k]*=pow(0.05f,TIME_STEP);
+		for(int k=0;k<3;k++)
+			new_speed[k]*=pow(FRICTION,TIME_STEP);
 		bool is_ok=true;
 		for(int i=0;i<3;i++)
 		{
@@ -313,7 +335,7 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		
 		#endif
 		int di=layer_id;
-		#if 0
+		#if 1
 		col.x=(new_pos[di].x+1)*0.5;
 		col.y=(new_pos[di].x+1)*0.5;
 		col.z=(new_pos[di].x+1)*0.5;
@@ -342,10 +364,14 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		col.y=(new_pos[1].x+1)*0.5;
 		col.z=(new_pos[2].x+1)*0.5;
 		#endif
-		#if 1
+		#if 0
 		col.x=(dot(new_pos[0],new_pos[1])+1)*0.5;
 		col.y=(dot(new_pos[1],new_pos[2])+1)*0.5;
 		col.z=(dot(new_pos[2],new_pos[0])+1)*0.5;
+		#endif
+		#if 0
+		float val=(dot(new_pos[di],new_pos[(di+1)%3])+1)*0.5;
+		col.xyz=(float3)(val);
 		#endif
 		#if 0
 		col.x=(new_pos[0].x+1)*0.5;
@@ -434,9 +460,9 @@ __kernel void init_grid(__global float4* output,float min_x,float min_y,float ma
 		float x_v=(min_x+pos_normed.x*(max_x-min_x))*M_PI_F*2;
 		float y_v=(min_y+pos_normed.y*(max_y-min_y))*M_PI_F;
 
-		set_spherical(0.1,0,2.5*x_v,old_pos,old_speed);
-		set_spherical(-2.45,3,-2.5f*y_v,old_pos+1,old_speed+1);
-		set_spherical(-3,0,1.0f,old_pos+2,old_speed+2);
+		set_spherical(0.1,0,5,old_pos,old_speed);
+		set_spherical(-2.45,3,-5,old_pos+1,old_speed+1);
+		set_spherical(-3,0,3.0f,old_pos+2,old_speed+2);
 
 		#endif
 		save_data(output+i*6,old_pos,old_speed);
@@ -468,7 +494,11 @@ __kernel void init_grid(__global float4* output,float min_x,float min_y,float ma
 
 	}
 }
-]==]
+]==],config))
+
+end
+remake_program()
+
 buffers={
 	opencl.make_buffer(w*h*4*no_floats_per_pixel),
 	opencl.make_buffer(w*h*4*no_floats_per_pixel)
@@ -516,7 +546,7 @@ void main()
 	//float v=texture(tex_main,normed).x;
 	//v=pow(v,2.2);
 	//color=vec4(v,v,v,1);
-	#if 1
+	#if 0
 	color.xyz=texture(tex_main,normed).xyz;
 	#else
 	color.xyz=spectral_zucconi6(texture(tex_main,normed).x);
@@ -591,6 +621,11 @@ function update(  )
 	__clear()
 	imgui.Begin("TwoSphere doc")
 	draw_config(config)
+
+	if config.__change_events.any then
+		remake_program()
+		init_buffers()
+	end
 	--cl tick
 	--setup stuff
 	if not config.pause then
@@ -598,6 +633,9 @@ function update(  )
 		cl_kernel:set(1,buffers[2])
 		cl_kernel:set(2,display_buffer)
 		cl_kernel:seti(3,config.layer)
+		for i=1,#start_rect do
+			cl_kernel:set(i+3,start_rect[i])
+		end
 		--cl_kernel:set(3,time)
 		--  run kernel
 		display_buffer:aquire()
