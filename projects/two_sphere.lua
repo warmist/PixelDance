@@ -28,12 +28,15 @@ cl_kernel,init_kernel=opencl.make_program(set_values([==[
 #define H 1024
 #define PARTICLE_COUNT 3
 
-#define TIME_STEP 0.01f
-#define GAMMA (5.0f)
+#define TIME_STEP 0.005f
+#define GAMMA (2.5f)
 #define GAMMA2 (2.5f)
 #define DIFFUSION 0.3f
-#define FRICTION $friction$f
-
+//#define FRICTION $friction$f
+typedef struct _settings
+{
+	float friction;
+}settings;
 int2 clamp_pos(int2 p)
 {
 	if(p.x<0)
@@ -286,8 +289,9 @@ void diffusion(__global float4* input, float3* speed,int2 pos)
 	speed[1]*=nl.y;
 	speed[2]*=nl.z;
 }
-__kernel void update_grid(__global __read_only float4* input,__global __write_only float4* output,__write_only image2d_t output_tex,int layer_id,
-	float min_x,float min_y,float max_x,float max_y)
+__kernel void update_grid(__global __read_only float4* input,__global __write_only float4* output,
+	__write_only image2d_t output_tex,int layer_id,float min_x,float min_y,float max_x,float max_y,
+	float friction)
 {
 	float3 old_pos[PARTICLE_COUNT];
 	float3 old_speed[PARTICLE_COUNT];
@@ -323,7 +327,7 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		//for(int k=0;k<3;k++)
 		//	normalize(new_pos[i]);
 		for(int k=0;k<3;k++)
-			new_speed[k]*=pow(FRICTION,TIME_STEP);
+			new_speed[k]*=pow(friction,TIME_STEP);
 		bool is_ok=true;
 		for(int i=0;i<3;i++)
 		{
@@ -569,7 +573,7 @@ function init_buffers(  )
 	init_kernel:run(w*h)
 end
 init_buffers()
-function save_img(  )
+function save_img( path )
 	local size=STATE.size
     local img_buf_save=make_image_buffer(size[1],size[2])
     local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
@@ -579,7 +583,7 @@ function save_img(  )
         end
     end
     img_buf_save:read_frame()
-    img_buf_save:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
+    img_buf_save:save(path or string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
 function is_mouse_down(  )
 	return __mouse.clicked1 and not __mouse.owned1, __mouse.x,__mouse.y
@@ -616,14 +620,32 @@ function check_click(  )
 		--]]
 	end
 end
+function simulate_friction(  )
+    local friction_start=0.005
+    local friction_end=0.015
+    local friction_step=(friction_end-friction_start)/(60*10)
+    local image_no=1
+	for f=friction_start,friction_end,friction_step do
+        config.friction=f
+        init_buffers()
+        local no_sim_ticks=500
+        for j=1,no_sim_ticks do
+            coroutine.yield()
+        end
+        save_img(string.format("video/saved (%d).png",image_no))
+        image_no=image_no+1
+    end
+    sim_thread=nil
+end
 function update(  )
+	local sim_done=false
 	__no_redraw()
 	__clear()
 	imgui.Begin("TwoSphere doc")
 	draw_config(config)
 
 	if config.__change_events.any then
-		remake_program()
+		--remake_program()
 		init_buffers()
 	end
 	--cl tick
@@ -636,11 +658,13 @@ function update(  )
 		for i=1,#start_rect do
 			cl_kernel:set(i+3,start_rect[i])
 		end
+		cl_kernel:set(8,config.friction)
 		--cl_kernel:set(3,time)
 		--  run kernel
 		display_buffer:aquire()
 		cl_kernel:run(w*h)
 		display_buffer:release()
+		sim_done=true
 	end
 	--opengl draw
 	--  read from cl
@@ -670,6 +694,23 @@ function update(  )
 		recal_rect()
 		init_buffers()
 	end
+	if not sim_thread then
+        if imgui.Button("Simulate") then
+           sim_thread=coroutine.create(simulate_friction)
+        end
+    else
+        if imgui.Button("Stop Simulate") then
+            sim_thread=nil
+        end
+    end
+ 	if sim_thread and sim_done then
+        --print("!",coroutine.status(sim_thread))
+        local ok,err=coroutine.resume(sim_thread)
+        if not ok then
+            print("Error:",err)
+            sim_thread=nil
+        end
+    end
 	check_click()
 	imgui.End()
 end
