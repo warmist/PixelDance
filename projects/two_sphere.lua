@@ -2,6 +2,9 @@ require "common"
 local ffi=require "ffi"
 --[[
 	implements ideas from: https://arxiv.org/abs/0707.0022
+	todo:
+		* set potential energy from nearby cells (e.g. min in same place as they are or inverted etc...)
+		* compress data (2 for pos, 2 for speed -> one float4 vs 2!)
 ]]
 local w=1024
 local h=1024
@@ -11,7 +14,7 @@ local no_floats_per_pixel=4*2*3 --4 for pos, 4 for speed, times 3
 config=make_config({
     {"pause",false,type="bool"},
     {"layer",0,type="int",min=0,max=2},
-    {"friction",0.01215,type="floatsci",min=0.005,max=0.02,power=10,watch=true},
+    {"friction",0.01215,type="floatsci",min=0.005,max=0.1,power=10,watch=true},
     },config)
 
 function set_values(s,tbl)
@@ -171,7 +174,7 @@ void simulation_tick(float2 npos, float3* in_pos, float3* in_speed, float3* out_
 	float step_size=TIME_STEP;
 
 	//float inv_masses=1;//todo: different masses for more fun...
-	float inv_masses[3]={10,5,1};
+	float inv_masses[3]={1,1,1};
 	float3 vecs[PARTICLE_COUNT];
 	for(int i=0;i<PARTICLE_COUNT;i++)
 	{
@@ -339,12 +342,12 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		
 		#endif
 		int di=layer_id;
-		#if 1
+		#if 0
 		col.x=(new_pos[di].x+1)*0.5;
 		col.y=(new_pos[di].x+1)*0.5;
 		col.z=(new_pos[di].x+1)*0.5;
 		#endif
-		#if 0
+		#if 1
 		col.x=(new_pos[di].x+1)*0.5;
 		col.y=(new_pos[di].y+1)*0.5;
 		col.z=(new_pos[di].z+1)*0.5;
@@ -456,7 +459,7 @@ __kernel void init_grid(__global float4* output,float min_x,float min_y,float ma
 		old_pos[0]=(float4)(pos_normed.x,pos_normed.y,0.1f,0);
 		old_speed[0]=(float4)(1-pos_normed.x,pos_normed.y,0.8f,0);
 		old_pos[1]=(float4)(pos_normed.x,pos_normed.y,0.3f,0);
-		old_speed[1]=(float4)(pos_normed.x,pos_normed.y,0.4f,0);		
+		old_speed[1]=(float4)(pos_normed.x,pos_normed.y,0.4f,0);
 		old_pos[2]=(float4)(pos_normed.x,pos_normed.y,0.5f,0);
 		old_speed[2]=(float4)(pos_normed.x,pos_normed.y,0.6f,0);
 		#endif
@@ -464,9 +467,9 @@ __kernel void init_grid(__global float4* output,float min_x,float min_y,float ma
 		float x_v=(min_x+pos_normed.x*(max_x-min_x))*M_PI_F*2;
 		float y_v=(min_y+pos_normed.y*(max_y-min_y))*M_PI_F;
 
-		set_spherical(0.1,0,5,old_pos,old_speed);
-		set_spherical(-2.45,3,-5,old_pos+1,old_speed+1);
-		set_spherical(-3,0,3.0f,old_pos+2,old_speed+2);
+		set_spherical(0.1,0,2,old_pos,old_speed);
+		set_spherical(-2.45,3,-2,old_pos+1,old_speed+1);
+		set_spherical(-3,0,1.5f,old_pos+2,old_speed+2);
 
 		#endif
 		save_data(output+i*6,old_pos,old_speed);
@@ -550,7 +553,7 @@ void main()
 	//float v=texture(tex_main,normed).x;
 	//v=pow(v,2.2);
 	//color=vec4(v,v,v,1);
-	#if 0
+	#if 1
 	color.xyz=texture(tex_main,normed).xyz;
 	#else
 	color.xyz=spectral_zucconi6(texture(tex_main,normed).x);
