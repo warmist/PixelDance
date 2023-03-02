@@ -6,14 +6,14 @@ local ffi=require "ffi"
 		* set potential energy from nearby cells (e.g. min in same place as they are or inverted etc...)
 		* compress data (2 for pos, 2 for speed -> one float4 vs 2!)
 ]]
-local w=1024
-local h=1024
-
-local no_floats_per_pixel=4*2*3 --4 for pos, 4 for speed, times 3 
+w=1024
+h=1024
+no_particles=4
+local no_floats_per_pixel=4*2*no_particles --4 for pos, 4 for speed, times "particles" 
 
 config=make_config({
     {"pause",false,type="bool"},
-    {"layer",0,type="int",min=0,max=2},
+    {"layer",0,type="int",min=0,max=no_particles-1},
     {"friction",0.01215,type="floatsci",min=0.005,max=0.1,power=10,watch=true},
     },config)
 
@@ -27,12 +27,12 @@ local cl_kernel,init_kernel
 function remake_program()
 cl_kernel,init_kernel=opencl.make_program(set_values([==[
 #line __LINE__
-#define W 1024
-#define H 1024
-#define PARTICLE_COUNT 3
+#define W $w$
+#define H $h$
+#define PARTICLE_COUNT $no_particles$
 
-#define TIME_STEP 0.005f
-#define GAMMA (2.5f)
+#define TIME_STEP 0.05f
+#define GAMMA (5.0f)
 #define GAMMA2 (2.5f)
 #define DIFFUSION 0.3f
 //#define FRICTION $friction$f
@@ -101,7 +101,7 @@ float3 del_potential( float3* qs,int i)
 	float3 ret=(float3)(0,0,0);
 	float3 qi=qs[i];
 	float gamma=GAMMA;
-	float3 static_potential[3]={
+	float3 static_potential[PARTICLE_COUNT]={
 		(float3)(1,0,0),
 		(float3)(0,1,0),
 		(float3)(0,0,1),
@@ -119,7 +119,7 @@ float3 del_potential( float3* qs,int i)
 	}
 	return gamma*ret;
 }
-#elif 1 //very simple parabola potential with min at vmin
+#elif 0 //very simple parabola potential with min at vmin
 float3 del_potential( float3* qs,int i,float2 npos)
 {
 	float3 ret=(float3)(0,0,0);
@@ -131,6 +131,28 @@ float3 del_potential( float3* qs,int i,float2 npos)
 		if(j!=i)
 		{
 			ret+=2*(dot(qi,qs[j])-vmin)*qs[j];
+		}
+	}
+	return gamma*ret;
+}
+#elif 1 
+float3 del_potential( float3* qs,int i,float2 npos,float dot_around)
+{
+	float3 ret=(float3)(0,0,0);
+	float3 qi=qs[i];
+	float gamma=GAMMA;
+	float vmin=dot_around*0.125f+0.25f;
+	float vmin2=dot_around*0.0125f+.4f;
+	for(int j=0;j<PARTICLE_COUNT;j++)
+	{
+		if(j!=i)
+		{
+			float dval1=(dot(qi,qs[j])-vmin);
+			float dval2=(dot(qi,qs[j])-vmin2);
+			float dval3=(dot(qi,qs[j])-0.111);
+			dval2*=dval2;
+			dval3*=dval3*dval3;
+			ret+=(2*dval1+3*dval2+4*dval3)*qs[j];
 		}
 	}
 	return gamma*ret;
@@ -157,7 +179,7 @@ float3 del_potential( float3* qs,int i)
 	float3 ret=(float3)(0,0,0);
 	float3 qi=qs[i];
 	float gamma=GAMMA;
-	float values[3]={1,1,1};
+	float values[PARTICLE_COUNT]={1,1,1};
 	for(int j=0;j<PARTICLE_COUNT;j++)
 	{
 		if(j!=i)
@@ -169,23 +191,24 @@ float3 del_potential( float3* qs,int i)
 	return gamma*ret;
 }
 #endif
-void simulation_tick(float2 npos, float3* in_pos, float3* in_speed, float3* out_pos, float3* out_speed)
+void simulation_tick(float2 npos, float3* in_pos, float3* in_speed, 
+	float3* out_pos, float3* out_speed,float dot_around)
 {
 	float step_size=TIME_STEP;
 
 	//float inv_masses=1;//todo: different masses for more fun...
-	float inv_masses[3]={1,1,1};
+	float inv_masses[PARTICLE_COUNT]={1,1,1,1};
 	float3 vecs[PARTICLE_COUNT];
 	for(int i=0;i<PARTICLE_COUNT;i++)
 	{
-		float3 vec=in_speed[i]-step_size*0.5f*inv_masses[i]*(cross(in_pos[i],del_potential(in_pos,i,npos)));
+		float3 vec=in_speed[i]-step_size*0.5f*inv_masses[i]*(cross(in_pos[i],del_potential(in_pos,i,npos,dot_around)));
 		vecs[i]=vec;
 		out_pos[i]=cross((step_size*vec),in_pos[i])+sqrt(1-step_size*step_size*dot(vec,vec))*in_pos[i];
 	}
 	for(int i=0;i<PARTICLE_COUNT;i++)
 	{
 		float3 vec=vecs[i];
-		out_speed[i]=vec-step_size*inv_masses[i]*0.5f*cross(out_pos[i],del_potential(out_pos,i,npos));
+		out_speed[i]=vec-step_size*inv_masses[i]*0.5f*cross(out_pos[i],del_potential(out_pos,i,npos,dot_around));
 	}
 }
 void load_data(__global __read_only float4* input, float3* pos, float3* speed)
@@ -193,7 +216,7 @@ void load_data(__global __read_only float4* input, float3* pos, float3* speed)
 	for(int i=0;i<PARTICLE_COUNT;i++)
 	{
 		pos[i]=input[i].xyz;
-		speed[i]=input[i+3].xyz;
+		speed[i]=input[i+PARTICLE_COUNT].xyz;
 		//pos[i]=vload3(i*2,input);
 		//speed[i]=vload3(i*2+1,input);
 	}
@@ -203,11 +226,12 @@ void save_data(__global __write_only float4* output, float3* pos, float3* speed)
 	for(int i=0;i<PARTICLE_COUNT;i++)
 	{
 		output[i].xyz=pos[i];
-		output[i+3].xyz=speed[i];
+		output[i+PARTICLE_COUNT].xyz=speed[i];
 		//vstore3(pos[i],i*2,output);
 		//vstore3(speed[i],i*2+1,output);
 	}
 }
+/*
 float system_energy( float4* pos, float4* speed)
 {
 	float sum=0;
@@ -235,9 +259,39 @@ float system_energy( float4* pos, float4* speed)
 	sum=kin_sum+pot_sum;
 	return sum;
 }
+*/
 float load_speed_v(__global float4* input,int offset,int i)
 {
-	return length(input[offset+i+3]);
+	return length(input[offset+i+PARTICLE_COUNT]);
+}
+float3 load_pos(__global float4* input,int offset,int i)
+{
+	return input[offset+i].xyz;
+}
+float load_pos_dot(__global float4* input,int2 pos)
+{
+	int offset=pos_to_index(pos);
+	float ret=9999;
+	float3 plast=load_pos(input,offset,0);
+	for(int i=1;i<PARTICLE_COUNT;i++)
+	{
+		float3 pnew=load_pos(input,offset,i);
+		ret=min(fabs(dot(plast,pnew)),ret);
+		plast=pnew;
+	}
+	return ret;
+}
+float load_pos_dot2(__global float4* input,float4* my_pos,int2 pos)
+{
+	int offset=pos_to_index(pos);
+	float ret=0;
+	for(int i=0;i<PARTICLE_COUNT;i++)
+	{
+
+		float3 pnew=load_pos(input,offset,i);
+		ret=max(fabs(dot(my_pos[i].xyz,pnew)),ret);
+	}
+	return ret;
 }
 float3 load_speed_v3(__global float4* input,int2 pos)
 {
@@ -280,6 +334,24 @@ float3 avg_around(__global float4* input,int2 pos)
 
 	return ret;
 }
+float sample_around_dot(__global float4* input,int2 pos)
+{
+	float ret=0;
+	ret+=load_pos_dot(input,pos+(int2)( 0,-1))*0.25f;
+	ret+=load_pos_dot(input,pos+(int2)( 0,1))*0.25f;
+	ret+=load_pos_dot(input,pos+(int2)( -1,0))*0.25f;
+	ret+=load_pos_dot(input,pos+(int2)( 1,0))*0.25f;
+	return ret;
+}
+float sample_around_dot2(__global float4* input,int2 pos,float4* my_pos)
+{
+	float ret=0;
+	ret+=load_pos_dot2(input,my_pos,pos+(int2)( 0,-1))*0.25f;
+	ret+=load_pos_dot2(input,my_pos,pos+(int2)( 0,1))*0.25f;
+	ret+=load_pos_dot2(input,my_pos,pos+(int2)( -1,0))*0.25f;
+	ret+=load_pos_dot2(input,my_pos,pos+(int2)( 1,0))*0.25f;
+	return ret;
+}
 void diffusion(__global float4* input, float3* speed,int2 pos)
 {
 	float diffusion=DIFFUSION;
@@ -317,30 +389,39 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 
 		float4 col;
 
-		int offset=i*6;//pos_to_index(pos);
+		int offset=i*PARTICLE_COUNT*2;//pos_to_index(pos);
 		load_data(input+offset,old_pos,old_speed);
 		#if 1
+		//float dot_around=sample_around_dot(input,pos);
+		float dot_around=sample_around_dot2(input,pos,old_pos);
 		//diffusion(input,old_speed,pos);
-		for(int j=0;j<4;j++)
+		for(int j=0;j<1;j++)
 		{
-			simulation_tick(npos,old_pos,old_speed,new_pos,new_speed);
-			simulation_tick(npos,new_pos,new_speed,old_pos,old_speed);
-			simulation_tick(npos,old_pos,old_speed,new_pos,new_speed);
+			simulation_tick(npos,old_pos,old_speed,new_pos,new_speed,dot_around);
+			simulation_tick(npos,new_pos,new_speed,old_pos,old_speed,dot_around);
+			simulation_tick(npos,old_pos,old_speed,new_pos,new_speed,dot_around);
 		}
-		//for(int k=0;k<3;k++)
+		//for(int k=0;k<PARTICLE_COUNT;k++)
 		//	normalize(new_pos[i]);
-		for(int k=0;k<3;k++)
+		for(int k=0;k<PARTICLE_COUNT;k++)
 			new_speed[k]*=pow(friction,TIME_STEP);
 		bool is_ok=true;
-		for(int i=0;i<3;i++)
+		for(int i=0;i<PARTICLE_COUNT;i++)
 		{
 			if(!isnormal(new_pos[i]).x ||! isnormal(new_pos[i]).y || !isnormal(new_pos[i]).z)
 				is_ok=false;
 		}
 		if(is_ok)
 			save_data(output+offset,new_pos,new_speed);
-		
+		#else
+			for(int i=0;i<PARTICLE_COUNT;i++)
+			{
+				new_pos[i]=old_pos[i];
+				new_speed[i]=old_speed[i];
+			}
+			save_data(output+offset,new_pos,new_speed);
 		#endif
+
 		int di=layer_id;
 		#if 0
 		col.x=(new_pos[di].x+1)*0.5;
@@ -455,53 +536,23 @@ __kernel void init_grid(__global float4* output,float min_x,float min_y,float ma
 
 		int offset=pos_to_index(pos);
 		float v=distance*0.5;
-		#if 0
-		old_pos[0]=(float4)(pos_normed.x,pos_normed.y,0.1f,0);
-		old_speed[0]=(float4)(1-pos_normed.x,pos_normed.y,0.8f,0);
-		old_pos[1]=(float4)(pos_normed.x,pos_normed.y,0.3f,0);
-		old_speed[1]=(float4)(pos_normed.x,pos_normed.y,0.4f,0);
-		old_pos[2]=(float4)(pos_normed.x,pos_normed.y,0.5f,0);
-		old_speed[2]=(float4)(pos_normed.x,pos_normed.y,0.6f,0);
-		#endif
 		#if 1
 		float x_v=(min_x+pos_normed.x*(max_x-min_x))*M_PI_F*2;
 		float y_v=(min_y+pos_normed.y*(max_y-min_y))*M_PI_F;
-
-		set_spherical(0.1,0,2,old_pos,old_speed);
-		set_spherical(-2.45,3,-2,old_pos+1,old_speed+1);
-		set_spherical(-3,0,1.5f,old_pos+2,old_speed+2);
-
+		float sp1=8.0f;//*(1+pos_normed.x*pos_normed.y*0.05);
+		if(distance<0.1)
+			sp1=2.0f;
+		for(int j=0;j<PARTICLE_COUNT;j++)
+			set_spherical(j*1754+77.154*sp1,244*j*j+77.0,(fmod(7417.0*j,2)-1)*sp1,old_pos+j,old_speed+j);
+		//set_spherical(-2.45,3,-sp1,old_pos+1,old_speed+1);
+		//set_spherical(-3,0,1.5f,old_pos+2,old_speed+2);
+		//set_spherical(0,4.0f,2.5f,old_pos+3,old_speed+3);
 		#endif
-		save_data(output+i*6,old_pos,old_speed);
-		#if 0
-		output[offset+0]=1;
-		output[offset+1]=0;
-		output[offset+2]=0;
-
-		output[offset+3]=0;
-		output[offset+4]=0.05f+delta.x*0.5f;
-		output[offset+5]=0;
-		//-------------------
-		output[offset+6]=0;
-		output[offset+7]=-1;
-		output[offset+8]=0;
-
-		output[offset+9]=0.5f;
-		output[offset+10]=0;
-		output[offset+11]=0;
-		//-------------------
-		output[offset+12]=0;
-		output[offset+13]=0;
-		output[offset+14]=1;
-
-		output[offset+15]=0;
-		output[offset+16]=0.0+v*2.0f;
-		output[offset+17]=0;
-		#endif
+		save_data(output+i*PARTICLE_COUNT*2,old_pos,old_speed);
 
 	}
 }
-]==],config))
+]==],_G))
 
 end
 remake_program()
