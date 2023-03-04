@@ -33,9 +33,9 @@ static cl_mem* test_mem_any(lua_State* L, int id) {
     return nullptr;
 }
 static void* check_luajit_pointer(lua_State* L, int id) { //not actually a check as it does not error out!
-    if((lua_type(L, 3) == 10) /*cdata*/ || (lua_type(L, 3) == LUA_TLIGHTUSERDATA))
+    if((lua_type(L, id) == 10) /*cdata*/ || (lua_type(L, id) == LUA_TLIGHTUSERDATA))
     {
-        return (void*)lua_topointer(L, 3); //TODO: check pointer?
+        return (void*)lua_topointer(L, id); //TODO: check pointer?
     }
     return nullptr;
 }
@@ -77,7 +77,7 @@ static int set_kernel_arg(lua_State* L)
 
     if (auto data = check_luajit_pointer(L, 3))
     {
-        auto err=clSetKernelArg(*kernel, uloc, sizeof(void*), data);
+        auto err=clSetKernelArg(*kernel, uloc, luaL_checkint(L,4), data);
         if (err)
         {
             luaL_error(L, "Failed to set kernel arg :%d", err);
