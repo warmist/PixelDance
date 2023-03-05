@@ -9,7 +9,7 @@ local ffi=require "ffi"
 w=1024
 h=1024
 
-local no_floats_per_pixel=4 --vapor, liquid, solid, (4 aligned for easier modification)
+local no_floats_per_pixel=4 --is_boundary,solid, liquid,vapor
 
 settings_type=[[
 typedef struct _settings
@@ -48,9 +48,9 @@ function set_values(s,tbl)
 	end)
 end
 
-local cl_kernel,init_kernel
+local kern_first,kern_second,init_kernel
 function remake_program()
-cl_kernel,init_kernel=opencl.make_program(set_values(
+kern_first,kern_second,init_kernel=opencl.make_program(set_values(
 [==[
 #line __LINE__
 #define W $w$
@@ -61,18 +61,127 @@ cl_kernel,init_kernel=opencl.make_program(set_values(
 
 $settings_type$
 
-__kernel void update_grid(__global __read_only float4* input,__global __write_only float4* output,
-	__write_only image2d_t output_tex,settings cfg)
+int2 clamp_pos(int2 p)
 {
-
+#if 0
+	if(p.x<0)
+		p.x=W-1;
+	if(p.y<0)
+		p.y=H-1;
+	if(p.x>=W)
+		p.x=0;
+	if(p.y>=H)
+		p.y=0;
+	return p;
+#else
+	return clamp(p,0,W-1);
+#endif
 }
-__kernel void init_grid(__global __write_only float4* output,settings cfg)
+int pos_to_index(int2 p)
+{
+	int2 p2=clamp_pos(p);
+	return (p2.x+p2.y*W)*(FLOATS_PER_PIXEL/4);
+}
+//needs to calculate:
+// * diffusion for diffusion
+// * nearby_diffusion_mass for attachment
+// * boundary, for bunch of stuff
+float calc_around(__global __read_only float4* input,float4 self,int2 pos,float* neighbours,float* nearby_diffusion_mass)
+{
+	float4 weights=(float4)(1,0,0,1.0/7.0);
+	float4 result=(float4)(0,0,0,0);
+#define SAMPLE(dx,dy) pos_to_index(pos+(int2)(dx,dy))
+	result+=self*(float4)(-7,0,0,1.0/7.0);;
+	result+=input[SAMPLE(1,0)]*weights;
+	result+=input[SAMPLE(0,1)]*weights;
+	result+=input[SAMPLE(-1,0)]*weights;
+	result+=input[SAMPLE(0,-1)]*weights;
+	result+=input[SAMPLE(-1,1)]*weights;
+	result+=input[SAMPLE(1,-1)]*weights;
+	*neighbours=clamp(result.x,0,7);
+	*nearby_diffusion_mass=result.w;
+#undef SAMPLE
+	return result.w*(1-self.x)+neighbours*self.w/7.0;
+}
+float calc_boundary_and_stuff(__global __read_only float4* input,int2 pos)
+{
+	float ret=0;
+#define SAMPLE(dx,dy) pos_to_index(pos+(int2)(dx,dy))
+	ret+=input[SAMPLE(0,0)].x*(-7);
+	ret+=input[SAMPLE(1,0)].x;
+	ret+=input[SAMPLE(0,1)].x;
+	ret+=input[SAMPLE(-1,0)].x;
+	ret+=input[SAMPLE(0,-1)].x;
+	ret+=input[SAMPLE(-1,1)].x;
+	ret+=input[SAMPLE(1,-1)].x;
+#undef SAMPLE
+	return ret;
+}
+void freezing(float* self,float boundary,float kappa)
+{
+	*self+=(*self)*(float4)(0,1-kappa,kappa,-1)*boundary;
+}
+__kernel void update_grid1(__global __read_only float4* input,__global __write_only float4* output,
+	settings cfg)
 {
 	int i=get_global_id(0);
 	int max=W*H;
 	if(i>=0 && i<max)
 	{
-		output[i].x=cfg.vapor_density;
+		int2 pos;
+		pos.x=i%W;
+		pos.y=i/W;
+		float4 self=input[pos_to_index(pos)];
+
+		float neighbours=0;
+		float nearby_diffusion_mass=0;
+		float boundary=0;
+		float diff=calc_around(input,self,pos,&neighbours,&nearby_diffusion_mass);
+		boundary=clamp(neighbours,0,1);
+		//diffusion
+		self.d=diff;
+		//freezing
+		freezing(&self,boundary,cfg.freezing);
+		//attachment
+		attachment(self,neighbours,boundary,cfg.beta_attachment,cfg.alpha_attachment,cfg.theta_attachment);
+		//now other kernel...
+		output[pos_to_index(pos)]=self;
+	}
+}
+__kernel void update_grid2(__global __read_only float4* input,__global __write_only float4* output,
+	__write_only image2d_t output_tex,settings cfg)
+{
+	int i=get_global_id(0);
+	int max=W*H;
+	if(i>=0 && i<max)
+	{
+		int2 pos;
+		pos.x=i%W;
+		pos.y=i/W;
+		float4 self=input[pos_to_index(pos)];
+
+		//... from other kernel
+		//update neighbours and boundary
+		float neighbours=calc_boundary_and_stuff(input,pos);
+		neighbours=clamp(neighbours,0,7);
+		boundary=clamp(neighbours,0,1);
+		//melting
+		
+		//display
+	}
+}
+__kernel void init_grid(__global __write_only float4* output,settings cfg)
+{
+	int i=get_global_id(0);
+	int max=W*H;
+	int i_center=(W/2)+(H/2)*W;
+	if(i>=0 && i<max)
+	{
+		output[i]=(float4)(0,0,0,cfg.vapor_density);
+		if(i==i_center)
+		{
+			output[i]=(float4)(1,1,0,0);
+		}
 	}
 }
 ]==],_G))
@@ -102,11 +211,14 @@ function update_settings()
 	for i,v in ipairs(names) do
 		cfg_struct[v]=config[v]
 	end
+	local size=ffi.sizeof("settings")
+	kern_first:set(2,cfg_struct,size)
+	kern_second:set(3,cfg_struct,size)
+	init_kernel:set(1,cfg_struct,size)
 end
 update_settings()
 function init_buffers(  )
 	init_kernel:set(0,buffers[1])
-	init_kernel:set(1,cfg_struct,ffi.sizeof("settings"))
 	init_kernel:run(w*h)
 end
 init_buffers()
