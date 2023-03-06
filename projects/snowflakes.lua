@@ -9,7 +9,7 @@ local ffi=require "ffi"
 w=1024
 h=1024
 
-local no_floats_per_pixel=4 --is_boundary,solid, liquid,vapor
+no_floats_per_pixel=4 --is_boundary,solid, liquid,vapor
 
 settings_type=[[
 typedef struct _settings
@@ -52,7 +52,8 @@ local kern_first,kern_second,init_kernel
 function remake_program()
 kern_first,kern_second,init_kernel=opencl.make_program(set_values(
 [==[
-#line __LINE__
+#pragma FILE cl_kernel
+#pragma LINE __LINE__
 #define W $w$
 #define H $h$
 #define FLOATS_PER_PIXEL $no_floats_per_pixel$
@@ -61,6 +62,7 @@ kern_first,kern_second,init_kernel=opencl.make_program(set_values(
 
 $settings_type$
 
+#pragma LINE __LINE__
 int2 clamp_pos(int2 p)
 {
 #if 0
@@ -98,10 +100,10 @@ float calc_around(__global __read_only float4* input,float4 self,int2 pos,float*
 	result+=input[SAMPLE(0,-1)]*weights;
 	result+=input[SAMPLE(-1,1)]*weights;
 	result+=input[SAMPLE(1,-1)]*weights;
-	*neighbours=clamp(result.x,0,7);
+	*neighbours=clamp(result.x,0.0f,7.0f);
 	*nearby_diffusion_mass=result.w;
 #undef SAMPLE
-	return result.w*(1-self.x)+neighbours*self.w/7.0;
+	return result.w*(1-self.x)+(*neighbours)*self.w/7.0;
 }
 float calc_boundary_and_stuff(__global __read_only float4* input,int2 pos)
 {
@@ -117,7 +119,7 @@ float calc_boundary_and_stuff(__global __read_only float4* input,int2 pos)
 #undef SAMPLE
 	return ret;
 }
-void freezing(float* self,float boundary,float kappa)
+void freezing(float4* self,float boundary,float kappa)
 {
 	*self+=(*self)*(float4)(0,1-kappa,kappa,-1)*boundary;
 }
@@ -137,9 +139,9 @@ __kernel void update_grid1(__global __read_only float4* input,__global __write_o
 		float nearby_diffusion_mass=0;
 		float boundary=0;
 		float diff=calc_around(input,self,pos,&neighbours,&nearby_diffusion_mass);
-		boundary=clamp(neighbours,0,1);
+		boundary=clamp(neighbours,0.0f,1.0f);
 		//diffusion
-		self.d=diff;
+		self.w=diff;
 		//freezing
 		freezing(&self,boundary,cfg.freezing);
 		//attachment
@@ -163,8 +165,8 @@ __kernel void update_grid2(__global __read_only float4* input,__global __write_o
 		//... from other kernel
 		//update neighbours and boundary
 		float neighbours=calc_boundary_and_stuff(input,pos);
-		neighbours=clamp(neighbours,0,7);
-		boundary=clamp(neighbours,0,1);
+		neighbours=clamp(neighbours,0.0f,7.0f);
+		float boundary=clamp(neighbours,0.0f,1.0f);
 		//melting
 		
 		//display
