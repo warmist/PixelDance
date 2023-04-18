@@ -20,10 +20,20 @@
 			- fully conquer the field
 			- exploit resources and optimize the build
 		* spore creation
-			- final creation to next change the next start
+			- final creation to change the next start
 			- sort-of-idle game mechanic of reincarnation/meta progression
+			- meta progression of targets?
+				- asteroid (i.e. tutorial?)
+				- moon
+				- planet
+				- gas giant
+				- star
+				- neutron star
+				- black hole
 
 	Mechanics:
+		* crystal grid
+			- stuff like some structures must be placed in a grid now there are multiple choices
 		* resources
 			- energy-like - has no direct map location. "alive" tiles can store for no cost
 				- transport energy e.g. diagonally 
@@ -41,5 +51,5 @@
 			- storage crystals
 			- support/supply
 			- mining?
-			- growht?
+			- growth?
 --]]
