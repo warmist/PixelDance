@@ -3,6 +3,13 @@
         * have agents
         * having dna
         * transcribe all of it (maybe starting from random locations)
+            - instead of transcribing it, parse it and make a diff equations for each "word"
+            - "-> X" : generate X
+            - "X -> Y" : from X generate Y
+            - "X :" : a prefix that adds a condition (implemented by slowing or speeding up the rest of word)
+            - some "and", "or" etc...
+            - have different efficiency options for same words
+            - have some way to have Dt X/Y, Dt X^2, X^2 etc...
         * some codes generate signal strengths (e.g. move forward)
         * some codes have preconditions (e.g. food available)
         * some codes are more resistant to mutations (e.g. growth logic)
