@@ -8,6 +8,16 @@ local size=STATE.size
 		thin film interference
 		ref: real lens distortion?
 		https://www.osapublishing.org/DirectPDFAccess/101E1C8A-E1F7-4ED8-90D6F581926F24BF_269193/ETOP-2013-EThA6.pdf?da=1&id=269193&uri=ETOP-2013-EThA6&seq=0&mobile=no
+
+		Ideas:
+			* "syntetic" pigments:
+				- types (looks like) exist:
+					- signal + shifted signal (e.g. dioxazine_purple_tints)
+					- inverted (e.g. somewhat k_cerulean_blue)
+					- laplassian of signal? (e.g. arylide_yellow)
+					- mix (Quin Mag and Dioxazine P)
+				- complex index of refraction?
+				- back to the basics, simulate as a layered media with diffuse particles
 --]]
 local image_buf
 
@@ -942,8 +952,9 @@ void main(){
 	}
 	else
 	{
-		float illuminant=black_body(iteration,mix(2000,T,easyInOutQuad(c)));
-		color.xyz=xyz_from_normed_waves(iteration)*illuminant*iteration_step;
+		//float illuminant=black_body(iteration,mix(6000,T,easyInOutQuad(c)));
+		float illuminant=black_body(iteration,mix(0,T,c));
+		color.xyz=xyz_from_normed_waves(iteration)*illuminant*iteration_step*r;
 	}
 	color.a=1;
 }
