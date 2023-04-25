@@ -18,6 +18,10 @@ local size=STATE.size
 					- mix (Quin Mag and Dioxazine P)
 				- complex index of refraction?
 				- back to the basics, simulate as a layered media with diffuse particles
+					* https://en.wikipedia.org/wiki/Rayleigh_scattering
+					* https://en.wikipedia.org/wiki/Mie_scattering
+					* https://refractiveindex.info
+					
 --]]
 local image_buf
 
