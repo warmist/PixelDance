@@ -29,7 +29,7 @@ function update_img_buf(  )
 
     if img_buf==nil or img_buf.w~=nw or img_buf.h~=nh then
         img_buf=make_image_buffer(nw,nh)
-        sun_buffer=make_float_buffer(nw,1)
+        sun_buffer=make_float_buffer(nw,nh)
         block_alive=make_char_buffer(nw/block_size,nh/block_size)
         is_remade=true
     end
@@ -69,8 +69,8 @@ uniform vec2 translate;
 
 float is_lit(vec2 p)
 {
-    float hsun=texture(tex_sun,vec2(p.x,0)).x;
-    return 1-step(p.y,hsun);
+    float hsun=texture(tex_sun,vec2(p.x,p.y)).x;
+    return hsun;
 }
 void main(){
     vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -81,7 +81,6 @@ void main(){
         color=vec4(sun_color.xyz*lit,1);
     else
         color=vec4(pixel.xyz+sun_color.xyz*lit,1);
-
 }
 ]==]
 function is_valid_coord( x,y )
@@ -306,17 +305,20 @@ function update_sun(  )
     local w=img_buf.w
     local h=img_buf.h
 
-    for x=0,w-1 do
-        sun_buffer:set(x,0,0)
-    end
+    --for x=0,w-1 do
+    --    sun_buffer:clear()
+    --end
 
    for x=0,w-1 do
+        local amount_light=1
         for y=h-1,0,-1 do
             local c=get_pixel(x,y)
             if is_block_light(c.a) then
-                sun_buffer:set(x,0,y/h)
-                break
+                amount_light=amount_light*0.9
+                
+                --break
             end
+            sun_buffer:set(x,y,amount_light)
         end
     end
 end
@@ -572,8 +574,7 @@ function is_sunlit( x,y )
     if x<0 or x>img_buf.w-1 then
         return false
     end
-    local sh=sun_buffer:get(x,0)
-    return sh*img_buf.h<=y
+    return sun_buffer:get(x,y)>0.5
 end
 
 function plant_step()
@@ -582,8 +583,9 @@ function plant_step()
     local seed_bias_random     =0.8
     local seed_move_speed      =0.1
     --growth stuff
+    local no_straight=4
     local chance_up=0.3
-    local chance_sunlit=0.9
+    local chance_sunlit=0.7
     local chance_drift=0.3
     --costs and food
     local sun_gain=5
@@ -667,9 +669,9 @@ function plant_step()
             local ty = v.shoot.pos[2]
 
             local grow_cost=grow_cost_const+(#v.trunk*#v.trunk)*grow_cost_size--+math.max(ty*2-25,0)
-            if ty<h-1 and (food_balance>grow_cost*grow_cost_buffer or #v.trunk<3) then
+            if ty<h-1 and (food_balance>grow_cost*grow_cost_buffer or #v.trunk<no_straight+3) then
 
-                if math.random()>chance_up then
+                if no_straight<#v.trunk and math.random()>chance_up then
                     -- prefer sunlit directions
                     local right=is_sunlit(tx+1,ty)
                     local left=is_sunlit(tx-1,ty)
