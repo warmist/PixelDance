@@ -243,6 +243,32 @@ int get_buffer(lua_State* L)
     clEnqueueReadBuffer(queue, *buf, true, offset, size, data, 0, nullptr, nullptr);
     return 0;
 }
+template <typename T>
+int fill_buffer(lua_State* L)
+{
+    //TODO: maybe non blocking?
+    auto buf = check_mem_any(L, 1);
+    size_t size = luaL_checkinteger(L, 2);
+    std::vector<T> pattern;
+    if (lua_istable(L, 3))
+    {
+        //read table to std::vector
+        luaL_error(L, "Sorry, real pattern not implemented...");
+    }
+    else if (lua_isnumber(L,3))
+    {
+        int count=lua_tonumber(L, 3);
+        //fill zeros from one number...
+        pattern.resize(count, 0);
+    }
+    else
+    {
+        luaL_argerror(L, 3, "invalid pattern");
+    }
+    size_t offset = luaL_optinteger(L, 4, 0);
+    clEnqueueFillBuffer(queue, *buf, pattern.data(), pattern.size() * sizeof(T), offset, size, 0, nullptr, nullptr);
+    return 0;
+}
 //HACK:
 struct gl_texture {
     unsigned int id;
@@ -301,6 +327,12 @@ int lua_create_buffer_gl(lua_State* L)
         lua_pushcfunction(L, get_buffer);
         lua_setfield(L, -2, "get");
         
+        lua_pushcfunction(L, fill_buffer<float>);
+        lua_setfield(L, -2, "fill");
+
+        lua_pushcfunction(L, fill_buffer<int>);
+        lua_setfield(L, -2, "fill_i");
+
         lua_pushcfunction(L, lua_aquire);
         lua_setfield(L, -2, "aquire");
 
@@ -349,6 +381,12 @@ int lua_create_buffer(lua_State* L)
 
         lua_pushcfunction(L, get_buffer);
         lua_setfield(L, -2, "get");
+
+        lua_pushcfunction(L, fill_buffer<float>);
+        lua_setfield(L, -2, "fill");
+
+        lua_pushcfunction(L, fill_buffer<int>);
+        lua_setfield(L, -2, "fill_i");
 
         lua_pushvalue(L, -1);
         lua_setfield(L, -2, "__index");

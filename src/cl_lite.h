@@ -114,6 +114,8 @@ CL_TYPE_LIST
                 const void* ptr,uint32_t num_events_in_wait_list, const cl_event* event_wait_list,cl_event* event)\
     CLE(int32_t,    clEnqueueReadBuffer,cl_command_queue command_queue,cl_mem buffer,uint32_t blocking_read,size_t offset,size_t size,\
                 void* ptr,uint32_t num_events_in_wait_list,const cl_event* event_wait_list,cl_event* event)\
+    CLE(int32_t,    clEnqueueFillBuffer,cl_command_queue command_queue, cl_mem  buffer, const void* pattern,size_t  pattern_size, size_t  offset, size_t  size, \
+                uint32_t num_events_in_wait_list,const cl_event* event_wait_list, cl_event* event)\
     CLE(int32_t,    clGetKernelWorkGroupInfo,cl_kernel kernel,cl_device_id device,uint32_t param_name,\
                 size_t param_value_size,void* param_value,size_t* param_value_size_ret)\
     CLE(int32_t,    clEnqueueNDRangeKernel,cl_command_queue command_queue,cl_kernel kernel,uint32_t work_dim,const size_t* global_work_offset,\
