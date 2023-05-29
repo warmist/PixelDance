@@ -13,6 +13,8 @@ static cl_command_queue queue;
 static bool init_done = false;
 #include <vector>
 
+#define ERRCHECK(err,prefix) if(err){luaL_error(L,prefix " (%d): %s",err,cl_get_error_string(err));}
+
 static cl_kernel* check_kernel(lua_State* L, int id) { return reinterpret_cast<cl_kernel*>(luaL_checkudata(L, id, "cl_kernel")); }
 
 static cl_mem* check_mem(lua_State* L, int id) { return reinterpret_cast<cl_mem*>(luaL_checkudata(L, id, "cl_mem")); }
@@ -78,18 +80,12 @@ static int set_kernel_arg(lua_State* L)
     if (auto data = check_luajit_pointer(L, 3))
     {
         auto err=clSetKernelArg(*kernel, uloc, luaL_checkint(L,4), data);
-        if (err)
-        {
-            luaL_error(L, "Failed to set kernel arg :%d", err);
-        }
+        ERRCHECK(err, "Failed to set kernel arg");
     }
     else if (auto mem= test_mem_any(L, 3))
     {
         auto err = clSetKernelArg(*kernel, uloc, sizeof(cl_mem), mem);
-        if (err)
-        {
-            luaL_error(L, "Failed to set kernel arg :%d", err);
-        }
+        ERRCHECK(err, "Failed to set kernel arg");
     }
     else
     {
@@ -106,7 +102,7 @@ static int set_kernel_arg(lua_State* L)
         auto err = clSetKernelArg(*kernel, uloc, sizeof(T) * num_args, tmp_array.data());
         if (err)
         {
-            luaL_error(L, "Failed to set kernel arg :%d", err);
+            ERRCHECK(err, "Failed to set kernel arg");
         }
     }
     return 0;
@@ -117,10 +113,7 @@ int lua_run_kernel(lua_State* L)
     
     size_t local_size, global_size;
     auto err = clGetKernelWorkGroupInfo(*kernel, device, CL_KERNEL_WORK_GROUP_SIZE, sizeof(local_size), &local_size, NULL);
-    if (err)
-    {
-        luaL_error(L, "Failed to get kernel info:%d", err);
-    }
+    ERRCHECK(err, "Failed to get kernel info");
     
     size_t count = luaL_checkinteger(L, 2);
     /*
@@ -139,10 +132,7 @@ int lua_run_kernel(lua_State* L)
     // Number of total work items - localSize must be devisor
     global_size = ceil(count / (float)local_size) * local_size;
     err=clEnqueueNDRangeKernel(queue, *kernel, 1, NULL, &global_size, &local_size, 0, NULL, NULL);
-    if (err)
-    {
-        luaL_error(L, "Failed to get kernel info:%d", err);
-    }
+    ERRCHECK(err, "Failed to enqueue kernel");
     clFinish(queue);//TODO optional?
     return 0;
 }
@@ -153,10 +143,7 @@ int lua_build_program(lua_State* L)
     int32_t err;
     cl_program program;
     program=clCreateProgramWithSource(context, 1, &source, &source_len, &err);
-    if (err < 0)
-    {
-        luaL_error(L, "Failed to create cl program from source:%d", err);
-    }
+    ERRCHECK(err, "Failed to create cl program from source");
     err=clBuildProgram(program, 0, nullptr, "-w", nullptr, nullptr);
    
     size_t log_size;
@@ -170,20 +157,14 @@ int lua_build_program(lua_State* L)
     printf("Build info:%s", buffer.data());
     if (err < 0)
     {
-        luaL_error(L, "Failed to build cl program(%d)\nerror:%s",err, buffer.data());
+        luaL_error(L, "Failed to build cl program(%d):%s\nerror:%s",err,cl_get_error_string(err), buffer.data());
     }
     uint32_t num_kernels;
     err=clCreateKernelsInProgram(program, 0, NULL, &num_kernels);
-    if (err < 0)
-    {
-        luaL_error(L, "Failed to create kernel(s):%d", err);
-    }
+    ERRCHECK(err, "Failed to create kernel");
     std::vector<cl_kernel> kernels(num_kernels);
     err = clCreateKernelsInProgram(program, num_kernels, kernels.data(), &num_kernels);
-    if (err < 0)
-    {
-        luaL_error(L, "Failed to create kernel(s):%d", err);
-    }
+    ERRCHECK(err, "Failed to create kernel");
     clReleaseProgram(program);
     for (uint32_t i = 0; i < num_kernels; i++)
     {
@@ -223,7 +204,8 @@ int set_buffer(lua_State* L)
         luaL_argerror(L, 3, "not a data pointer");
     }
     size_t offset = luaL_optinteger(L, 4, 0);
-    clEnqueueWriteBuffer(queue, *buf, true, offset, size, data, 0, nullptr, nullptr);
+    auto err=clEnqueueWriteBuffer(queue, *buf, true, offset, size, data, 0, nullptr, nullptr);
+    ERRCHECK(err, "Failed to enqueue write");
     return 0;
 }
 int get_buffer(lua_State* L)
@@ -240,7 +222,8 @@ int get_buffer(lua_State* L)
         luaL_argerror(L, 3, "not a data pointer");
     }
     size_t offset = luaL_optinteger(L, 4, 0);
-    clEnqueueReadBuffer(queue, *buf, true, offset, size, data, 0, nullptr, nullptr);
+    auto err=clEnqueueReadBuffer(queue, *buf, true, offset, size, data, 0, nullptr, nullptr);
+    ERRCHECK(err, "Failed to enqueue read");
     return 0;
 }
 template <typename T>
@@ -266,7 +249,8 @@ int fill_buffer(lua_State* L)
         luaL_argerror(L, 3, "invalid pattern");
     }
     size_t offset = luaL_optinteger(L, 4, 0);
-    clEnqueueFillBuffer(queue, *buf, pattern.data(), pattern.size() * sizeof(T), offset, size, 0, nullptr, nullptr);
+    auto err=clEnqueueFillBuffer(queue, *buf, pattern.data(), pattern.size() * sizeof(T), offset, size, 0, nullptr, nullptr);
+    ERRCHECK(err, "Failed to enqueue fill");
     return 0;
 }
 //HACK:
@@ -279,20 +263,14 @@ int lua_aquire(lua_State* L)
 {
     auto mem = check_mem_gl(L, 1);
     auto err=clEnqueueAcquireGLObjects(queue, 1, mem, 0, nullptr, nullptr);
-    if (err < 0)
-    {
-        luaL_error(L, "Failed to aquire opengl objects:%d", err);
-    }
+    ERRCHECK(err, "Failed to aquire opengl objects");
     return 0;
 }
 int lua_release(lua_State* L)
 {
     auto mem = check_mem_gl(L, 1);
     auto err = clEnqueueReleaseGLObjects(queue, 1, mem, 0, nullptr, nullptr);
-    if (err < 0)
-    {
-        luaL_error(L, "Failed to release opengl objects:%d", err);
-    }
+    ERRCHECK(err, "Failed to release opengl objects");
     return 0;
 }
 int lua_create_buffer_gl(lua_State* L)
@@ -310,10 +288,8 @@ int lua_create_buffer_gl(lua_State* L)
     int flags = CL_MEM_READ_WRITE; //TODO optionally no read/write?
     cl_mem buffer;
     buffer = clCreateFromGLTexture(context, flags, GL_TEXTURE_2D, 0, tex_id, &err);
-    if (err < 0)
-    {
-        luaL_error(L, "Failed to create opencl buffer:%d", err);
-    }
+    ERRCHECK(err, "Failed to create opencl buffer");
+
     auto np = (cl_mem*)lua_newuserdata(L, sizeof(cl_mem));
     *np = buffer;
     if (luaL_newmetatable(L, "cl_mem_gl"))
@@ -365,10 +341,8 @@ int lua_create_buffer(lua_State* L)
         flags |= CL_MEM_COPY_HOST_PTR;
     }
     cl_mem buffer = clCreateBuffer(context, flags, size, data, &err);
-    if (err < 0)
-    {
-        luaL_error(L, "Failed to create opencl buffer:%d", err);
-    }
+    ERRCHECK(err, "Failed to create opencl buffer");
+
     auto np = (cl_mem*)lua_newuserdata(L, sizeof(cl_mem));
     *np = buffer;
     if (luaL_newmetatable(L, "cl_mem"))
@@ -423,20 +397,14 @@ int lua_open_opencl(lua_State* L)
         }
         cl_platform_id platform;
         int err = clGetPlatformIDs(1, &platform, nullptr);
-        if (err < 0)
-        {
-            luaL_error(L, "Failed to get platform id");
-            return 0;
-        }
+        ERRCHECK(err, "Failed to get platform ids");
         //TODO: cpu fallback...
         err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL);
         /*if (err == CL_DEVICE_NOT_FOUND) {
             // CPU
             err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &dev, NULL);
         }*/
-        if (err < 0) {
-            luaL_error(L, "Couldn't access any devices");
-        }
+        ERRCHECK(err, "Couldn't access any devices");
         const intptr_t properties[] = {
             CL_CONTEXT_PLATFORM,(intptr_t)platform,
             CL_GL_CONTEXT_KHR, (intptr_t)wglGetCurrentContext(),
@@ -445,13 +413,9 @@ int lua_open_opencl(lua_State* L)
         };
         //TODO: this needs to pass in opengl context sharing
         context = clCreateContext(properties, 1, &device, NULL, NULL, &err);
-        if (err < 0) {
-            luaL_error(L, "Couldn't create context");
-        }
+        ERRCHECK(err, "Couldn't create context");
         queue = clCreateCommandQueueWithProperties(context, device, NULL, &err);
-        if (err < 0) {
-            luaL_error(L, "Couldn't create command queue");
-        }
+        ERRCHECK(err, "Failed to create command queue");
         init_done = true;
     }
     luaL_newlib(L, lua_opencl_lib);
