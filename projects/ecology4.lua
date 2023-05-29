@@ -7,9 +7,9 @@
 
 require "common"
 local ffi=require "ffi"
-w=256
-h=256
-agent_count=3000
+w=1024
+h=1024
+agent_count=150000
 config=make_config({
     {"pause",false,type="bool"},
     },config)
@@ -29,7 +29,7 @@ kern_logic,kern_target,kern_move,kern_init,kern_init_s,kern_output=opencl.make_p
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
 #define W $w$
 #define H $h$
-#define AGENT_MAX 3000
+#define AGENT_MAX 150000
 #define TIME_STEP 0.005f
 
 int2 clamp_pos(int2 p)
@@ -108,31 +108,34 @@ __kernel void update_agent_logic(__global __read_only int4* input,
 			int col=static_layer[target.x+target.y*W]+dynamic_layer[target.x+target.y*W];
 			int col1=static_layer[target.x+1+target.y*W]+dynamic_layer[target.x+1+target.y*W];
 			int col2=static_layer[target.x-1+target.y*W]+dynamic_layer[target.x-1+target.y*W];
+
+			int col3=static_layer[agent.x+1+agent.y*W]+dynamic_layer[agent.x+1+agent.y*W];
+			int col4=static_layer[agent.x-1+agent.y*W]+dynamic_layer[agent.x-1+agent.y*W];
+
+			output[i].zw=agent;
 			if(col==0)
 				output[i].zw=target;
 			else
 			{
-				if(r%2==0)
+				if(r%4==0)
 				{
 					if(col1==0)
 						output[i].zw=target+(int2)(1,0);
-					/*
-					else if(col2==0)
-						output[i].zw=target+(int2)(-1,0);
-					*/
-					else
-						output[i].zw=agent;
 				}
-				else
+				else if(r%4==1)
 				{
 					if(col2==0)
 						output[i].zw=target+(int2)(-1,0);
-					/*
-					else if(col1==0)
-						output[i].zw=target+(int2)(1,0);
-					*/
-					else
-						output[i].zw=agent;	
+				}
+				else if(r%4==2)
+				{
+					if(col3==0)
+						output[i].zw=agent+(int2)(1,0);
+				}
+				else
+				{
+					if(col4==0)
+						output[i].zw=agent+(int2)(-1,0);
 				}
 			}
 		#endif
@@ -192,13 +195,14 @@ __kernel void init_agents(__global __write_only int4* output)
 		output[i].y=H-(abs(trg.y) % (H/3));
 		#else
 		int r=(int)pcg((uint)i);
-		int j=i*10+abs(r)%10;
+		int density=3;
+		int j=i*density+abs(r)%density;
 		output[i].x=j % (W-2)+1;
 		output[i].y=H-(j / (W-2));
 		#endif
 	}
 }
-__kernel void init_static(__global __write_only int4* output)
+__kernel void init_static(__global __write_only int* output)
 {
 	int i=get_global_id(0);
 	int max=W*H;
@@ -206,13 +210,43 @@ __kernel void init_static(__global __write_only int4* output)
 	{
 		int x=i%W;
 		int y=i/W;
+		int dx=x-W/2;
+		int dy=y-H/2;
+		int d=dx*dx+dy*dy;
 		//float c=cos((float)i*5487697347779999578.15+4897778787.36)*0.5+0.5;
 		uint r=pcg(i^0x4a67fd);
-		if(r%7==0 && y<15)
+		if(r%5==0 && y<600)
+			output[i]=1;
+		else if(r%4==0 && y<300 && d>100000)
+			output[i]=1;
+		else if(r%3==0 && y<300)
 			output[i]=1;
 		else
 			output[i]=0;
 	}
+}
+//from: https://www.alanzucconi.com/2017/07/15/improving-the-rainbow-2/
+float3 bump3y (float3 x, float3 yoffset)
+{
+    float3 y = 1 - x * x;
+    y = clamp(y-yoffset,0.0f,1.0f);
+    return y;
+}
+float3 spectral_zucconi6 (float w)
+{
+    // w: [400, 700]
+    // x: [0,   1]
+    //fixed x = clamp((w - 400.0)/ 300.0,0,1);
+    float x=w;
+    float3 c1 = (float3)(3.54585104, 2.93225262, 2.41593945);
+    float3 x1 = (float3)(0.69549072, 0.49228336, 0.27699880);
+    float3 y1 = (float3)(0.02312639, 0.15225084, 0.52607955);
+    float3 c2 = (float3)(3.90307140, 3.21182957, 3.96587128);
+    float3 x2 = (float3)(0.11748627, 0.86755042, 0.66077860);
+    float3 y2 = (float3)(0.84897130, 0.88445281, 0.73949448);
+    return
+        bump3y(c1 * (x - x1), y1) +
+        bump3y(c2 * (x - x2), y2) ;
 }
 __kernel void output_to_texture(__global __read_only int4* input,__global __write_only int* static_dynamic_layer,__write_only image2d_t output_tex)
 {
@@ -220,10 +254,15 @@ __kernel void output_to_texture(__global __read_only int4* input,__global __writ
 	int max=AGENT_MAX;
 	if(i>=0 && i<max)
 	{
+
 		float4 col;
-		col.x=(float)i/(float)max;//cos((float)i*742.154+7745.0)*0.5+0.5;
+		float v=(float)i/(float)max;
+		/*
+		col.x=v;//cos((float)i*742.154+7745.0)*0.5+0.5;
 		col.y=cos((float)i*1141.154+774.0)*0.5+0.5;
 		col.z=1;//cos((float)i*333.10+10.0)*0.5+0.5;
+		*/
+		col.xyz=spectral_zucconi6(v);
 		int2 pos=input[i].xy;
 		col.w=1;
 		write_imagef(output_tex,pos,col);
@@ -272,11 +311,12 @@ void main()
 function init_buffers(  )
 	kern_init:set(0,buffers[1])
 	kern_init:run(agent_count)
-	--[[
+
+	static_layer_buffer:fill_i(w*h*4,1)
+	-- [[
 	kern_init_s:set(0,static_layer_buffer)
 	kern_init_s:run(w*h)
 	--]]
-	static_layer_buffer:fill_i(w*h*4,1)
 end
 init_buffers()
 
