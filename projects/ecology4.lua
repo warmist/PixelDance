@@ -182,7 +182,12 @@ __kernel void update_agent_targets(__global __read_only struct agent_state* inpu
 	}
 }
 
-__kernel void update_agent_move(__global __read_only struct agent_state* input,__global __read_only int* movement_counts,__global __write_only struct agent_state* output)
+__kernel void update_agent_move(
+	__global __read_only struct agent_state* input,
+	__global __read_only int* movement_counts,
+	__global __write_only struct agent_state* output,
+	int step,
+	__global volatile int* agent_count)
 {
 	/*
 		TODO:
@@ -219,36 +224,45 @@ __kernel void update_agent_move(__global __read_only struct agent_state* input,_
 
 	*/
 	int i=get_global_id(0);
-	int max=AGENT_MAX;
-	if(i>=0 && i<max)
+	int count=min(agent_count[step],AGENT_MAX);
+	//int count=AGENT_MAX;
+	if(i>=0 && i<count)
 	{
 		struct agent_state agent=input[i];
 		int2 trg=unpack_coord(agent.target);
 		if(!(agent.flags & (FLAG_SLEEPING|FLAG_DEAD)) && trg.x>=0 && trg.x<W && trg.y>=0 && trg.y<H)
 		{
-			if(movement_counts[trg.x+trg.y*W]==1)
+			//int new_id=atomic_inc(agent_count+1);
+			int new_id=i;
+			if(new_id<AGENT_MAX)
 			{
-				//output[i]=agent;
-				output[i].pos=agent.target;
-				output[i].target=agent.target;
-				output[i].flags=agent.flags;
-				output[i].id=agent.id;
+				if(movement_counts[trg.x+trg.y*W]==1)
+				{
+					//output[i]=agent;
+					output[new_id].pos=agent.target;
+					output[new_id].target=agent.target;
+					output[new_id].flags=agent.flags;
+					output[new_id].id=agent.id;
+				}
+				else
+					output[new_id]=agent;
 			}
-			else
-				output[i]=agent;
-		}
-		else
-		{
-			output[i]=agent;
 		}
 	}
 }
 
-__kernel void init_agents(__global __write_only struct agent_state* output)
+__kernel void init_agents(
+__global __write_only struct agent_state* output,
+__global __write_only int* agent_count)
 {
 	int i=get_global_id(0);
-	int max=AGENT_MAX;
-	if(i>=0 && i<max)
+	int count=AGENT_MAX/2;
+	if(i==0)
+	{
+		agent_count[0]=count;
+		agent_count[1]=count;
+	}
+	if(i>=0 && i<count)
 	{
 		#if 0
 		int2 trg=unpack_coord((int)pcg((uint)i*7846));
@@ -380,6 +394,7 @@ void main()
 ]]
 function init_buffers(  )
 	kern_init:set(0,buffers[1])
+	kern_init:set(1,active_count)
 	kern_init:run(agent_count)
 
 	static_layer_buffer:fill_i(w*h*4,1)
@@ -387,6 +402,7 @@ function init_buffers(  )
 	kern_init_s:set(0,static_layer_buffer)
 	kern_init_s:run(w*h)
 	--]]
+	active_count:fill_i(2*4,1)
 end
 init_buffers()
 
@@ -438,8 +454,8 @@ function update(  )
 		kern_move:set(0,buffers[2])
 		kern_move:set(1,move_count_buffer)
 		kern_move:set(2,buffers[1])
-		--kern_move:set(3,step)
-		--kern_move:set(4,active_count)
+		kern_move:seti(3,step)
+		kern_move:set(4,active_count)
 		kern_move:run(agent_count)
 		step=step+1
 		if step==2 then
