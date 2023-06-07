@@ -11,7 +11,7 @@ w=512
 h=512
 agent_count=15000
 config=make_config({
-    {"pause",false,type="bool"},
+    {"pause",true,type="bool"},
     },config)
 
 function set_values(s,tbl)
@@ -83,11 +83,14 @@ int pack_coord(int2 v)
 __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 	__global __read_only int* static_layer,
 	__global __read_only int* dynamic_layer,
-	__global __write_only struct agent_state* output,int seed)
+	__global __write_only struct agent_state* output,
+	int seed,
+	int step,
+	__global volatile int* agent_count)
 {
 	int i=get_global_id(0);
-	int max=AGENT_MAX;
-	if(i>=0 && i<max)
+	int count=agent_count[step];
+	if(i>=0 && i<count)
 	{
 		struct agent_state agent=input[i];
 		int2 pos=unpack_coord(agent.pos);
@@ -156,7 +159,7 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 					}
 				}
 				if(!moved)
-					output[i].flags |= FLAG_DEAD;
+					output[i].flags |= FLAG_SLEEPING;
 			}
 
 		}
@@ -169,11 +172,15 @@ void increment(int2 pos,__global volatile int* movement_counts)
 		atomic_inc(movement_counts+(pos.x+pos.y*W));
 	}
 }
-__kernel void update_agent_targets(__global __read_only struct agent_state* input,__global volatile int* movement_counts)
+__kernel void update_agent_targets(
+	__global __read_only struct agent_state* input,
+	__global volatile int* movement_counts,
+	int step,
+	__global volatile int* agent_count)
 {
 	int i=get_global_id(0);
-	int max=AGENT_MAX;
-	if(i>=0 && i<max)
+	int count=agent_count[step];
+	if(i>=0 && i<count)
 	{
 		int2 pos=unpack_coord(input[i].pos);
 		int2 target=unpack_coord(input[i].target);
@@ -232,8 +239,8 @@ __kernel void update_agent_move(
 		int2 trg=unpack_coord(agent.target);
 		if(!(agent.flags & (FLAG_SLEEPING|FLAG_DEAD)) && trg.x>=0 && trg.x<W && trg.y>=0 && trg.y<H)
 		{
-			//int new_id=atomic_inc(agent_count+1);
-			int new_id=i;
+			int new_id=atomic_inc(agent_count+(step+1)%2);
+			//int new_id=i;
 			if(new_id<AGENT_MAX)
 			{
 				if(movement_counts[trg.x+trg.y*W]==1)
@@ -327,24 +334,30 @@ float3 spectral_zucconi6 (float w)
         bump3y(c1 * (x - x1), y1) +
         bump3y(c2 * (x - x2), y2) ;
 }
-__kernel void output_to_texture(__global __read_only struct agent_state* input,__global __write_only int* static_dynamic_layer,__write_only image2d_t output_tex)
+__kernel void output_to_texture(
+	__global __read_only struct agent_state* input,
+	__global __write_only int* static_dynamic_layer,
+	__write_only image2d_t output_tex,
+	int step,
+	__global volatile int* agent_count)
 {
 	int i=get_global_id(0);
-	int max=AGENT_MAX;
-	if(i>=0 && i<max)
+	//int count=AGENT_MAX;
+	int count=agent_count[step];
+	if(i>=0 && i<count)
 	{
 		float4 colors[2]={
 			(float4)(0.7,0.75,.8,1),
 			(float4)(0.8,0.2,0.3,1),
 		};
 		float4 col;
-		float v=(float)i/(float)max;
+		float v=(float)i/(float)AGENT_MAX;
 		//col.xyz=spectral_zucconi6(v);
 		int id=clamp(input[i].id,0,1);
 		col=colors[id]; //TODO: add some variation
 		int2 pos=unpack_coord(input[i].pos);
 		col.w=1;
-		if(!(input[i].flags & FLAG_DEAD))
+		//if(!(input[i].flags & FLAG_DEAD))
 		{
 			write_imagef(output_tex,pos,col);
 			static_dynamic_layer[pos.x+pos.y*W]=i;
@@ -420,12 +433,12 @@ function save_img( path )
 end
 function clear_counts(  )
 	move_count_buffer:fill_i(w*h*4,1)
-	active_count:fill_i(w*h*4,1)
+	--active_count:fill_i(2*4,1)
 end
 function clear_display(  )
 	sd_layer_buffer:fill_i(w*h*4,1);
 end
-paused=false
+paused=true
 local step=0
 function update(  )
 	__no_redraw()
@@ -440,15 +453,15 @@ function update(  )
 		kern_logic:set(1,static_layer_buffer)
 		kern_logic:set(2,sd_layer_buffer)
 		kern_logic:set(3,buffers[2])
-		kern_logic:set(4,math.random(0,999999999))
-		--kern_logic:set(5,step)
-		--kern_logic:set(6,active_count)
+		kern_logic:seti(4,math.random(0,999999999))
+		kern_logic:seti(5,step)
+		kern_logic:set(6,active_count)
 		kern_logic:run(agent_count)
 
 		kern_target:set(0,buffers[2])
 		kern_target:set(1,move_count_buffer)
-		--kern_target:set(2,step)
-		--kern_target:set(3,active_count)
+		kern_target:seti(2,step)
+		kern_target:set(3,active_count)
 		kern_target:run(agent_count)
 
 		kern_move:set(0,buffers[2])
@@ -467,6 +480,8 @@ function update(  )
 		kern_output:set(0,buffers[2])
 		kern_output:set(1,sd_layer_buffer)
 		kern_output:set(2,display_buffer)
+		kern_output:seti(3,step)
+		kern_output:set(4,active_count)
 
 
 		display_buffer:aquire()
