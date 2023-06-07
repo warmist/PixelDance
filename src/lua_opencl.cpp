@@ -233,6 +233,7 @@ int fill_buffer(lua_State* L)
     auto buf = check_mem_any(L, 1);
     size_t size = luaL_checkinteger(L, 2);
     std::vector<T> pattern;
+    int opt_offset = 4;
     if (lua_istable(L, 3))
     {
         //read table to std::vector
@@ -242,13 +243,14 @@ int fill_buffer(lua_State* L)
     {
         int count=lua_tonumber(L, 3);
         //fill zeros from one number...
-        pattern.resize(count, 0);
+        pattern.resize(count, luaL_optnumber(L, 4, 0));
+        opt_offset++;
     }
     else
     {
         luaL_argerror(L, 3, "invalid pattern");
     }
-    size_t offset = luaL_optinteger(L, 4, 0);
+    size_t offset = luaL_optinteger(L, opt_offset, 0);
     auto err=clEnqueueFillBuffer(queue, *buf, pattern.data(), pattern.size() * sizeof(T), offset, size, 0, nullptr, nullptr);
     ERRCHECK(err, "Failed to enqueue fill");
     return 0;

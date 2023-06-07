@@ -77,6 +77,7 @@ int2 unpack_coord(int v)
 }
 int pack_coord(int2 v)
 {
+	v=clamp_pos(v);
 	int ret=(v.x&0xFFFF) | ((abs(v.y)&0xFFFF)<<16);
 	return ret;
 }
@@ -93,8 +94,10 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 	if(i>=0 && i<count)
 	{
 		struct agent_state agent=input[i];
+		struct agent_state agent_out=agent;
 		int2 pos=unpack_coord(agent.pos);
-		if(!(agent.flags & (FLAG_SLEEPING|FLAG_DEAD)) && pos.x>0 && pos.x<W-1 && pos.y>0 && pos.y<H-1)
+		pos=clamp_pos(pos);
+		if(!(agent.flags & (FLAG_SLEEPING|FLAG_DEAD)))
 		{
 			/*
 			int2 d=unpack_coord(pcg((uint)i));
@@ -102,24 +105,25 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 			d.y=d.y%3;
 			d-=(int2)(1,1);
 			*/
+			
 			int2 d=(int2)(0,-1);
 			int2 target;
-			target=pos+d;
-			output[i].pos=agent.pos;
+			target=clamp_pos(pos+d);
+			agent_out.pos=agent.pos;
 
 			uint r=pcg((uint)(seed+i));
 
-			int col=static_layer[target.x+target.y*W]+dynamic_layer[target.x+target.y*W];
-			int col1=static_layer[target.x+1+target.y*W]+dynamic_layer[target.x+1+target.y*W];
-			int col2=static_layer[target.x-1+target.y*W]+dynamic_layer[target.x-1+target.y*W];
+			int col=static_layer[pos_to_index(target)]+dynamic_layer[pos_to_index(target)];
+			int col1=static_layer[pos_to_index(target+(int2)(1,0))]+dynamic_layer[pos_to_index(target+(int2)(1,0))];
+			int col2=static_layer[pos_to_index(target+(int2)(-1,0))]+dynamic_layer[pos_to_index(target+(int2)(-1,0))];
 
-			int col3=static_layer[pos.x+1+pos.y*W]+dynamic_layer[pos.x+1+pos.y*W];
-			int col4=static_layer[pos.x-1+pos.y*W]+dynamic_layer[pos.x-1+pos.y*W];
+			int col3=static_layer[pos_to_index(pos+(int2)(1,0))]+dynamic_layer[pos_to_index(pos+(int2)(1,0))];
+			int col4=static_layer[pos_to_index(pos+(int2)(-1,0))]+dynamic_layer[pos_to_index(pos+(int2)(-1,0))];
 			int id=agent.id;
-			output[i]=agent;
-			output[i].target=pack_coord(pos);
+
+			agent_out.target=pack_coord(pos);
 			if(col==0)
-				output[i].target=pack_coord(target);
+				agent_out.target=pack_coord(target);
 			else
 			{
 				bool moved=false;
@@ -127,7 +131,7 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 				{
 					if(col1==0)
 					{
-						output[i].target=pack_coord(target+(int2)(1,0));
+						agent_out.target=pack_coord(target+(int2)(1,0));
 						moved=true;
 					}
 				}
@@ -135,7 +139,7 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 				{
 					if(col2==0)
 					{
-						output[i].target=pack_coord(target+(int2)(-1,0));
+						agent_out.target=pack_coord(target+(int2)(-1,0));
 						moved=true;
 					}
 				}
@@ -145,7 +149,7 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 					{
 						if(col3==0)
 						{
-							output[i].target=pack_coord(pos+(int2)(1,0));
+							agent_out.target=pack_coord(pos+(int2)(1,0));
 							moved=true;
 						}
 					}
@@ -153,24 +157,21 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 					{
 						if(col4==0)
 						{
-							output[i].target=pack_coord(pos+(int2)(-1,0));
+							agent_out.target=pack_coord(pos+(int2)(-1,0));
 							moved=true;
 						}
 					}
 				}
 				if(!moved)
-					output[i].flags |= FLAG_SLEEPING;
+					agent_out.flags |= FLAG_SLEEPING;
 			}
-
 		}
+		output[i]=agent_out;
 	}
 }
 void increment(int2 pos,__global volatile int* movement_counts)
 {
-	if(pos.x>=0 && pos.x<W && pos.y>=0 && pos.y<H)
-	{
-		atomic_inc(movement_counts+(pos.x+pos.y*W));
-	}
+	atomic_inc(movement_counts+pos_to_index(pos));
 }
 __kernel void update_agent_targets(
 	__global __read_only struct agent_state* input,
@@ -237,7 +238,7 @@ __kernel void update_agent_move(
 	{
 		struct agent_state agent=input[i];
 		int2 trg=unpack_coord(agent.target);
-		if(!(agent.flags & (FLAG_SLEEPING|FLAG_DEAD)) && trg.x>=0 && trg.x<W && trg.y>=0 && trg.y<H)
+		if(!(agent.flags & (FLAG_SLEEPING|FLAG_DEAD)))
 		{
 			int new_id=atomic_inc(agent_count+(step+1)%2);
 			//int new_id=i;
@@ -264,11 +265,6 @@ __global __write_only int* agent_count)
 {
 	int i=get_global_id(0);
 	int count=AGENT_MAX/2;
-	if(i==0)
-	{
-		agent_count[0]=count;
-		agent_count[1]=count;
-	}
 	if(i>=0 && i<count)
 	{
 		#if 0
@@ -357,6 +353,7 @@ __kernel void output_to_texture(
 		col=colors[id]; //TODO: add some variation
 		int2 pos=unpack_coord(input[i].pos);
 		col.w=1;
+		pos=clamp_pos(pos);
 		//if(!(input[i].flags & FLAG_DEAD))
 		{
 			write_imagef(output_tex,pos,col);
@@ -415,7 +412,7 @@ function init_buffers(  )
 	kern_init_s:set(0,static_layer_buffer)
 	kern_init_s:run(w*h)
 	--]]
-	active_count:fill_i(2*4,1)
+	active_count:fill_i(2*4,1,agent_count/2)
 end
 init_buffers()
 
@@ -449,6 +446,7 @@ function update(  )
 	end
 	if do_step or not paused then
 		clear_counts()
+		-- [[
 		kern_logic:set(0,buffers[1])
 		kern_logic:set(1,static_layer_buffer)
 		kern_logic:set(2,sd_layer_buffer)
@@ -470,14 +468,19 @@ function update(  )
 		kern_move:seti(3,step)
 		kern_move:set(4,active_count)
 		kern_move:run(agent_count)
+		--]]
 		step=step+1
 		if step==2 then
 			step=0
 		end
-		--output
+		--swap buffers
+		local tmp=buffers[2]
+		buffers[2]=buffers[1]
+		buffers[1]=tmp
 	end
+		--output
 		clear_display()
-		kern_output:set(0,buffers[2])
+		kern_output:set(0,buffers[1])
 		kern_output:set(1,sd_layer_buffer)
 		kern_output:set(2,display_buffer)
 		kern_output:seti(3,step)
