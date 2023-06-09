@@ -26,7 +26,6 @@ kern_logic,kern_target,kern_move,kern_init,kern_init_s,kern_output=opencl.make_p
 [==[
 #pragma FILE cl_kernel
 #pragma LINE __LINE__
-#pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
 #define W $w$
 #define H $h$
 #define AGENT_MAX 15000
@@ -99,6 +98,7 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 		pos=clamp_pos(pos);
 		if(!(agent.flags & (FLAG_SLEEPING|FLAG_DEAD)))
 		{
+			int2 pp=unpack_coord(pcg((uint)i));
 			/*
 			int2 d=unpack_coord(pcg((uint)i));
 			d.x=d.x%3;
@@ -162,8 +162,8 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 						}
 					}
 				}
-				if(!moved)
-					agent_out.flags |= FLAG_SLEEPING;
+				//if(!moved)
+				//	agent_out.flags |= FLAG_SLEEPING;
 			}
 		}
 		output[i]=agent_out;
@@ -240,20 +240,17 @@ __kernel void update_agent_move(
 		int2 trg=unpack_coord(agent.target);
 		if(!(agent.flags & (FLAG_SLEEPING|FLAG_DEAD)))
 		{
+			struct agent_state new_agent=agent;
 			int new_id=atomic_inc(agent_count+(step+1)%2);
 			//int new_id=i;
 			if(new_id<AGENT_MAX)
 			{
 				if(movement_counts[trg.x+trg.y*W]==1)
 				{
-					//output[i]=agent;
-					output[new_id].pos=agent.target;
-					output[new_id].target=agent.target;
-					output[new_id].flags=agent.flags;
-					output[new_id].id=agent.id;
+					//new_agent.pos=pack_coord((int2)(new_id%W,new_id/W));
+					new_agent.pos=agent.target;
 				}
-				else
-					output[new_id]=agent;
+				output[new_id]=new_agent;
 			}
 		}
 	}
@@ -264,14 +261,14 @@ __global __write_only struct agent_state* output,
 __global __write_only int* agent_count)
 {
 	int i=get_global_id(0);
-	int count=AGENT_MAX/2;
+	int count=AGENT_MAX;
 	if(i>=0 && i<count)
 	{
 		#if 0
 		int2 trg=unpack_coord((int)pcg((uint)i*7846));
 
 		#else
-		int density=3;
+		int density=6;
 		int r=(int)pcg((uint)i);
 		int j=i*density+abs(r)%density;
 		int2 trg=(int2)(j % (W-2)+1,H-(j / (W-2)));
@@ -432,10 +429,12 @@ function clear_counts(  )
 	move_count_buffer:fill_i(w*h*4,1)
 	--active_count:fill_i(2*4,1)
 end
-function clear_display(  )
+function clear_display( step )
 	sd_layer_buffer:fill_i(w*h*4,1);
+	local next_id=(step+1)%2
+	active_count:fill_i(4,1,0,4*next_id)
 end
-paused=true
+paused=false
 local step=0
 function update(  )
 	__no_redraw()
@@ -474,12 +473,14 @@ function update(  )
 			step=0
 		end
 		--swap buffers
+		--[[
 		local tmp=buffers[2]
 		buffers[2]=buffers[1]
 		buffers[1]=tmp
+		--]]
 	end
 		--output
-		clear_display()
+		clear_display(step)
 		kern_output:set(0,buffers[1])
 		kern_output:set(1,sd_layer_buffer)
 		kern_output:set(2,display_buffer)
