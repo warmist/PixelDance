@@ -22,7 +22,7 @@ end
 
 local kern_logic,kern_target,kern_move,kern_init,kern_output
 function remake_program()
-kern_logic,kern_target,kern_move,kern_init,kern_init_s,kern_output=opencl.make_program(set_values(
+kern_logic,kern_target,kern_move,kern_init,kern_init_s,kern_output,kern_add=opencl.make_program(set_values(
 [==[
 #pragma FILE cl_kernel
 #pragma LINE __LINE__
@@ -39,6 +39,8 @@ struct agent_state
 };
 #define FLAG_DEAD 1
 #define FLAG_SLEEPING 2
+#define FLAG_MOVE_EXCHANGE 4
+#define FLAG_MOVE_GROW 8
 
 int2 clamp_pos(int2 p)
 {
@@ -113,17 +115,23 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 
 			uint r=pcg((uint)(seed+i));
 
-			int col=static_layer[pos_to_index(target)]+dynamic_layer[pos_to_index(target)];
-			int col1=static_layer[pos_to_index(target+(int2)(1,0))]+dynamic_layer[pos_to_index(target+(int2)(1,0))];
-			int col2=static_layer[pos_to_index(target+(int2)(-1,0))]+dynamic_layer[pos_to_index(target+(int2)(-1,0))];
+			int col=static_layer[pos_to_index(target)]*1000+dynamic_layer[pos_to_index(target)];
+			int col1=static_layer[pos_to_index(target+(int2)(1,0))]*1000+dynamic_layer[pos_to_index(target+(int2)(1,0))];
+			int col2=static_layer[pos_to_index(target+(int2)(-1,0))]*1000+dynamic_layer[pos_to_index(target+(int2)(-1,0))];
 
-			int col3=static_layer[pos_to_index(pos+(int2)(1,0))]+dynamic_layer[pos_to_index(pos+(int2)(1,0))];
-			int col4=static_layer[pos_to_index(pos+(int2)(-1,0))]+dynamic_layer[pos_to_index(pos+(int2)(-1,0))];
+			int col3=static_layer[pos_to_index(pos+(int2)(1,0))]*1000+dynamic_layer[pos_to_index(pos+(int2)(1,0))];
+			int col4=static_layer[pos_to_index(pos+(int2)(-1,0))]*1000+dynamic_layer[pos_to_index(pos+(int2)(-1,0))];
 			int id=agent.id;
 
 			agent_out.target=pack_coord(pos);
-			if(col==0)
+			if(col==0 ||(id==0 && col==2))
+			{
 				agent_out.target=pack_coord(target);
+				if(id==0 && col==2)
+				{
+					agent_out.flags|=FLAG_MOVE_EXCHANGE;
+				}
+			}
 			else
 			{
 				bool moved=false;
@@ -162,8 +170,8 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 						}
 					}
 				}
-				//if(!moved)
-				//	agent_out.flags |= FLAG_SLEEPING;
+				if(!moved)
+					agent_out.flags |= FLAG_SLEEPING;
 			}
 		}
 		output[i]=agent_out;
@@ -189,13 +197,27 @@ __kernel void update_agent_targets(
 		increment(target,movement_counts);
 	}
 }
-
+void wake_around(int2 pos, __global volatile int* wake_buffer)
+{
+	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(1,0)));
+	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(-1,0)));
+	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(0,1)));
+	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(0,-1)));
+	/*
+	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(1,1)));
+	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(-1,1)));
+	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(-1,-1)));
+	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(1,-1)));
+	//*/
+}
 __kernel void update_agent_move(
 	__global __read_only struct agent_state* input,
 	__global __read_only int* movement_counts,
 	__global __write_only struct agent_state* output,
+	__global int* static_dynamic_layer,
 	int step,
-	__global volatile int* agent_count)
+	__global volatile int* agent_count,
+	__global volatile int* wake_buffer)
 {
 	/*
 		TODO:
@@ -238,19 +260,38 @@ __kernel void update_agent_move(
 	{
 		struct agent_state agent=input[i];
 		int2 trg=unpack_coord(agent.target);
-		if(!(agent.flags & (FLAG_SLEEPING|FLAG_DEAD)))
+		if(!(agent.flags & FLAG_DEAD))
 		{
-			struct agent_state new_agent=agent;
-			int new_id=atomic_inc(agent_count+(step+1)%2);
-			//int new_id=i;
-			if(new_id<AGENT_MAX)
+			if(agent.flags & FLAG_SLEEPING)
 			{
-				if(movement_counts[trg.x+trg.y*W]==1)
+				static_dynamic_layer[trg.x+trg.y*W]=agent.id+1;
+			}
+			else
+			{
+				struct agent_state new_agent=agent;
+				int new_id=atomic_inc(agent_count+(step+1)%2);
+				//int new_id=i;
+				if(new_id<AGENT_MAX)
 				{
-					//new_agent.pos=pack_coord((int2)(new_id%W,new_id/W));
-					new_agent.pos=agent.target;
+					if(movement_counts[trg.x+trg.y*W]==1)
+					{
+						//new_agent.pos=pack_coord((int2)(new_id%W,new_id/W));
+						new_agent.pos=agent.target;
+						if(agent.flags & FLAG_MOVE_GROW)
+						{
+							int2 pos=unpack_coord(agent.pos);
+							static_dynamic_layer[pos.x+pos.y*W]=agent.id+1;
+						}
+						else if(agent.flags & FLAG_MOVE_EXCHANGE)
+						{
+							int2 pos=unpack_coord(agent.pos);
+							int id2=static_dynamic_layer[trg.x+trg.y*W];
+							static_dynamic_layer[pos.x+pos.y*W]=id2;
+						}
+					}
+					output[new_id]=new_agent;
+					wake_around(unpack_coord(agent.pos),wake_buffer);
 				}
-				output[new_id]=new_agent;
 			}
 		}
 	}
@@ -351,14 +392,68 @@ __kernel void output_to_texture(
 		int2 pos=unpack_coord(input[i].pos);
 		col.w=1;
 		pos=clamp_pos(pos);
-		//if(!(input[i].flags & FLAG_DEAD))
+		if(!(input[i].flags & FLAG_DEAD))
 		{
 			write_imagef(output_tex,pos,col);
-			static_dynamic_layer[pos.x+pos.y*W]=i;
+			if(input[i].flags & FLAG_SLEEPING)
+				static_dynamic_layer[pos.x+pos.y*W]=i+1;
 		}
 	}
 }
+__kernel void add_static_layer(
+	__global __read_only int* static_layer,
+	__global __read_only int* static_dynamic_layer,
+	__write_only image2d_t output_tex,
 
+	int step,
+	__global volatile int* agent_count,
+	__global __write_only struct agent_state* output,
+	__global __read_only int* wake_buffer)
+{
+	int i=get_global_id(0);
+	if(i>=0 && i<W*H)
+	{
+		float4 col_out=(float4)(0,0,0,0);
+		int2 pos=(int2)(i%W,i/W);
+
+		float4 colors[3]={
+			(float4)(0.7,0.75,.8,1),
+			(float4)(0.8,0.2,0.3,1),
+			(float4)(0.3,0.4,0.4,1),
+		};
+		bool write=false;
+		int oid=static_dynamic_layer[i];
+		if(oid!=0)
+		{
+			int id=clamp(oid-1,0,1);
+			col_out=colors[abs(id)]; //TODO: add some variation
+			write=true;
+		}
+		int wake=wake_buffer[i];
+		if(wake>0 && oid!=0)
+		{
+			struct agent_state new_state;
+			int new_id=atomic_inc(agent_count+step);
+			if(new_id<AGENT_MAX)
+			{
+				new_state.pos=pack_coord(pos);
+				new_state.id=clamp(oid-1,0,1);
+				new_state.flags=0;
+				output[new_id]=new_state;
+			}
+		}
+		oid=static_layer[i];
+		if(oid!=0)
+		{
+			int id=clamp(oid-1,0,1);
+			col_out=colors[2]; //TODO: add some variation
+			write=true;
+		}
+		if(write)
+			write_imagef(output_tex,pos,col_out);
+
+	}
+}
 ]==],_G))
 end
 
@@ -370,6 +465,7 @@ buffers={
 	opencl.make_buffer(agent_count*16)
 }
 move_count_buffer=opencl.make_buffer(w*h*4)
+wake_buffer=opencl.make_buffer(w*h*4)
 static_layer_buffer=opencl.make_buffer(w*h*4)
 sd_layer_buffer=opencl.make_buffer(w*h*4)
 
@@ -430,11 +526,12 @@ function clear_counts(  )
 	--active_count:fill_i(2*4,1)
 end
 function clear_display( step )
-	sd_layer_buffer:fill_i(w*h*4,1);
+	--sd_layer_buffer:fill_i(w*h*4,1);
 	local next_id=(step+1)%2
 	active_count:fill_i(4,1,0,4*next_id)
+
 end
-paused=false
+paused=paused or false
 local step=0
 function update(  )
 	__no_redraw()
@@ -443,6 +540,16 @@ function update(  )
 	if imgui.RadioButton("Paused",paused) then
 		paused=not paused
 	end
+	local need_wake=0
+	if imgui.Button("wake") then
+		need_wake=1
+	end
+	if imgui.Button("reset") then
+		init_buffers(  )
+		sd_layer_buffer:fill_i(w*h*4,1);
+		step=0
+	end
+	clear_display(step)
 	if do_step or not paused then
 		clear_counts()
 		-- [[
@@ -461,11 +568,15 @@ function update(  )
 		kern_target:set(3,active_count)
 		kern_target:run(agent_count)
 
+		wake_buffer:fill_i(w*h*4,1,need_wake)
+
 		kern_move:set(0,buffers[2])
 		kern_move:set(1,move_count_buffer)
 		kern_move:set(2,buffers[1])
-		kern_move:seti(3,step)
-		kern_move:set(4,active_count)
+		kern_move:set(3,sd_layer_buffer)
+		kern_move:seti(4,step)
+		kern_move:set(5,active_count)
+		kern_move:set(6,wake_buffer)
 		kern_move:run(agent_count)
 		--]]
 		step=step+1
@@ -479,18 +590,29 @@ function update(  )
 		buffers[1]=tmp
 		--]]
 	end
-		--output
-		clear_display(step)
-		kern_output:set(0,buffers[1])
-		kern_output:set(1,sd_layer_buffer)
-		kern_output:set(2,display_buffer)
-		kern_output:seti(3,step)
-		kern_output:set(4,active_count)
+	--output
+	clear_display(step)
+	kern_output:set(0,buffers[1])
+	kern_output:set(1,sd_layer_buffer)
+	kern_output:set(2,display_buffer)
+	kern_output:seti(3,step)
+	kern_output:set(4,active_count)
 
 
-		display_buffer:aquire()
-		kern_output:run(agent_count)
-		display_buffer:release()
+	display_buffer:aquire()
+	kern_output:run(agent_count)
+
+	kern_add:set(0,static_layer_buffer)
+	kern_add:set(1,sd_layer_buffer)
+	kern_add:set(2,display_buffer)
+	kern_add:seti(3,step)
+	kern_add:set(4,active_count)
+	kern_add:set(5,buffers[1])
+	kern_add:set(6,wake_buffer)
+	kern_add:run(w*h)
+	display_buffer:release()
+
+
 	
 	--gl draw
 	shader:use()
