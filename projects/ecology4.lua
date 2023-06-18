@@ -158,6 +158,10 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 			int id=agent.id;
 
 			agent_out.target=pack_coord(pos);
+			/*
+				NB: the movement choice logic is that even if there is a valid position to move into, it must not happen
+					100% of time as it might deadlock with another particle that has only that spot
+			*/
 			if(around[DIR_S]==MAT_NONE || (id==MAT_SAND &&(around[DIR_S]==MAT_WATER_R || around[DIR_S]==MAT_WATER_L)))
 			{
 				agent_out.target=pack_coord(OFFSET_DIR_S(pos));
@@ -185,8 +189,6 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 						moved=true;
 					}
 				}
-				if(r%2==0)
-					moved=true;
 				if(!moved && id==MAT_WATER_L && r%2)
 				{
 					if(around[DIR_W]==MAT_NONE)
@@ -338,7 +340,14 @@ __kernel void update_agent_move(
 						wake_around(trg,wake_buffer);
 					}
 					else
+					{
 						static_dynamic_layer[pos.x+pos.y*W]=agent.id;
+						/*uint r=pcg((uint)(step*784654+i));
+						if((r^0x54874 % 77)==0)
+						{
+							new_agent.flags|=FLAG_SLEEPING;
+						}*/
+					}
 
 					output[new_id]=new_agent;
 				}
