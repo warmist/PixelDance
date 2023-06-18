@@ -20,12 +20,13 @@ function set_values(s,tbl)
 	end)
 end
 
-local kern_logic,kern_target,kern_move,kern_init,kern_output
+local kern_logic,kern_target,kern_move,kern_init
 function remake_program()
-kern_logic,kern_target,kern_move,kern_init,kern_init_s,kern_output,kern_add=opencl.make_program(set_values(
+kern_logic,kern_target,kern_move,kern_init,kern_init_s,kern_add=opencl.make_program(set_values(
 [==[
-#pragma FILE cl_kernel
-#pragma LINE __LINE__
+//#file cl_kernel
+#line __LINE__
+
 #define W $w$
 #define H $h$
 #define AGENT_MAX 15000
@@ -41,7 +42,7 @@ struct agent_state
 #define FLAG_SLEEPING 2
 #define FLAG_MOVE_EXCHANGE 4
 #define FLAG_MOVE_GROW 8
-
+#line __LINE__
 int2 clamp_pos(int2 p)
 {
 #if 0
@@ -82,6 +83,49 @@ int pack_coord(int2 v)
 	int ret=(v.x&0xFFFF) | ((abs(v.y)&0xFFFF)<<16);
 	return ret;
 }
+enum material{
+	MAT_NONE,
+	MAT_SAND,
+	MAT_WATER_L,
+	MAT_WATER_R,
+	MAT_WALL,
+	MAT_LAST
+};
+enum directions{
+	DIR_E ,
+	DIR_SE,
+	DIR_S ,
+	DIR_SW,
+	DIR_W ,
+	DIR_NW,
+	DIR_N ,
+	DIR_NE
+};
+#define OFFSET_DIR_E(pos)  (pos+(int2)( 1, 0))
+#define OFFSET_DIR_SE(pos) (pos+(int2)( 1,-1))
+#define OFFSET_DIR_S(pos)  (pos+(int2)( 0,-1))
+#define OFFSET_DIR_SW(pos) (pos+(int2)(-1,-1))
+#define OFFSET_DIR_W(pos)  (pos+(int2)(-1, 0))
+#define OFFSET_DIR_NW(pos) (pos+(int2)(-1, 1))
+#define OFFSET_DIR_N(pos)  (pos+(int2)( 0, 1))
+#define OFFSET_DIR_NE(pos) (pos+(int2)( 1, 1))
+
+
+void load_around(__global __read_only int* static_layer,
+				 __global __read_only int* dynamic_layer,
+				 int2 target,int* around)
+{
+	#define LOOKUP(dx,dy) static_layer[pos_to_index(target+(int2)(dx,dy))]*1000+abs(dynamic_layer[pos_to_index(target+(int2)(dx,dy))])
+	around[DIR_E] =LOOKUP( 1, 0);
+	around[DIR_SE]=LOOKUP( 1,-1);
+	around[DIR_S] =LOOKUP( 0,-1);
+	around[DIR_SW]=LOOKUP(-1,-1);
+	around[DIR_W] =LOOKUP(-1, 0);
+	around[DIR_NW]=LOOKUP(-1, 1);
+	around[DIR_N] =LOOKUP( 0, 1);
+	around[DIR_NE]=LOOKUP( 1, 1);
+	#undef LOOKUP
+}
 __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 	__global __read_only int* static_layer,
 	__global __read_only int* dynamic_layer,
@@ -107,27 +151,17 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 			d.y=d.y%3;
 			d-=(int2)(1,1);
 			*/
-			
-			int2 d=(int2)(0,-1);
-			int2 target;
-			target=clamp_pos(pos+d);
-			agent_out.pos=agent.pos;
 
 			uint r=pcg((uint)(seed+i));
-
-			int col=static_layer[pos_to_index(target)]*1000+dynamic_layer[pos_to_index(target)];
-			int col1=static_layer[pos_to_index(target+(int2)(1,0))]*1000+dynamic_layer[pos_to_index(target+(int2)(1,0))];
-			int col2=static_layer[pos_to_index(target+(int2)(-1,0))]*1000+dynamic_layer[pos_to_index(target+(int2)(-1,0))];
-
-			int col3=static_layer[pos_to_index(pos+(int2)(1,0))]*1000+dynamic_layer[pos_to_index(pos+(int2)(1,0))];
-			int col4=static_layer[pos_to_index(pos+(int2)(-1,0))]*1000+dynamic_layer[pos_to_index(pos+(int2)(-1,0))];
+			int around[8];
+			load_around(static_layer,dynamic_layer,pos,around);
 			int id=agent.id;
 
 			agent_out.target=pack_coord(pos);
-			if(col==0 ||(id==0 && col==2))
+			if(around[DIR_S]==MAT_NONE || (id==MAT_SAND &&(around[DIR_S]==MAT_WATER_R || around[DIR_S]==MAT_WATER_L)))
 			{
-				agent_out.target=pack_coord(target);
-				if(id==0 && col==2)
+				agent_out.target=pack_coord(OFFSET_DIR_S(pos));
+				if(id==MAT_SAND && (around[DIR_S]==MAT_WATER_R || around[DIR_S]==MAT_WATER_L))
 				{
 					agent_out.flags|=FLAG_MOVE_EXCHANGE;
 				}
@@ -135,48 +169,56 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 			else
 			{
 				bool moved=false;
-				if(r%2)
+				if(r%3==0)
 				{
-					if(col1==0)
+					if(around[DIR_SE]==MAT_NONE)
 					{
-						agent_out.target=pack_coord(target+(int2)(1,0));
+						agent_out.target=pack_coord(OFFSET_DIR_SE(pos));
 						moved=true;
 					}
 				}
-				else
+				else if(r%3==1)
 				{
-					if(col2==0)
+					if(around[DIR_SW]==MAT_NONE)
 					{
-						agent_out.target=pack_coord(target+(int2)(-1,0));
+						agent_out.target=pack_coord(OFFSET_DIR_SW(pos));
 						moved=true;
 					}
 				}
-				if(!moved && id==1)
+				if(r%2==0)
+					moved=true;
+				if(!moved && id==MAT_WATER_L && r%2)
 				{
-					if(r%2==0)
+					if(around[DIR_W]==MAT_NONE)
 					{
-						if(col3==0)
-						{
-							agent_out.target=pack_coord(pos+(int2)(1,0));
-							moved=true;
-						}
+						agent_out.target=pack_coord(OFFSET_DIR_W(pos));
+						moved=true;
 					}
 					else
 					{
-						if(col4==0)
-						{
-							agent_out.target=pack_coord(pos+(int2)(-1,0));
-							moved=true;
-						}
+						agent_out.id=MAT_WATER_R;
 					}
 				}
-				if(!moved)
+				if(!moved && id==MAT_WATER_R && r%2)
+				{
+					if(around[DIR_E]==MAT_NONE)
+					{
+						agent_out.target=pack_coord(OFFSET_DIR_E(pos));
+						moved=true;
+					}
+					else
+					{
+						agent_out.id=MAT_WATER_L;
+					}
+				}
+				if(!moved && ((r^0x54f87)%77==76))
 					agent_out.flags |= FLAG_SLEEPING;
 			}
 		}
 		output[i]=agent_out;
 	}
 }
+
 void increment(int2 pos,__global volatile int* movement_counts)
 {
 	atomic_inc(movement_counts+pos_to_index(pos));
@@ -194,6 +236,7 @@ __kernel void update_agent_targets(
 		int2 pos=unpack_coord(input[i].pos);
 		int2 target=unpack_coord(input[i].target);
 		increment(pos,movement_counts);
+		//if(target.x!=pos.x || target.y!=pos.y)
 		increment(target,movement_counts);
 	}
 }
@@ -264,7 +307,7 @@ __kernel void update_agent_move(
 		{
 			if(agent.flags & FLAG_SLEEPING)
 			{
-				static_dynamic_layer[trg.x+trg.y*W]=agent.id+1;
+				static_dynamic_layer[trg.x+trg.y*W]=-agent.id;
 			}
 			else
 			{
@@ -273,14 +316,16 @@ __kernel void update_agent_move(
 				//int new_id=i;
 				if(new_id<AGENT_MAX)
 				{
+					int2 pos=unpack_coord(agent.pos);
 					if(movement_counts[trg.x+trg.y*W]==1)
 					{
 						//new_agent.pos=pack_coord((int2)(new_id%W,new_id/W));
+						static_dynamic_layer[pos.x+pos.y*W]=0; //clear old position
 						new_agent.pos=agent.target;
 						if(agent.flags & FLAG_MOVE_GROW)
 						{
 							int2 pos=unpack_coord(agent.pos);
-							static_dynamic_layer[pos.x+pos.y*W]=agent.id+1;
+							static_dynamic_layer[pos.x+pos.y*W]=-agent.id;
 						}
 						else if(agent.flags & FLAG_MOVE_EXCHANGE)
 						{
@@ -288,9 +333,14 @@ __kernel void update_agent_move(
 							int id2=static_dynamic_layer[trg.x+trg.y*W];
 							static_dynamic_layer[pos.x+pos.y*W]=id2;
 						}
+						static_dynamic_layer[trg.x+trg.y*W]=agent.id;
+						wake_around(pos,wake_buffer);
+						wake_around(trg,wake_buffer);
 					}
+					else
+						static_dynamic_layer[pos.x+pos.y*W]=agent.id;
+
 					output[new_id]=new_agent;
-					wake_around(unpack_coord(agent.pos),wake_buffer);
 				}
 			}
 		}
@@ -310,12 +360,13 @@ __global __write_only int* agent_count)
 
 		#else
 		int density=6;
-		int r=(int)pcg((uint)i);
+		int r=(int)pcg((uint)i^0x484234);
 		int j=i*density+abs(r)%density;
 		int2 trg=(int2)(j % (W-2)+1,H-(j / (W-2)));
 		#endif
 		output[i].pos=pack_coord( trg );
-		output[i].id=abs(r)%2;
+		output[i].id=abs(r^0x8434af)%4;
+		//output[i].id=MAT_WATER_L;
 		output[i].flags=0;
 	}
 }
@@ -330,6 +381,8 @@ __kernel void init_static(__global __write_only int* output)
 		int dx=x-W/2;
 		int dy=y;
 		int d=dx*dx+dy*dy;
+		int rad=W/3;
+
 		//float c=cos((float)i*5487697347779999578.15+4897778787.36)*0.5+0.5;
 		uint r=pcg(i^0x4a67fd);
 		/*if(r%5==0 && y<600)
@@ -339,7 +392,7 @@ __kernel void init_static(__global __write_only int* output)
 		else if(r%3==0 && y<300)
 			output[i]=1;
 		else*/
-		if(d<100000)
+		if(d<rad*rad)
 			output[i]=1;
 		else
 			output[i]=0;
@@ -368,38 +421,7 @@ float3 spectral_zucconi6 (float w)
         bump3y(c1 * (x - x1), y1) +
         bump3y(c2 * (x - x2), y2) ;
 }
-__kernel void output_to_texture(
-	__global __read_only struct agent_state* input,
-	__global __write_only int* static_dynamic_layer,
-	__write_only image2d_t output_tex,
-	int step,
-	__global volatile int* agent_count)
-{
-	int i=get_global_id(0);
-	//int count=AGENT_MAX;
-	int count=agent_count[step];
-	if(i>=0 && i<count)
-	{
-		float4 colors[2]={
-			(float4)(0.7,0.75,.8,1),
-			(float4)(0.8,0.2,0.3,1),
-		};
-		float4 col;
-		float v=(float)i/(float)AGENT_MAX;
-		//col.xyz=spectral_zucconi6(v);
-		int id=clamp(input[i].id,0,1);
-		col=colors[id]; //TODO: add some variation
-		int2 pos=unpack_coord(input[i].pos);
-		col.w=1;
-		pos=clamp_pos(pos);
-		if(!(input[i].flags & FLAG_DEAD))
-		{
-			write_imagef(output_tex,pos,col);
-			if(input[i].flags & FLAG_SLEEPING)
-				static_dynamic_layer[pos.x+pos.y*W]=i+1;
-		}
-	}
-}
+
 __kernel void add_static_layer(
 	__global __read_only int* static_layer,
 	__global __read_only int* static_dynamic_layer,
@@ -413,40 +435,49 @@ __kernel void add_static_layer(
 	int i=get_global_id(0);
 	if(i>=0 && i<W*H)
 	{
+		//float mv=(float)movement_counts[i];
+		//mv/=3.0;
 		float4 col_out=(float4)(0,0,0,0);
 		int2 pos=(int2)(i%W,i/W);
 
-		float4 colors[3]={
+		float4 colors[5]={
+			(float4)(0,0,0,1),
 			(float4)(0.7,0.75,.8,1),
 			(float4)(0.8,0.2,0.3,1),
+			(float4)(0.9,0.5,0.8,1),
 			(float4)(0.3,0.4,0.4,1),
 		};
 		bool write=false;
+		//draw dynamic layer
 		int oid=static_dynamic_layer[i];
-		if(oid!=0)
+		if(oid!=MAT_NONE)
 		{
-			int id=clamp(oid-1,0,1);
-			col_out=colors[abs(id)]; //TODO: add some variation
+			int id=clamp((int)abs(oid),0,MAT_LAST);
+			col_out=colors[id]; //TODO: add some variation
 			write=true;
 		}
+		//wakeup logic
 		int wake=wake_buffer[i];
-		if(wake>0 && oid!=0)
+		if(wake>0 && oid<MAT_NONE)
 		{
 			struct agent_state new_state;
 			int new_id=atomic_inc(agent_count+step);
 			if(new_id<AGENT_MAX)
 			{
 				new_state.pos=pack_coord(pos);
-				new_state.id=clamp(oid-1,0,1);
+				new_state.target=pack_coord(pos);
+				new_state.id=clamp((int)abs(oid),0,MAT_LAST);
 				new_state.flags=0;
 				output[new_id]=new_state;
+				//might need a clear here?
 			}
 		}
+		//trully static layer stuff
 		oid=static_layer[i];
-		if(oid!=0)
+		if(oid!=MAT_NONE)
 		{
-			int id=clamp(oid-1,0,1);
-			col_out=colors[2]; //TODO: add some variation
+			int id=clamp(oid,0,MAT_LAST);
+			col_out=colors[MAT_WALL]; //TODO: add some variation
 			write=true;
 		}
 		if(write)
@@ -470,7 +501,7 @@ static_layer_buffer=opencl.make_buffer(w*h*4)
 sd_layer_buffer=opencl.make_buffer(w*h*4)
 
 active_count=opencl.make_buffer(2*4)
-
+active_count_rb=ffi.new("int[2]")
 texture=textures:Make()
 texture:use(0)
 texture:set(w,h,FLTA_PIX)
@@ -484,14 +515,17 @@ out vec4 color;
 in vec3 pos;
 
 uniform sampler2D tex_main;
-
+uniform vec2 rez; 
 void main()
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
+	float aspect=rez.x/rez.y;
+	normed.y/=aspect;
+	//normed=clamp(normed,0,1);
 	vec3 v=texture(tex_main,normed).xyz;
 	//v=pow(v,vec3(2.2));
 
-	color.xyz=v;
+	color.xyz=v*(step(normed.y,1)-step(normed.y,0));
 	color.w=1;
 }
 ]]
@@ -529,7 +563,6 @@ function clear_display( step )
 	--sd_layer_buffer:fill_i(w*h*4,1);
 	local next_id=(step+1)%2
 	active_count:fill_i(4,1,0,4*next_id)
-
 end
 paused=paused or false
 local step=0
@@ -568,7 +601,7 @@ function update(  )
 		kern_target:set(3,active_count)
 		kern_target:run(agent_count)
 
-		wake_buffer:fill_i(w*h*4,1,need_wake)
+		wake_buffer:fill_i(w*h*4,1,0)
 
 		kern_move:set(0,buffers[2])
 		kern_move:set(1,move_count_buffer)
@@ -583,6 +616,9 @@ function update(  )
 		if step==2 then
 			step=0
 		end
+		active_count:get(8,active_count_rb)
+		local next_step=(step+1)%2
+		imgui.Text(string.format("Active:%d %d",active_count_rb[step],active_count_rb[next_step]))
 		--swap buffers
 		--[[
 		local tmp=buffers[2]
@@ -592,15 +628,14 @@ function update(  )
 	end
 	--output
 	clear_display(step)
-	kern_output:set(0,buffers[1])
-	kern_output:set(1,sd_layer_buffer)
-	kern_output:set(2,display_buffer)
-	kern_output:seti(3,step)
-	kern_output:set(4,active_count)
+	if need_wake==1 then
+		wake_buffer:fill_i(w*h*4,1,1)
+		need_wake=0
+	end
 
 
 	display_buffer:aquire()
-	kern_output:run(agent_count)
+	--kern_output:run(agent_count)
 
 	kern_add:set(0,static_layer_buffer)
 	kern_add:set(1,sd_layer_buffer)
@@ -613,11 +648,11 @@ function update(  )
 	display_buffer:release()
 
 
-	
 	--gl draw
 	shader:use()
 	texture:use(1)
 	shader:set_i("tex_main",1)
+	shader:set("rez",STATE.size[1],STATE.size[2])
 	shader:draw_quad()
 	if imgui.Button("save") then
 		save_img()
