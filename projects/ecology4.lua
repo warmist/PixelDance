@@ -7,9 +7,9 @@
 
 require "common"
 local ffi=require "ffi"
-w=512
-h=512
-agent_count=15000
+w=1024
+h=1024
+agent_count=1500000
 config=make_config({
     {"pause",true,type="bool"},
     },config)
@@ -29,7 +29,7 @@ kern_logic,kern_target,kern_move,kern_init,kern_init_s,kern_add=opencl.make_prog
 
 #define W $w$
 #define H $h$
-#define AGENT_MAX 15000
+#define AGENT_MAX 1500000
 #define TIME_STEP 0.005f
 struct agent_state
 {
@@ -126,6 +126,14 @@ void load_around(__global __read_only int* static_layer,
 	around[DIR_NE]=LOOKUP( 1, 1);
 	#undef LOOKUP
 }
+bool can_move_into(int id_self,int id_target)
+{
+	if(id_target==MAT_NONE)
+		return true;
+	if(id_self==MAT_SAND && (id_target==MAT_WATER_L || id_target==MAT_WATER_R))
+		return true;
+	return false;
+}
 __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 	__global __read_only int* static_layer,
 	__global __read_only int* dynamic_layer,
@@ -162,10 +170,10 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 				NB: the movement choice logic is that even if there is a valid position to move into, it must not happen
 					100% of time as it might deadlock with another particle that has only that spot
 			*/
-			if(around[DIR_S]==MAT_NONE || (id==MAT_SAND &&(around[DIR_S]==MAT_WATER_R || around[DIR_S]==MAT_WATER_L)))
+			if(can_move_into(id,around[DIR_S]))
 			{
 				agent_out.target=pack_coord(OFFSET_DIR_S(pos));
-				if(id==MAT_SAND && (around[DIR_S]==MAT_WATER_R || around[DIR_S]==MAT_WATER_L))
+				//if(id==MAT_SAND && (around[DIR_S]==MAT_WATER_R || around[DIR_S]==MAT_WATER_L))
 				{
 					agent_out.flags|=FLAG_MOVE_EXCHANGE;
 				}
@@ -175,17 +183,19 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 				bool moved=false;
 				if(r%3==0)
 				{
-					if(around[DIR_SE]==MAT_NONE)
+					if(can_move_into(id,around[DIR_SE]))
 					{
 						agent_out.target=pack_coord(OFFSET_DIR_SE(pos));
+						agent_out.flags|=FLAG_MOVE_EXCHANGE;
 						moved=true;
 					}
 				}
 				else if(r%3==1)
 				{
-					if(around[DIR_SW]==MAT_NONE)
+					if(can_move_into(id,around[DIR_SW]))
 					{
 						agent_out.target=pack_coord(OFFSET_DIR_SW(pos));
+						agent_out.flags|=FLAG_MOVE_EXCHANGE;
 						moved=true;
 					}
 				}
@@ -213,7 +223,7 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 						agent_out.id=MAT_WATER_L;
 					}
 				}
-				if(!moved && ((r^0x54f87)%77==76))
+				if(!moved && ((r^0x54f87)%222==221))
 					agent_out.flags |= FLAG_SLEEPING;
 			}
 		}
@@ -309,7 +319,8 @@ __kernel void update_agent_move(
 		{
 			if(agent.flags & FLAG_SLEEPING)
 			{
-				static_dynamic_layer[trg.x+trg.y*W]=-agent.id;
+				int2 pos=unpack_coord(agent.pos);
+				static_dynamic_layer[pos.x+pos.y*W]=-agent.id;
 			}
 			else
 			{
@@ -331,7 +342,6 @@ __kernel void update_agent_move(
 						}
 						else if(agent.flags & FLAG_MOVE_EXCHANGE)
 						{
-							int2 pos=unpack_coord(agent.pos);
 							int id2=static_dynamic_layer[trg.x+trg.y*W];
 							static_dynamic_layer[pos.x+pos.y*W]=id2;
 						}
