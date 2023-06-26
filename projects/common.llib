@@ -101,6 +101,7 @@ function make_buffer( typename,type_id,default_pixel )
 			b:use()
 			b:set(t.d,count*size_of_data[type_id])
 			__unbind_buffer()
+			return b
 		end
 
 		return img
@@ -734,18 +735,14 @@ function shuffle_table(tbl)
 end
 
 -------------------------------------------------
-DisjointSet={}
-setmetatable(DisjointSet, {
-  __call = function (cls, ...)
-    return cls.new(...)
-  end,
-})
+DisjointSet=class(function (cls, ...)
+    cls:new(...)
+  end
+  )
 
-function DisjointSet.new()
-  local self = setmetatable({}, DisjointSet)
+function DisjointSet:new()
   self.sets = {}
   self.set_sizes = {}
-  return self
 end
 
 function DisjointSet:make_set(element)

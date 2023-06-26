@@ -45,6 +45,7 @@ static const gl_tex_format formats[] = {
 	{ GL_R32F,GL_RED,GL_FLOAT },
 	{ GL_RG32F,GL_RG,GL_FLOAT},
 	{ GL_R8,GL_RED,GL_UNSIGNED_BYTE},
+	{ GL_RGBA32UI, GL_RGBA_INTEGER, GL_UNSIGNED_INT},
 };
 //if second arg is not ptr to data, create empty texture!
 static int set_texture_data(lua_State* L)
@@ -63,7 +64,9 @@ static int set_texture_data(lua_State* L)
 	auto format = luaL_optint(L, arg++, 0);
 
 	auto f = formats[format];
+	//GL_TRAP;
 	glTexImage2D(GL_TEXTURE_2D, 0, f.internal_format, w, h, 0, f.format, f.type, data);
+	//GL_TRAP;
 	return 0;
 }
 static int get_texture_data(lua_State* L)
@@ -75,6 +78,7 @@ static int get_texture_data(lua_State* L)
 
 	auto f = formats[format];
 	glGetTexImage(GL_TEXTURE_2D, 0, f.format, f.type, data);
+	//GL_TRAP;
 	return 0;
 }
 GLuint fbuffer = -1;
