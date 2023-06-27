@@ -31,6 +31,18 @@ neighborhood={
     {1,1},
     --]]
 }
+neighborhood_sets={
+    --[[ von Neumann
+    {0,-1},
+    {-1,0},
+    --]]
+    -- [[ Moore
+    {1,-1},
+    {0,-1},
+    {-1,-1},
+    {-1,0},
+    --]]
+}
 ruleset_alive={
     [1]=1,
     --[2]=1,
@@ -44,15 +56,16 @@ ruleset_dead={
     --[8]=1,
 }
 function gen_ruleset()
+    --math.randomseed(3)
     for i=0,255 do
-        if math.random()>0.2 then
+        if math.random()>0.6 then
             ruleset_alive[i]=1
         else
             ruleset_alive[i]=0
         end
     end
         for i=0,255 do
-        if math.random()>0.75 then
+        if math.random()>0.8 then
             ruleset_dead[i]=1
         else
             ruleset_dead[i]=0
@@ -95,28 +108,50 @@ function fill_buffers()
         end
     end
     --]]
-    local c=Point(map_w/2,map_h/2)
-    local r=16
+    local c=Point(map_w/2+15,map_h/2+15)
+    local r=9
+    --[[ square
     for y=-r,r do
         for x=-r,r do
             buffers[1]:set(c[1]+x,c[2]+y,1)
         end
     end
+    --]]
+    -- [[ circle
+    for y=-r,r do
+        local dx=math.floor(math.sqrt(r*r-y*y))
+        for x=-dx,dx do
+            buffers[1]:set(c[1]+x,c[2]+y,1)
+        end
+    end
+    --]]
 end
 fill_buffers()
 --partition data
 set_ids=make_u32_buffer(map_w,map_h)
 partitions={}
+function choose_nn_id( nn )
 
+    for i,v in ipairs(nn) do
+        if v[2].r~=0 then
+            return v[2].r
+        end
+    end
+    return 0
+end
 --NB: not double buffered
-function calculate_rotation(x,y )
+function calculate_rotation(x,y,nn )
     local id=set_ids:get(x,y).r
+    if id==0 then
+        id=choose_nn_id(nn)
+    end
     local c
     if partitions[id]==nil then
         c=Point(map_w/2,map_h/2)
         --return 0
     else
         c=partitions[id].center
+        --c=(partitions[id].bmax+partitions[id].bmin)*0.5
         --[[
         if math.random()>0.999  then
             print(x,y,c-Point(x,y))
@@ -124,13 +159,22 @@ function calculate_rotation(x,y )
         ]]
     end
     local delta=c-Point(x,y)
+    -- [[ BROKEN
     local angle=math.atan2(delta[2],delta[1])
-    --[[
-    ]]
---------------------------------------------
-    --TODO
---------------------------------------------
     local rotation=math.floor(angle*4/math.pi+0.5)+4
+    --]]
+    --[[ only for 4 nn
+    local rotation=0
+    if     delta[1]>0 and delta[2]>=-delta[1] and delta[2]<=delta[1]-1 then
+        rotation=3
+    elseif delta[1]<0 and delta[2]>=delta[1]+1 and delta[2]<=-delta[1] then
+        rotation=1
+    elseif delta[2]>0 and delta[1]>=delta[2]-1 and delta[1]<=delta[2] then
+        rotation=0
+    elseif delta[2]<0 and delta[1]>=delta[2] and delta[1]<=-delta[2]-1 then
+        rotation=2
+    end
+    --]]
     if rotation<0 then rotation=#neighborhood+rotation end
     return rotation
 end
@@ -152,20 +196,40 @@ function set_looped( buffer,x,y,v )
 end
 function lookup_nn(buffer, x,y )
     local ret={}
+
     for i,v in ipairs(neighborhood) do
-        ret[i]=get_looped(buffer,x+v[1],y+v[2])
+        ret[i]={
+            get_looped(buffer,x+v[1],y+v[2]),
+            get_looped(set_ids,x+v[1],y+v[2])
+        }
     end
     return ret
 end
-function apply_rule(buffer, x,y ,rotation)
+function lookup_nn_set(buffer, x,y )--TODO: make this work with looped
+    local ret={}
+    local min_id=math.huge
+    for i,v in ipairs(neighborhood_sets) do
+        local tx=x+v[1]
+        local ty=y+v[2]
+        if tx>=0 and ty>=0 and tx<map_w and ty<map_h then
+            local v=buffer:get(tx,ty).r
+            if v~=0 then
+                if v<min_id then min_id=v end
+                table.insert(ret,v)
+            end
+        end
+    end
+    return ret,min_id
+end
+function apply_rule(buffer, x,y ,rotation,nn)
     local ruleset=ruleset_dead
     if buffer:get(x,y)>0 then
         ruleset=ruleset_alive
+        --print(x-map_w/2,y-map_h/2,rotation)
     end
-    local nn=lookup_nn(buffer,x,y)
     local compact_nn=0
     for i=1,#nn do
-        if nn[i]>0 then
+        if nn[i][1]>0 then
             local shift=(i-1+rotation)% #neighborhood
             compact_nn=bit.bor(compact_nn,bit.lshift(1,shift))
         end
@@ -180,9 +244,10 @@ function do_rules(  )
     local next=buffers[2]
     for y=0,map_h-1 do
         for x=0,map_w-1 do
-            local rotation=calculate_rotation(x,y)
+            local nn=lookup_nn(current,x,y)
+            local rotation=calculate_rotation(x,y,nn)
             --local rotation=0
-            next:set(x,y,apply_rule(current,x,y,rotation))
+            next:set(x,y,apply_rule(current,x,y,rotation,nn))
         end
     end
 end
@@ -200,26 +265,7 @@ function partition( buffer )
     for y=0,map_h-1 do
         for x=0,map_w-1 do
             if buffer:get(x,y)>0 then
-                local processed_tiles={}
-                local min_id=math.huge
-                if y>0 then
-                    for tx=-1,1 do
-                        if x+tx>=0 and x+tx<map_w then
-                            local v=set_ids:get(x+tx,y-1).r
-                            if v>0 then
-                                table.insert(processed_tiles,v)
-                                if min_id>v then min_id=v end
-                            end
-                        end
-                    end
-                end
-                if x-1>=0 then
-                    local v=set_ids:get(x-1,y).r
-                    if v>0 then
-                        table.insert(processed_tiles,v)
-                        if min_id>v then min_id=v end
-                    end
-                end
+                local processed_tiles,min_id=lookup_nn_set(set_ids,x,y)
                 if #processed_tiles>0 then
                     --assign smallest label and connect all labels into one set
                     set_ids:set(x,y,{min_id})
@@ -251,18 +297,28 @@ function update_partition_data()
     for y=0,map_h-1 do
         for x=0,map_w-1 do
             local id=set_ids:get(x,y).r
-            local p=partitions[id]
-            if p==nil then
-                p={center=Point(0,0),count=0}
-                partitions[id]=p
+            if id~=0 then
+                local p=partitions[id]
+                if p==nil then
+                    p={center=Point(0,0),bmin=Point(x,y),bmax=Point(x,y),count=0}
+                    partitions[id]=p
+                end
+
+                p.center=p.center+Point(x,y)
+                if p.bmin[1]>x then p.bmin[1]=x end
+                if p.bmin[2]>y then p.bmin[2]=y end
+                if p.bmax[1]<x then p.bmax[1]=x end
+                if p.bmax[2]<y then p.bmax[2]=y end
+                p.count=p.count+1
             end
-            p.center=p.center+Point(x,y)
-            p.count=p.count+1
         end
     end
-
+    --print("====")
     for k,v in pairs(partitions) do
         v.center=v.center/v.count
+        v.center[1]=math.floor(v.center[1]+0.5)
+        v.center[2]=math.floor(v.center[2]+0.5)
+        --print("P:",k,v.center)
     end
     --[=[
     local new_partitions={}
@@ -334,12 +390,13 @@ void main(){
     #else
         vec3 col=vec3(v*0.8);
     #endif
+    col=mix(col,vec3(v)*0.5,0.7);
     //col.r=1;
     color = vec4(col,1);
 }
 ]==]
 function draw()
-    buffers[2]:write_texture(cell_texture)
+    buffers[1]:write_texture(cell_texture)
     set_ids:write_texture(cell_id)
 
     draw_shader:use()
@@ -378,12 +435,20 @@ function nicefy_partitions(  )
     end
 end
 once=true
+if paused==nil then
+    paused=false
+end
 function update(  )
     __no_redraw()
     __clear()
     --if once then
+
     local need_swap=false
-    if imgui.Button("Step") or true then
+    if imgui.RadioButton("Paused",paused) then
+        paused=not paused
+    end
+    
+    if imgui.Button("Step") or not paused then
         partition(buffers[1])
         update_partition_data()
         do_rules()
