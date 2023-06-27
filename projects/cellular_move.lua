@@ -8,6 +8,8 @@ TODO:
     * add more "states" (i.e. non 1/0 but actually have 1/2/...)
     * more "laws of conservation"
     * simulate for each seed id and avg over them/do histogram?/probablity cloud?
+    * remove requirement for symmetry, but add system center of mass 
+        and rotate rules so it always points to it
 --]===]
 require 'common'
 require 'bit'
