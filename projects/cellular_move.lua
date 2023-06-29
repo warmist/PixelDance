@@ -26,8 +26,8 @@ local map_h=math.floor(win_h*oversample)
 local aspect_ratio=win_w/win_h
 local map_aspect_ratio=map_w/map_h
 local size=STATE.size
-local MAX_ATOM_TYPES=5
-
+local MAX_ATOM_TYPES=2
+local ALLOW_TRANSFORMATION=false
 is_remade=false
 local dist_logic_type="simple"
 local max_particle_count=10000
@@ -697,7 +697,9 @@ function particle_step(  )
             local a=particles_age:get(i,0)
             --a=(a+change)%(MAX_ATOM_TYPES-1)+1
             local nval=a*MAX_ATOM_TYPES--round((a/255)*(MAX_ATOM_TYPES-1))
-            nval=(nval+change-1)%(MAX_ATOM_TYPES-1)+1
+            if ALLOW_TRANSFORMATION then
+                nval=(nval+change-1)%(MAX_ATOM_TYPES-1)+1
+            end
             --print(a,nval,change,nval/MAX_ATOM_TYPES)
             particles_age:set(i,0,nval/MAX_ATOM_TYPES)
         else
@@ -1322,6 +1324,7 @@ function generate_rules( rule_tbl,overwrite )
             end
         end
     end
+    --[[
     local r="rules:"
     for i,v in ipairs(short_rules) do
         if i~=1 then
@@ -1330,6 +1333,7 @@ function generate_rules( rule_tbl,overwrite )
         r=r..v[1]..":"..v[2]
     end
     --print(r)
+    --]]
     for i,v in pairs(pt) do
         -- [[
         if v.sym==8  then
@@ -1374,6 +1378,7 @@ function generate_rules_ex( rule_tbl,patterns,overwrite )
     local already_printed={}
     local only_print_non0=true
     local short_rules={}
+    print("========================================")
     for i,v in pairs(patterns) do
         if not already_printed[v.id] then
             if v.sym==8 then
@@ -1385,8 +1390,8 @@ function generate_rules_ex( rule_tbl,patterns,overwrite )
                     is_free=false
                 end
                 if not only_print_non0 or is_free then
-                    --print("Group id:",v.id)
-                    --print(concat_byline(value_to_nn_string_ex(pt_rules[v.id][2]),dir_to_arrow_string(actual_dir)))
+                    print("Group id:",v.id)
+                    print(concat_byline(value_to_nn_string_ex(pt_rules[v.id][2]),dir_to_arrow_string(actual_dir)))
                     table.insert(short_rules,{v.id,actual_dir})
                 end
                 already_printed[v.id]=true
@@ -1402,8 +1407,8 @@ function generate_rules_ex( rule_tbl,patterns,overwrite )
         end
         r=r..v[1]..":"..v[2]
     end
-    ]]
-    --print(r)
+    print(r)
+    --]]
     for i,v in pairs(patterns) do
         -- [[
         if v.sym==8  then

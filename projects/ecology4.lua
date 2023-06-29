@@ -7,9 +7,9 @@
 
 require "common"
 local ffi=require "ffi"
-w=1024
-h=1024
-agent_count=1500000
+w=256
+h=256
+agent_count=15000
 config=make_config({
     {"pause",true,type="bool"},
     },config)
@@ -29,7 +29,7 @@ kern_logic,kern_target,kern_move,kern_init,kern_init_s,kern_add=opencl.make_prog
 
 #define W $w$
 #define H $h$
-#define AGENT_MAX 1500000
+#define AGENT_MAX 15000
 #define TIME_STEP 0.005f
 struct agent_state
 {
@@ -128,11 +128,16 @@ void load_around(__global __read_only int* static_layer,
 }
 bool can_move_into(int id_self,int id_target)
 {
-	if(id_target==MAT_NONE)
-		return true;
-	if(id_self==MAT_SAND && (id_target==MAT_WATER_L || id_target==MAT_WATER_R))
-		return true;
-	return false;
+	int material_density[]={
+		0,
+		5,
+		1,
+		1,
+		99
+	};
+	if(id_target>=MAT_LAST)
+		return false;
+	return material_density[id_self]>material_density[id_target];
 }
 __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 	__global __read_only int* static_layer,
@@ -189,6 +194,12 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 						agent_out.flags|=FLAG_MOVE_EXCHANGE;
 						moved=true;
 					}
+					else if(can_move_into(id,around[DIR_SW]))
+					{
+						agent_out.target=pack_coord(OFFSET_DIR_SW(pos));
+						agent_out.flags|=FLAG_MOVE_EXCHANGE;
+						moved=true;
+					}
 				}
 				else if(r%3==1)
 				{
@@ -198,8 +209,14 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 						agent_out.flags|=FLAG_MOVE_EXCHANGE;
 						moved=true;
 					}
+					else if(can_move_into(id,around[DIR_SE]))
+					{
+						agent_out.target=pack_coord(OFFSET_DIR_SE(pos));
+						agent_out.flags|=FLAG_MOVE_EXCHANGE;
+						moved=true;
+					}
 				}
-				if(!moved && id==MAT_WATER_L && r%2)
+				if(!moved && id==MAT_WATER_L && r%2==1)
 				{
 					if(around[DIR_W]==MAT_NONE)
 					{
@@ -211,7 +228,7 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 						agent_out.id=MAT_WATER_R;
 					}
 				}
-				if(!moved && id==MAT_WATER_R && r%2)
+				if(!moved && id==MAT_WATER_R && r%2==1)
 				{
 					if(around[DIR_E]==MAT_NONE)
 					{
@@ -258,7 +275,7 @@ void wake_around(int2 pos, __global volatile int* wake_buffer)
 	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(-1,0)));
 	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(0,1)));
 	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(0,-1)));
-	/*
+	///*
 	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(1,1)));
 	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(-1,1)));
 	atomic_inc(wake_buffer+pos_to_index(pos+(int2)(-1,-1)));
@@ -601,72 +618,76 @@ function update(  )
 		sd_layer_buffer:fill_i(w*h*4,1);
 		step=0
 	end
-	clear_display(step)
-	if do_step or not paused then
-		clear_counts()
-		-- [[
-		kern_logic:set(0,buffers[1])
-		kern_logic:set(1,static_layer_buffer)
-		kern_logic:set(2,sd_layer_buffer)
-		kern_logic:set(3,buffers[2])
-		kern_logic:seti(4,math.random(0,999999999))
-		kern_logic:seti(5,step)
-		kern_logic:set(6,active_count)
-		kern_logic:run(agent_count)
+	for i=1,5 do
+	
+		clear_display(step)
+		if do_step or not paused then
+			clear_counts()
+			-- [[
+			kern_logic:set(0,buffers[1])
+			kern_logic:set(1,static_layer_buffer)
+			kern_logic:set(2,sd_layer_buffer)
+			kern_logic:set(3,buffers[2])
+			kern_logic:seti(4,math.random(0,999999999))
+			kern_logic:seti(5,step)
+			kern_logic:set(6,active_count)
+			kern_logic:run(agent_count)
 
-		kern_target:set(0,buffers[2])
-		kern_target:set(1,move_count_buffer)
-		kern_target:seti(2,step)
-		kern_target:set(3,active_count)
-		kern_target:run(agent_count)
+			kern_target:set(0,buffers[2])
+			kern_target:set(1,move_count_buffer)
+			kern_target:seti(2,step)
+			kern_target:set(3,active_count)
+			kern_target:run(agent_count)
 
-		wake_buffer:fill_i(w*h*4,1,0)
+			wake_buffer:fill_i(w*h*4,1,0)
 
-		kern_move:set(0,buffers[2])
-		kern_move:set(1,move_count_buffer)
-		kern_move:set(2,buffers[1])
-		kern_move:set(3,sd_layer_buffer)
-		kern_move:seti(4,step)
-		kern_move:set(5,active_count)
-		kern_move:set(6,wake_buffer)
-		kern_move:run(agent_count)
-		--]]
-		step=step+1
-		if step==2 then
-			step=0
+			kern_move:set(0,buffers[2])
+			kern_move:set(1,move_count_buffer)
+			kern_move:set(2,buffers[1])
+			kern_move:set(3,sd_layer_buffer)
+			kern_move:seti(4,step)
+			kern_move:set(5,active_count)
+			kern_move:set(6,wake_buffer)
+			kern_move:run(agent_count)
+			--]]
+			step=step+1
+			if step==2 then
+				step=0
+			end
+			if i==1 then
+				active_count:get(8,active_count_rb)
+				local next_step=(step+1)%2
+				imgui.Text(string.format("Active:%d %d",active_count_rb[step],active_count_rb[next_step]))
+			end
+			--swap buffers
+			--[[
+			local tmp=buffers[2]
+			buffers[2]=buffers[1]
+			buffers[1]=tmp
+			--]]
 		end
-		active_count:get(8,active_count_rb)
-		local next_step=(step+1)%2
-		imgui.Text(string.format("Active:%d %d",active_count_rb[step],active_count_rb[next_step]))
-		--swap buffers
-		--[[
-		local tmp=buffers[2]
-		buffers[2]=buffers[1]
-		buffers[1]=tmp
-		--]]
+		--output
+		clear_display(step)
+		if need_wake==1 then
+			wake_buffer:fill_i(w*h*4,1,1)
+			need_wake=0
+		end
+
+
+		display_buffer:aquire()
+		--kern_output:run(agent_count)
+
+		kern_add:set(0,static_layer_buffer)
+		kern_add:set(1,sd_layer_buffer)
+		kern_add:set(2,display_buffer)
+		kern_add:seti(3,step)
+		kern_add:set(4,active_count)
+		kern_add:set(5,buffers[1])
+		kern_add:set(6,wake_buffer)
+		kern_add:run(w*h)
+		display_buffer:release()
+
 	end
-	--output
-	clear_display(step)
-	if need_wake==1 then
-		wake_buffer:fill_i(w*h*4,1,1)
-		need_wake=0
-	end
-
-
-	display_buffer:aquire()
-	--kern_output:run(agent_count)
-
-	kern_add:set(0,static_layer_buffer)
-	kern_add:set(1,sd_layer_buffer)
-	kern_add:set(2,display_buffer)
-	kern_add:seti(3,step)
-	kern_add:set(4,active_count)
-	kern_add:set(5,buffers[1])
-	kern_add:set(6,wake_buffer)
-	kern_add:run(w*h)
-	display_buffer:release()
-
-
 	--gl draw
 	shader:use()
 	texture:use(1)

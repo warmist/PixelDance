@@ -9,6 +9,10 @@ require "colors"
     * https://iquilezles.org/articles/normalsSDF/
     * https://gist.github.com/patriciogonzalezvivo/670c22f3966e662d2f83
     * https://iquilezles.org/articles/morenoise/
+
+  * do spectral raytracer
+  * mie/Rayleigh scattering
+  * volumetrics in general
 ]]
 local luv=require "colors_luv"
 local bwrite = require "blobwriter"
@@ -229,6 +233,8 @@ vec4 map_d(vec3 p)
   //d1.x*=0.5;
 
   vec4 s1=sdSphere(p,1);
+  return s1;
+  
   vec4 h1=sdHalfPlane(p.x*(1+sn*0.05)+0.5);
 
   vec4 s2=sdSphere(p,1);
@@ -411,7 +417,7 @@ void main(){
 }
 ]==])
 local counter=0
-local max_counter=500
+local max_counter=10
 function display( ... )
   display_shader:use()
   visit_tex:use(0)
@@ -431,9 +437,9 @@ function update(  )
     counter=counter+1
     integrate()
   else
-    --need_clear=true
-    --time=time+0.01
-    --integrate()
-    --counter=1
+    need_clear=true
+    time=time+0.01
+    integrate()
+    counter=1
   end
 end
