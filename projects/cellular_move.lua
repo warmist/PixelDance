@@ -5,11 +5,16 @@
     * gen random rules, check out the "dynamics" and "meta-atoms"
     * "permutation city"
 TODO:
+    * fix saving
+    * to fix saving fix stupid rule format (or atleast make a compact form)
     * add more "states" (i.e. non 1/0 but actually have 1/2/...)
     * more "laws of conservation"
     * simulate for each seed id and avg over them/do histogram?/probablity cloud?
     * remove requirement for symmetry, but add system center of mass 
         and rotate rules so it always points to it
+    * k-means for:
+        - automatic rule classification (e.g. is "stable", is "merging", is "dividing")
+        - track atom locations
 --]===]
 require 'common'
 require 'bit'
@@ -26,12 +31,15 @@ local map_h=math.floor(win_h*oversample)
 local aspect_ratio=win_w/win_h
 local map_aspect_ratio=map_w/map_h
 local size=STATE.size
-local MAX_ATOM_TYPES=2
-local ALLOW_TRANSFORMATION=false
+local MAX_ATOM_TYPES=4
+local ALLOW_TRANSFORMATION=true
 is_remade=false
 local dist_logic_type="simple"
 local max_particle_count=10000
 current_particle_count=current_particle_count or 0
+
+local history_avg_size=Grapher(1000)
+local history_avg_disp=Grapher(1000) --actually deviation
 
 function update_buffers()
     if particles_pos==nil or particles_pos.w~=max_particle_count then
@@ -111,12 +119,12 @@ void main(){
 #endif
     vec4 pix_old=texture(tex_old,(pos.xy+vec2(1,1))/2);
     //float decay=0.0;
-    //float a=pixel.a;
+    float a=pixel.a;
     //vec3 c=pixel.xyz*a+pix_old.xyz*(1-a)-vec3(0.003);
-    //vec3 c=pixel.xyz*a+pix_old.xyz*(1-a)*decay;
+    vec3 c=pixel.xyz*a+pix_old.xyz*(1-a)*decay;
     //c=clamp(c,0,1);
     //color=vec4(c,1);
-    //color=vec4(mix(pixel.xyz,pix_old.xyz,0.6),1);
+    //color=vec4(mix(pixel.xyz,pix_old.xyz,0.7),1);
     color=vec4(pixel.xyz,1);
     //color=vec4(1,0,0,1);
 }
@@ -512,7 +520,7 @@ function displace_by_dir( pos,dir )
     ret.g=round(ret.g+dx[2])
     return fix_pos(ret)
 end
-local rule_0_stops=true
+local rule_0_stops=false
 function calculate_long_range_rule( pos )
 
     for r=2,config.long_dist_range do --original
@@ -765,7 +773,7 @@ function scratch_update(  )
         local sformat="palette(pa,vec3(%g,%g,%g),vec3(%g,%g,%g),vec3(%g,%g,%g),vec3(%g,%g,%g));"
         local res={}
         gen_one_color("c1",res)
-        gen_one_color("c2",res)
+        gen_one_color("c2",res,1)
         gen_one_color("c3",res,2)
         gen_one_color("c4",res,2)
         --palette(pa,vec3(0.2,0.7,0.4),vec3(0.6,0.9,0.2),vec3(0.6,0.8,0.7),vec3(0.5,0.1,0.0));
@@ -939,7 +947,7 @@ function dist_func( x,y )
 end
 local animation_data={
     sim_tick_current=0,
-    sim_tick_max=1000,
+    sim_tick_max=10000,
     sav_tick_current=0,
     sav_tick_max=180,
     animating=false,
@@ -952,7 +960,7 @@ function animation_metatick(  )
     end
 
     --config.block_offset=config.block_offset-1
-    config.angle=config.angle+5
+    config.angle=config.angle+1
     if config.angle>=180 then
         a.animating=false
         config.angle=0
@@ -1599,6 +1607,30 @@ function rand_rules(  )
     is_remade=true
     need_clear=true
 end
+function update_stats()
+    local center=Point(0,0)
+    for i=0,current_particle_count-1 do
+        local p=particles_pos:get(i,0)
+        center=center+Point(p.r,p.g)
+    end
+    center=center/current_particle_count
+    local avg_dist=0
+    for i=0,current_particle_count-1 do
+        local p=particles_pos:get(i,0)
+        local d=center-Point(p.r,p.g)
+        avg_dist=avg_dist+d:len()
+    end
+    avg_dist=avg_dist/current_particle_count
+    local avg_disp=0
+    for i=0,current_particle_count-1 do
+        local p=particles_pos:get(i,0)
+        local d=center-Point(p.r,p.g)
+        avg_disp=avg_disp+d:len_sq()
+    end
+    avg_disp=avg_disp/current_particle_count
+    history_avg_size:add_value(avg_dist)
+    history_avg_disp:add_value(math.sqrt(avg_disp))
+end
 function place_atom_wlayers( target_x,target_y,size,seed )
     local bs=size
     local cx_o=target_x
@@ -1716,9 +1748,9 @@ config.long_dist_offset=%d
         f:write("rules={\n")
         for i,v in ipairs(rules) do
             f:write(string.format("\t{ rlow=%d, rhigh=%d, rules={\n\t\t",v.rlow,v.rhigh))
-            for i=1,255 do
-                if v.rules[i]~=0 then
-                    f:write(string.format("[%d]=%d, ",i,v.rules[i]))
+             for k,j in pairs(v.rules) do
+                if j~=0 then
+                    f:write(string.format("%q={%d, %d},\n",k,j[1],j[2]))
                 end
             end
             f:write("}\n\t},\n")
@@ -1774,7 +1806,8 @@ config.long_dist_offset=%d
         current_particle_count=0
         --print("==============================")
         is_remade=false
-
+        history_avg_disp:clear()
+        history_avg_size:clear()
         -- [[
         for x=0,map_w-1 do
         for y=0,map_h-1 do
@@ -2006,6 +2039,11 @@ config.long_dist_offset=%d
     if imgui.Button("Randomize Color") then
         need_rand_color=true
     end
+    if sim_done then
+        update_stats()
+    end
+    history_avg_size:draw("size history")
+    history_avg_disp:draw("deviation history")
     imgui.End()
     if animation_data.animating and sim_done then
         animation_tick()
