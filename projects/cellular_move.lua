@@ -39,8 +39,9 @@ local max_particle_count=10000
 current_particle_count=current_particle_count or 0
 
 local history_avg_size=Grapher(1000)
+history_avg_size:set_filter(10)
 local history_avg_disp=Grapher(1000) --actually deviation
-
+history_avg_disp:set_filter(10)
 function update_buffers()
     if particles_pos==nil or particles_pos.w~=max_particle_count then
         particles_pos=make_flt_half_buffer(max_particle_count,1)
@@ -1625,7 +1626,8 @@ function update_stats()
     for i=0,current_particle_count-1 do
         local p=particles_pos:get(i,0)
         local d=center-Point(p.r,p.g)
-        avg_disp=avg_disp+d:len_sq()
+        local dd=avg_dist-d:len()
+        avg_disp=avg_disp+dd*dd
     end
     avg_disp=avg_disp/current_particle_count
     history_avg_size:add_value(avg_dist)

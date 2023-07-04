@@ -780,16 +780,36 @@ end)
 function Grapher:reinit( size )
 	self.size=size
 	self.current_size=0
+	self.filter_count=0
+	self.filter_data={}
 	self.buffer=make_float_buffer(size,1);
 end
-
+function Grapher:set_filter( filter_count )
+	self.filter_count=filter_count
+	self.filter_data={}
+end
 function Grapher:draw(label)
 	imgui.PlotLines(label,self.buffer.d,self.current_size)
 end
 function Grapher:clear()
 	self.current_size=0
+	self.filter_data={}
 end
 function Grapher:add_value( v )
+	if self.filter_count>0 then
+		if #self.filter_data<self.filter_count then
+			table.insert(self.filter_data,v)
+			return
+		else
+			local vv=0
+			for i,v in ipairs(self.filter_data) do
+				vv=vv+v
+			end
+			vv=vv/#self.filter_data
+			self.filter_data={}
+			v=vv
+		end
+	end
 	if self.current_size<self.size-1 then
 		--append and grow
 		self.buffer:set(self.current_size,0,v)
