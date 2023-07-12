@@ -31,7 +31,16 @@ local map_h=math.floor(win_h*oversample)
 local aspect_ratio=win_w/win_h
 local map_aspect_ratio=map_w/map_h
 local size=STATE.size
-local MAX_ATOM_TYPES=4
+local MAX_ATOM_TYPES=2
+--[[
+    Atom type+variation is encoded as follows:
+        N=MAX_ATOM_TYPES
+
+        type 0: (0,1/N] <- zero is a special value!
+        type 1: (1/N,2/N]
+        ...
+        type N: ((N-1)/N,1]
+]]
 local ALLOW_TRANSFORMATION=true
 is_remade=false
 local dist_logic_type="simple"
@@ -45,7 +54,7 @@ history_avg_disp:set_filter(10)
 function update_buffers()
     if particles_pos==nil or particles_pos.w~=max_particle_count then
         particles_pos=make_flt_half_buffer(max_particle_count,1)
-        particles_age=make_float_buffer(max_particle_count,1)
+        particles_age=make_float_buffer(max_particle_count,1) --actually type+variation?
         is_remade=true
         need_clear=true
     end
@@ -705,12 +714,14 @@ function particle_step(  )
             particles_pos:set(i,0,pos)
             local a=particles_age:get(i,0)
             --a=(a+change)%(MAX_ATOM_TYPES-1)+1
-            local nval=a*MAX_ATOM_TYPES--round((a/255)*(MAX_ATOM_TYPES-1))
+            local nval=a*(MAX_ATOM_TYPES-1)--round((a/255)*(MAX_ATOM_TYPES-1))
+            -- [0,1] -> [0,MAX_ATOM_TYPES]
             if ALLOW_TRANSFORMATION then
-                nval=(nval+change-1)%(MAX_ATOM_TYPES-1)+1
+                --nval=(nval+change-1)%(MAX_ATOM_TYPES-1)+1
+                --nval=0--change*(MAX_ATOM_TYPES-1)
             end
             --print(a,nval,change,nval/MAX_ATOM_TYPES)
-            particles_age:set(i,0,nval/MAX_ATOM_TYPES)
+            particles_age:set(i,0,nval/(MAX_ATOM_TYPES-1))
         else
             --movement_layer_target:set(tpos.r,tpos.g,tp-1)
         end
@@ -768,7 +779,7 @@ function scratch_update(  )
     place_pixels_shader:set("res",map_w,map_h)
     place_pixels_shader:set("zoom",1*map_aspect_ratio,-1)
     place_pixels_shader:set("translate",0,0)
-    place_pixels_shader:set('value_range',g_min_age or 0,g_max_age or 0)
+    place_pixels_shader:set('value_range',g_min_age or 0,g_max_age or 1)
     place_pixels_shader:set("transient_cutoff",config.transient_cutoff)
     if need_rand_color or color_table==nil then
         local sformat="palette(pa,vec3(%g,%g,%g),vec3(%g,%g,%g),vec3(%g,%g,%g),vec3(%g,%g,%g));"
@@ -1399,7 +1410,7 @@ function generate_rules_ex( rule_tbl,patterns,overwrite )
                     is_free=false
                 end
                 if not only_print_non0 or is_free then
-                    print("Group id:",v.id)
+                    print("Group id:",v.id,pt_rules[v.id][3])
                     print(concat_byline(value_to_nn_string_ex(pt_rules[v.id][2]),dir_to_arrow_string(actual_dir)))
                     table.insert(short_rules,{v.id,actual_dir})
                 end
@@ -1537,6 +1548,22 @@ function update_rule_lookup(  )
         end
     end
 end
+print("=======")
+global_patterns=global_patterns or classify_patterns_adv(MAX_ATOM_TYPES)
+local uniq_patterns={}
+for k,v in pairs(global_patterns) do
+    if v.sym==8 and v.has_free_dir then
+        uniq_patterns[v.id]={k,v}
+    end
+end
+local count=0
+for k,v in pairs(uniq_patterns) do
+    count=count+1
+    if count<50 then
+        print(v[1])
+    end
+end
+print("total unique patterns",count)
 function rand_rules(  )
     math.randomseed(os.time())
     math.random()
@@ -1663,7 +1690,7 @@ function place_atom_wlayers( target_x,target_y,size,seed )
             layer=layer+1
             l=generate_atom_layer(layer)
         end
-        local atom_type=math.random(1,MAX_ATOM_TYPES)
+        local atom_type=math.random(0,MAX_ATOM_TYPES-1)
         if randomize_last and #l>=bs then
             shuffle_table(l)
         end
