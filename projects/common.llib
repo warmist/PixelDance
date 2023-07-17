@@ -202,12 +202,12 @@ function draw_config( tbl )
 				end
 			elseif entry.type=="angle" then
 				local changing
-				changing,tbl[k]=imgui.SliderAngle(k,tbl[k],entry.min or 0,entry.max or 360)
+				changing,tbl[k]=imgui.SliderAngle(k,tbl[k],entry.min or 0,(entry.max or math.pi*2)*180/math.pi)
 				entry.changing=changing
 				imgui.SameLine()
 				if imgui.Button("R##"..k) then
 					entry.changing=true
-					local mm=entry.max or 360
+					local mm=entry.max or math.pi*2
 					local mi=entry.min or 0
 					tbl[k]=math.random()*(mm-mi)+mi
 				end

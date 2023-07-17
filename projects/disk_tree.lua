@@ -14,7 +14,7 @@ local size=STATE.size
 local aspect_ratio
 local new_max_circles=500000
 cur_circles=cur_circles or 0
-local circle_size=8
+local circle_size=12
 --[[
 function update_size(  )
 	win_w=1280*size_mult
@@ -51,7 +51,7 @@ end
 config=make_config({
 	{"autostep",false,type="boolean"},
 	{"depth_first",true,type="boolean"},
-	{"start_angle",math.pi/3,type="angle"},
+	{"start_angle",math.pi/3,type="angle",min=0,max=math.pi*2},
 	{"rand_angle",math.pi/3,type="angle"},
 	{"rand_states",7,type="int",min=2,max=20},
 	{"rand_size_min",0.4,type="float",min=0,max=1},
@@ -146,11 +146,11 @@ rules=rules or {
 {0.698132,0.922361,1},
 },
 }
-function make_subrule( id_self,max_state )
-	local chance_self=0.05
-	local max_rules=7
+function make_subrule( id_self,max_state)
+	local chance_self=0.1
+	local max_rules=10
 	local chance_random=0
-	local c_rules=math.random(3,max_rules)
+	local c_rules=math.random(5,max_rules)
 	local ret={}
 	if math.random()<chance_random then
 		ret.is_random=true
@@ -164,9 +164,11 @@ function make_subrule( id_self,max_state )
 		end
 		local angle
 		--angle=math.random()*math.pi/2-math.pi/4
-		angle=math.random(-5,5)*rules.angle_step
+		--angle=angle_override or (math.random(-5,5)*rules.angle_step)
+		angle=rules.angles[id_change]*math.random(-5,5)
 		local size
-		size=rules.sizes[id_change]
+		--size=0.5--rules.sizes[id_change]
+		size=math.random(1,10)/11
 		--size=math.random()*0.8+0.2
 		table.insert(ret,{angle,size,id_change})
 	end
@@ -187,10 +189,15 @@ function generate_rules(  )
 	rules={}
 	local count_states=config.rand_states--math.random(2,7)
 	rules.sizes={}
+	rules.angles={}
 	--rules.angle_step=math.random()*math.pi*2
 	rules.angle_step=config.rand_angle--2*math.pi/math.random(3,5)
 	for i=1,count_states do
 		rules.sizes[i]=math.random()*(1-config.rand_size_min)+config.rand_size_min
+	end
+	for i=1,count_states do
+		local r=math.random(0,1)*2-1
+		rules.angles[i]=r*(math.pi*2*math.random(1,7)/7)
 	end
 	for i=1,count_states do
 		rules[i]=make_subrule(i,count_states)
@@ -281,6 +288,9 @@ function apply_rule( c )
 	local rad,t=decode_rad(cdata.a);
 	--print("Head",c,rad,t)
 	local rule=rules[t]
+	if rule==nil then
+		print(rad,t)
+	end
 	if rule.is_random then
 		local nc,fh=circle_form_rule(cdata.r,cdata.g,rad,cdata.b,rule[math.random(1,#rule)])
 		return add_circle_with_test(nc,true)
@@ -380,13 +390,13 @@ function save_img_vor(  )
 			img_buf:set(x,y,pix)
 			pix={r=0,g=0,b=0,a=0}
 			--]]
-			--[===[simple vornoi
+			-- [===[simple vornoi
 			local nn=agent_tree:knn(1,{x,y})
 			local cdata=agent_data:get(nn[1][1],0)
 			local rad2,typ=decode_rad(cdata.a)
 			img_buf:set(x,y,palette[typ])
 			--]===]
-			-- [===[vornoi with borders
+			--[===[vornoi with borders
 			local border_size=1
 			local nn=agent_tree:knn(2,{x,y})
 			local pix_border={r=50,g=50,b=50,a=255}
@@ -430,7 +440,7 @@ function restart( soft )
 		local rule=rules[math.random(1,#rules)]
 		local rr=math.random(1,#rule)
 
-		local max_val=math.random(4,25)
+		local max_val=140--math.random(4,25)
 		--[[ Single in the center
 		x=size[1]/2
 		y=size[2]/2
@@ -448,6 +458,19 @@ function restart( soft )
 			local a=angle_to_center(x,y)
 			print(x,y,a)
 			add_circle(circle_form_rule_init(x,y,a,rule[rr]),true)
+		end
+		--]]
+		--[[ dense circle around center
+		local circle_rad=rule[rr][2]*circle_size
+		local dist=circle_rad/math.sin(math.pi/max_val)
+		local s=math.min(size[1],size[2])
+		for i=0,max_val-1 do
+			local spiral=1--(i+1)/max_val
+			x=size[1]/2+dist*math.cos(i*math.pi*2/max_val)*spiral
+			y=size[2]/2+dist*math.sin(i*math.pi*2/max_val)*spiral
+			local a=angle_to_center(x,y)
+			print(x,y,a)
+			add_circle(circle_form_rule_init(x,y,a+config.start_angle,rule[rr]),true)
 		end
 		--]]
 		--[=[ borders
