@@ -14,7 +14,7 @@ local size=STATE.size
 local aspect_ratio
 local new_max_circles=500000
 cur_circles=cur_circles or 0
-local circle_size=12
+local circle_size=20
 --[[
 function update_size(  )
 	win_w=1280*size_mult
@@ -105,45 +105,54 @@ void main(){
 	color=vec4(c,1)*smoothstep(l-aaf/2,l+aaf/2,fract(pos.w));
 }
 ]==])
-rules=rules or {
+
+function big_circle_size( small_r,count )
+	return small_r/math.sin(math.pi/count)
+end
+function small_circle_size( big_r,count )
+	return math.sin(math.pi/count)*big_r
+end
+function small_circle_count( big_r,small_r )
+	return math.pi/math.asin(small_r/big_r)
+end
+print("C:",small_circle_count(0.99+0.99,0.99))
+--format: angle, size, type
+local sl=0.99
+local sm=small_circle_size(sl,5)
+rules= rules or {
+	types={
+		0.99,0.5,0.5,0.25,
+	},
+
 [1]={ is_random=false,
-{2.44346,0.271191,1},
-{-2.44346,0.774267,2},
-{2.79253,0.431851,7},
+{0,.99,2},
+{math.pi/3,0.99,2},
+{2*math.pi/3,0.99,2},
+{3*math.pi/3,0.99,2},
+{-math.pi/3,0.99,2},
+{-2*math.pi/3,0.99,2},
+
+--[[
+{math.pi/6,0.99,1},
+{2*math.pi/6,0.99,1},
+{3*math.pi/6,0.99,1},
+--]]
 },
 [2]={ is_random=false,
-{-1.74533,0.537546,2},
-{-2.0944,0.689558,6},
+
+{0,sm,3},
+{math.pi/5,sm,3},
+{-math.pi/5,sm,3},
+{2*math.pi/5,sm,3},
+{-2*math.pi/5,sm,3},
 },
 [3]={ is_random=false,
-{-0.349066,0.717698,3},
-{2.44346,0.818042,6},
-{-1.74533,0.896198,1},
-{1.0472,0.295528,7},
+{0,0.99,4},
+--{-math.pi/4,0.99,1},
 },
 [4]={ is_random=false,
-{-1.39626,0.726966,6},
-{2.44346,0.9133,7},
-{0.698132,0.55345,2},
-{1.39626,0.489166,5},
-},
-[5]={ is_random=false,
-{1.0472,0.203509,7},
-{0,0.211623,5},
-{1.0472,0.550584,5},
-{1.0472,0.624713,1},
-},
-[6]={ is_random=false,
-{-1.0472,0.286695,3},
-{-0.698132,0.487075,6},
-{2.79253,0.327371,1},
-{-1.39626,0.744421,2},
-{1.0472,0.718456,5},
-},
-[7]={ is_random=false,
-{2.44346,0.602303,5},
-{0.349066,0.756157,7},
-{0.698132,0.922361,1},
+{0,sm,2},
+--{-math.pi/4,0.99,1},
 },
 }
 function make_subrule( id_self,max_state)
@@ -168,7 +177,7 @@ function make_subrule( id_self,max_state)
 		angle=rules.angles[id_change]*math.random(-5,5)
 		local size
 		--size=0.5--rules.sizes[id_change]
-		size=math.random(1,10)/11
+		size=math.random(1,15)/16
 		--size=math.random()*0.8+0.2
 		table.insert(ret,{angle,size,id_change})
 	end
@@ -219,9 +228,6 @@ function add_circle( c, is_head)
 	if max_circles>cur_circles+1 then
 		agent_data:set(cur_circles,0,c)
 		--print("Adding:",c[1],c[2],c[3],decode_rad(c[4]))
-		agent_buffer:use()
-		agent_buffer:set(agent_data.d,max_circles*4*4)
-		__unbind_buffer()
 
 		if is_head then
 			table.insert(circle_data.heads,cur_circles)
@@ -292,15 +298,20 @@ function apply_rule( c )
 		print(rad,t)
 	end
 	if rule.is_random then
-		local nc,fh=circle_form_rule(cdata.r,cdata.g,rad,cdata.b,rule[math.random(1,#rule)])
+		local r=rule[math.random(1,#rule)]
+		local nc,fh=circle_form_rule(cdata.r,cdata.g,rad,cdata.b,r)
+		cdata.b=cdata.b+(r[4] or 0)
 		return add_circle_with_test(nc,true)
 	else
+		local applied_rule=0
 		for i,v in ipairs(rule) do
 			local nc,fh=circle_form_rule(cdata.r,cdata.g,rad,cdata.b,v)
 			if add_circle_with_test(nc,true) then
-				return true
+				cdata.b=cdata.b+(v[4] or 0)
+				applied_rule=applied_rule+1
 			end
 		end
+		return applied_rule
 	end
 end
 function step_head( v )
@@ -336,6 +347,7 @@ function step(  )
 		end
 		steps_done=1
 	end
+	write_circle_buffer()
 	return steps_done
 end
 function save_img(  )
@@ -390,13 +402,13 @@ function save_img_vor(  )
 			img_buf:set(x,y,pix)
 			pix={r=0,g=0,b=0,a=0}
 			--]]
-			-- [===[simple vornoi
+			--[===[simple vornoi
 			local nn=agent_tree:knn(1,{x,y})
 			local cdata=agent_data:get(nn[1][1],0)
 			local rad2,typ=decode_rad(cdata.a)
 			img_buf:set(x,y,palette[typ])
 			--]===]
-			--[===[vornoi with borders
+			-- [===[vornoi with borders
 			local border_size=1
 			local nn=agent_tree:knn(2,{x,y})
 			local pix_border={r=50,g=50,b=50,a=255}
@@ -423,6 +435,11 @@ function angle_to_center( x,y )
 	local l=math.sqrt(vx*vx+vy*vy)
 	return math.atan2(vy/l,vx/l)
 end
+function write_circle_buffer(  )
+	agent_buffer:use()
+	agent_buffer:set(agent_data.d,max_circles*4*4)
+	__unbind_buffer()
+end
 function restart( soft )
 	local x,y
 	if not soft then
@@ -444,7 +461,9 @@ function restart( soft )
 		--[[ Single in the center
 		x=size[1]/2
 		y=size[2]/2
-		add_circle(circle_form_rule_init(x,y,math.random()*math.pi*2,rule[rr]),true)
+
+		add_circle({x,y,math.random()*math.pi*2,encode_rad(0.99*circle_size,1)},true)
+		--add_circle(circle_form_rule_init(x,y,math.random()*math.pi*2,rule[rr]),true)
 		--]]
 
 		--[[ circle around center
@@ -462,14 +481,13 @@ function restart( soft )
 		--]]
 		--[[ dense circle around center
 		local circle_rad=rule[rr][2]*circle_size
-		local dist=circle_rad/math.sin(math.pi/max_val)
+		local dist=big_circle_size(circle_rad,max_val)
 		local s=math.min(size[1],size[2])
 		for i=0,max_val-1 do
 			local spiral=1--(i+1)/max_val
 			x=size[1]/2+dist*math.cos(i*math.pi*2/max_val)*spiral
 			y=size[2]/2+dist*math.sin(i*math.pi*2/max_val)*spiral
 			local a=angle_to_center(x,y)
-			print(x,y,a)
 			add_circle(circle_form_rule_init(x,y,a+config.start_angle,rule[rr]),true)
 		end
 		--]]
@@ -513,6 +531,7 @@ function restart( soft )
 
 		--]]
 	end
+	write_circle_buffer()
 	--add_circle({x,y,0,encode_rad(0.999*circle_size,1)},true)
 	--add_circle({x+circle_size*2,y,0,encode_rad(0.999*circle_size,1)},true)
 end
@@ -565,9 +584,9 @@ function update(  )
     	end
     end
     if imgui.Button("Step") then
-    	for i=1,5 do
+    	--for i=1,5 do
     		step()
-    	end
+    	--end
     end
     imgui.SameLine()
     imgui.Text(string.format("H:%d",#circle_data.heads))
