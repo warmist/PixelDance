@@ -8,13 +8,14 @@ require "colors"
 		* apply ALL subrules
 		* apply ALL subrules in random order
 		* cellular automatton like rules
+		* add vornoi vis to shader to see what is saved (and no postprocess step)
 --]]
 local size_mult=1
 local size=STATE.size
 local aspect_ratio
 local new_max_circles=500000
 cur_circles=cur_circles or 0
-local circle_size=20
+local circle_size=10
 --[[
 function update_size(  )
 	win_w=1280*size_mult
@@ -28,6 +29,16 @@ color_thingy=color_thingy or {
 	{4,3,2},
 	{6,4,3}
 }
+function color_thingy_to_rgb( value )
+	local ret={}
+	for i=1,3 do
+		ret[i]=0.3+0.8*math.cos(math.pi*2*(color_thingy[1][i]*value+color_thingy[2][i]))
+		if ret[i]<0 then ret[i]=0 end
+		if ret[i]>1 then ret[i]=1 end
+		ret[i]=ret[i]*255
+	end
+	return ret
+end
 function update_circle_buffer(  )
 	if max_circles~=new_max_circles then
 		max_circles=new_max_circles
@@ -99,7 +110,7 @@ void main(){
 	//center
 	vec2 p = (gl_PointCoord - 0.5)*2;
 	float l=length(p);
-	float v=rand(trunc(pos.w)*100+3);
+	float v=trunc(pos.w);//rand(trunc(pos.w)*100+3);
 	vec3 c=palette(v,vec3(0.3),vec3(0.8),c1,c2);
 	float aaf = fwidth(l);
 	color=vec4(c,1)*smoothstep(l-aaf/2,l+aaf/2,fract(pos.w));
@@ -177,7 +188,8 @@ function make_subrule( id_self,max_state)
 		angle=rules.angles[id_change]*math.random(-5,5)
 		local size
 		--size=0.5--rules.sizes[id_change]
-		size=math.random(1,15)/16
+		size=rules.sizes[id_change]
+		--size=math.random(1,15)/16
 		--size=math.random()*0.8+0.2
 		table.insert(ret,{angle,size,id_change})
 	end
@@ -361,11 +373,18 @@ function save_img_vor(  )
 	local palette={}
 	for i,v in ipairs(rules) do
 		--local pix=img_buf.pixel()
+
 		pix={r=0,g=0,b=0,a=0}
 		palette[i]=pix
+		--[[
 		pix.r=math.random(0,255)
 		pix.g=math.random(0,255)
 		pix.b=math.random(0,255)
+		--]]
+		local col=color_thingy_to_rgb(i)
+		pix.r=col[1]
+		pix.g=col[2]
+		pix.b=col[3]
 		pix.a=255
 	end
 	local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
@@ -408,7 +427,7 @@ function save_img_vor(  )
 			local rad2,typ=decode_rad(cdata.a)
 			img_buf:set(x,y,palette[typ])
 			--]===]
-			-- [===[vornoi with borders
+			--[===[vornoi with borders
 			local border_size=1
 			local nn=agent_tree:knn(2,{x,y})
 			local pix_border={r=50,g=50,b=50,a=255}
@@ -422,7 +441,35 @@ function save_img_vor(  )
 					img_buf:set(x,y,palette[typ])
 				end
 			end
-			
+			--]===]
+			-- [===[vornoi with borders (between different cells)
+			local border_size=1
+			local nn=agent_tree:knn(2,{x,y})
+			local pix_border={r=50,g=50,b=50,a=255}
+			local pix_back={r=15,g=10,b=10,a=255}
+			local bssq=border_size*border_size
+			if #nn==2 then
+				local cdata=agent_data:get(nn[1][1],0)
+				local rad1,typ1=decode_rad(cdata.a)
+				local cdata2=agent_data:get(nn[2][1],0)
+				local rad2,typ2=decode_rad(cdata2.a)
+				local d1=math.sqrt(nn[1][2])
+				local d2=math.sqrt(nn[2][2])
+				if typ1~=typ2 and math.abs(d1-d2)<border_size then
+					img_buf:set(x,y,pix_border)
+					--img_buf:set(x,y,pix_back)
+				else
+					--if 1/d1+1/d2<0.25 and typ1==typ2 then
+					--if 1/d1+1/d2<0.25 then
+					if 1/d1+1/d2<0.25 and typ1~=typ2 then
+						img_buf:set(x,y,pix_back)
+					else
+						local cdata=agent_data:get(nn[1][1],0)
+						local rad2,typ=decode_rad(cdata.a)
+						img_buf:set(x,y,palette[typ])
+					end
+				end
+			end
 			--]===]
 		end
 		print("done x:",x)
@@ -457,13 +504,20 @@ function restart( soft )
 		local rule=rules[math.random(1,#rules)]
 		local rr=math.random(1,#rule)
 
-		local max_val=140--math.random(4,25)
+		local max_val=math.random(4,25)
 		--[[ Single in the center
 		x=size[1]/2
 		y=size[2]/2
 
-		add_circle({x,y,math.random()*math.pi*2,encode_rad(0.99*circle_size,1)},true)
-		--add_circle(circle_form_rule_init(x,y,math.random()*math.pi*2,rule[rr]),true)
+		--add_circle({x,y,math.random()*math.pi*2,encode_rad(0.99*circle_size,1)},true)
+		add_circle(circle_form_rule_init(x,y,math.random()*math.pi*2,rule[rr]),true)
+		--]]
+		--[[ Single in the center
+		x=0
+		y=0
+
+		--add_circle({x,y,math.random()*math.pi*2,encode_rad(0.99*circle_size,1)},true)
+		add_circle(circle_form_rule_init(x,y,math.random()*math.pi*2,rule[rr]),true)
 		--]]
 
 		--[[ circle around center
@@ -474,12 +528,12 @@ function restart( soft )
 			local spiral=1--(i+1)/max_val
 			x=size[1]/2+s*dist*math.cos(i*math.pi*2/max_val)*spiral
 			y=size[2]/2+s*dist*math.sin(i*math.pi*2/max_val)*spiral
-			local a=angle_to_center(x,y)
-			print(x,y,a)
+			local a=math.random()*math.pi*2--angle_to_center(x,y)
+			
 			add_circle(circle_form_rule_init(x,y,a,rule[rr]),true)
 		end
 		--]]
-		--[[ dense circle around center
+		-- [[ dense circle around center
 		local circle_rad=rule[rr][2]*circle_size
 		local dist=big_circle_size(circle_rad,max_val)
 		local s=math.min(size[1],size[2])
@@ -518,7 +572,7 @@ function restart( soft )
 			add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
 		end
 		--]=]
-		-- [[ Dense border
+		--[[ Dense border
 		local angle=config.start_angle--math.random()*math.pi*2
 		local circle_rad=rule[rr][2]*circle_size
 		x=circle_rad
