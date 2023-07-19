@@ -448,6 +448,7 @@ function save_img_vor(  )
 			local pix_border={r=50,g=50,b=50,a=255}
 			local pix_back={r=15,g=10,b=10,a=255}
 			local bssq=border_size*border_size
+			local metaballness=0.25
 			if #nn==2 then
 				local cdata=agent_data:get(nn[1][1],0)
 				local rad1,typ1=decode_rad(cdata.a)
@@ -459,15 +460,16 @@ function save_img_vor(  )
 					img_buf:set(x,y,pix_border)
 					--img_buf:set(x,y,pix_back)
 				else
-					--if 1/d1+1/d2<0.25 and typ1==typ2 then
-					--if 1/d1+1/d2<0.25 then
-					if 1/d1+1/d2<0.25 and typ1~=typ2 then
-						img_buf:set(x,y,pix_back)
-					else
+					--if 1/d1+1/d2<metaballness and typ1==typ2 then
+					--if 1/d1+1/d2<metaballness then
+					--if 1/d1+1/d2<metaballness and typ1~=typ2 then
+					--if typ1~=typ2 then
+						--img_buf:set(x,y,pix_back)
+					--else
 						local cdata=agent_data:get(nn[1][1],0)
 						local rad2,typ=decode_rad(cdata.a)
 						img_buf:set(x,y,palette[typ])
-					end
+					--end
 				end
 			end
 			--]===]
@@ -533,7 +535,7 @@ function restart( soft )
 			add_circle(circle_form_rule_init(x,y,a,rule[rr]),true)
 		end
 		--]]
-		-- [[ dense circle around center
+		--[[ dense circle around center
 		local circle_rad=rule[rr][2]*circle_size
 		local dist=big_circle_size(circle_rad,max_val)
 		local s=math.min(size[1],size[2])
@@ -572,7 +574,7 @@ function restart( soft )
 			add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
 		end
 		--]=]
-		--[[ Dense border
+		-- [[ Dense border
 		local angle=config.start_angle--math.random()*math.pi*2
 		local circle_rad=rule[rr][2]*circle_size
 		x=circle_rad
@@ -581,6 +583,7 @@ function restart( soft )
 		--for i=0,0 do
 		for i=0,count do
 			add_circle(circle_form_rule_init(x+i*circle_rad*2,y,angle,rule[rr]),true)
+			add_circle(circle_form_rule_init(x+i*circle_rad*2,size[2]-y,angle+math.pi,rule[rr]),true)
 		end
 
 		--]]
