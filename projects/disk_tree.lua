@@ -368,6 +368,14 @@ function save_img(  )
 	img_buf:read_frame()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
+function lerp_color( a,b,val )
+	return {
+		r=a.r*(1-val)+b.r*val,
+		g=a.g*(1-val)+b.g*val,
+		b=a.b*(1-val)+b.b*val,
+		a=a.a*(1-val)+b.a*val,
+	}
+end
 function save_img_vor(  )
 	img_buf=img_buf or make_image_buffer(size[1],size[2])
 	local palette={}
@@ -442,7 +450,7 @@ function save_img_vor(  )
 				end
 			end
 			--]===]
-			-- [===[vornoi with borders (between different cells)
+			--[===[vornoi with borders (between different cells)
 			local border_size=1
 			local nn=agent_tree:knn(2,{x,y})
 			local pix_border={r=50,g=50,b=50,a=255}
@@ -472,6 +480,27 @@ function save_img_vor(  )
 					--end
 				end
 			end
+			--]===]
+			-- [===[vornoi with borders AA
+			local border_size=1.5
+			local nn=agent_tree:knn(2,{x,y})
+			local pix_border={r=50,g=50,b=50,a=255}
+			local bssq=border_size*border_size
+			local border_dist=math.abs(math.sqrt(nn[1][2])-math.sqrt(nn[2][2]))
+			if #nn==2 then
+				if border_dist>border_size then
+					local cdata=agent_data:get(nn[1][1],0)
+					local rad2,typ=decode_rad(cdata.a)
+					img_buf:set(x,y,palette[typ])
+				else
+					local cdata=agent_data:get(nn[1][1],0)
+					local rad2,typ=decode_rad(cdata.a)
+
+					local ndist=border_dist/border_size
+					img_buf:set(x,y,lerp_color(palette[typ],pix_border,1-ndist*ndist))
+				end
+			end
+			
 			--]===]
 		end
 		print("done x:",x)
