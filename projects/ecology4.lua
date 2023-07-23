@@ -166,6 +166,13 @@ __kernel void update_agent_logic(__global __read_only struct agent_state* input,
 			*/
 
 			uint r=pcg((uint)(seed+i));
+			int self_pos=abs(dynamic_layer[pos_to_index(pos)]);
+			if(self_pos!=agent.id)
+			{
+				agent_out.flags|=FLAG_DEAD;
+				output[i]=agent_out;
+				return;
+			}
 			int around[8];
 			load_around(static_layer,dynamic_layer,pos,around);
 			int id=agent.id;
@@ -323,6 +330,13 @@ __kernel void update_agent_move(
 
 			TODO: add compact step (drop all dead)
 			TODO: how to create new particles?
+		general logic v3:
+			if tile @ pos is not me, die
+			select where to go
+			increment pos and target pos
+			move if counter at pos is 1 (i.e. only i want to go there)
+			draw particles to texture
+
 
 	*/
 	int i=get_global_id(0);
@@ -357,7 +371,7 @@ __kernel void update_agent_move(
 							int2 pos=unpack_coord(agent.pos);
 							static_dynamic_layer[pos.x+pos.y*W]=-agent.id;
 						}
-						else if(agent.flags & FLAG_MOVE_EXCHANGE)
+						else if(true/*agent.flags & FLAG_MOVE_EXCHANGE*/)
 						{
 							int id2=static_dynamic_layer[trg.x+trg.y*W];
 							static_dynamic_layer[pos.x+pos.y*W]=id2;
@@ -401,6 +415,7 @@ __global __write_only int* agent_count)
 		int2 trg=(int2)(j % (W-2)+1,H-(j / (W-2)));
 		#endif
 		output[i].pos=pack_coord( trg );
+		output[i].target=pack_coord( trg );
 		output[i].id=abs(r^0x8434af)%4;
 		//output[i].id=MAT_WATER_L;
 		output[i].flags=0;
@@ -565,6 +580,7 @@ void main()
 	color.w=1;
 }
 ]]
+local cleared_buffers=false
 function init_buffers(  )
 	kern_init:set(0,buffers[1])
 	kern_init:set(1,active_count)
@@ -576,6 +592,7 @@ function init_buffers(  )
 	kern_init_s:run(w*h)
 	--]]
 	active_count:fill_i(2*4,1,agent_count/2)
+	cleared_buffers=true
 end
 init_buffers()
 
@@ -591,9 +608,11 @@ function save_img( path )
     img_buf_save:read_frame()
     img_buf_save:save(path or string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
 end
+
 function clear_counts(  )
 	move_count_buffer:fill_i(w*h*4,1)
 	--active_count:fill_i(2*4,1)
+
 end
 function clear_display( step )
 	--sd_layer_buffer:fill_i(w*h*4,1);
@@ -602,6 +621,20 @@ function clear_display( step )
 end
 paused=paused or false
 local step=0
+function run_add( )
+	display_buffer:aquire()
+	--kern_output:run(agent_count)
+
+	kern_add:set(0,static_layer_buffer)
+	kern_add:set(1,sd_layer_buffer)
+	kern_add:set(2,display_buffer)
+	kern_add:seti(3,step)
+	kern_add:set(4,active_count)
+	kern_add:set(5,buffers[1])
+	kern_add:set(6,wake_buffer)
+	kern_add:run(w*h)
+	display_buffer:release()
+end
 function update(  )
 	__no_redraw()
 	__clear()
@@ -618,64 +651,64 @@ function update(  )
 		sd_layer_buffer:fill_i(w*h*4,1);
 		step=0
 	end
-	for i=1,5 do
-	
-		clear_display(step)
-		if do_step or not paused then
-			clear_counts()
-			-- [[
-			kern_logic:set(0,buffers[1])
-			kern_logic:set(1,static_layer_buffer)
-			kern_logic:set(2,sd_layer_buffer)
-			kern_logic:set(3,buffers[2])
-			kern_logic:seti(4,math.random(0,999999999))
-			kern_logic:seti(5,step)
-			kern_logic:set(6,active_count)
-			kern_logic:run(agent_count)
-
-			kern_target:set(0,buffers[2])
-			kern_target:set(1,move_count_buffer)
-			kern_target:seti(2,step)
-			kern_target:set(3,active_count)
-			kern_target:run(agent_count)
-
-			wake_buffer:fill_i(w*h*4,1,0)
-
-			kern_move:set(0,buffers[2])
-			kern_move:set(1,move_count_buffer)
-			kern_move:set(2,buffers[1])
-			kern_move:set(3,sd_layer_buffer)
-			kern_move:seti(4,step)
-			kern_move:set(5,active_count)
-			kern_move:set(6,wake_buffer)
-			kern_move:run(agent_count)
-			--]]
-			step=step+1
-			if step==2 then
-				step=0
-			end
-			if i==1 then
-				active_count:get(8,active_count_rb)
-				local next_step=(step+1)%2
-				imgui.Text(string.format("Active:%d %d",active_count_rb[step],active_count_rb[next_step]))
-			end
-			--swap buffers
-			--[[
-			local tmp=buffers[2]
-			buffers[2]=buffers[1]
-			buffers[1]=tmp
-			--]]
+	clear_display(step)
+	if do_step or not paused then
+		clear_counts()
+		
+		if cleared_buffers then
+			run_add()
+			cleared_buffers=false
 		end
-		--output
-		clear_display(step)
-		if need_wake==1 then
-			wake_buffer:fill_i(w*h*4,1,1)
-			need_wake=0
+		-- [[
+		kern_logic:set(0,buffers[1])
+		kern_logic:set(1,static_layer_buffer)
+		kern_logic:set(2,sd_layer_buffer)
+		kern_logic:set(3,buffers[2])
+		kern_logic:seti(4,math.random(0,999999999))
+		kern_logic:seti(5,step)
+		kern_logic:set(6,active_count)
+		kern_logic:run(agent_count)
+
+		kern_target:set(0,buffers[2])
+		kern_target:set(1,move_count_buffer)
+		kern_target:seti(2,step)
+		kern_target:set(3,active_count)
+		kern_target:run(agent_count)
+
+		wake_buffer:fill_i(w*h*4,1,0)
+
+		kern_move:set(0,buffers[2])
+		kern_move:set(1,move_count_buffer)
+		kern_move:set(2,buffers[1])
+		kern_move:set(3,sd_layer_buffer)
+		kern_move:seti(4,step)
+		kern_move:set(5,active_count)
+		kern_move:set(6,wake_buffer)
+		kern_move:run(agent_count)
+		--]]
+		step=step+1
+		if step==2 then
+			step=0
 		end
+		active_count:get(8,active_count_rb)
+		local next_step=(step+1)%2
+		imgui.Text(string.format("Active:%d %d",active_count_rb[step],active_count_rb[next_step]))
+		--swap buffers
+		--[[
+		local tmp=buffers[2]
+		buffers[2]=buffers[1]
+		buffers[1]=tmp
+		--]]
+	end
+	--output
+	clear_display(step)
+	if need_wake==1 then
+		wake_buffer:fill_i(w*h*4,1,1)
+		need_wake=0
+	end
 
 
-		display_buffer:aquire()
-		--kern_output:run(agent_count)
+	run_add()
 
 		kern_add:set(0,static_layer_buffer)
 		kern_add:set(1,sd_layer_buffer)

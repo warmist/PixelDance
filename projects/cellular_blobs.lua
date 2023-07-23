@@ -13,6 +13,13 @@ require "common"
 map_w=256
 map_h=256
 
+config=make_config({
+    {"pause",true,type="bool"},
+    {"alive_survive_rate",0.6,type="float"},
+    {"dead_birth_rate",0.8,type="float"},
+    },config)
+
+
 neighborhood={
     --[[ von Neumann
     {1,0},
@@ -43,13 +50,13 @@ neighborhood_sets={
     {-1,0},
     --]]
 }
-ruleset_alive={
+ruleset_alive=ruleset_alive or {
     [1]=1,
     --[2]=1,
     --[4]=1,
     --[8]=1,
 }
-ruleset_dead={
+ruleset_dead=ruleset_dead or {
     [1]=1,
     --[2]=1,
     --[4]=1,
@@ -58,14 +65,14 @@ ruleset_dead={
 function gen_ruleset()
     --math.randomseed(3)
     for i=0,255 do
-        if math.random()>0.6 then
+        if math.random()<config.alive_survive_rate then
             ruleset_alive[i]=1
         else
             ruleset_alive[i]=0
         end
     end
         for i=0,255 do
-        if math.random()>0.8 then
+        if math.random()<config.dead_birth_rate then
             ruleset_dead[i]=1
         else
             ruleset_dead[i]=0
@@ -83,7 +90,8 @@ function gen_ruleset()
     end
     --]]
 end
-gen_ruleset()
+
+--gen_ruleset()
 --double buffered state of cells
 buffers={make_char_buffer(map_w,map_h),make_char_buffer(map_w,map_h)}
 function init_texture(  )
@@ -97,6 +105,7 @@ function init_texture(  )
 end
 init_texture()
 function fill_buffers()
+    buffers[1]:clear()
     --[[
     for y=0,map_h-1 do
         for x=map_w/4,map_w-1-map_w/4 do
@@ -442,13 +451,50 @@ function update(  )
     __no_redraw()
     __clear()
     --if once then
-
-    local need_swap=false
-    if imgui.RadioButton("Paused",paused) then
-        paused=not paused
+    imgui.Begin("Bloby CA")
+    draw_config(config)
+    if imgui.Button("Random rules") then
+        gen_ruleset()
+        fill_buffers()
     end
+    if imgui.Button("print rules") then
+        print("ruleset_dead={")
+            local s=""
+            local count=0
+            for i=0,255 do
+                if ruleset_dead[i]>0 then
+                    s=s..string.format("[%d]=%d,",i,ruleset_dead[i])
+                    count=count+1
+                end
+                if count>16 then
+                    count=0
+                    print(s)
+                    s=""
+                end
+            end
+            print(s)
+        print("}")
+        print("ruleset_alive={")
+            s=""
+            count=0
+            for i=0,255 do
+                if ruleset_alive[i]>0 then
+                    s=s..string.format("[%d]=%d,",i,ruleset_alive[i])
+                    count=count+1
+                end
+                if count>16 then
+                    count=0
+                    print(s)
+                    s=""
+                end
+            end
+            print(s)
+        print("}")
+    end
+    local need_swap=false
+
     
-    if imgui.Button("Step") or not paused then
+    if imgui.Button("Step") or not config.pause then
         partition(buffers[1])
         update_partition_data()
         do_rules()
@@ -462,6 +508,7 @@ function update(  )
     if imgui.Button("Save") then
         save_img()
     end
+    imgui.End()
     -- [[
     if need_swap then
         local lb=buffers[1]
