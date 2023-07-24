@@ -9,8 +9,9 @@ require "colors"
 		* apply ALL subrules in random order
 		* cellular automatton like rules
 		* add vornoi vis to shader to see what is saved (and no postprocess step)
+		* apply subrules in some priority order. E.g. all first rule, then all second rule,...
 --]]
-local size_mult=1
+local size_mult=3
 local size=STATE.size
 local aspect_ratio
 local new_max_circles=500000
@@ -24,7 +25,7 @@ function update_size(  )
 	__set_window_size(win_w,win_h)
 end
 update_size()
-]]
+--]]
 color_thingy=color_thingy or {
 	{4,3,2},
 	{6,4,3}
@@ -185,7 +186,7 @@ function make_subrule( id_self,max_state)
 		local angle
 		--angle=math.random()*math.pi/2-math.pi/4
 		--angle=angle_override or (math.random(-5,5)*rules.angle_step)
-		angle=rules.angles[id_change]*math.random(-5,5)
+		angle=rules.angles[id_change]--*math.random(-5,5)
 		local size
 		--size=0.5--rules.sizes[id_change]
 		size=rules.sizes[id_change]
@@ -207,6 +208,16 @@ function print_rules(  )
 	print("}")
 end
 function generate_rules(  )
+	angle_choices={
+		0,
+		45/2,
+		45,
+		15,
+		30,
+		60,
+		90,
+		180,
+	}
 	rules={}
 	local count_states=config.rand_states--math.random(2,7)
 	rules.sizes={}
@@ -217,8 +228,11 @@ function generate_rules(  )
 		rules.sizes[i]=math.random()*(1-config.rand_size_min)+config.rand_size_min
 	end
 	for i=1,count_states do
-		local r=math.random(0,1)*2-1
-		rules.angles[i]=r*(math.pi*2*math.random(1,7)/7)
+		local r=(math.random(0,1)*2-1)*math.random(1,5)
+
+		--rules.angles[i]=r*(math.pi*2*math.random(1,7)/7)
+		--rules.angles[i]=math.random(-10,10)*rules.angle_step
+		rules.angles[i]=r*angle_choices[math.random(1,#angle_choices)]*math.pi/180
 	end
 	for i=1,count_states do
 		rules[i]=make_subrule(i,count_states)
@@ -485,9 +499,16 @@ function save_img_vor(  )
 			local border_size=1.5
 			local nn=agent_tree:knn(2,{x,y})
 			local pix_border={r=50,g=50,b=50,a=255}
-			local bssq=border_size*border_size
-			local border_dist=math.abs(math.sqrt(nn[1][2])-math.sqrt(nn[2][2]))
 			if #nn==2 then
+				local a1=agent_data:get(nn[1][1],0)
+				local a2=agent_data:get(nn[2][1],0)
+				--vector from one to the other
+				local vec={a2.r-a1.r,a2.g-a1.g}
+				local len=math.sqrt(vec[1]*vec[1]+vec[2]*vec[2])
+				local dprod=(x-a1.r)*vec[1]+(y-a1.g)*vec[2]
+				local scale=dprod/(len*len)
+				local border_dist=len*math.abs(0.5-scale)
+
 				if border_dist>border_size then
 					local cdata=agent_data:get(nn[1][1],0)
 					local rad2,typ=decode_rad(cdata.a)
@@ -497,7 +518,8 @@ function save_img_vor(  )
 					local rad2,typ=decode_rad(cdata.a)
 
 					local ndist=border_dist/border_size
-					img_buf:set(x,y,lerp_color(palette[typ],pix_border,1-ndist*ndist))
+					img_buf:set(x,y,lerp_color(pix_border,palette[typ],ndist))
+					--img_buf:set(x,y,pix_border)
 				end
 			end
 			
@@ -535,7 +557,7 @@ function restart( soft )
 		local rule=rules[math.random(1,#rules)]
 		local rr=math.random(1,#rule)
 
-		local max_val=math.random(4,25)
+		local max_val=math.random(4,40)
 		--[[ Single in the center
 		x=size[1]/2
 		y=size[2]/2
@@ -564,7 +586,7 @@ function restart( soft )
 			add_circle(circle_form_rule_init(x,y,a,rule[rr]),true)
 		end
 		--]]
-		--[[ dense circle around center
+		-- [[ dense circle around center
 		local circle_rad=rule[rr][2]*circle_size
 		local dist=big_circle_size(circle_rad,max_val)
 		local s=math.min(size[1],size[2])
@@ -603,7 +625,7 @@ function restart( soft )
 			add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
 		end
 		--]=]
-		-- [[ Dense border
+		--[[ Dense border
 		local angle=config.start_angle--math.random()*math.pi*2
 		local circle_rad=rule[rr][2]*circle_size
 		x=circle_rad
@@ -612,7 +634,7 @@ function restart( soft )
 		--for i=0,0 do
 		for i=0,count do
 			add_circle(circle_form_rule_init(x+i*circle_rad*2,y,angle,rule[rr]),true)
-			add_circle(circle_form_rule_init(x+i*circle_rad*2,size[2]-y,angle+math.pi,rule[rr]),true)
+			--add_circle(circle_form_rule_init(x+i*circle_rad*2,size[2]-y,angle+math.pi,rule[rr]),true)
 		end
 
 		--]]
