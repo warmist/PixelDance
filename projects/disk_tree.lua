@@ -16,10 +16,11 @@ local size=STATE.size
 local aspect_ratio
 local new_max_circles=500000
 cur_circles=cur_circles or 0
-local circle_size=10
-local rules_apply_local_rotation=false
+local circle_size=50
+local rules_apply_local_rotation=true
 local rules_gen_angle_fixed_per_type=true
 local rules_gen_angle_fixed_list=false
+local rules_sort_by_size=true
 --[[
 function update_size(  )
 	win_w=1280*size_mult
@@ -210,6 +211,11 @@ function make_subrule( id_self,max_state)
 		--size=math.random()*0.8+0.2
 		table.insert(ret,{angle,size,id_change})
 	end
+	if rules_sort_by_size then
+		table.sort(ret,function ( a,b )
+			return a[2]>b[2]
+		end)
+	end
 	return ret
 end
 function print_rules(  )
@@ -342,7 +348,7 @@ function circle_form_rule_init( x,y,angle,r )
 	local a=angle+r[1]
 	return {x,y,a,encode_rad(r[2]*circle_size,r[3])},r[4]
 end
-function apply_rule( c )
+function apply_rule( c,id )
 	local cdata=agent_data:get(c,0)
 
 	local rad,t=decode_rad(cdata.a);
@@ -363,6 +369,7 @@ function apply_rule( c )
 			if add_circle_with_test(nc,true) then
 				cdata.b=cdata.b+(v[4] or 0)
 				applied_rule=applied_rule+1
+				break
 			end
 		end
 		return applied_rule
@@ -370,6 +377,7 @@ function apply_rule( c )
 end
 function step_head( v )
 	circle_data.heads_fails[v]=(circle_data.heads_fails[v] or 0)+1
+	--[==[
 	if not apply_rule(v) then
 		if circle_data.heads_fails[v]<5 then
 			table.insert(circle_data.heads,v)
@@ -380,6 +388,10 @@ function step_head( v )
 			table.insert(circle_data.heads,v)
 		end
 		--end
+	end
+	--]==]
+	if apply_rule(v)>0 then
+		table.insert(circle_data.heads,v)
 	end
 end
 function step(  )
