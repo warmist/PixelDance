@@ -16,11 +16,12 @@ local size=STATE.size
 local aspect_ratio
 local new_max_circles=500000
 cur_circles=cur_circles or 0
-local circle_size=50
+local circle_size=20
 local rules_apply_local_rotation=true
 local rules_gen_angle_fixed_per_type=true
 local rules_gen_angle_fixed_list=false
-local rules_sort_by_size=true
+local rules_sort_by_size=false
+local rules_global_priority=true
 --[[
 function update_size(  )
 	win_w=1280*size_mult
@@ -78,6 +79,7 @@ config=make_config({
 		"circle_dense",
 		"borders",
 		"border(s)_dense",
+		"border split",
 		}},
 	{"seed",0,type="int",min=0,max=10000000},
 	--[[
@@ -180,6 +182,9 @@ rules= rules or {
 --{-math.pi/4,0.99,1},
 },
 }
+function rule_weight( rule,subrule )
+	return -rules[rule][subrule][2]
+end
 function make_subrule( id_self,max_state)
 	local chance_self=0.1
 	local max_rules=100
@@ -348,14 +353,29 @@ function circle_form_rule_init( x,y,angle,r )
 	local a=angle+r[1]
 	return {x,y,a,encode_rad(r[2]*circle_size,r[3])},r[4]
 end
-function apply_rule( c,id )
+function apply_rule( c,specific_rule)
 	local cdata=agent_data:get(c,0)
 
 	local rad,t=decode_rad(cdata.a);
+	if specific_rule and t~=specific_rule[1] then
+		return 1
+	end
 	--print("Head",c,rad,t)
 	local rule=rules[t]
 	if rule==nil then
 		print(rad,t)
+	end
+	if specific_rule then
+		local v=rule[specific_rule[2]]
+		local nc,fh=circle_form_rule(cdata.r,cdata.g,rad,cdata.b,v)
+		if add_circle_with_test(nc,true) then
+			cdata.b=cdata.b+(v[4] or 0)
+			
+			return 1
+			--break --uncomment for only one rule per circle
+		else
+			return 1
+		end
 	end
 	if rule.is_random then
 		local r=rule[math.random(1,#rule)]
@@ -369,13 +389,13 @@ function apply_rule( c,id )
 			if add_circle_with_test(nc,true) then
 				cdata.b=cdata.b+(v[4] or 0)
 				applied_rule=applied_rule+1
-				break
+				--break --uncomment for only one rule per circle
 			end
 		end
 		return applied_rule
 	end
 end
-function step_head( v )
+function step_head( v ,specific_rule)
 	circle_data.heads_fails[v]=(circle_data.heads_fails[v] or 0)+1
 	--[==[
 	if not apply_rule(v) then
@@ -390,28 +410,82 @@ function step_head( v )
 		--end
 	end
 	--]==]
-	if apply_rule(v)>0 then
-		table.insert(circle_data.heads,v)
+	if apply_rule(v,specific_rule)>0 then
+		if specific_rule==nil then --see if any applications for specific head exist in another place
+			table.insert(circle_data.heads,v)
+		end
 	end
+end
+function count_applications( c,out_table )
+	local cdata=agent_data:get(c,0)
+
+	local rad,t=decode_rad(cdata.a);
+	--print("Head",c,rad,t)
+	local rule=rules[t]
+	if rule==nil then
+		print(rad,t)
+	end
+	--[[if rule.is_random then
+		local r=rule[math.random(1,#rule)]
+		local nc,fh=circle_form_rule(cdata.r,cdata.g,rad,cdata.b,r)
+		cdata.b=cdata.b+(r[4] or 0)
+		return add_circle_with_test(nc,true)
+
+	else--]]
+	local count_applied=0
+	for i,v in ipairs(rule) do
+		local nc,fh=circle_form_rule(cdata.r,cdata.g,rad,cdata.b,v)
+		local rad1=decode_rad(nc[4])
+		local ok=is_clear(nc[1],nc[2],rad1,circle_size*2)
+		if ok then
+			out_table[v]=out_table[v] or {t,i,0}
+			out_table[v][3]=out_table[v][3]+1
+			count_applied=count_applied+1
+		end
+	end
+	return count_applied
 end
 function step(  )
 	local steps_done=0
 	local old_heads=circle_data.heads
 	circle_data.heads={}
 	local is_depth_first=config.depth_first
-	if not is_depth_first then
+	if rules_global_priority then
+		local rule_applications={}
+
 		for i,v in ipairs(old_heads) do
-			step_head(v)
-			steps_done=steps_done+1
+			local c=count_applications(v,rule_applications)
+			if c>0 then
+				table.insert(circle_data.heads,v)
+			end
+		end
+		local tmp_tbl={}
+		for k,v in pairs(rule_applications) do
+			table.insert(tmp_tbl,v)
+		end
+		table.sort(tmp_tbl,function ( a,b ) return rule_weight(a[1],a[2])<rule_weight(b[1],b[2]) end)
+
+		if #tmp_tbl>0 then
+			for i,v in ipairs(old_heads) do
+				step_head(v,tmp_tbl[1])
+				steps_done=steps_done+1
+			end
 		end
 	else
-		for i=1,#old_heads-1 do
-			table.insert(circle_data.heads,old_heads[i])
+		if not is_depth_first then
+			for i,v in ipairs(old_heads) do
+				step_head(v)
+				steps_done=steps_done+1
+			end
+		else
+			for i=1,#old_heads-1 do
+				table.insert(circle_data.heads,old_heads[i])
+			end
+			if #old_heads>0 then
+				step_head(old_heads[#old_heads])
+			end
+			steps_done=1
 		end
-		if #old_heads>0 then
-			step_head(old_heads[#old_heads])
-		end
-		steps_done=1
 	end
 	write_circle_buffer()
 	return steps_done
@@ -682,6 +756,28 @@ function restart( soft )
 					add_circle(circle_form_rule_init(x+i*circle_rad*2,y,angle,rule[rr]),true)
 					--add_circle(circle_form_rule_init(x+i*circle_rad*2,size[2]-y,angle+math.pi,rule[rr]),true)
 				end
+			end,
+			function (  )
+				-- dense border x2
+				local angle=config.start_angle--math.random()*math.pi*2
+
+				local circle_rad=rule[rr][2]*circle_size
+				local offset=circle_rad*4
+				x=circle_rad
+				y=circle_rad
+				local count=math.floor(size[1]/(circle_rad*2))
+				local count1=math.floor(count/2)
+				local count2=count-count1
+				local ofx=math.cos(angle)*offset
+				local ofy=math.sin(angle)*offset
+				--for i=0,0 do
+				for i=0,count1 do
+					add_circle(circle_form_rule_init(x+i*circle_rad*2,y,math.pi/2,rule[rr]),true)
+				end
+				x=x+count1*circle_rad*2
+				for i=0,count2 do
+					add_circle(circle_form_rule_init(x+i*circle_rad*2+ofx,y+ofy,math.pi/2,rule[rr]),true)
+				end
 			end
 		}
 
@@ -721,10 +817,10 @@ function full_sim(  )
 	local start_angle_min=215
 	local start_angle_max=360
 	--]]
-	local start_angle_min=235
-	local start_angle_max=240
+	local start_angle_min=158
+	local start_angle_max=160
 	local counter=1
-	for i=start_angle_min,start_angle_max,0.05 do
+	for i=start_angle_min,start_angle_max,0.2 do
 		config.start_angle=i*math.pi/180
 		restart()
 		restart(true)
