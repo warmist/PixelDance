@@ -17,6 +17,9 @@ local aspect_ratio
 local new_max_circles=500000
 cur_circles=cur_circles or 0
 local circle_size=10
+local rules_apply_local_rotation=false
+local rules_gen_angle_fixed_per_type=true
+local rules_gen_angle_fixed_list=false
 --[[
 function update_size(  )
 	win_w=1280*size_mult
@@ -27,8 +30,8 @@ end
 update_size()
 --]]
 color_thingy=color_thingy or {
-	{4,3,2},
-	{6,4,3}
+	{0.2,0.1,0.5},
+	{2,3,7}
 }
 function color_thingy_to_rgb( value )
 	local ret={}
@@ -67,6 +70,15 @@ config=make_config({
 	{"rand_angle",math.pi/3,type="angle"},
 	{"rand_states",7,type="int",min=2,max=20},
 	{"rand_size_min",0.4,type="float",min=0,max=1},
+	{"placement",0,type="choice",choices={
+		"single_center",
+		"single_corner",
+		"circle",
+		"circle_dense",
+		"borders",
+		"border(s)_dense",
+		}},
+	{"seed",0,type="int",min=0,max=10000000},
 	--[[
 		local chance_self=0.05
 	local max_rules=7
@@ -169,7 +181,7 @@ rules= rules or {
 }
 function make_subrule( id_self,max_state)
 	local chance_self=0.1
-	local max_rules=10
+	local max_rules=100
 	local chance_random=0
 	local c_rules=math.random(5,max_rules)
 	local ret={}
@@ -186,7 +198,11 @@ function make_subrule( id_self,max_state)
 		local angle
 		--angle=math.random()*math.pi/2-math.pi/4
 		--angle=angle_override or (math.random(-5,5)*rules.angle_step)
-		angle=rules.angles[id_change]--*math.random(-5,5)
+		if rules_gen_angle_fixed_per_type then
+			angle=rules.angles[id_change]--*math.random(-5,5)
+		else
+			angle=rules.angle_step*math.random(-5,5)
+		end
 		local size
 		--size=0.5--rules.sizes[id_change]
 		size=rules.sizes[id_change]
@@ -208,6 +224,10 @@ function print_rules(  )
 	print("}")
 end
 function generate_rules(  )
+	math.randomseed(os.time())
+	math.random()
+	math.random()
+	math.random()
 	angle_choices={
 		0,
 		45/2,
@@ -231,8 +251,11 @@ function generate_rules(  )
 		local r=(math.random(0,1)*2-1)*math.random(1,5)
 
 		--rules.angles[i]=r*(math.pi*2*math.random(1,7)/7)
-		--rules.angles[i]=math.random(-10,10)*rules.angle_step
-		rules.angles[i]=r*angle_choices[math.random(1,#angle_choices)]*math.pi/180
+		if rules_gen_angle_fixed_list then
+			rules.angles[i]=r*angle_choices[math.random(1,#angle_choices)]*math.pi/180
+		else
+			rules.angles[i]=math.random(-10,10)*rules.angle_step
+		end
 	end
 	for i=1,count_states do
 		rules[i]=make_subrule(i,count_states)
@@ -307,7 +330,12 @@ end
 function circle_form_rule( x,y,radius,angle,r )
 	local sum_rad=(radius+r[2]*circle_size)+0.01
 	--print("radius:",sum_rad)
-	local a=angle+r[1]--*(math.random()*0.9+0.3)
+	local a
+	if rules_apply_local_rotation then
+		a=angle+r[1]--*(math.random()*0.9+0.3)
+	else
+		a=r[1]--*(math.random()*0.9+0.3)
+	end
 	return {x+math.cos(a)*sum_rad,y+math.sin(a)*sum_rad,a,encode_rad(r[2]*circle_size,r[3])},r[4]
 end
 function circle_form_rule_init( x,y,angle,r )
@@ -390,7 +418,7 @@ function lerp_color( a,b,val )
 		a=a.a*(1-val)+b.a*val,
 	}
 end
-function save_img_vor(  )
+function save_img_vor(path)
 	img_buf=img_buf or make_image_buffer(size[1],size[2])
 	local palette={}
 	for i,v in ipairs(rules) do
@@ -527,7 +555,8 @@ function save_img_vor(  )
 		end
 		print("done x:",x)
 	end
-	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
+	path=path or string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial
+	img_buf:save(path)
 end
 function angle_to_center( x,y )
 	local vx=size[1]/2-x
@@ -554,90 +583,97 @@ function restart( soft )
 		--local rule=rules[1]
 		--add_circle(circle_form_rule_init(x,y,math.random()*math.pi*2,rule[math.random(1,#rule)]),true)
 	else
+		math.randomseed(config.seed)
 		local rule=rules[math.random(1,#rules)]
 		local rr=math.random(1,#rule)
 
 		local max_val=math.random(4,40)
-		--[[ Single in the center
-		x=size[1]/2
-		y=size[2]/2
+		local placements={
+			[0]=function ( 	)
+				--Single in the center
+				x=size[1]/2
+				y=size[2]/2
+				--add_circle({x,y,math.random()*math.pi*2,encode_rad(0.99*circle_size,1)},true)
+				add_circle(circle_form_rule_init(x,y,config.start_angle,rule[rr]),true)	
+			end,
+			function (  )
+				--single in corner
+				x=0
+				y=0
+				--add_circle({x,y,math.random()*math.pi*2,encode_rad(0.99*circle_size,1)},true)
+				add_circle(circle_form_rule_init(x,y,config.start_angle,rule[rr]),true)
+			end,
+			function (  )
+				--circle around center
+				local dist=math.random()*0.3+0.2
+				local s=math.min(size[1],size[2])
+				for i=0,max_val-1 do
+					local spiral=1--(i+1)/max_val
+					x=size[1]/2+s*dist*math.cos(i*math.pi*2/max_val)*spiral
+					y=size[2]/2+s*dist*math.sin(i*math.pi*2/max_val)*spiral
+					local a=math.random()*math.pi*2--angle_to_center(x,y)
+					
+					add_circle(circle_form_rule_init(x,y,a,rule[rr]),true)
+				end
+			end,
+			function (  )
+				-- dense circle at center
+				local circle_rad=rule[rr][2]*circle_size
+				local dist=big_circle_size(circle_rad,max_val)
+				local s=math.min(size[1],size[2])
+				for i=0,max_val-1 do
+					local spiral=1--(i+1)/max_val
+					x=size[1]/2+dist*math.cos(i*math.pi*2/max_val)*spiral
+					y=size[2]/2+dist*math.sin(i*math.pi*2/max_val)*spiral
+					local a=angle_to_center(x,y)
+					add_circle(circle_form_rule_init(x,y,a+config.start_angle,rule[rr]),true)
+				end
+			end,
+			function (  )
+				-- borders
+				local x_count=math.random(4,25)
+				local y_count=x_count
+				local x_step=math.floor(size[1]/x_count)
+				local y_step=math.floor(size[2]/y_count)
+				local offset=0--math.random(0,500)
+				for ix=0,x_count do
+					x=ix*x_step-offset
+					y=0+offset
 
-		--add_circle({x,y,math.random()*math.pi*2,encode_rad(0.99*circle_size,1)},true)
-		add_circle(circle_form_rule_init(x,y,math.random()*math.pi*2,rule[rr]),true)
-		--]]
-		--[[ Single in the center
-		x=0
-		y=0
+					local ang=angle_to_center(x,y)
+					add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
+					y=size[2]-offset
+					ang=angle_to_center(x,y)
+					add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
+				end
+				-- [=[
+				for iy=0,y_count do
+					x=0+offset
+					y=iy*y_step-offset
+					local ang=angle_to_center(x,y)
+					add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
+					x=size[1]-offset
+					ang=angle_to_center(x,y)
+					add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
+				end
+				--]=]
+			end,
+			function (  )
+				-- dense border
+				local angle=config.start_angle--math.random()*math.pi*2
+				local circle_rad=rule[rr][2]*circle_size
+				x=circle_rad
+				y=circle_rad
+				local count=math.floor(size[1]/(circle_rad*2))
+				--for i=0,0 do
+				for i=0,count do
+					add_circle(circle_form_rule_init(x+i*circle_rad*2,y,angle,rule[rr]),true)
+					--add_circle(circle_form_rule_init(x+i*circle_rad*2,size[2]-y,angle+math.pi,rule[rr]),true)
+				end
+			end
+		}
 
-		--add_circle({x,y,math.random()*math.pi*2,encode_rad(0.99*circle_size,1)},true)
-		add_circle(circle_form_rule_init(x,y,math.random()*math.pi*2,rule[rr]),true)
-		--]]
-
-		--[[ circle around center
-
-		local dist=math.random()*0.3+0.2
-		local s=math.min(size[1],size[2])
-		for i=0,max_val-1 do
-			local spiral=1--(i+1)/max_val
-			x=size[1]/2+s*dist*math.cos(i*math.pi*2/max_val)*spiral
-			y=size[2]/2+s*dist*math.sin(i*math.pi*2/max_val)*spiral
-			local a=math.random()*math.pi*2--angle_to_center(x,y)
-			
-			add_circle(circle_form_rule_init(x,y,a,rule[rr]),true)
-		end
-		--]]
-		-- [[ dense circle around center
-		local circle_rad=rule[rr][2]*circle_size
-		local dist=big_circle_size(circle_rad,max_val)
-		local s=math.min(size[1],size[2])
-		for i=0,max_val-1 do
-			local spiral=1--(i+1)/max_val
-			x=size[1]/2+dist*math.cos(i*math.pi*2/max_val)*spiral
-			y=size[2]/2+dist*math.sin(i*math.pi*2/max_val)*spiral
-			local a=angle_to_center(x,y)
-			add_circle(circle_form_rule_init(x,y,a+config.start_angle,rule[rr]),true)
-		end
-		--]]
-		--[=[ borders
-		local x_count=math.random(4,25)
-		local y_count=x_count
-		local x_step=math.floor(size[1]/x_count)
-		local y_step=math.floor(size[2]/y_count)
-		local offset=0--math.random(0,500)
-		for ix=0,x_count do
-			x=ix*x_step-offset
-			y=0+offset
-
-			local ang=angle_to_center(x,y)
-			add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
-			y=size[2]-offset
-			ang=angle_to_center(x,y)
-			add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
-		end
-		-- [=[
-		for iy=0,y_count do
-			x=0+offset
-			y=iy*y_step-offset
-			local ang=angle_to_center(x,y)
-			add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
-			x=size[1]-offset
-			ang=angle_to_center(x,y)
-			add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
-		end
-		--]=]
-		--[[ Dense border
-		local angle=config.start_angle--math.random()*math.pi*2
-		local circle_rad=rule[rr][2]*circle_size
-		x=circle_rad
-		y=circle_rad
-		local count=math.floor(size[1]/(circle_rad*2))
-		--for i=0,0 do
-		for i=0,count do
-			add_circle(circle_form_rule_init(x+i*circle_rad*2,y,angle,rule[rr]),true)
-			--add_circle(circle_form_rule_init(x+i*circle_rad*2,size[2]-y,angle+math.pi,rule[rr]),true)
-		end
-
-		--]]
+		placements[config.placement]()
 	end
 	write_circle_buffer()
 	--add_circle({x,y,0,encode_rad(0.999*circle_size,1)},true)
@@ -654,7 +690,7 @@ function draw(  )
 	draw_circles:draw_points(0,cur_circles,4)
 	__unbind_buffer()
 	if need_save then
-		save_img()
+		save_img(need_save)
 		need_save=nil
 	end
 end
@@ -667,6 +703,27 @@ function is_mouse_down(  )
         current_down=false
     end
     return current_down, __mouse.x,__mouse.y
+end
+function full_sim(  )
+	--[[
+	local start_angle_min=215
+	local start_angle_max=360
+	--]]
+	local start_angle_min=235
+	local start_angle_max=240
+	local counter=1
+	for i=start_angle_min,start_angle_max,0.05 do
+		config.start_angle=i*math.pi/180
+		restart()
+		restart(true)
+		config.autostep=true
+		while #circle_data.heads > 0 do
+			coroutine.yield()
+		end
+		save_img_vor(string.format("video/saved (%03d).png",counter))
+		counter=counter+1
+	end
+    sim_thread=nil
 end
 local count_frames=1
 current_frame=0
@@ -723,8 +780,24 @@ function update(  )
     		end
     	end
     end
+    if not sim_thread then
+        if imgui.Button("Simulate") then
+           sim_thread=coroutine.create(full_sim)
+        end
+    else
+        if imgui.Button("Stop Simulate") then
+            sim_thread=nil
+        end
+    end
     imgui.End()
-
+    if sim_thread then
+        --print("!",coroutine.status(sim_thread))
+        local ok,err=coroutine.resume(sim_thread)
+        if not ok then
+            print("Error:",err)
+            sim_thread=nil
+        end
+    end
     --[[local d,x,y=is_mouse_down()
     if d then
     	local data=agent_data:get(1,0)

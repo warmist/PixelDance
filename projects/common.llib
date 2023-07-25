@@ -174,10 +174,11 @@ function draw_config( tbl )
 			if imgui.RadioButton(k,tbl[k]) then
 				tbl[k]=not tbl[k]
 			end
-		elseif type(v)=="string" then
+		--[[elseif type(v)=="string" then
 			local changing
 			changing,tbl[k]=imgui.InputText(k,tbl[k])
 			entry.changing=changing
+			--]]
 		else --if type(v)~="table" then
 			
 			if entry.type=="int" then
