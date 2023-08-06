@@ -2,25 +2,31 @@ require "common"
 require "colors"
 --insipred by: https://www.reddit.com/r/generative/comments/hb0tli/recursive_disc_placement_algorithm/
 --[[
+	FORK OF: disk_tree.lua
 	IDEAS:
-		* export locations to vornoi and fill it out
-		* markov style state changes (i.e. with chances for each one)
-		* apply ALL subrules
-		* apply ALL subrules in random order
 		* cellular automatton like rules
 		* add vornoi vis to shader to see what is saved (and no postprocess step)
-		* apply subrules in some priority order. E.g. all first rule, then all second rule,...
+		* all cells added calculate their position by calculating some potential function
+			* only depending on existing cells
+			* depending on existing AND new cells
+		* try all the rules and see which has best potential
+		* add angle(s) to potential function calc
+		* do initial probes and then try gradient descent or sth for a few steps
 --]]
 local size_mult=1
 local size=STATE.size
 local aspect_ratio
 local new_max_circles=500000
 cur_circles=cur_circles or 0
-local circle_size=10
+local circle_size=20
 local rules_apply_local_rotation=true
 local rules_gen_angle_fixed_per_type=false
 local rules_gen_angle_fixed_list=false
-local rules_sort_by_size=true
+
+local placement_initial_probe=300 --TODO: full around
+local plot_around=Grapher(placement_initial_probe)
+local placement_iterations=10
+local placement_radius_check=circle_size*50
 local rules_global_priority=true
 
 --[[
@@ -144,97 +150,53 @@ end
 function small_circle_count( big_r,small_r )
 	return math.pi/math.asin(small_r/big_r)
 end
-print("C:",small_circle_count(0.99+0.99,0.99))
---format: angle, size, type
-local sl=0.99
-local sm=small_circle_size(sl,5)
+
 rules= rules or {
-	types={
-		0.99,0.5,0.5,0.25,
+	sizes={.8,0.4,0.3},
+	interactions={
+		[1]={ -1, 0.5,  200},
+		[2]={0.5,   -100,  100},
+		[3]={  200,   100,  -100}
 	},
-
-[1]={ is_random=false,
-{0,.99,2},
-{math.pi/3,0.99,2},
-{2*math.pi/3,0.99,2},
-{3*math.pi/3,0.99,2},
-{-math.pi/3,0.99,2},
-{-2*math.pi/3,0.99,2},
-
---[[
-{math.pi/6,0.99,1},
-{2*math.pi/6,0.99,1},
-{3*math.pi/6,0.99,1},
---]]
-},
-[2]={ is_random=false,
-
-{0,sm,3},
-{math.pi/5,sm,3},
-{-math.pi/5,sm,3},
-{2*math.pi/5,sm,3},
-{-2*math.pi/5,sm,3},
-},
-[3]={ is_random=false,
-{0,0.99,4},
---{-math.pi/4,0.99,1},
-},
-[4]={ is_random=false,
-{0,sm,2},
---{-math.pi/4,0.99,1},
-},
+	recipes={
+		[1]={{2,0.5},3},
+		[2]={{3,0.05},1},
+		[3]={{1,0.1},2}
+	}
 }
 function rule_weight( rule,subrule )
 	return -rules[rule][subrule][2]
 end
-function make_subrule( id_self,max_state)
-	local chance_self=0.1
-	local max_rules=100
-	local chance_random=0
-	local c_rules=math.random(5,max_rules)
-	local ret={}
-	if math.random()<chance_random then
-		ret.is_random=true
-	end
-	for i=1,c_rules do
-		local id_change
-		if math.random()<chance_self then
-			id_change=id_self
-		else
-			id_change=math.random(1,max_state)
-		end
-		local angle
-		--angle=math.random()*math.pi/2-math.pi/4
-		--angle=angle_override or (math.random(-5,5)*rules.angle_step)
-		if rules_gen_angle_fixed_per_type then
-			angle=rules.angles[id_change]--*math.random(-5,5)
-		else
-			angle=rules.angle_step*math.random(-5,5)
-		end
-		local size
-		--size=0.5--rules.sizes[id_change]
-		size=rules.sizes[id_change]
-		--size=math.random(1,15)/16
-		--size=math.random()*0.8+0.2
-		table.insert(ret,{angle,size,id_change})
-	end
-	if rules_sort_by_size then
-		table.sort(ret,function ( a,b )
-			return a[2]>b[2]
-		end)
-	end
-	return ret
+
+function shuffle_table(tbl)
+  for i = #tbl, 2, -1 do
+    local j = math.random(i)
+    tbl[i], tbl[j] = tbl[j], tbl[i]
+  end
+  return tbl
 end
-function print_rules(  )
-	print("rules={")
-	for i,v in ipairs(rules) do
-		print(string.format("[%d]={ is_random=%s,",i,tostring(v.is_random or false)))
-		for ii,vv in ipairs(v) do
-			print(string.format("{%g,%g,%g},",vv[1],vv[2],vv[3]))
+function make_recipe( id )
+	local ret={}
+	local chance_any_transform=0.3
+	local chance_self=0
+	
+	for i=1,config.rand_states do
+		if i==id then
+			if math.random()<chance_self then
+				table.insert(ret,{i,math.random()})
+			end
+		else
+			if math.random()<chance_any_transform then
+				table.insert(ret,{i,math.random()})
+			end
 		end
-		print("},")
 	end
-	print("}")
+	if #ret==0 then
+		--TODO: breaks chance self...
+		table.insert(ret,math.random(1,config.rand_states))
+	end
+	shuffle_table(ret)
+	return ret
 end
 function generate_rules(  )
 	math.randomseed(os.time())
@@ -254,26 +216,24 @@ function generate_rules(  )
 	rules={}
 	local count_states=config.rand_states--math.random(2,7)
 	rules.sizes={}
-	rules.angles={}
-	--rules.angle_step=math.random()*math.pi*2
-	rules.angle_step=config.rand_angle--2*math.pi/math.random(3,5)
 	for i=1,count_states do
 		rules.sizes[i]=math.random()*(1-config.rand_size_min)+config.rand_size_min
 	end
+	rules.interactions={}
 	for i=1,count_states do
-		local r=(math.random(0,1)*2-1)*math.random(1,5)
-
-		--rules.angles[i]=r*(math.pi*2*math.random(1,7)/7)
-		if rules_gen_angle_fixed_list then
-			rules.angles[i]=r*angle_choices[math.random(1,#angle_choices)]*math.pi/180
-		else
-			rules.angles[i]=math.random(-10,10)*rules.angle_step
+		rules.interactions[i]={}
+	end
+	for i=1,count_states do
+		for j=i,count_states do
+			local r=math.random()*2-1
+			rules.interactions[i][j]=r
+			rules.interactions[j][i]=r
 		end
 	end
+	rules.recipes={}
 	for i=1,count_states do
-		rules[i]=make_subrule(i,count_states)
+		rules.recipes[i]=make_recipe(i)
 	end
-	print_rules()
 end
 circle_data=circle_data or {
 	heads={},
@@ -340,57 +300,108 @@ function add_circle_with_test( c, is_head )
 	end
 end
 
-function circle_form_rule( x,y,radius,angle,r )
-	local sum_rad=(radius+r[2]*circle_size)+0.01
+function make_circle( x,y,radius,angle,type )
+	local sum_rad=(radius+rules.sizes[type]*circle_size)
 	--print("radius:",sum_rad)
-	local a
-	if rules_apply_local_rotation then
-		a=angle+r[1]--*(math.random()*0.9+0.3)
-	else
-		a=r[1]--*(math.random()*0.9+0.3)
-	end
-	return {x+math.cos(a)*sum_rad,y+math.sin(a)*sum_rad,a,encode_rad(r[2]*circle_size,r[3])},r[4]
-end
-function circle_form_rule_init( x,y,angle,r )
-	local a=angle+r[1]
-	return {x,y,a,encode_rad(r[2]*circle_size,r[3])},r[4]
-end
-function apply_rule( c,specific_rule)
-	local cdata=agent_data:get(c,0)
+	local a=angle
 
-	local rad,t=decode_rad(cdata.a);
-	if specific_rule and t~=specific_rule[1] then
-		return 1
+	return {x+math.cos(a)*sum_rad,y+math.sin(a)*sum_rad,a,encode_rad(rules.sizes[type]*circle_size,type)}
+end
+function circle_form_rule_init( x,y,angle,type )
+	local a=angle
+	return {x,y,a,encode_rad(rules.sizes[type]*circle_size,type)}
+end
+function ab_potential(dist_sqrd,a_type,b_type,p1,p2 )
+	--local y=p1[2]
+	--local dx=a[1]-b[1]
+	--local dy=a[2]-b[2]
+	--local dist=math.sqrt(dx*dx+dy*dy)
+	--local dist=dist_sqrd
+	--local dist=math.sqrt(dist_sqrd)
+
+	--return rules.interactions[a_type][b_type]*dist
+	--return rules.interactions[a_type][b_type]*math.exp(-dist_sqrd/(y+10))
+	return rules.interactions[a_type][b_type]*math.exp(-dist_sqrd/100)
+end
+function calculate_potential( pos,new_circle,radius )
+	local around=agent_tree:rnn(radius,pos)
+	local sum=0
+	local rad1,type1=decode_rad(new_circle[4])
+	for i,v in ipairs(around) do
+		local cdata=agent_data:get(v[1],0)
+		local rad2,type2=decode_rad(cdata.a)
+		sum=sum+ab_potential(v[2],type1,type2,pos,cdata)
 	end
+	return sum
+end
+local graph_done=false
+function apply_rule( c,specific_rule)
+	--get data about this circle
+	local cdata=agent_data:get(c,0)
+	local rad,t=decode_rad(cdata.a)
+	--get the rule
 	--print("Head",c,rad,t)
-	local rule=rules[t]
+	local rule=rules.recipes[t]
 	if rule==nil then
 		print(rad,t)
+		error("OOOOPS")
 	end
-	if specific_rule then
-		local v=rule[specific_rule[2]]
-		local nc,fh=circle_form_rule(cdata.r,cdata.g,rad,cdata.b,v)
-		if add_circle_with_test(nc,true) then
-			cdata.b=cdata.b+(v[4] or 0)
-			
-			return 1
-			--break --uncomment for only one rule per circle
-		else
-			return 1
-		end
-	end
-	if rule.is_random then
+
+
+	if rule.is_random then --TODO
+		error("TODO")
 		local r=rule[math.random(1,#rule)]
 		local nc,fh=circle_form_rule(cdata.r,cdata.g,rad,cdata.b,r)
 		cdata.b=cdata.b+(r[4] or 0)
 		return add_circle_with_test(nc,true)
 	else
 		local applied_rule=0
+
+		--local placement_iterations=10
+		local angle_step=math.pi*2/placement_initial_probe
+		local checks_done=0
+		local best={potential=-math.huge}
 		for i,v in ipairs(rule) do
-			local nc,fh=circle_form_rule(cdata.r,cdata.g,rad,cdata.b,v)
-			if add_circle_with_test(nc,true) then
-				cdata.b=cdata.b+(v[4] or 0)
-				applied_rule=applied_rule+1
+			for angle=0,math.pi*2,angle_step do
+				local a
+				if rules_apply_local_rotation then
+					a=angle+cdata.b
+				else
+					a=angle
+				end
+				local cell_type=v
+				local weight=1
+				if type(v)=="table" then
+					cell_type=v[1]
+					weight=v[2]
+				end
+				local nc=make_circle(cdata.r,cdata.g,rad,a,cell_type)
+				local rad1=decode_rad(nc[4])
+				if is_clear(nc[1],nc[2],rad1,circle_size*2) then
+					checks_done=checks_done+1
+					local potential=calculate_potential({nc[1],nc[2]},nc,placement_radius_check)*weight
+
+					if potential>best.potential then
+						best.potential=potential
+						best.nc=nc
+					end
+					if not graph_done then
+						plot_around:add_value(potential)
+					end
+				else
+					if not graph_done then
+						plot_around:add_value(0)
+					end
+				end
+			end
+		end
+		graph_done=true
+		if best.nc~=nil then
+			if rules_global_priority then
+				return best
+			end
+			applied_rule=applied_rule+1
+			if add_circle(best.nc,true) then
 				--break --uncomment for only one rule per circle
 			end
 		end
@@ -398,97 +409,54 @@ function apply_rule( c,specific_rule)
 	end
 end
 function step_head( v ,specific_rule)
-	circle_data.heads_fails[v]=(circle_data.heads_fails[v] or 0)+1
-	--[==[
-	if not apply_rule(v) then
-		if circle_data.heads_fails[v]<5 then
+	local result=apply_rule(v,specific_rule)
+	if rules_global_priority and result~=0 then
+		table.insert(circle_data.heads,v)
+		return result
+	end
+	if result~=0 then
+		--if specific_rule==nil then --see if any applications for specific head exist in another place
 			table.insert(circle_data.heads,v)
-		end
-	else
-		--if math.random()>0.5 then
-		if circle_data.heads_fails[v]<5 then
-			table.insert(circle_data.heads,v)
-		end
 		--end
 	end
-	--]==]
-	if apply_rule(v,specific_rule)>0 then
-		if specific_rule==nil then --see if any applications for specific head exist in another place
-			table.insert(circle_data.heads,v)
-		end
-	end
-end
-function count_applications( c,out_table )
-	local cdata=agent_data:get(c,0)
-
-	local rad,t=decode_rad(cdata.a);
-	--print("Head",c,rad,t)
-	local rule=rules[t]
-	if rule==nil then
-		print(rad,t)
-	end
-	--[[if rule.is_random then
-		local r=rule[math.random(1,#rule)]
-		local nc,fh=circle_form_rule(cdata.r,cdata.g,rad,cdata.b,r)
-		cdata.b=cdata.b+(r[4] or 0)
-		return add_circle_with_test(nc,true)
-
-	else--]]
-	local count_applied=0
-	for i,v in ipairs(rule) do
-		local nc,fh=circle_form_rule(cdata.r,cdata.g,rad,cdata.b,v)
-		local rad1=decode_rad(nc[4])
-		local ok=is_clear(nc[1],nc[2],rad1,circle_size*2)
-		if ok then
-			out_table[v]=out_table[v] or {t,i,0}
-			out_table[v][3]=out_table[v][3]+1
-			count_applied=count_applied+1
-		end
-	end
-	return count_applied
 end
 function step(  )
 	local steps_done=0
 	local old_heads=circle_data.heads
 	circle_data.heads={}
 	local is_depth_first=config.depth_first
-	if rules_global_priority then
-		local rule_applications={}
-
+	graph_done=false
+	if not is_depth_first then
+		local best={potential=-math.huge}
 		for i,v in ipairs(old_heads) do
-			local c=count_applications(v,rule_applications)
-			if c>0 then
-				table.insert(circle_data.heads,v)
+			local result=step_head(v)
+			if rules_global_priority then
+				if result and best.potential<result.potential then
+					best=result
+				end
 			end
+			steps_done=steps_done+1
 		end
-		local tmp_tbl={}
-		for k,v in pairs(rule_applications) do
-			table.insert(tmp_tbl,v)
-		end
-		table.sort(tmp_tbl,function ( a,b ) return rule_weight(a[1],a[2])<rule_weight(b[1],b[2]) end)
-
-		if #tmp_tbl>0 then
-			for i,v in ipairs(old_heads) do
-				step_head(v,tmp_tbl[1])
-				steps_done=steps_done+1
-			end
+		if rules_global_priority and best.nc then
+			add_circle(best.nc,true)
 		end
 	else
-		if not is_depth_first then
-			for i,v in ipairs(old_heads) do
-				step_head(v)
-				steps_done=steps_done+1
-			end
-		else
-			for i=1,#old_heads-1 do
-				table.insert(circle_data.heads,old_heads[i])
-			end
-			if #old_heads>0 then
-				step_head(old_heads[#old_heads])
-			end
-			steps_done=1
+		for i=1,#old_heads-1 do
+			table.insert(circle_data.heads,old_heads[i])
 		end
+		-- [[
+		if #old_heads>0 then
+			step_head(old_heads[#old_heads])
+		end
+		--]]
+		--[[
+		if #old_heads>0 then
+			step_head(old_heads[1])
+		end
+		--]]
+		steps_done=1
 	end
+
 	write_circle_buffer()
 	return steps_done
 end
@@ -509,7 +477,7 @@ end
 function save_img_vor(path)
 	img_buf=img_buf or make_image_buffer(size[1],size[2])
 	local palette={}
-	for i,v in ipairs(rules) do
+	for i,v in ipairs(rules.sizes) do
 		--local pix=img_buf.pixel()
 
 		pix={r=0,g=0,b=0,a=0}
@@ -672,8 +640,7 @@ function restart( soft )
 		--add_circle(circle_form_rule_init(x,y,math.random()*math.pi*2,rule[math.random(1,#rule)]),true)
 	else
 		math.randomseed(config.seed)
-		local rule=rules[math.random(1,#rules)]
-		local rr=math.random(1,#rule)
+		local rr=math.random(1,#rules.sizes)
 
 		local max_val=math.random(4,40)
 		local placements={
@@ -682,7 +649,7 @@ function restart( soft )
 				x=size[1]/2
 				y=size[2]/2
 				--add_circle({x,y,math.random()*math.pi*2,encode_rad(0.99*circle_size,1)},true)
-				add_circle(circle_form_rule_init(x,y,config.start_angle,rule[rr]),true)	
+				add_circle(circle_form_rule_init(x,y,config.start_angle,rr),true)	
 			end,
 			function (  )
 				--single in corner
@@ -706,7 +673,7 @@ function restart( soft )
 			end,
 			function (  )
 				-- dense circle at center
-				local circle_rad=rule[rr][2]*circle_size
+				local circle_rad=rules.sizes[rr]*circle_size
 				local dist=big_circle_size(circle_rad,max_val)
 				local s=math.min(size[1],size[2])
 				for i=0,max_val-1 do
@@ -714,7 +681,7 @@ function restart( soft )
 					x=size[1]/2+dist*math.cos(i*math.pi*2/max_val)*spiral
 					y=size[2]/2+dist*math.sin(i*math.pi*2/max_val)*spiral
 					local a=angle_to_center(x,y)
-					add_circle(circle_form_rule_init(x,y,a+config.start_angle,rule[rr]),true)
+					add_circle(circle_form_rule_init(x,y,a+config.start_angle,rr),true)
 				end
 			end,
 			function (  )
@@ -729,33 +696,33 @@ function restart( soft )
 					y=0+offset
 
 					local ang=angle_to_center(x,y)+config.start_angle
-					add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
+					add_circle(circle_form_rule_init(x,y,ang,rr),true)
 					y=size[2]-offset
 					ang=angle_to_center(x,y)+config.start_angle
-					add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
+					add_circle(circle_form_rule_init(x,y,ang,rr),true)
 				end
 				-- [=[
 				for iy=0,y_count do
 					x=0+offset
 					y=iy*y_step-offset
 					local ang=angle_to_center(x,y)+config.start_angle
-					add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
+					add_circle(circle_form_rule_init(x,y,ang,rr),true)
 					x=size[1]-offset
 					ang=angle_to_center(x,y)+config.start_angle
-					add_circle(circle_form_rule_init(x,y,ang,rule[rr]),true)
+					add_circle(circle_form_rule_init(x,y,ang,rr),true)
 				end
 				--]=]
 			end,
 			function (  )
 				-- dense border
 				local angle=config.start_angle--math.random()*math.pi*2
-				local circle_rad=rule[rr][2]*circle_size
+				local circle_rad=rules.sizes[rr]*circle_size
 				x=circle_rad
 				y=circle_rad
 				local count=math.floor(size[1]/(circle_rad*2))
 				--for i=0,0 do
 				for i=0,count do
-					add_circle(circle_form_rule_init(x+i*circle_rad*2,y,angle,rule[rr]),true)
+					add_circle(circle_form_rule_init(x+i*circle_rad*2,y,angle,rr),true)
 					--add_circle(circle_form_rule_init(x+i*circle_rad*2,size[2]-y,angle+math.pi,rule[rr]),true)
 				end
 			end,
@@ -902,6 +869,7 @@ function update(  )
             sim_thread=nil
         end
     end
+    plot_around:draw("Potential")
     imgui.End()
     if sim_thread then
         --print("!",coroutine.status(sim_thread))
