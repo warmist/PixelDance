@@ -30,6 +30,7 @@
 #define GIF_FLIP_VERT
 #include "gif.h"
 
+//#include "shobjidl_core.h"
 struct emb_text
 {
 	unsigned char* data;
@@ -124,6 +125,77 @@ static int present_buffer(lua_State* L)
     lua_pop(L, 2);
     tex->update(data);
     return 0;
+}
+static int free_simple_buffer(lua_State* L)
+{
+    auto buffer=*reinterpret_cast<unsigned char**>(luaL_checkudata(L, 1, "simple_buffer"));
+    free(buffer);
+    return 0;
+}
+struct png_context {
+    unsigned char* data;
+    int size;
+    const char* suffix;
+    int suffix_size;
+};
+void write_to_mem(void* context, void* data, int size)
+{
+    auto ret = (png_context*)context;
+    ret->data = (unsigned char*)malloc(size + ret->suffix_size);
+    ret->size = size;
+    memcpy(ret->data, data, size);
+    if (ret->suffix)
+    {
+        memcpy(ret->data + size, ret->suffix, ret->suffix_size);
+        ret->size += ret->suffix_size;
+    }
+}
+static int save_image_to_mem(lua_State* L)
+{
+    luaL_checktype(L, 1, LUA_TTABLE);
+
+    lua_getfield(L, 1, "w");
+    int w = lua_tonumber(L, -1);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "h");
+    int h = lua_tonumber(L, -1);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "d");
+    auto data = reinterpret_cast<const sf::Uint8*>(lua_topointer(L, -1));
+    lua_pop(L, 1);
+
+    size_t suffix_len = 0;
+    const char* suffix = luaL_optlstring(L, 2, "", &suffix_len);
+
+    bool flip = lua_toboolean(L, 3);
+    png_context ret_data;
+    ret_data.suffix = suffix;
+    ret_data.suffix_size = suffix_len;
+    int ret;
+    if (!flip)
+        ret = stbi_write_png_to_func(write_to_mem,&ret_data,w,h,4,data, w * 4);
+    else
+    {
+        auto last_row = data + (w * 4 * (h - 1));
+        ret = stbi_write_png_to_func(write_to_mem, &ret_data, w, h, 4, last_row, -w * 4);
+    }
+
+    auto np = lua_newuserdata(L, sizeof(char**));
+    *reinterpret_cast<unsigned char**>(np) = ret_data.data;
+
+    if (luaL_newmetatable(L, "simple_buffer"))
+    {
+        lua_pushcfunction(L, free_simple_buffer);
+        lua_setfield(L, -2, "__gc");
+
+        lua_pushvalue(L, -1);
+        lua_setfield(L, -2, "__index");
+    }
+    lua_setmetatable(L, -2);
+    lua_pushnumber(L, ret_data.size);
+    return 2;
 }
 static int save_image(lua_State* L)
 {
@@ -471,6 +543,9 @@ struct project {
 
         lua_pushcfunction(L, save_image);
         lua_setglobal(L, "__save_png");
+
+        lua_pushcfunction(L, save_image_to_mem);
+        lua_setglobal(L, "__save_png_mem");
 
 		lua_pushcfunction(L, clear_screen);
 		lua_setglobal(L, "__clear");

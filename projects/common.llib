@@ -58,6 +58,9 @@ function make_buffer( typename,type_id,default_pixel )
 		img.save=function ( t,path,suffix )
 			__save_png(t,path,suffix,true)
 		end
+		img.save_mem=function ( t,suffix )
+			return __save_png_mem(t,suffix,true)
+		end
 		img.clear=function ( t,c )
 			local pix=c or t.pixel()
 			for x=0,w-1 do

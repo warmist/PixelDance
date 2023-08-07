@@ -40,7 +40,7 @@ update_size()
 --]]
 color_thingy=color_thingy or {
 	{0.2,0.1,0.5},
-	{2,3,7}
+	{2,1,4}
 }
 function color_thingy_to_rgb( value )
 	local ret={}
@@ -74,7 +74,7 @@ end
 
 config=make_config({
 	{"autostep",false,type="boolean"},
-	{"depth_first",true,type="boolean"},
+	{"depth_first",false,type="boolean"},
 	{"start_angle",math.pi/3,type="angle",min=0,max=math.pi*2},
 	{"start_angle2",math.pi/3,type="angle",min=0,max=math.pi*2},
 	{"rand_angle",math.pi/3,type="angle"},
@@ -164,6 +164,15 @@ rules= rules or {
 		[3]={{1,0.1},2}
 	}
 }
+function print_rules_html(  )
+	local ret=""
+	string.format([[
+###Rules
+sizes=$[%s]$,
+interactions=$<TODO array>$
+recipes
+]])
+end
 function rule_weight( rule,subrule )
 	return -rules[rule][subrule][2]
 end
@@ -612,7 +621,50 @@ function save_img_vor(path)
 		print("done x:",x)
 	end
 	path=path or string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial
-	img_buf:save(path)
+	if path=="<mem>" then
+		return img_buf:save_mem()
+	else
+		img_buf:save(path)
+		return path
+	end
+end
+local ffi = require("ffi")
+local b64= require("base64")
+function encode_base64( buffer,size )
+	print(buffer,size)
+	local str=ffi.cast("unsigned char**",buffer)[0]
+
+	for i=0,5 do
+		print(str[i],string.char(str[i]))
+	end
+	
+	return b64.encode_arr(str,size)
+end
+function save_html(  )
+	
+	local header=[==[
+           <meta charset="utf-8" emacsmode="-*- markdown -*-">
+           							**Generated image infocard**
+           					   **Disk tree with potential well**
+
+![main image](%s)
+]==]
+-- [image.png]:data:image/png;base64,]==] doesnt work ;(
+	local footer=[==[
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>
+]==]
+	--local base64_image=encode_base64(save_img_vor("<mem>"))
+	--[[
+		TODO
+			* add inheritance tree (i.e. that idea-> other idea -> this one)
+			* add rules in nice format
+			* add potential function format
+	--]]
+	local fname=save_img_vor()
+	local f=io.open("out.md.html","wb")
+	f:write(string.format(header,fname))
+	f:write(footer)
+	f:close()
 end
 function angle_to_center( x,y )
 	local vx=size[1]/2-x
@@ -848,6 +900,10 @@ function update(  )
     imgui.SameLine()
     if imgui.Button("save vornoi") then
     	save_img_vor()
+    end
+    imgui.SameLine()
+    if imgui.Button("save html") then
+    	save_html()
     end
     if imgui.Button("RandRules") then
     	generate_rules()
