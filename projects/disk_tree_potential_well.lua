@@ -12,6 +12,8 @@ require "colors"
 		* try all the rules and see which has best potential
 		* add angle(s) to potential function calc
 		* do initial probes and then try gradient descent or sth for a few steps
+		* all of nothing: head check what placing it all of it children would do instead of one (potential = max/min/sum/avg of placement)
+			then only place the from the head that has "best" set
 --]]
 local size_mult=1
 local size=STATE.size
@@ -26,7 +28,7 @@ local rules_gen_angle_fixed_list=false
 local placement_initial_probe=300 --TODO: full around
 local plot_around=Grapher(placement_initial_probe)
 local placement_iterations=10
-local placement_radius_check=circle_size*50
+local placement_radius_check=circle_size*100
 local rules_global_priority=true
 
 --[[
@@ -158,6 +160,11 @@ rules= rules or {
 		[2]={0.5,   -100,  100},
 		[3]={  200,   100,  -100}
 	},
+	interactions2={
+		[1]={ 0.5, 2,  -1},
+		[2]={2,   1,  1},
+		[3]={  -1,   1,  2}
+	},
 	recipes={
 		[1]={{2,0.5},3},
 		[2]={{3,0.05},1},
@@ -237,6 +244,17 @@ function generate_rules(  )
 			local r=math.random()*2-1
 			rules.interactions[i][j]=r
 			rules.interactions[j][i]=r
+		end
+	end
+	rules.interactions2={}
+	for i=1,count_states do
+		rules.interactions2[i]={}
+	end
+		for i=1,count_states do
+		for j=i,count_states do
+			local r=math.pow(math.random(),2)*2-1
+			rules.interactions2[i][j]=r
+			rules.interactions2[j][i]=r
 		end
 	end
 	rules.recipes={}
@@ -326,11 +344,12 @@ function ab_potential(dist_sqrd,a_type,b_type,p1,p2 )
 	--local dy=a[2]-b[2]
 	--local dist=math.sqrt(dx*dx+dy*dy)
 	--local dist=dist_sqrd
-	--local dist=math.sqrt(dist_sqrd)
+	local dist=math.sqrt(dist_sqrd)
 
+	return rules.interactions[a_type][b_type]*dist+rules.interactions2[a_type][b_type]*dist_sqrd
 	--return rules.interactions[a_type][b_type]*dist
 	--return rules.interactions[a_type][b_type]*math.exp(-dist_sqrd/(y+10))
-	return rules.interactions[a_type][b_type]*math.exp(-dist_sqrd/100)
+	--return rules.interactions[a_type][b_type]*math.exp(-dist_sqrd/100)
 end
 function calculate_potential( pos,new_circle,radius )
 	local around=agent_tree:rnn(radius,pos)
@@ -894,6 +913,7 @@ function update(  )
     imgui.Begin("diskery")
     draw_config(config)
     if config.autostep then
+    	--need_save=true
     	current_frame=current_frame+1
     	if current_frame>count_frames then
     		local sum_steps=0
