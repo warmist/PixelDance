@@ -20,17 +20,18 @@ local size=STATE.size
 local aspect_ratio
 local new_max_circles=500000
 cur_circles=cur_circles or 0
-local circle_size=20
+local circle_size=50
 local rules_apply_local_rotation=true
 local rules_gen_angle_fixed_per_type=false
 local rules_gen_angle_fixed_list=false
 
-local placement_initial_probe=300 --TODO: full around
+local placement_initial_probe=500 --TODO: full around
 local plot_around=Grapher(placement_initial_probe)
 local placement_iterations=10
 local placement_radius_check=circle_size*100
 local rules_global_priority=true
-
+starting_seed_desc=starting_seed_desc or "single point at center of type: 6"
+potential_description=potential_description or "N^1_{a',b'}d+N^2_{a',b'}d^2"
 --[[
 function update_size(  )
 	win_w=1280*size_mult
@@ -40,6 +41,17 @@ function update_size(  )
 end
 update_size()
 --]]
+
+function set_values(s,tbl)
+	return (s:gsub("@([^@]+)@",function ( n )
+		--[[if tbl[n] == nil then
+			error("no value provided for %s",n)
+		end]]
+		return tbl[n]
+	end))
+end
+
+
 color_thingy=color_thingy or {
 	{0.2,0.1,0.5},
 	{2,1,4}
@@ -76,7 +88,7 @@ end
 
 config=make_config({
 	{"autostep",false,type="boolean"},
-	{"depth_first",false,type="boolean"},
+	
 	{"start_angle",math.pi/3,type="angle",min=0,max=math.pi*2},
 	{"start_angle2",math.pi/3,type="angle",min=0,max=math.pi*2},
 	{"rand_angle",math.pi/3,type="angle"},
@@ -171,15 +183,7 @@ rules= rules or {
 		[3]={{1,0.1},2}
 	}
 }
-function print_rules_html(  )
-	local ret=""
-	string.format([[
-###Rules
-sizes=$[%s]$,
-interactions=$<TODO array>$
-recipes
-]])
-end
+
 function rule_weight( rule,subrule )
 	return -rules[rule][subrule][2]
 end
@@ -193,9 +197,10 @@ function shuffle_table(tbl)
 end
 function make_recipe( id )
 	local ret={}
-	local chance_any_transform=0.3
-	local chance_self=0
-	
+	local chance_any_transform=0.8
+	local chance_self=0.1
+
+	-- [[
 	for i=1,config.rand_states do
 		if i==id then
 			if math.random()<chance_self then
@@ -211,7 +216,18 @@ function make_recipe( id )
 		--TODO: breaks chance self...
 		table.insert(ret,math.random(1,config.rand_states))
 	end
+
 	shuffle_table(ret)
+	--]]
+	--[[
+	for i=1,config.rand_states do
+		if i==id then
+			table.insert(ret,{i,chance_self})
+		else
+			table.insert(ret,{i,math.random()})
+		end
+	end
+	--]]
 	return ret
 end
 function generate_rules(  )
@@ -233,7 +249,7 @@ function generate_rules(  )
 	local count_states=config.rand_states--math.random(2,7)
 	rules.sizes={}
 	for i=1,count_states do
-		rules.sizes[i]=math.random()*(1-config.rand_size_min)+config.rand_size_min
+		rules.sizes[i]=math.floor((math.random()*(1-config.rand_size_min)+config.rand_size_min)*1000)/1000
 	end
 	rules.interactions={}
 	for i=1,count_states do
@@ -241,7 +257,7 @@ function generate_rules(  )
 	end
 	for i=1,count_states do
 		for j=i,count_states do
-			local r=math.random()*2-1
+			local r=math.floor((math.random()*2-1)*1000)/1000
 			rules.interactions[i][j]=r
 			rules.interactions[j][i]=r
 		end
@@ -252,7 +268,7 @@ function generate_rules(  )
 	end
 		for i=1,count_states do
 		for j=i,count_states do
-			local r=math.pow(math.random(),2)*2-1
+			local r=math.floor((math.pow(math.random(),2)*2-1)*1000)/1000
 			rules.interactions2[i][j]=r
 			rules.interactions2[j][i]=r
 		end
@@ -344,10 +360,17 @@ function ab_potential(dist_sqrd,a_type,b_type,p1,p2 )
 	--local dy=a[2]-b[2]
 	--local dist=math.sqrt(dx*dx+dy*dy)
 	--local dist=dist_sqrd
-	local dist=math.sqrt(dist_sqrd)
+	local dist=math.sqrt(dist_sqrd)+0.001
+	dist_sqrd=dist_sqrd+0.001
+	--potential_description="N^1_{a',b'}d+N^2_{a',b'}d^2" --TODO PERF move to non-hot spot (e.g. add selection for this)
+	--return rules.interactions[a_type][b_type]*dist+rules.interactions2[a_type][b_type]*dist_sqrd
 
-	return rules.interactions[a_type][b_type]*dist+rules.interactions2[a_type][b_type]*dist_sqrd
+	potential_description="N^1_{a',b'}d^{-2}+N^2_{a',b'}d^{-3}" --TODO PERF move to non-hot spot (e.g. add selection for this)
+	return rules.interactions[a_type][b_type]*(1/(dist_sqrd))+rules.interactions2[a_type][b_type]*(1/(dist_sqrd*dist))
+
+	--potential_description="N^1_{a',b'}d"
 	--return rules.interactions[a_type][b_type]*dist
+
 	--return rules.interactions[a_type][b_type]*math.exp(-dist_sqrd/(y+10))
 	--return rules.interactions[a_type][b_type]*math.exp(-dist_sqrd/100)
 end
@@ -452,38 +475,23 @@ function step(  )
 	local steps_done=0
 	local old_heads=circle_data.heads
 	circle_data.heads={}
-	local is_depth_first=config.depth_first
+
 	graph_done=false
-	if not is_depth_first then
-		local best={potential=-math.huge}
-		for i,v in ipairs(old_heads) do
-			local result=step_head(v)
-			if rules_global_priority then
-				if result and best.potential<result.potential then
-					best=result
-				end
+
+	local best={potential=-math.huge}
+	for i,v in ipairs(old_heads) do
+		local result=step_head(v)
+		if rules_global_priority then
+			if result and best.potential<result.potential then
+				best=result
 			end
-			steps_done=steps_done+1
 		end
-		if rules_global_priority and best.nc then
-			add_circle(best.nc,true)
-		end
-	else
-		for i=1,#old_heads-1 do
-			table.insert(circle_data.heads,old_heads[i])
-		end
-		-- [[
-		if #old_heads>0 then
-			step_head(old_heads[#old_heads])
-		end
-		--]]
-		--[[
-		if #old_heads>0 then
-			step_head(old_heads[1])
-		end
-		--]]
-		steps_done=1
+		steps_done=steps_done+1
 	end
+	if rules_global_priority and best.nc then
+		add_circle(best.nc,true)
+	end
+	
 
 	write_circle_buffer()
 	return steps_done
@@ -639,11 +647,11 @@ function save_img_vor(path)
 		end
 		print("done x:",x)
 	end
-	path=path or string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial
+	path=path or string.format("saved_%d.png",os.time(os.date("!*t")))
 	if path=="<mem>" then
 		return img_buf:save_mem()
 	else
-		img_buf:save(path)
+		img_buf:save(path,config_serial)
 		return path
 	end
 end
@@ -653,11 +661,13 @@ function encode_base64( buffer,size )
 	print(buffer,size)
 	local str=ffi.cast("unsigned char**",buffer)[0]
 
-	for i=0,5 do
-		print(str[i],string.char(str[i]))
-	end
-	
 	return b64.encode_arr(str,size)
+end
+function compress( str )
+	return b64.encode(str)
+end
+function get_source_compressed()
+	return compress(__get_source())
 end
 function save_html(  )
 	
@@ -666,51 +676,165 @@ function save_html(  )
                                   **Generated image infocard**
                                **Disk tree with potential well**
 
-![Generated image](saved_1691395736.png)
+![Generated image](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg== id=placeholder_img)
 
 # Principle
 
-Try placing non-overlapping circles by calculating potential at fixed points around each existing point.
+For each alive circle try placing @placement_initial_probe@ circles around. Where no overlap happens record the potential function.
+Finally find best potential over all alive circle attempted placement positions and place a new disk there.
+
+If no placement are possible from the specific circle, mark it non-alive.
+
+[Family source code](https://github.com/warmist/PixelDance/blob/master/projects/disk_tree_potential_well.lua)
+
+<a id="specific_code" href="tmp">Specific file source code</a>
 
 # Ruleset
 
 Ruleset is defined as:
 
-Sizes=$(1,2,3)$
+@rules@
 
-Interactions strength $N=\left|\begin{matrix}1 & 0 & 2\\0 & 1 & 2\\0 & 0 & 3\\ \end{matrix}\right|$
+Potential defined as
+$$f(a,b)=@potential@$$
+here $a'$ and $b'$ is type of circle trying to be added and existing circle. $d$ is distance between $a$ and $b$.
 
-Potential defined as 
-$$f(a,b)=N_{a',b'}e^{|b-a|^2/100}$$ 
-here $a'$ and $b'$ is type of circle trying to be added and existing circle.
+Full potential is $F=\sum_{i=0}^n f(a,c_i)*w_r$. Here $a$ is attempted placement location, $c_i$ nearby circle that is already 
+places and $w_r$ is weight of specific addition rule.
 
 # Starting seed
 
-Starting seed in this case is: dense circle around center (X circles type Y)
+Starting seed in this case is: @starting_seed@
 
 # Palette
 
 Used palette:
-* 1 <span style="color:#FF0000">■□0xFF0000</span>
-* 2 <span style="color:#00FF00">■□0x00FF00</span>
-<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>
+@palette@
 
+
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>
+<script type="text/javascript">
+function do_changes()
+{
+//TODO: somewhat cursed... also TODO: actually compress...
+function download_source()
+{
+my_code=atob("@this_code_compressed@")
+const link = document.getElementById("specific_code");
+const file = new Blob([my_code], { type: 'text/plain' });
+
+// Add file content in the object URL
+link.href = URL.createObjectURL(file);
+
+// Add file name
+link.download = "disk_tree_potential_well.lua";
+}
+download_source()
+function set_image()
+{
+	const img = document.getElementById("placeholder_img");
+	img.src="data:image/png;base64,@base64_image@"
+}
+set_image()
+}
+window.markdeepOptions={}
+window.markdeepOptions.onLoad=do_changes
+</script>
 ]==]
 -- [image.png]:data:image/png;base64,]==] doesnt work ;(
-	local footer=[==[
-<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>
-]==]
-	--local base64_image=encode_base64(save_img_vor("<mem>"))
+
 	--[[
 		TODO
 			* add inheritance tree (i.e. that idea-> other idea -> this one)
-			* add rules in nice format
-			* add potential function format
 	--]]
-	local fname=save_img_vor()
-	local f=io.open("out.md.html","wb")
-	f:write(string.format(header,fname))
-	f:write(footer)
+	local function format_palette( )
+		local frmt='* <span style="color:%s">■□%s</span>\n'
+		local ret=""
+		for i=1,config.rand_states do
+			local col=color_thingy_to_rgb(i)
+			local hex_color1=string.format("#%02X%02X%02X",col[1],col[2],col[3])
+			local hex_color2=string.format("0x%02X%02X%02X",col[1],col[2],col[3])
+			ret=ret..string.format(frmt,hex_color1,hex_color2)
+		end
+		return ret
+	end
+	local function format_interactions( tbl )
+		local out_tbl={}
+		for i=1,#tbl do
+			out_tbl[i]=table.concat( tbl[i], " & ")
+		end
+		return table.concat( out_tbl, "\\\\")
+	end
+	local function format_recipe_entry(e)
+		local tmp_tbl={}
+		for i,v in ipairs(e) do
+			if type(v)=="number" then
+				table.insert(tmp_tbl,string.format("(%d,%g)",v,1))
+			else
+				table.insert(tmp_tbl,string.format("(%d,%g)",v[1],v[2]))
+			end
+		end
+		return table.concat( tmp_tbl,", ")
+	end
+	local function format_recipes()
+		local ret=""
+		for i,v in ipairs(rules.recipes) do
+			ret=ret..string.format("* $%s$\n",format_recipe_entry(v))
+		end
+		return ret
+	end
+	local function format_rules(  )
+		local ret=""
+		local sizes=table.concat(rules.sizes,", ")
+		local interactions1=format_interactions(rules.interactions)
+		local interactions2=format_interactions(rules.interactions2)
+		local recipes=format_recipes()
+		return string.format([[
+Sizes=$(%s)$
+
+Interactions strength (see potential function) defined by
+$$N^1=\left|\begin{matrix}%s\end{matrix}\right|$$
+and
+$$N^2=\left|\begin{matrix}%s\end{matrix}\right|$$
+
+Addition rules:
+%s
+Here each line is for each type of circle two numbers are type to add and potential function weight $w_r$.
+]],
+		sizes,interactions1,interactions2,recipes)
+		--[[rules= rules or {
+		sizes={.8,0.4,0.3},
+		interactions={
+			[1]={ -1, 0.5,  200},
+			[2]={0.5,   -100,  100},
+			[3]={  200,   100,  -100}
+		},
+		interactions2={
+			[1]={ 0.5, 2,  -1},
+			[2]={2,   1,  1},
+			[3]={  -1,   1,  2}
+		},
+		recipes={
+			[1]={{2,0.5},3},
+			[2]={{3,0.05},1},
+			[3]={{1,0.1},2}
+		}]]
+	end
+
+	local base64_image=encode_base64(save_img_vor("<mem>"))
+
+	local tbl_data={}
+	--tbl_data.output_filename=save_img_vor()
+
+	tbl_data.starting_seed=starting_seed_desc
+	tbl_data.rules=format_rules()
+	tbl_data.palette=format_palette()
+	tbl_data.potential=potential_description
+	tbl_data.this_code_compressed=get_source_compressed()
+	tbl_data.base64_image=base64_image
+	tbl_data.placement_initial_probe=placement_initial_probe
+	local f=io.open(string.format("saved_%d.md.html",os.time(os.date("!*t"))),"wb")
+	f:write(set_values(template,tbl_data))
 	f:close()
 end
 function angle_to_center( x,y )
@@ -748,7 +872,8 @@ function restart( soft )
 				x=size[1]/2
 				y=size[2]/2
 				--add_circle({x,y,math.random()*math.pi*2,encode_rad(0.99*circle_size,1)},true)
-				add_circle(circle_form_rule_init(x,y,config.start_angle,rr),true)	
+				add_circle(circle_form_rule_init(x,y,config.start_angle,rr),true)
+				starting_seed_desc=string.format("single disk in the center of type: %d",rr)
 			end,
 			function (  )
 				--single in corner
@@ -756,6 +881,7 @@ function restart( soft )
 				y=0
 				--add_circle({x,y,math.random()*math.pi*2,encode_rad(0.99*circle_size,1)},true)
 				add_circle(circle_form_rule_init(x,y,config.start_angle,rule[rr]),true)
+				starting_seed_desc=string.format("single disk in the corner (0,0) of type: %d",rr)
 			end,
 			function (  )
 				--circle around center
@@ -769,6 +895,7 @@ function restart( soft )
 					
 					add_circle(circle_form_rule_init(x,y,a,rule[rr]),true)
 				end
+				starting_seed_desc=string.format("circle of disks around center type: %d and distance: %g",rr,dist)
 			end,
 			function (  )
 				-- dense circle at center
@@ -782,6 +909,7 @@ function restart( soft )
 					local a=angle_to_center(x,y)
 					add_circle(circle_form_rule_init(x,y,a+config.start_angle,rr),true)
 				end
+				starting_seed_desc=string.format("dense circle in the center of type: %d and count: %d dist: %g",rr,max_val,dist)
 			end,
 			function (  )
 				-- borders
@@ -824,6 +952,7 @@ function restart( soft )
 					add_circle(circle_form_rule_init(x+i*circle_rad*2,y,angle,rr),true)
 					--add_circle(circle_form_rule_init(x+i*circle_rad*2,size[2]-y,angle+math.pi,rule[rr]),true)
 				end
+				starting_seed_desc=string.format("dense border on the bottom of type: %d and count: %d",rr,count)
 			end,
 			function (  )
 				-- dense border x2
@@ -917,7 +1046,7 @@ function update(  )
     	current_frame=current_frame+1
     	if current_frame>count_frames then
     		local sum_steps=0
-    		while sum_steps< 200 do
+    		while sum_steps< 10 do
     			local s=step()
     			if s ==0 then break end
     			sum_steps=sum_steps+s

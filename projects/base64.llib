@@ -111,7 +111,7 @@ end
 function base64.encode_arr( arr,arr_size, encoder, usecaching )
 	encoder = encoder or DEFAULT_ENCODER
 	local t, k= {}, 1
-	local n=arr_size
+	local n=arr_size-1
 	local lastn = n % 3
 	local cache = {}
 	for i = 0, n-lastn, 3 do
