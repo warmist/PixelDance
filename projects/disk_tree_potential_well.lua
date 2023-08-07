@@ -642,12 +642,40 @@ function encode_base64( buffer,size )
 end
 function save_html(  )
 	
-	local header=[==[
-           <meta charset="utf-8" emacsmode="-*- markdown -*-">
-           							**Generated image infocard**
-           					   **Disk tree with potential well**
+	local template=[==[
+	                       <meta charset="utf-8" emacsmode="-*- markdown -*-">
+                                  **Generated image infocard**
+                               **Disk tree with potential well**
 
-![main image](%s)
+![Generated image](saved_1691395736.png)
+
+# Principle
+
+Try placing non-overlapping circles by calculating potential at fixed points around each existing point.
+
+# Ruleset
+
+Ruleset is defined as:
+
+Sizes=$(1,2,3)$
+
+Interactions strength $N=\left|\begin{matrix}1 & 0 & 2\\0 & 1 & 2\\0 & 0 & 3\\ \end{matrix}\right|$
+
+Potential defined as 
+$$f(a,b)=N_{a',b'}e^{|b-a|^2/100}$$ 
+here $a'$ and $b'$ is type of circle trying to be added and existing circle.
+
+# Starting seed
+
+Starting seed in this case is: dense circle around center (X circles type Y)
+
+# Palette
+
+Used palette:
+* 1 <span style="color:#FF0000">■□0xFF0000</span>
+* 2 <span style="color:#00FF00">■□0x00FF00</span>
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>
+
 ]==]
 -- [image.png]:data:image/png;base64,]==] doesnt work ;(
 	local footer=[==[
