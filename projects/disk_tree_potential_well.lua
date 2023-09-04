@@ -20,7 +20,7 @@ local size=STATE.size
 local aspect_ratio
 local new_max_circles=500000
 cur_circles=cur_circles or 0
-local circle_size=50
+local circle_size=90
 local rules_apply_local_rotation=true
 local rules_gen_angle_fixed_per_type=false
 local rules_gen_angle_fixed_list=false
@@ -28,8 +28,9 @@ local rules_gen_angle_fixed_list=false
 local placement_initial_probe=500 --TODO: full around
 local plot_around=Grapher(placement_initial_probe)
 local placement_iterations=10
-local placement_radius_check=circle_size*100
+local placement_radius_check=circle_size*30
 local rules_global_priority=true
+local rules_global_priority_per_rule=true
 starting_seed_desc=starting_seed_desc or "single point at center of type: 6"
 potential_description=potential_description or "N^1_{a',b'}d+N^2_{a',b'}d^2"
 --[[
@@ -204,11 +205,11 @@ function make_recipe( id )
 	for i=1,config.rand_states do
 		if i==id then
 			if math.random()<chance_self then
-				table.insert(ret,{i,math.random()})
+				table.insert(ret,{i,1})--math.random()})
 			end
 		else
 			if math.random()<chance_any_transform then
-				table.insert(ret,{i,math.random()})
+				table.insert(ret,{i,1})--math.random()})
 			end
 		end
 	end
@@ -248,8 +249,19 @@ function generate_rules(  )
 	rules={}
 	local count_states=config.rand_states--math.random(2,7)
 	rules.sizes={}
+	--[[
 	for i=1,count_states do
 		rules.sizes[i]=math.floor((math.random()*(1-config.rand_size_min)+config.rand_size_min)*1000)/1000
+	end
+	--]]
+	-- [[
+	local fixed_size=0.75
+	for i=1,count_states do
+		rules.sizes[i]=math.floor((math.random()*(1-fixed_size)+fixed_size)*1000)/1000
+	end
+	--]]
+	for i=1,3 do
+		rules.sizes[math.random(1,count_states)]=math.floor((math.random()*(1-config.rand_size_min)+config.rand_size_min)*1000)/1000
 	end
 	rules.interactions={}
 	for i=1,count_states do
@@ -362,11 +374,16 @@ function ab_potential(dist_sqrd,a_type,b_type,p1,p2 )
 	--local dist=dist_sqrd
 	local dist=math.sqrt(dist_sqrd)+0.001
 	dist_sqrd=dist_sqrd+0.001
-	--potential_description="N^1_{a',b'}d+N^2_{a',b'}d^2" --TODO PERF move to non-hot spot (e.g. add selection for this)
-	--return rules.interactions[a_type][b_type]*dist+rules.interactions2[a_type][b_type]*dist_sqrd
+	local angle_mult=100
+	local angle_dist=math.cos(p1[3]*rules.interactions[a_type][b_type]*angle_mult)*math.cos(p2.b*rules.interactions2[a_type][b_type]*angle_mult)+math.sin(p1[3]*rules.interactions[a_type][b_type]*25)*math.sin(p2.b*rules.interactions2[a_type][b_type]*25)
+	potential_description="N^1_{a',b'}d+N^2_{a',b'}d^2" --TODO PERF move to non-hot spot (e.g. add selection for this)
+	return rules.interactions[a_type][b_type]*dist+rules.interactions2[a_type][b_type]*dist_sqrd
 
-	potential_description="N^1_{a',b'}d^{-2}+N^2_{a',b'}d^{-3}" --TODO PERF move to non-hot spot (e.g. add selection for this)
-	return rules.interactions[a_type][b_type]*(1/(dist_sqrd))+rules.interactions2[a_type][b_type]*(1/(dist_sqrd*dist))
+	--potential_description="N^1_{a',b'}d^{-2}+N^2_{a',b'}d^{-3}" --TODO PERF move to non-hot spot (e.g. add selection for this)
+	--return rules.interactions[a_type][b_type]*(1/(dist_sqrd))+rules.interactions2[a_type][b_type]*(1/(dist_sqrd*dist))
+
+	--potential_description="(N^1_{a',b'}d^{-2}+N^2_{a',b'}d^{-3})cos(\\angle ab)" --TODO PERF move to non-hot spot (e.g. add selection for this)
+	--return angle_dist*(rules.interactions[a_type][b_type]*(1/(dist_sqrd))+rules.interactions2[a_type][b_type]*(1/(dist_sqrd*dist)))
 
 	--potential_description="N^1_{a',b'}d"
 	--return rules.interactions[a_type][b_type]*dist
@@ -407,11 +424,34 @@ function apply_rule( c,specific_rule)
 		return add_circle_with_test(nc,true)
 	else
 		local applied_rule=0
-
 		--local placement_iterations=10
 		local angle_step=math.pi*2/placement_initial_probe
 		local checks_done=0
-		local best={potential=-math.huge}
+
+		local best
+		local update_best
+		if rules_global_priority_per_rule then
+			best={}
+			update_best=function ( rule_id,potential,best,nc )
+				if best[rule_id]==nil then
+					best[rule_id]={potential=-math.huge}
+				end
+				local b=best[rule_id]
+				if potential>b.potential then
+					b.potential=potential
+					b.nc=nc
+				end
+			end
+		else
+			best={potential=-math.huge}
+			update_best=function ( rule_id,potential,best,nc )
+				if potential>best.potential then
+					best.potential=potential
+					best.nc=nc
+				end
+			end
+		end
+
 		for i,v in ipairs(rule) do
 			for angle=0,math.pi*2,angle_step do
 				local a
@@ -430,12 +470,9 @@ function apply_rule( c,specific_rule)
 				local rad1=decode_rad(nc[4])
 				if is_clear(nc[1],nc[2],rad1,circle_size*2) then
 					checks_done=checks_done+1
-					local potential=calculate_potential({nc[1],nc[2]},nc,placement_radius_check)*weight
+					local potential=calculate_potential(nc,nc,placement_radius_check)*weight
 
-					if potential>best.potential then
-						best.potential=potential
-						best.nc=nc
-					end
+					update_best(v,potential,best,nc)	
 					if not graph_done then
 						plot_around:add_value(potential)
 					end
@@ -447,7 +484,7 @@ function apply_rule( c,specific_rule)
 			end
 		end
 		graph_done=true
-		if best.nc~=nil then
+		if checks_done>0 then
 			if rules_global_priority then
 				return best
 			end
@@ -461,7 +498,7 @@ function apply_rule( c,specific_rule)
 end
 function step_head( v ,specific_rule)
 	local result=apply_rule(v,specific_rule)
-	if rules_global_priority and result~=0 then
+	if rules_global_priority and result and result~=0 then
 		table.insert(circle_data.heads,v)
 		return result
 	end
@@ -478,18 +515,53 @@ function step(  )
 
 	graph_done=false
 
-	local best={potential=-math.huge}
+	local best
+	local update_best
+	if rules_global_priority_per_rule then
+		best={}
+		update_best=function ( head_result,best )
+			for k,v in pairs(head_result) do
+				if best[k]==nil then
+					best[k]={potential=v.potential,nc={}}
+				else
+					best[k].potential=best[k].potential+v.potential
+				end
+				table.insert(best[k].nc,v.nc)
+			end
+		end
+	else
+		best={potential=-math.huge}
+		update_best=function ( head_result,best )
+			if head_result.potential>best.potential then
+				best.potential=potential
+				best.nc=head_result.nc
+			end
+		end
+	end
+
 	for i,v in ipairs(old_heads) do
 		local result=step_head(v)
-		if rules_global_priority then
-			if result and best.potential<result.potential then
-				best=result
-			end
+		if rules_global_priority and result then
+			update_best(result,best)
 		end
 		steps_done=steps_done+1
 	end
-	if rules_global_priority and best.nc then
-		add_circle(best.nc,true)
+	if rules_global_priority and (best.nc or rules_global_priority_per_rule) then
+		if rules_global_priority_per_rule then
+			local best_best={potential=-math.huge}
+			for i,v in pairs(best) do
+				if v.potential>best_best.potential then
+					best_best=v
+				end
+			end
+			if best_best.nc then
+				for i,v in ipairs(best_best.nc) do
+					add_circle_with_test(v,true)
+				end
+			end
+		else
+			add_circle(best.nc,true)
+		end
 	end
 	
 
@@ -865,7 +937,7 @@ function restart( soft )
 		math.randomseed(config.seed)
 		local rr=math.random(1,#rules.sizes)
 
-		local max_val=math.random(4,40)
+		local max_val=math.random(4,10)
 		local placements={
 			[0]=function ( 	)
 				--Single in the center
