@@ -20,14 +20,14 @@ local size=STATE.size
 local aspect_ratio
 local new_max_circles=500000
 cur_circles=cur_circles or 0
-local circle_size=90
+local circle_size=40
 local rules_apply_local_rotation=true
 local rules_gen_angle_fixed_per_type=false
 local rules_gen_angle_fixed_list=false
 
-local placement_initial_probe=500 --TODO: full around
+local placement_initial_probe=50 --TODO: full around
 local plot_around=Grapher(placement_initial_probe)
-local placement_iterations=10
+local placement_iterations=100
 local placement_radius_check=circle_size*30
 local rules_global_priority=true
 local rules_global_priority_per_rule=true
@@ -444,7 +444,7 @@ function apply_rule( c,specific_rule)
 			end
 		else
 			best={potential=-math.huge}
-			update_best=function ( rule_id,potential,best,nc )
+			update_best=function ( rule_id,potential,best,nc)
 				if potential>best.potential then
 					best.potential=potential
 					best.nc=nc
@@ -453,35 +453,91 @@ function apply_rule( c,specific_rule)
 		end
 
 		for i,v in ipairs(rule) do
-			for angle=0,math.pi*2,angle_step do
+			local cell_type=v
+			local weight=1
+			if type(v)=="table" then
+				cell_type=v[1]
+				weight=v[2]
+			end
+			--[[
+			if not graph_done then
+						plot_around:add_value(potential)
+					end
+			]]
+			local probe_angle=function ( angle )
 				local a
 				if rules_apply_local_rotation then
 					a=angle+cdata.b
 				else
 					a=angle
 				end
-				local cell_type=v
-				local weight=1
-				if type(v)=="table" then
-					cell_type=v[1]
-					weight=v[2]
-				end
+
 				local nc=make_circle(cdata.r,cdata.g,rad,a,cell_type)
 				local rad1=decode_rad(nc[4])
 				if is_clear(nc[1],nc[2],rad1,circle_size*2) then
 					checks_done=checks_done+1
 					local potential=calculate_potential(nc,nc,placement_radius_check)*weight
-
-					update_best(v,potential,best,nc)	
-					if not graph_done then
-						plot_around:add_value(potential)
-					end
-				else
-					if not graph_done then
-						plot_around:add_value(0)
+					return potential,nc
+					
+				end
+			end
+			--[==[ simple probing
+			for angle=0,math.pi*2,angle_step do
+				local potential,nc=probe_angle(angle)
+				update_best(v,potential,best,nc)
+			end
+			--]==]
+			--[[ bad idea, as two best angles might not be near each other
+			local best_interval={}
+			for angle=0,math.pi*2,angle_step do
+				local potential,nc=probe_angle(angle)
+				if potential~=nil then
+					if best_interval[1]==nil then
+						best_interval[1]={v=potential,c=nc,a=angle}
+						best_interval[2]={v=potential,c=nc,a=angle}
+					else
+						if potential>best_interval[1].v then --better than the best
+							best_interval[2]=best_interval[1]
+							best_interval[1]={v=potential,c=nc,a=angle}
+						else if potential> best_interval[2].v then --better than the second best
+							best_interval[2]={v=potential,c=nc,a=angle}
+						end --not better
 					end
 				end
 			end
+			--]]
+			-- [==[ two-step: coarse and then fine
+			--coarse step just go around circle with fixed angle_step
+
+			local best_coarse
+			for angle=0,math.pi*2,angle_step do
+				local potential,nc=probe_angle(angle)
+				if potential~=nil and (best_coarse==nil or potential>best_coarse.v ) then
+					best_coarse={v=potential,c=nc,a=angle}
+				end
+			end
+			
+			--fine step, divide the interval somehow...
+			local fine_iterate=function(direction)
+				local start_angle=best_coarse.a
+				local step=direction*(angle_step/placement_iterations)
+				for i=1,placement_iterations do
+					local angle=i*step+start_angle
+					local potential,nc=probe_angle(angle)
+					if potential~=nil then
+						update_best(v,potential,best,nc)
+					end
+				end
+			end
+			if best_coarse then
+				fine_iterate(1)
+				fine_iterate(-1)
+			end
+
+			
+			
+
+			--]==]
 		end
 		graph_done=true
 		if checks_done>0 then
