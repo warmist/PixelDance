@@ -1,6 +1,25 @@
 --try some simulated annealing image-stuff
 --[[
 	idea: pixels/objects get "score" due to near objects, anneal to maximize
+
+	few random ideas:
+		* another layer that:
+			* is diffusive
+			* get modified by something in main layer
+				* big shift
+				* special configuration(s)
+				* special random walk (e.g. only downwards)
+				* cycles (i.e. small closed loops)
+					* from the pixel
+					* that pixel as center
+			* influences main layer
+				* change weight (i.e. how much current cell matters)
+				* change value (i.e. offset or replace value somehow)
+				* change "temperature" or other variable at that point
+			* vector layer (i.e. x,y)
+				* w or w/o kdtree or sth
+			* raster layer (i.e. per pixel value)
+
 --]]
 
 require "common"
@@ -474,7 +493,7 @@ function get_around_fract( x,y )
 	end
 	offset=offset+#offsets_x
 	--]]
-	-- [[ 4(up to) fold symetry 
+	--[[ 4(up to) fold symetry 
 
 	local gdx={1,-1,1,-1}
 	local gdy={1,1,-1,-1}
@@ -785,7 +804,7 @@ function get_around( x,y )
 	end
 	offset=offset+#delta_v
 	--]]
-	-- [[ n fold rotational sym
+	--[[ n fold rotational sym
 
 	for i=1,#ctab do
 		local v=(0.5+i/#ctab)*2
@@ -1525,9 +1544,9 @@ function update(  )
 		--]]
 		for x=0,grid.w-1 do
 		for y=0,grid.h-1 do
-			grid:set(x,y,math.random())
+			--grid:set(x,y,math.random())
 			--grid:set(x,y,(x*(1-variation_const)/grid.w+math.random()*variation_const))
-			--[[
+			-- [[
 			local t=(x/grid.w+y/grid.h)*0.5
 			grid:set(x,y,(t*(1-variation_const)+math.random()*variation_const))
 			--]]

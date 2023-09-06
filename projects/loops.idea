@@ -1,0 +1,9 @@
+--[[
+	generate paths with P as point:
+		* fixed center P
+			* center as (weighted) avg
+			* equidistant (in some strange way) to P
+		* not crossing the P
+		* mutate keeping other rules valid
+		* choose few P and then draw various paths
+--]]
