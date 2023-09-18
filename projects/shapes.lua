@@ -134,6 +134,11 @@ float F2(vec2 pos)
 	//	v=abs(v-0.025)-0.025;
 	return v;
 }
+float p2(float x)
+{
+	return x*x*(params.x+x*params.y+x*x*params.z+x*x*x*params.w);
+	
+}
 float p(float x)
 {
 	float a0=params.x;
@@ -175,7 +180,7 @@ float F(vec2 pos)
 
 	float v=abs(a*x*x*x*x+b*x*x*x+c*x*x+d*x+e-y);//abs(a*pos.x*pos.x+c-pos.y)/sqrt(a*a+b*b);
 	//*/
-	float v=abs(p(pos.x)-pos.y);
+	float v=abs(p2(pos.x)-pos.y);
 	return v;
 }
 vec2 grad( in vec2 x )
@@ -186,7 +191,7 @@ vec2 grad( in vec2 x )
 }
 void main(){
 	float aspect=rez.x/rez.y;
-	float s=20;
+	float s=5;
 	vec2 p=pos.xy*vec2(1,1/aspect);
 	float v=F(p*s);
 	//vec2 g=grad(p);
@@ -210,6 +215,12 @@ void main(){
 }
 ]==]
 params=params or {0,0,0,0,0,0,0}
+params={
+9.3313011112722,
+-11.59379606321,
+-4.806311207397,
+7.0688061593346,
+}
 function randomize_params(  )
 	local h=2
 	for i=1,#params do

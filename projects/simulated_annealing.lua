@@ -106,7 +106,7 @@ void main(){
 
 	if(count_steps>0)
 		col=floor(col*count_steps)/count_steps;
-#if 0
+#if 1
 	color = vec4(palette(col),1);
 #else
 	col=pow(col,2.2);
@@ -402,264 +402,6 @@ function gen_cos_sin_table( size,times)
 	return ct,st
 end
 ctab,stab=gen_cos_sin_table(5,1)
-function get_around_fract( x,y )
-	local ret={}
-	local offset=0
-
-	local cx=x-grid.w/2
-	local cy=y-grid.h/2
-
-	local cv=grid:get(x,y)
-	--[[
-	local dx={-1, 0, 0, 1}
-	local dy={ 0,-1, 1, 0}
-	--]]
-	-- [[
-	local dx={-1,-1,-1, 0, 0, 1, 1, 1}
-	local dy={-1, 0, 1,-1, 1,-1, 0, 1}
-	--]]
-	--[[
-	local dx={-1,-1,-1, 0, 0, 1, 1, 1,2,-2,2,-2}
-	local dy={-1, 0, 1,-1, 1,-1, 0, 1,2,2,-2,-2}
-	--]]
-	--[[
-	local dx={-2,-2,-2, 0, 0, 2, 2, 2}
-	local dy={-2, 0, 2,-2, 2,-2, 0, 2}
-	--]]
-	--[[
-	local dx={-1,-1,-1,0,0,1,1,1,2,0,0,-2,3,0,0,-3,4,0,0,-4}
-	local dy={-1,0,1,-1,1,-1,0,1,0,2,-2,0,0,3,-3,0,0,4,-4,0}
-	--]]
-	--[[
-	local dx={-1,-1,-1,0,0,1,1,1,2,2,2,-2,-2,-2}
-	local dy={-1,0,1,-1,1,-1,0,1,0,-2,-1,0,2, 1}
-	--]]
-	--[[
-	local dx={-1, 0,0,1,2,0, 0,-2,3,0,0,-3}
-	local dy={ 0,-1,1,0,0,2,-2, 0,0,3,-3,0}
-	--]]
-	--[[
-	for i=1,#dx do
-		local tx=x+dx[i]
-		local ty=y+dy[i]
-		tx,ty=coord_edge(tx,ty)
-
-		--if tx<grid.w or ty<grid.h or tx>=0 or ty>=0 then
-			local rv=grid:get(tx,ty)
-			local v=math.floor(rv*num_values)
-			ret[i]={v,rv*num_values-v}
-		--else
-		--ret[i]=0
-		--end
-	end
-	offset=#dx
-	--]]
-	--[[
-
-	local d_cos={1,3,5,7,9,11}
-	local d_sin={2,4,6,8,10,12}
-	for i=1,#d_cos do
-		local tx=cx+(grid.w/2)*(math.cos(d_cos[i]*x)+math.sin(d_cos[i]*y))
-		local ty=cy+(grid.h/2)*(math.sin(d_sin[i]*y)+math.cos(d_sin[i]*x))
-		tx=math.floor(tx)
-		ty=math.floor(ty)
-		tx,ty=coord_edge(tx,ty)
-
-		local rv=grid:get(tx,ty)
-		local v=math.floor(rv*num_values)
-		ret[i+offset]={v,rv*num_values-v}
-
-	end
-	offset=#d_cos
-	--]]
-	--[[
-	local dist=0.1
-	local offsets_x={cv*(1+dist),cv*(1-dist),1,1}
-	local offsets_y={1,1,cv*(1+dist),cv*(1-dist)}
-
-
-
-	for i=1,#offsets_x do
-		local tx=cx*offsets_x[i]+grid.w/2
-		local ty=cy*offsets_y[i]+grid.h/2
-
-		tx=math.floor(tx)
-		ty=math.floor(ty)
-		tx,ty=coord_edge(tx,ty)
-		local rv=grid:get(tx,ty)
-		local v=math.floor(rv*num_values)
-		ret[i+offset]={v,rv*num_values-v}
-
-	end
-	offset=offset+#offsets_x
-	--]]
-	--[[ 4(up to) fold symetry 
-
-	local gdx={1,-1,1,-1}
-	local gdy={1,1,-1,-1}
-	local mdx={0,1,0,1}
-	local mdy={0,0,1,1}
-
-	for i=1,#gdx do
-		local tx=(grid.w-1)*mdx[i]+x*gdx[i]
-		local ty=(grid.h-1)*mdy[i]+y*gdy[i]
-		tx,ty=coord_edge(tx,ty)
-		local rv=grid:get(tx,ty)
-		local v=math.floor(rv*num_values)
-		ret[i+offset]={v,rv*num_values-v}
-	end
-	offset=offset+#gdx
-	--]]
-	--[[ 4(up to) fold symmetry
-
-	local gdxx={0,-1,0}
-	local gdxy={1,0,-1}
-	local gdyx={-1,0,1}
-	local gdyy={0,-1,0}
-
-	local cx=x-grid.w/2
-	local cy=y-grid.h/2
-
-	for i=1,#gdxx do
-		local tx=grid.w/2+cx*gdxx[i]+cy*gdxy[i]
-		local ty=grid.h/2+cx*gdyx[i]+cy*gdyy[i]
-
-		tx=math.floor(tx)
-		ty=math.floor(ty)
-		tx,ty=coord_edge(tx,ty)
-		local rv=grid:get(tx,ty)
-		local v=math.floor(rv*num_values)
-		ret[i+offset]={v,rv*num_values-v}
-	end
-	offset=offset+#gdxx
-	--]]
-	--[[
-	local delta_v={1,2,4,8,16}
-	for i=1,#delta_v do
-		local tx=delta_v[i]/(x+1)
-		local ty=delta_v[i]/(y+1)
-
-		tx=math.floor(tx)
-		ty=math.floor(ty)
-		tx,ty=coord_edge(tx,ty)
-		local rv=grid:get(tx,ty)
-		local v=math.floor(rv*num_values)
-		ret[i+offset]={v,rv*num_values-v}
-	end
-	offset=offset+#delta_v
-	--]]
-	--[[ n fold rotational sym
-
-	for i=1,#ctab do
-		local v=(0.5+i/#ctab)*2
-		local tx=(cx*ctab[i]-cy*stab[i])*v+grid.w/2
-		local ty=(cx*stab[i]+cy*ctab[i])*v+grid.h/2
-
-		
-		tx,ty=coord_edge(tx,ty)
-		tx=math.floor(tx)
-		ty=math.floor(ty)
-		local rv=grid:get(tx,ty)
-		local v=math.floor(rv*num_values)
-		ret[i+offset]={v,rv*num_values-v}
-	end
-	offset=offset+#ctab
-	--]]
-	--[[
-	local gdx={0.5,0.25,1,1,0.25,0.5}
-	local gdy={1,1,0.25,0.5,0.5,0.25}
-	local cx=x-grid.w/2
-	local cy=y-grid.h/2
-	for i=1,#gdx do
-		local tx=(grid.w/2)+cx*gdx[i]
-		local ty=(grid.h/2)+cy*gdy[i]
-		tx,ty=coord_edge(tx,ty)
-		local rv=grid:get(tx,ty)
-		local v=math.floor(rv*num_values)
-		ret[i+#dx]={v,rv*num_values-v}
-	end
-	--]]
-	--[[
-	local rot_sym=3
-	local ddx=x-grid.w/2
-	local ddy=y-grid.h/2
-	local r=math.sqrt(ddx*ddx+ddy*ddy)
-	local a=math.atan(ddy,ddx)
-	
-	for i=1,rot_sym-1 do
-		local t=i/rot_sym
-		local tx=(grid.w/2)+math.cos(a+t*math.pi/8)*(r)
-		local ty=(grid.h/2)+math.sin(a+t*math.pi/8)*(r)
-		tx=math.floor(tx)
-		ty=math.floor(ty)
-		tx,ty=coord_edge(tx,ty)
-		local rv=grid:get(tx,ty)
-		local v=math.floor(rv*num_values)
-		ret[i+#dx]={v,rv*num_values-v}
-	end
-	--]]
-	--[[
-	local radial_sym=8
-	local ddx=x-grid.w/2
-	local ddy=y-grid.h/2
-	local r=math.sqrt(ddx*ddx+ddy*ddy)
-	local a=math.atan(ddy,ddx)
-	
-	for i=1,radial_sym-1 do
-		local t=i/radial_sym
-		local tx=(grid.w/2)+math.cos(a)*(r*t)
-		local ty=(grid.h/2)+math.sin(a)*(r*t)
-		tx=math.floor(tx)
-		ty=math.floor(ty)
-		tx,ty=coord_edge(tx,ty)
-		local rv=grid:get(tx,ty)
-		local v=math.floor(rv*num_values)
-		ret[i+#dx]={v,rv*num_values-v}
-	end
-	--]]
-	--[[
-	local rot_sym=8
-	local ddx=x-grid.w/2
-	local ddy=y-grid.h/2
-	local r=math.sqrt(ddx*ddx+ddy*ddy)
-	local a=math.atan(ddy,ddx)
-	
-	for i=1,rot_sym-1 do
-		local t=i/rot_sym
-		local tx=(grid.w/2)+math.cos(a+t*math.pi*4)*(r)
-		local ty=(grid.h/2)+math.sin(a+t*math.pi*4)*(r)
-		tx=math.floor(tx)
-		ty=math.floor(ty)
-		tx,ty=coord_edge(tx,ty)
-		local rv=grid:get(tx,ty)
-		local v=math.floor(rv*num_values)
-		ret[i+#dx]={v,rv*num_values-v}
-	end
-	--]]
-	--[[
-	local grid_div=4
-	
-	local id=1
-	for ix=0,grid_div-1 do
-	for iy=0,grid_div-1 do
-		local ddx=math.floor(x/grid_div+ix)*grid_div
-		local ddy=math.floor(y/grid_div+iy)*grid_div
-		if ix~= 0 or iy~=0 then
-			local tx=ddx
-			local ty=ddy
-			tx=math.floor(tx)
-			ty=math.floor(ty)
-			tx,ty=coord_edge(tx,ty)
-			local rv=grid:get(tx,ty)
-			local v=math.floor(rv*num_values)
-			ret[id+#dx]={v,rv*num_values-v}
-			id=id+1
-		end
-	end
-	end
-	--]]
-	return ret
-end
 function get_around( x,y )
 	local ret={}
 	local offset=0
@@ -668,11 +410,11 @@ function get_around( x,y )
 	local cy=y-grid.h/2
 
 	local cv=grid:get(x,y)
-	-- [[
+	--[[
 	local dx={-1, 0, 0, 1}
 	local dy={ 0,-1, 1, 0}
 	--]]
-	--[[
+	-- [[
 	local dx={-1,-1,-1, 0, 0, 1, 1, 1}
 	local dy={-1, 0, 1,-1, 1,-1, 0, 1}
 	--]]
@@ -696,7 +438,7 @@ function get_around( x,y )
 	local dx={-1, 0,0,1,2,0, 0,-2,3,0,0,-3}
 	local dy={ 0,-1,1,0,0,2,-2, 0,0,3,-3,0}
 	--]]
-	-- [[
+	--[[
 	for i=1,#dx do
 		local tx=x+dx[i]
 		local ty=y+dy[i]
@@ -709,7 +451,150 @@ function get_around( x,y )
 		--ret[i]=0
 		--end
 	end
-	offset=#dx
+	offset=offset+#dx
+	--]]
+	-- [[ simple sum
+	local sample_avg=0
+	do
+		local sum=0
+		for i=1,#dx do
+			local tx=x+dx[i]
+			local ty=y+dy[i]
+			tx,ty=coord_edge(tx,ty)
+
+			local rv=grid:get(tx,ty)
+			sum=sum+rv
+		end
+		--ret[1+offset]=sum/#dx --NOTE this make it extra super duper smooth or extra noisy
+		--ret[1+offset]=sum
+		sample_avg=(sum+cv)/(#dx+1)
+		--offset=offset+1
+	end
+	--]]
+	--[[
+	local dist=0.1
+	local offsets_x={cv*(1+dist),cv*(1-dist),1,1}
+	local offsets_y={1,1,cv*(1+dist),cv*(1-dist)}
+
+
+
+	for i=1,#offsets_x do
+		local tx=cx*offsets_x[i]+grid.w/2
+		local ty=cy*offsets_y[i]+grid.h/2
+
+		tx=math.floor(tx)
+		ty=math.floor(ty)
+		tx,ty=coord_edge(tx,ty)
+		local rv=grid:get(tx,ty)
+		local v=math.floor(rv*num_values)
+		ret[i+offset]={v,rv*num_values-v}
+
+	end
+	offset=offset+#offsets_x
+	--]]
+	--[[ 4(up to) fold symetry 
+
+	local gdx={1,-1,1,-1}
+	local gdy={1,1,-1,-1}
+	local mdx={0,1,0,1}
+	local mdy={0,0,1,1}
+
+	for i=1,#gdx do
+		local tx=(grid.w-1)*mdx[i]+x*gdx[i]
+		local ty=(grid.h-1)*mdy[i]+y*gdy[i]
+		tx,ty=coord_edge(tx,ty)
+
+			local rv=grid:get(tx,ty)
+			ret[i+offset]=rv-sample_avg
+		--else
+		--ret[i]=0
+		--end
+	end
+	offset=offset+#dx
+	--]]
+	-- [[ vector sum
+	do
+		local sum={0,0}
+		for i=1,#dx do
+			local tx=x+dx[i]
+			local ty=y+dy[i]
+			tx,ty=coord_edge(tx,ty)
+
+			local rv=grid:get(tx,ty)
+			--local rrv=rv-cv
+			local rrv=rv-sample_avg
+			sum[1]=sum[1]+rrv*dx[i]
+			sum[2]=sum[2]+rrv*dy[i]
+		end
+		--[[
+		ret[1+offset]=sum[1]/#dx
+		ret[2+offset]=sum[2]/#dy
+		--]]
+		-- [[
+		local L=math.sqrt(sum[1]*sum[1]+sum[2]*sum[2])
+		ret[1+offset]=sum[1]/L
+		ret[2+offset]=sum[2]/L
+		--]]
+		offset=offset+2
+	end
+	--]]
+	-- [[ normed sum
+	do
+		local sum=0
+		for i=1,#dx do
+			local tx=x+dx[i]
+			local ty=y+dy[i]
+			tx,ty=coord_edge(tx,ty)
+
+			local rv=grid:get(tx,ty)
+			sum=sum+rv/(cv+1)
+		end
+		ret[1+offset]=sum
+		offset=offset+1
+	end
+	--]]
+	--[[ squared dists sum
+	do
+		local sum=0
+		for i=1,#dx do
+			local tx=x+dx[i]
+			local ty=y+dy[i]
+			tx,ty=coord_edge(tx,ty)
+
+			local rv=grid:get(tx,ty)
+			--local d=rv-cv
+			local d=rv-sample_avg
+			sum=sum+d*d
+		end
+		--ret[1+offset]=math.sqrt(sum)/#dx
+		ret[1+offset]=math.sqrt(sum)
+		offset=offset+1
+	end
+	--]]
+	--[[
+	local sum_low=0
+	local c_low=0
+	local sum_high=0
+	local c_high=0
+	for i=1,#dx do
+		local tx=x+dx[i]
+		local ty=y+dy[i]
+		tx,ty=coord_edge(tx,ty)
+
+		local rv=grid:get(tx,ty)
+		if rv>cv then
+			sum_high=sum_high+rv
+			c_high=c_high+1
+		else
+			sum_low=sum_low+rv
+			c_low=c_low+1
+		end
+	end
+	if c_low==0 then c_low=1 end
+	ret[1+offset]=sum_low/c_low
+	if c_high==0 then c_high=1 end
+	ret[2+offset]=sum_high/c_high
+	offset=offset+2
 	--]]
 	--[[
 
@@ -762,7 +647,7 @@ function get_around( x,y )
 		local ty=(grid.h-1)*mdy[i]+y*gdy[i]
 		tx,ty=coord_edge(tx,ty)
 		local rv=grid:get(tx,ty)
-		ret[i+offset]=rv
+		ret[i+offset]=rv-sample_avg
 	end
 	offset=offset+#gdx
 	--]]
@@ -811,7 +696,6 @@ function get_around( x,y )
 		local tx=(cx*ctab[i]-cy*stab[i])*v+grid.w/2
 		local ty=(cx*stab[i]+cy*ctab[i])*v+grid.h/2
 
-		
 		tx,ty=coord_edge(tx,ty)
 		tx=math.floor(tx)
 		ty=math.floor(ty)
@@ -819,6 +703,25 @@ function get_around( x,y )
 		ret[i+offset]=rv
 	end
 	offset=offset+#ctab
+	--]]
+	--[[ n fold rotational sym
+	do
+		local sum=0
+		for i=1,#ctab do
+			local v=(0.5+i/#ctab)*2
+			local tx=(cx*ctab[i]-cy*stab[i])*v+grid.w/2
+			local ty=(cx*stab[i]+cy*ctab[i])*v+grid.h/2
+
+			
+			tx,ty=coord_edge(tx,ty)
+			tx=math.floor(tx)
+			ty=math.floor(ty)
+			local rv=grid:get(tx,ty)
+			sum=sum+rv
+		end
+		ret[1+offset]=sum/#ctab
+		offset=offset+1
+	end
 	--]]
 	--[[
 	local gdx={0.5,0.25,1,1,0.25,0.5}
@@ -922,6 +825,31 @@ ruleset_smooth={}
 while #ruleset_smooth<S do
 	table.insert(ruleset_smooth,math.random()*2-1)
 	--table.insert(ruleset_smooth,1)
+end
+function print_poly_rules(  )
+	print("ruleset_poly={")
+	local S=#get_around(0,0)
+	local n=4
+	for i=1,S do
+		print(string.format("\t[%d]={%s},",i,table.concat( ruleset_poly[i], ", ")))
+	end
+	print("}")
+end
+ruleset_poly=ruleset_poly or {}
+function generate_poly_rules()
+	local S=#get_around(0,0)
+	local n=4
+	ruleset_poly={}
+	for i=1,S do
+		ruleset_poly[i]={}
+		for j=1,n do
+			table.insert(ruleset_poly[i],math.random()*2-1)
+		end
+	end
+	print_poly_rules()
+end
+if #ruleset_poly==0 then
+	generate_poly_rules()
 end
 function delta_substep( v )
 	--return 1+v
@@ -1144,13 +1072,17 @@ function apply_rule( vin,vcenter,rule )
 	--return ((vcenter-vin)/(vin+1))*rule
 	--return ((vcenter-vin))*rule
 	--return d*d*rule-d*rule
-	return d*rule
+	--return (1/d)*rule[1]+(1/(d*d))*rule[2]+(1/(d*d*d))*rule[3]
+	local ddd=d*d*d
+	--local ddd=d*d*d
+	--return rule[1]/d+rule[2]*d+rule[3]/dd+rule[4]*dd--+rule[5]*ddd+rule[6]/ddd
+	return rule[1]/d+rule[2]*d+rule[3]/ddd+rule[4]*ddd
 end
 function calculate_value_simple( x,y,v,v_fract,rv )
 	local ret=0
 	-- [[
 	local a=get_around(x,y)
-	local r=ruleset_smooth
+	local r=ruleset_poly
 	--]]
 	-- [==[
 	for i,vv in ipairs(a) do
@@ -1550,7 +1482,7 @@ function update(  )
 			local t=(x/grid.w+y/grid.h)*0.5
 			grid:set(x,y,(t*(1-variation_const)+math.random()*variation_const))
 			--]]
-			--[[
+			-- [[
 			local dx=(x-grid.w/2)
 			local dy=(y-grid.h/2)
 			local len=math.sqrt(dx*dx+dy*dy)/(0.5*grid.w)
@@ -1592,9 +1524,10 @@ function update(  )
 	end
 	imgui.SameLine()
 	if imgui.Button("RandomizeRules") then
-		randomize_ruleset(25)
+		--randomize_ruleset(25)
+		generate_poly_rules()
 		num_values=#ruleset
-		print(rule_string())
+		--print(rule_string())
 	end
 	imgui.End()
 	if not config.paused then

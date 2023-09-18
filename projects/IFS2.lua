@@ -33,8 +33,8 @@ function update_size()
 	local trg_h=1024*2*size_mult
 	--]]
 	-- [[
-	local trg_w=2560*size_mult
-	local trg_h=1440*size_mult
+	local trg_w=2048*size_mult
+	local trg_h=2048*size_mult
 	--]]
 	--this is a workaround because if everytime you save
 	--  you do __set_window_size it starts sending mouse through windows. SPOOKY
@@ -52,8 +52,8 @@ local max_palette_size=50
 local need_clear=false
 local oversample=1
 local complex=true
-local init_zero=true
-local sample_count=math.pow(2,20)
+local init_zero=false
+local sample_count=math.pow(2,21)
 local not_pixelated=0
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
@@ -1779,7 +1779,7 @@ function get_forced_insert_complex(  )
 	--table.insert(tbl_insert,"rotate(s/(0.01+length(s)),M_PI*2*prand.x*move_dist)")
 	--table.insert(tbl_insert,"(normalize(p-s)*prand.x*move_dist)")
 	--table.insert(tbl_insert,"(dot(normalize(s),normalize(p))*prand.x*move_dist*s)")
-	table.insert(tbl_insert,"((last_s-s)*prand.x*move_dist)")
+	--table.insert(tbl_insert,"((last_s-s)*prand.x*move_dist)")
 	--table.insert(tbl_insert,"((last_s-s)*prand.y*move_dist)")
 	--table.insert(tbl_insert,"rotate(s-last_s,M_PI*2*prand.x)+last_s")
 	--table.insert(tbl_insert,"dot(normalize(last_s-p),normalize(s-p))*(s-p)*prand.x*move_dist")
@@ -1794,7 +1794,7 @@ function get_forced_insert_complex(  )
 			"c_mul(p,s)","c_mul(c_mul(p,s),p)","c_mul(c_mul(p,s),c_mul(p,s))",
 			"c_mul(p,s)","c_mul(c_mul(p,s),s)","c_mul(c_mul(p,s),c_mul(s,s))",
 		}
-		local NO_PICKS=5
+		local NO_PICKS=12
 		for i=1,NO_PICKS do
 			table.insert(tbl_insert,rand_choices[math.random(1,#rand_choices)])
 		end
@@ -1814,6 +1814,7 @@ function get_forced_insert_complex(  )
 		table.insert(tbl_insert,string.format("mix(vec2(1,0),mobius(vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),s),value_inside(prand.x,%g,%g))",
 			mob[i*8+1],mob[i*8+2],mob[i*8+3],mob[i*8+4],mob[i*8+5],mob[i*8+6],mob[i*8+7],mob[i*8+8],cval,nval))
 	end
+	--]=]
 	--[[
 	for i=1,10 do
 	table.insert(tbl_insert,
@@ -1821,15 +1822,18 @@ function get_forced_insert_complex(  )
 			math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1))
 	end
 	--]]
-	-- [[
+	--[[
 	table.insert(tbl_insert,
 		string.format("mobius(params.xy,params.zw,vec2(%g,%g),vec2(%g,%g),s)",
 			math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1))
 	--]]
-	--[[
+	-- [[
 	table.insert(tbl_insert,
-		string.format("mobius(vec2(%g,%g),vec2(prand.x,0),vec2(%g,%g),vec2(%g,%g),s)",
-			math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1))
+		string.format("mobius(vec2(%g,%g),vec2(%g,%g)*prand.x*move_dist,vec2(%g,%g),vec2(%g,%g),s)",
+			math.random()*2-1,math.random()*2-1,
+			math.random()*2-1,math.random()*2-1,
+			math.random()*2-1,math.random()*2-1,
+			math.random()*2-1,math.random()*2-1))
 	--]]
 	--]=]
 	-- [[
@@ -1858,7 +1862,7 @@ function get_forced_insert_complex(  )
 		table.insert(tbl_insert,string.format("vec2(%g,%g)*global_seeds.x",math.cos(v)*dist,math.sin(v)*dist))
 	end
 	--]]
-	-- [==[
+	--[==[
 	local tex_variants={
 		-- [[
 		"tex_p.xy","tex_p.yz","tex_p.zx",
@@ -2384,7 +2388,7 @@ function rand_function(  )
 	end
 	str_postamble=str_postamble.."s=s"..input_s..";"
 	--]]
-	-- [===[ ORBIFY!
+	--[===[ ORBIFY!
 	--Idea: project to circle inside with sigmoid like func
 	local circle_radius=1
 	local fixed_move_dist=0.6

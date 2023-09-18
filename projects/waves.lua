@@ -765,7 +765,8 @@ float func(vec2 pos)
 	float max_a=4;
 	float r=0.4;
 	#if 1
-		if(length(pos+vec2(0,0.9))<0.005)
+		if(time<max_time)
+		if(length(pos+vec2(0.0,0.0))<0.005)
 			return ab_vec.x*(fract(fn1*time)*2-1)
 			+ab_vec.y*(fract(fn2*time)*2-1);
 	#endif
@@ -1204,7 +1205,7 @@ void main(){
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	//float sh_v=0;
-	//float sh_v=1-max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
+	float sh_v=1-max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
 	//float sh_v=1-max(1-sdCircle(pos.xy,0.98)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
 	//float sh_v=1-damaged_circle(pos.xy);
 	//float sh_v=damaged_circle2(pos.xy);
@@ -1223,7 +1224,7 @@ void main(){
 	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
 	normed.y=1-normed.y;
-	float sh_v=step(texture(input_map,normed).x,0.6);
+	//float sh_v=step(texture(input_map,normed).x,0.6);
 	float sh_v3=sdCircle(pos.xy,0.98);
 #if 0
 	vec4 sh_v2;

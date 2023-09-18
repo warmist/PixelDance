@@ -685,6 +685,7 @@ function do_clear(  )
 		end
 		end
 		visit_buf:set(0,0,tconfig.max_values)
+		
 		--[[
 		visit_buf:set(math.floor(w/2),0,-tconfig.max_values)
 		]]
@@ -694,7 +695,9 @@ function do_clear(  )
 		end
 		--]]
 		for x=0,w-1 do
-			visit_buf:set(x,0,(x/(w/2)-1)*tconfig.max_values*2)
+			local t=(x/(w/2)-1)*2
+			--visit_buf:set(x,0,t*tconfig.max_values)
+			visit_buf:set(x,0,math.cos(t*math.pi*8)*tconfig.max_values)
 		end
 		visit_buf:set(w-1,0,tconfig.max_values)
 	else
@@ -779,9 +782,24 @@ function visit_iter(  )
 			dr=0
 		end
 		--]]
+		--[[ vector sq
+		local dl=l-c
+		local dr=r-c
+		dl=dl*dl
+		dr=dr*dr
+		local len=math.sqrt(dl*dl+dr*dr)
+		if len>0 then
+			dl=math.floor((dl*tconfig.size_left)/len)
+			dr=math.floor((dr*tconfig.size_right)/len)
+		else
+			dl=0
+			dr=0
+		end
+		--]]
 		--print(dl,dr)
 		local inf=tconfig.influence
 		local nv=c*inf+transforms:lookup(dl,dr)*(1-inf)
+
 		nv=clip(nv)
 
 		visit_buf:set(x,y,nv)

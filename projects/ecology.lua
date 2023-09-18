@@ -1,7 +1,7 @@
 require 'common'
 require 'bit'
-local win_w=768
-local win_h=768
+local win_w=1024
+local win_h=1024
 --640x640x1 ->40fps (90fps??)
 --640x640 b=80 ->40/45fps
 --1280x1280 b=80 ->10/40fps
@@ -315,7 +315,6 @@ function update_sun(  )
             local c=get_pixel(x,y)
             if is_block_light(c.a) then
                 amount_light=amount_light*0.9
-                
                 --break
             end
             sun_buffer:set(x,y,amount_light)
