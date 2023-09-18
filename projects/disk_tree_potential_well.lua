@@ -862,6 +862,7 @@ function set_image()
 {
 	const img = document.getElementById("placeholder_img");
 	img.src="data:image/png;base64,@base64_image@"
+	img.parentElement.href=img.src
 }
 set_image()
 }
