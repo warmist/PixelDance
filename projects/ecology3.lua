@@ -388,7 +388,7 @@ function resolve_adds(  )
     add_list={}
 end
 function particle_step(  )
-    local gravity=0.01
+    local gravity=0.1
     for x=0,map_w-1 do
 
     end
@@ -407,7 +407,7 @@ function particle_step(  )
                 local dist=math.sqrt(dx*dx+dy*dy)
                 s.r=s.r-(dx/dist)*gravity
                 s.g=s.g-(dy/dist)*gravity
-                ]]
+                --]]
             end
             --limit speed for stability of sim
             local speed_len=math.sqrt(s.r*s.r+s.g*s.g)

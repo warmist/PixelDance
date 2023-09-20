@@ -58,7 +58,7 @@ local not_pixelated=0
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
 
-str_cmplx=str_cmplx or "c_mul(s,vec2(prand.x,1)/sqrt(global_seeds.x*global_seeds.x+1))"
+str_cmplx=str_cmplx or "c_mul(s,vec2(prand.x,move_dist))"
 
 str_other_code=str_other_code or ""
 str_preamble=str_preamble or ""
@@ -1414,7 +1414,7 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 	for i=1,count_intervals do
 		local istart=(i-1)/count_intervals
 		local iend=(i)/count_intervals
-		--[[
+		-- [[
 		local dx=math.random()*2-1
 		local dy=math.sqrt(1-dx*dx)--math.random()*0.5-0.25
 		if math.random()>0.5 then
@@ -1428,7 +1428,7 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 		local dx=math.cos(istart*math.pi*2)*1
 		local dy=math.sin(istart*math.pi*2)*1
 		--]]
-		-- [[
+		--[[
 
 		local dx2=math.random()*0.5-0.25
 		local dy2=math.random()*0.5-0.25
@@ -1440,7 +1440,8 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 		local dx=0
 		local dy=0
 		--]]
-		ret=ret..string.format("(c_mul(%s,vec2(%g,%g))+vec2(%g,%g))*value_inside(prand.y,%g,%g)",rc,dx2,dy2,dx,dy,istart,iend)
+		--ret=ret..string.format("(c_mul(%s,vec2(%g,%g))+vec2(%g,%g))*value_inside(prand.y,%g,%g)",rc,dx2,dy2,dx,dy,istart,iend)
+		ret=ret..string.format("(%s+vec2(%g,%g)*params.w)*value_inside(prand.y,%g,%g)",rc,dx,dy,istart,iend)
 		--[[
 		if i==1 then
 			ret=ret..string.format("(c_mul(%s,vec2(%g,%g))+vec2(%g,%g))*value_inside(global_seeds.x,%g,%g)",rc,dx,dy,dx2,dy2,istart,iend)
@@ -1818,8 +1819,15 @@ function get_forced_insert_complex(  )
 	--[[
 	for i=1,10 do
 	table.insert(tbl_insert,
-		string.format("mobius(vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),vec2(%g,%g),s)",
+		string.format("mobius(vec2(%g,%g)*move_dist,vec2(%g,%g)*move_dist*move_dist,vec2(%g,%g)*prand.x,vec2(%g,%g)*(1-prand.x),s)",
 			math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1))
+	end
+	--]]
+	-- [[
+	for i=1,3 do
+	table.insert(tbl_insert,
+		string.format("mobius(vec2(%g,%g)*move_dist,vec2(%g,%g)*move_dist*move_dist,vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2)),vec2(%g,%g)*(1-prand.x),s)",
+			math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1,math.random()*2-1))
 	end
 	--]]
 	--[[
@@ -1835,7 +1843,6 @@ function get_forced_insert_complex(  )
 			math.random()*2-1,math.random()*2-1,
 			math.random()*2-1,math.random()*2-1))
 	--]]
-	--]=]
 	-- [[
 	--table.insert(tbl_insert,"vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist")
 	--table.insert(tbl_insert,"vec2(cos(prand.y*M_PI*2),sin(prand.y*M_PI*2))*move_dist")
@@ -2137,7 +2144,8 @@ function rand_function(  )
 	--chebyshev_poly_series(10)
 	--str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert)
 	--str_cmplx="(s/length(s)+p/length(p))*(0.5+global_seeds.x)"
-	str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert_cmplx)
+	--str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert_cmplx)
+	str_cmplx=random_math_complex_intervals(rand_complexity,5,nil,tbl_insert_cmplx)
 
 	--str_cmplx=random_math_complex(15,"cheb_eval(R)",tbl_insert)
 	--str_cmplx=random_math_complex(15,"c_mul(cheb_eval(c_mul(vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)),(s-p))),R)",tbl_insert)
@@ -2500,7 +2508,7 @@ function rand_function(  )
 	r4=r4/r
 	--[[
 	str_preamble=str_preamble..string.format("vec2 s2=c_one();su2_mat_mult(s,s2,vec2(%.3f,%.3f),vec2(%.3f,%.3f));",r1,r2,r3,r4)
-	str_postamble=str_postamble..string.format("su2_mat_mult(s,s2,vec2(%.3f,%.3f),vec2(%.3f,%.3f));",r1,-r2,-r3,-r4)
+	--str_postamble=str_postamble..string.format("su2_mat_mult(s,s2,vec2(%.3f,%.3f),vec2(%.3f,%.3f));",r1,-r2,-r3,-r4)
 	--]]
 	--str_postamble=str_postamble..string.format("vec2 sM=s;vec2 sM2=c_one();su2_mat_mult(sM,sM2,vec2(%.3f,%.3f),vec2(%.3f,%.3f));s-=(s-sM)*move_dist;",r1,r2,r3,r4)
 	--str_postamble=str_postamble..string.format("vec2 al=vec2(%.3f,%.3f);vec2 be=vec2(%.3f,%.3f);s=c_div(c_mul(s,al)-c_conj(be),c_mul(s,be)+c_conj(al));",r1,r2,r3,r4)
@@ -2509,14 +2517,19 @@ function rand_function(  )
 	--]]
 	--[[ symmetry
 
-	--str_postamble=str_postamble.."float pry=(floor(prand.y*4)/3);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
-	str_postamble=str_postamble.."float pry=(floor(prand.y*4)/3);vec2 ppr=(1-step(pry,0))*vec2(cos(pry*M_PI*2),sin(pry*M_PI*2))*2;"
-	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
-	str_postamble=str_postamble.."s=from_barycentric(mod_barycentric(to_barycentric(s+p*prand.x).xy+0.5)-0.5)+ppr-p*prand.x;s=rotate(s,M_PI/3);"
-	--str_postamble=str_postamble.."float pry=(floor(prand.y*4)/3);vec2 ppr=(1-step(pry,0))*vec2(cos(pry*M_PI*2),sin(pry*M_PI*2));"
+	--str_postamble=str_postamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
+	str_preamble=str_preamble.."vec2 ls=s;float pry=(floor(prand.y*9)/8);vec2 lp=p;p+=(1-step(pry,0))*c_mul(s,p)*params.w;vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
+	--str_postamble=str_postamble.."float pry=(floor(prand.y*4)/3);vec2 ppr=(1-step(pry,0))*vec2(cos(pry*M_PI*2),sin(pry*M_PI*2))*2;"
+	--str_preamble=str_preamble.."s=rotate(mod(rotate(s,M_PI/2)+0.5,1)-0.5+ppr,-M_PI/2);"
+	str_preamble=str_preamble.."s+=ppr;p+=ppr;"
+	str_postamble=str_postamble.."s-=ppr;"
+	
+	str_postamble=str_postamble.."p=lp;"
+	--str_postamble=str_postamble.."s=from_barycentric(mod_barycentric(to_barycentric(s+p*prand.x).xy+0.5)-0.5)+ppr-p*prand.x;s=rotate(s,M_PI/3);"
+	--str_preamble=str_preamble.."float pry=(floor(prand.y*4)/3);vec2 ppr=(1-step(pry,0))*vec2(cos(pry*M_PI*2),sin(pry*M_PI*2));"
 	--str_postamble=str_postamble.."s=s+ppr;"
 	--str_preamble=str_preamble.."float pry=(floor(prand.y*9)/8);vec2 ppr=(1-step(pry,0))*vec2(round(cos(pry*M_PI*2)),round(sin(pry*M_PI*2)));"
-	--str_preamble=str_preamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
+	--str_postamble=str_postamble.."s=rotate(mod(rotate(s,M_PI/4)+0.5,1)-0.5+ppr,-M_PI/4);"
 	--]]
 	--[[ mod
 	--str_postamble=str_postamble.."s=mod(s+0.5,1)-0.5;"
@@ -4059,7 +4072,7 @@ layout(location = 0) in vec4 position;
 out vec4 point_out;
 
 uniform float radius;
-uniform float rand_number;
+uniform vec4 rand_number;
 
 uniform int smart_reset;
 //uniform vec4 params;
@@ -4162,7 +4175,8 @@ void main()
 {
 	uvec2 wseed=floatBitsToUint(position.zw);
 	wseed+=uvec2(gl_VertexID);
-	wseed.x+=uint(rand_number*4294967295.0);
+	wseed.x+=uint(rand_number.x*4294967295.0);
+	//wseed.y+=uint(rand_number.y*8796423795.0); //TODO: is this ok?
 	wseed=wang_hash_seed(wseed);
 	vec2 seed=float_from_hash(wseed);
 	vec2 old_seed=float_from_floathash(position.zw);
@@ -4200,9 +4214,10 @@ void main()
 "point_out")
 visit_call_count=0
 local visit_plan={
-	{30,1},
-	{10,2},
-	{1,6},
+	{50,1},
+	{20,2},
+	{5,6},
+	--{1,12},
 }
 function get_visit_size( vcount )
 	local sum=0
@@ -4368,7 +4383,7 @@ function visit_iter()
 		--]===]
 		-- [===[
 		randomize_points:use()
-		randomize_points:set("rand_number",math.random())
+		randomize_points:set("rand_number",math.random(),math.random(),math.random(),math.random())
 		randomize_points:set("radius",config.gen_radius or 2)
 		--randomize_points:set("params",config.v0,config.v1,config.v2,config.v3)
 		if (config.smart_reset and not need_clear) and cur_visit_iter~=0 and math.random()<0.8 then

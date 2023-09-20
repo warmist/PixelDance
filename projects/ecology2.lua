@@ -879,14 +879,14 @@ function update()
     end
     if config.draw then
         draw_shader:use()
-        tex_pixel:use(0,0,1)
+        tex_pixel:use(1,0,1)
 
         img_buf:write_texture(tex_pixel)
-        tex_sun:use(1,0,1)
+        tex_sun:use(2,0,1)
         sun_buffer:write_texture(tex_sun)
 
-        draw_shader:set_i("tex_main",0)
-        draw_shader:set_i("tex_sun",1)
+        draw_shader:set_i("tex_main",1)
+        draw_shader:set_i("tex_sun",2)
         draw_shader:set_i("rez",map_w,map_h)
         draw_shader:set("zoom",config.zoom*map_aspect_ratio,config.zoom)
         draw_shader:set("translate",config.t_x,config.t_y)

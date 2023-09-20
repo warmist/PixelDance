@@ -20,8 +20,8 @@ local size=STATE.size
 local aspect_ratio
 local new_max_circles=500000
 cur_circles=cur_circles or 0
-local circle_size=40
-local rules_apply_local_rotation=true
+local circle_size=20
+local rules_apply_local_rotation=false
 local rules_gen_angle_fixed_per_type=false
 local rules_gen_angle_fixed_list=false
 
@@ -374,16 +374,16 @@ function ab_potential(dist_sqrd,a_type,b_type,p1,p2 )
 	--local dist=dist_sqrd
 	local dist=math.sqrt(dist_sqrd)+0.001
 	dist_sqrd=dist_sqrd+0.001
-	local angle_mult=100
+	local angle_mult=14
 	local angle_dist=math.cos(p1[3]*rules.interactions[a_type][b_type]*angle_mult)*math.cos(p2.b*rules.interactions2[a_type][b_type]*angle_mult)+math.sin(p1[3]*rules.interactions[a_type][b_type]*25)*math.sin(p2.b*rules.interactions2[a_type][b_type]*25)
-	potential_description="N^1_{a',b'}d+N^2_{a',b'}d^2" --TODO PERF move to non-hot spot (e.g. add selection for this)
-	return rules.interactions[a_type][b_type]*dist+rules.interactions2[a_type][b_type]*dist_sqrd
+	--potential_description="N^1_{a',b'}d+N^2_{a',b'}d^2" --TODO PERF move to non-hot spot (e.g. add selection for this)
+	--return rules.interactions[a_type][b_type]*dist+rules.interactions2[a_type][b_type]*dist_sqrd
 
 	--potential_description="N^1_{a',b'}d^{-2}+N^2_{a',b'}d^{-3}" --TODO PERF move to non-hot spot (e.g. add selection for this)
 	--return rules.interactions[a_type][b_type]*(1/(dist_sqrd))+rules.interactions2[a_type][b_type]*(1/(dist_sqrd*dist))
 
-	--potential_description="(N^1_{a',b'}d^{-2}+N^2_{a',b'}d^{-3})cos(\\angle ab)" --TODO PERF move to non-hot spot (e.g. add selection for this)
-	--return angle_dist*(rules.interactions[a_type][b_type]*(1/(dist_sqrd))+rules.interactions2[a_type][b_type]*(1/(dist_sqrd*dist)))
+	potential_description="(N^1_{a',b'}d^{-2}+N^2_{a',b'}d^{-3})cos(\\angle ab)" --TODO PERF move to non-hot spot (e.g. add selection for this)
+	return angle_dist*(rules.interactions[a_type][b_type]*(1/(dist_sqrd))+rules.interactions2[a_type][b_type]*(1/(dist_sqrd*dist)))
 
 	--potential_description="N^1_{a',b'}d"
 	--return rules.interactions[a_type][b_type]*dist
