@@ -31,10 +31,33 @@ current_tool_count=current_tool_count or 0
 --x,y,type,???
 tool_data={}--make_flt_buffer(max_tool_count,1)
 --x,y,??,??
-field=make_flt_buffer(map_w,map_h)
-local outside_strength=1.0
+if field==nil or field.w~=map_w or field.h~=map_h then
+	field=make_flt_buffer(map_w,map_h)
+end
+
+local agent_count=10000
+if agents==nil or agents.w~=agent_count then
+	agents=make_flt_buffer(agent_count,1)
+end
+
 local outside_angle=math.random()*math.pi*2
-local default_field=Point(math.cos(outside_angle),math.sin(outside_angle))*outside_strength
+
+
+config=make_config({
+	{"blob_count",5,type="int",min=1,max=max_tool_count},
+	--[[{"placement",0,type="choice",choices={
+		"single_center",		
+		}},]]
+	--[[ blob type choice]]
+	{"blob_order",14,type="int",min=2,max=14},
+	{"seed",0,type="int",min=0,max=10000000},
+	{"outside_strength",1.0,type="float",min=0,max=10},
+	{"tool_scale",0.25,type="float",min=0,max=10},
+
+	{"draw_layer",0,type="int",min=0,max=1,watch=true},
+},config)
+
+
 
 function random_coefs( count )
 	local order={
@@ -56,6 +79,7 @@ function random_coefs( count )
 	return ret
 end
 function init_tools(  )
+	
 	tool_data={}
 	--[[
 	current_tool_count=1
@@ -80,11 +104,11 @@ function init_tools(  )
 	-- [[
 	local dist=0.35
 	
-	local general_scale=0.25
-	current_tool_count=7
+	local general_scale=config.tool_scale
+	current_tool_count=config.blob_count
 	for i=1,current_tool_count do
 		local a=(i/current_tool_count)*math.pi*2
-		tool_data[i]={math.cos(a)*dist+0.5,math.sin(a)*dist+0.5,math.random()*general_scale*2-general_scale,random_coefs(14)}
+		tool_data[i]={math.cos(a)*dist+0.5,math.sin(a)*dist+0.5,math.random()*general_scale*2-general_scale,random_coefs(config.blob_order)}
 	end
 	--]]
 	--[[
@@ -112,7 +136,7 @@ function init_tools(  )
 	end
 	--]]
 end
-init_tools()
+
 function linear_scaling( pos_len )
 	return 1-pos_len/influence_size
 end
@@ -225,8 +249,9 @@ function zernike_der_function( pos,arguments )
 		math.sqrt(10)*(-12*X*X*Y+4*Y*Y*Y)*arguments[14]
 	return Point(ox,oy)
 end
-local draw_field,update_field_texture
+
 function update_field(  )
+	local default_field=Point(math.cos(outside_angle),math.sin(outside_angle))*config.outside_strength
 	--zernike version
 	for x=0,map_w-1 do
 	for y=0,map_h-1 do
@@ -263,19 +288,33 @@ function update_field(  )
 	end
 	end
 	--]]
-	update_field_texture(field)
+	draw_field.update(field)
 end
-function init_draw_field(draw_string)
+function generate_uniform_string( v )
+	return string.format("uniform %s %s;\n",v[1],v[2])
+end
+function update_uniform( shader,name,value_table )
+	shader:set_i(name,value_table[name])
+end
+function init_draw_field(draw_string,uniform_list)
+	local uniform_string=""
+	if uniform_list~=nil then
+		for i,v in ipairs(uniform_list) do
+			uniform_string=uniform_string..generate_uniform_string(v)
+		end
+	end
 	local draw_shader=shaders.Make(
 string.format([==[
 #version 330
-#line __LINE__
+#line __LINE__ 99
 
 out vec4 color;
 in vec3 pos;
 
 uniform sampler2D tex_main;
-
+#line __LINE__ 99
+%s
+#line __LINE__ 99
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
     return a + b*cos( 6.28318*(c*t+d) );
@@ -286,7 +325,7 @@ void main(){
     vec4 data=texture(tex_main,normed);
     %s
 }
-]==],draw_string))
+]==],uniform_string,draw_string))
 	local texture=textures:Make()
 	local update_texture=function ( buffer )
 		buffer:write_texture(texture)
@@ -297,28 +336,61 @@ void main(){
 		draw_shader:set_i('tex_main',0)
 		draw_shader:draw_quad()
 	end
-	return draw,update_texture,draw_shader,texture
+	local update_uniforms=function ( tbl )
+		draw_shader:use()
+		for i,v in ipairs(uniform_list) do
+			--todo more formats!
+			if tbl[v[2]]~=nil then
+				update_uniform(draw_shader,v[2],tbl)
+			end
+		end
+	end
+	local ret={
+		shader=draw_shader,
+		draw=draw,
+		update=update_texture,
+		texture=textures,
+		update_uniforms=update_uniforms
+	}
+	
+	return ret
 end
+if draw_field==nil or regen_shader then
+draw_field=init_draw_field([==[
+#line __LINE__
+	float angle=(atan(data.y,data.x)/3.14159265359+1)/2;
+	float len=min(length(data.xy),1);
+	if (draw_layer==0)
+		color=vec4(palette(angle,vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75))*len,1);
+	else
+	{
+		len=1-len;
+		color=vec4(len,len,len,1);
+	}
+]==],{{"int","draw_layer"}})
+end
+
 function save_img()
 	img_buf=make_image_buffer(win_w,win_h)
 	img_buf:read_frame()
 	img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))))
 end
-draw_field,update_field_texture=init_draw_field[==[
-#line __LINE__
-	float angle=(atan(data.y,data.x)/3.14159265359+1)/2;
-	float len=min(length(data.xy),1);
 
-	//len=1-len;
-	color=vec4(palette(angle,vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75))*len,1);
-	//color=vec4(len,len,len,1);
-]==]
-update_field()
 function update()
 	__no_redraw()
 	__clear()
-	draw_field()
+	imgui.Begin("Magic system test")
+	draw_config(config)
+	if config.__change_events.any then
+		draw_field.update_uniforms(config)
+	end
+	draw_field.draw()
+	if imgui.Button("Regen") then
+		init_tools()
+		update_field()
+	end
 	if imgui.Button("Save") then
 		save_img()
 	end
+	imgui.End()
 end
