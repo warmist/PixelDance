@@ -370,6 +370,90 @@ draw_field=init_draw_field([==[
 ]==],{{"int","draw_layer"}})
 end
 
+function init_draw_agents(draw_string,uniform_list)
+	local uniform_string=""
+	if uniform_list~=nil then
+		for i,v in ipairs(uniform_list) do
+			uniform_string=uniform_string..generate_uniform_string(v)
+		end
+	end
+	local draw_shader=shaders.Make(
+[==[
+#version 330
+#line __LINE__ 99
+layout(location = 0) in vec4 position;
+
+uniform int pix_size;
+uniform vec4 params;
+uniform vec2 rez;
+
+out vec4 pos_out;
+void main()
+{
+	vec2 normed=(position.xy/rez)*2-vec2(1,1);
+	gl_Position.xy = normed;//mod(normed,vec2(1,1));
+	gl_PointSize=pix_size;
+	gl_Position.z = 0;
+    gl_Position.w = 1.0;
+    pos_out=position;
+}
+]==],
+string.format([==[
+#version 330
+#line __LINE__ 99
+
+out vec4 color;
+in vec4 pos;
+
+#line __LINE__ 99
+%s
+#line __LINE__ 99
+vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
+{
+    return a + b*cos( 6.28318*(c*t+d) );
+}
+void main(){
+    %s
+#line __LINE__ 99
+}
+]==],uniform_string,draw_string))
+	local texture=textures:Make()
+	local update_agents=function ( buffer )
+		error("TODO")
+	end
+	local draw=function(  )		
+		draw_shader:use()
+		draw_shader:set_i('tex_main',0)
+		draw_shader:draw_quad()
+	end
+	local update_uniforms=function ( tbl )
+		draw_shader:use()
+		for i,v in ipairs(uniform_list) do
+			--todo more formats!
+			if tbl[v[2]]~=nil then
+				update_uniform(draw_shader,v[2],tbl)
+			end
+		end
+	end
+	local ret={
+		shader=draw_shader,
+		draw=draw,
+		update=update_agents,
+		texture=textures,
+		update_uniforms=update_uniforms
+	}
+	
+	return ret
+end
+if draw_agents==nil or regen_shader then
+draw_agents=init_draw_field([==[
+#line __LINE__
+
+	color=vec4(palette(angle,vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75))*pos.z,1);
+
+]==],{{"int","draw_layer"}})
+end
+
 function save_img()
 	img_buf=make_image_buffer(win_w,win_h)
 	img_buf:read_frame()
