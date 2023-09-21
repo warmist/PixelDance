@@ -312,7 +312,11 @@ function gaussian2 (mean1, variance1, mean2, variance2)
     return  math.sqrt(-2 * variance1 * math.log(r1)) * math.cos(2 * math.pi * r2) + mean1,
     		math.sqrt(-2 * variance2 * math.log(r1)) * math.sin(2 * math.pi * r2) + mean2
 end
-
+function random_in_circle(radius,cx,cy)
+	local r=math.sqrt(math.random())*radius
+	local theta=math.random()*math.pi*2
+	return cx+r*math.cos(theta),cy+r*math.sin(theta)
+end
 ------------
 
 function load_png( path )
