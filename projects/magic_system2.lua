@@ -25,7 +25,7 @@ local oversample=1/4
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
 
-local influence_size=0.6
+local influence_size=0.4
 local max_tool_count=30
 current_tool_count=current_tool_count or 0
 --x,y,type,???
@@ -49,15 +49,17 @@ config=make_config({
     {"sim_agents",false,type="bool"},
     {"blob_count",5,type="int",min=1,max=max_tool_count},
     --[[{"placement",0,type="choice",choices={
-        "single_center",        
+        "single_center",
         }},]]
     --[[ blob type choice]]
     {"blob_order",14,type="int",min=2,max=14},
     {"seed",0,type="int",min=0,max=10000000},
-    {"outside_strength",1.0,type="float",min=0,max=10},
-    {"tool_scale",0.25,type="float",min=0,max=10},
+    {"outside_strength",1.0,type="float",min=0,max=2},
+    {"tool_scale",0.25,type="float",min=0,max=2},
 
-    {"draw_layer",0,type="int",min=0,max=1,watch=true},
+    {"draw_layer",0,type="int",min=0,max=2,watch=true},
+    {"agent_opacity",1,type="floatsci",min=0.01,max=1,watch=true},
+    {"agent_gamma",1,type="float",min=0.01,max=2,watch=true},
 },config)
 
 
@@ -111,7 +113,8 @@ function init_tools(  )
     current_tool_count=config.blob_count
     for i=1,current_tool_count do
         local a=(i/current_tool_count)*math.pi*2
-        tool_data[i]={math.cos(a)*dist+0.5,math.sin(a)*dist+0.5,math.random()*general_scale*2-general_scale,random_coefs(config.blob_order)}
+        --tool_data[i]={math.cos(a)*dist+0.5,math.sin(a)*dist+0.5,math.random()*general_scale*2-general_scale,random_coefs(config.blob_order)}
+        tool_data[i]={math.random(),math.random(),math.random()*general_scale*2-general_scale,random_coefs(config.blob_order)}
     end
     --]]
     --[[
@@ -296,24 +299,32 @@ end
 function generate_uniform_string( v )
     return string.format("uniform %s %s;\n",v[1],v[2])
 end
-function generate_uniforms_string( uniform_list )
+function generate_uniforms_string( uniform_list,texture_list )
     local uniform_string=""
     if uniform_list~=nil then
         for i,v in ipairs(uniform_list) do
             uniform_string=uniform_string..generate_uniform_string(v)
         end
     end
+    if texture_list~=nil then
+        for i,v in ipairs(texture_list) do
+            uniform_string=uniform_string..generate_uniform_string({"sampler2D",v[2]})
+        end
+    end
     return uniform_string
 end
-function update_uniform( shader,name,value_table )
-    shader:set_i(name,value_table[name])
+function update_uniform( shader,utype,name,value_table )
+    local types={
+        int=shader.set_i,
+        float=shader.set
+    }
+    types[utype](shader,name,value_table[name])
 end
-function init_draw_field(draw_string,uniform_list)
-    uniform_list=uniform_list or {}
-    local uniform_string=generate_uniforms_string(uniform_list)
-    
-    local draw_shader=shaders.Make(
-string.format([==[
+function init_draw_field(draw_string,settings)
+    settings=settings or {}
+    local uniform_list=settings.uniforms or {}
+    local uniform_string=generate_uniforms_string(uniform_list,settings.textures)
+    local shader_string=string.format([==[
 #version 330
 #line __LINE__ 99
 
@@ -334,7 +345,9 @@ void main(){
     vec4 data=texture(tex_main,normed);
     %s
 }
-]==],uniform_string,draw_string))
+]==],uniform_string,draw_string)
+
+    local draw_shader=shaders.Make(shader_string)
     local texture=textures:Make()
 
     local update_texture=function ( buffer )
@@ -348,6 +361,10 @@ void main(){
         end
         draw_shader:use()
         texture:use(0,0,0)
+        for i,v in ipairs(settings.textures or {}) do
+            v[1]:use(i)
+            draw_shader:set_i(v[2],i)
+        end
         draw_shader:set_i('tex_main',0)
         draw_shader:draw_quad()
     end
@@ -356,7 +373,7 @@ void main(){
         for i,v in ipairs(uniform_list) do
             --todo more formats!
             if tbl[v[2]]~=nil then
-                update_uniform(draw_shader,v[2],tbl)
+                update_uniform(draw_shader,v[1],v[2],tbl)
             end
         end
     end
@@ -373,23 +390,11 @@ void main(){
     
     return ret
 end
-if draw_field==nil or regen_shader then
-draw_field=init_draw_field([==[
-#line __LINE__
-    float angle=(atan(data.y,data.x)/3.14159265359+1)/2;
-    float len=min(length(data.xy),1);
-    if (draw_layer==0)
-        color=vec4(palette(angle,vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75))*len,1);
-    else
-    {
-        len=1-len;
-        color=vec4(len,len,len,1);
-    }
-]==],{{"int","draw_layer"}})
-end
 
-function init_draw_agents(draw_string,uniform_list)
-    uniform_list=uniform_list or {}
+
+function init_draw_agents(draw_string,settings)
+    settings=settings or {offscreen=true}
+    local uniform_list=settings.uniforms or {}
     local uniform_string=generate_uniforms_string(uniform_list)
 
     local draw_shader=shaders.Make(
@@ -408,7 +413,7 @@ void main()
     vec2 normed=(position.xy/vec2(1280/4))*2-vec2(1,1);
     normed.y=-normed.y;
     gl_Position.xy = normed;//mod(normed,vec2(1,1));
-    gl_PointSize=pix_size;
+    gl_PointSize=1;
     gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos_out=position;
@@ -435,18 +440,23 @@ void main(){
 ]==],uniform_string,draw_string))
     local need_clear=false
     local agent_buffers=buffer_data.Make()
+    local tex_offscreen=textures:Make()
+    tex_offscreen:use(0,1)
+    tex_offscreen:set(map_w,map_h,1)
     local update_agents=function ( buffer,count )
         agent_buffers:use()
         agent_buffers:set(buffer.d,count*4*4)
         __unbind_buffer()
     end
-    local draw=function( count )        
+    local draw=function( count )
         draw_shader:use()
         draw_shader:blend_add()
-        --[[ offscreen render
-        tex_pixel:use(0)
-        if not tex_pixel:render_to(map_w,map_h) then
-            error("failed to set framebuffer up")
+        -- [[ offscreen render
+        if settings.offscreen then
+            tex_offscreen:use(0)
+            if not tex_offscreen:render_to(map_w,map_h) then
+                error("failed to set framebuffer up")
+            end
         end
         --]]
         -- clear
@@ -454,13 +464,14 @@ void main(){
             __clear()
             need_clear=false
         end
-        
-        agent_buffers:use() --multibuffer
+
+        agent_buffers:use()
         draw_shader:draw_points(0,count,4)
 
         draw_shader:blend_default()
-
-        --__render_to_window()
+        if settings.offscreen then
+            __render_to_window()
+        end
         __unbind_buffer()
     end
     local update_uniforms=function ( tbl )
@@ -480,18 +491,61 @@ void main(){
         update_uniforms=update_uniforms,
         clear=function (  )
             need_clear=true
-        end
+        end,
+        tex_offscreen=tex_offscreen
     }
     
     return ret
 end
+
+
+
 if draw_agents==nil or regen_shader then
 draw_agents=init_draw_agents([==[
 #line __LINE__
     //color=vec4(pos_out.w,0,0,1);
-    color=vec4(palette(pos_out.w,vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),0.25);
+    color=vec4(palette(atan(pos_out.w,pos_out.z),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
 
 ]==])
+end
+
+if draw_field==nil or regen_shader then
+draw_field=init_draw_field([==[
+#line __LINE__
+    float angle=(atan(data.y,data.x)/3.14159265359+1)/2;
+    float len=min(length(data.xy),1);
+    vec4 out_col;
+    if (draw_layer==0)
+        out_col=vec4(palette(angle,vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75))*len,1);
+    else if(draw_layer==1)
+    {
+        len=1-len;
+        out_col=vec4(len,len,len,1);
+    }else
+    {
+        out_col=vec4(0,0,0,1);
+        normed.y=-normed.y;
+        vec4 data2=texture(tex_agents,normed);
+        vec3 agent_data=clamp(data2.xyz/agent_iterations,0,1);
+
+        vec3 col_agent=pow(log(agent_data+vec3(1)),vec3(agent_gamma));
+        float l=length(col_agent);
+        col_agent/=l;
+        l = (l*(1 + l / agent_opacity)) / (l + 1);
+        col_agent*=l;
+        out_col.xyz+=col_agent;
+    }
+    color=out_col;
+
+]==],{
+    uniforms={
+        {"int","draw_layer"},
+        {"float","agent_opacity"},
+        {"float","agent_gamma"},
+        {"float","agent_iterations"},
+    },
+    textures={{draw_agents.tex_offscreen,"tex_agents"}}
+})
 end
 
 function save_img()
@@ -500,7 +554,7 @@ function save_img()
     img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))))
 end
 
-local agents_per_bundle=100
+local agents_per_bundle=10
 function add_bundles( max_val )
     max_val=max_val or math.huge
     local bundles_left=math.floor((max_agent_count-agent_count)/agents_per_bundle)
@@ -526,7 +580,7 @@ function add_bundles( max_val )
         local choice_center=choices[i]
         for j=1,agents_per_bundle do
             local x,y=random_in_circle(spread,choice_center[2],choice_center[3])
-            agents:set(agent_count,0,{x,y,0,j/agents_per_bundle})
+            agents:set(agent_count,0,{x,y,0,0})
             agent_count=agent_count+1
         end
     end
@@ -546,7 +600,7 @@ function clamp_coord( x,y )
     --torus
     if x>=map_w then x=x-map_w end
     if y>=map_h then y=y-map_h end
-    if x<0 then x=y+map_w end
+    if x<0 then x=x+map_w end
     if y<0 then y=y+map_h end
     return x,y
 end
@@ -580,36 +634,62 @@ end
 function update_agents(  )
     local max_speed=1
     local max_speed_destroy=2
-    local move_mult=0.25 --or dt
-    local chance_min=0.0001
+    local move_mult=0.05 --or dt
+    local move_mult2=0.5
+    local chance_min=0.000001
+    --local gravity=0.5
+
     local i=1
     while i<agent_count do
         local a=agents:get(i-1,0)
         --get flow direction at location
         local dx,dy=sample_at(a.r,a.g)
+        --[[
+        local cx=map_w/2-a.r
+        local cy=map_h/2-a.g
+
+        local lc=math.sqrt(cx*cx+cy*cy)
+        cx=cx/lc
+        cy=cy/lc
+        ]]
+
         local speed=math.sqrt(dx*dx+dy*dy)
         --print(i,a.r,a.g,dx,dy,speed)
         --at speed==max_speed chance=0.01
         --at speed==max_speed_destroy chance= 1
-        local chance=((speed-max_speed)/(max_speed_destroy-max_speed))*0.99+0.01
+        local chance=((speed-max_speed)/(max_speed_destroy-max_speed))*(1-chance_min)+chance_min
         if chance<chance_min then
             chance=chance_min
         end
         --remove if too fast
+        local remove=false
         if chance>math.random() then
+            remove=true
+        else
+            --update speed
+            a.b=a.b+dx*move_mult2
+            a.a=a.a+dy*move_mult2
+            --update position
+
+            a.r=a.r+a.b*move_mult
+            a.g=a.g+a.a*move_mult
+            if a.r<0 or a.g<0 or a.r>map_w or a.g>map_h then
+                remove=true
+            end
+            a.r,a.g=clamp_coord(a.r,a.g)
+            
+        end
+        if remove then
             agents:set(i-1,0,agents:get(agent_count-1,0))
             agent_count=agent_count-1
         else
-            --update position
-            a.r=a.r+dx*move_mult
-            a.g=a.g+dy*move_mult
-            a.r,a.g=clamp_coord(a.r,a.g)
             i=i+1
         end
     end
     add_bundles()
     draw_agents.update(agents,agent_count)
 end
+iterations=iterations or 1
 function update()
     __no_redraw()
     __clear()
@@ -618,14 +698,16 @@ function update()
     if config.__change_events.any then
         draw_field.update_uniforms(config)
     end
+    draw_field.update_uniforms{agent_iterations=iterations}
     if config.sim_agents then
         update_agents()
     end
     if config.draw_trails then
-        draw_field.draw()
         draw_agents.draw(agent_count)
-    --else
+        iterations=iterations+1
     end
+    draw_field.draw()
+    imgui.Text(string.format("Agent count:%d",agent_count))
     if imgui.Button("Reset agents") then
         reset_agents()
     end
@@ -639,6 +721,7 @@ function update()
     if imgui.Button("Clear") then
         draw_agents.clear()
         draw_field.clear()
+        iterations=1
     end
     if imgui.Button("Save") then
         save_img()
