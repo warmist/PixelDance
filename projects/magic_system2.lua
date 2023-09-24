@@ -14,6 +14,7 @@
         * interaction distance:
             * also falloff - linear, square, exp, etc...
         * insane interactions, like f(vec)=sin(cos(|vec|))*exp(-|vec|^2)/....
+        * set max speed as "light speed" i.e. need infinite time/energy to reach it
 ]]
 
 
@@ -114,7 +115,9 @@ function init_tools(  )
     for i=1,current_tool_count do
         local a=(i/current_tool_count)*math.pi*2
         --tool_data[i]={math.cos(a)*dist+0.5,math.sin(a)*dist+0.5,math.random()*general_scale*2-general_scale,random_coefs(config.blob_order)}
-        tool_data[i]={math.random(),math.random(),math.random()*general_scale*2-general_scale,random_coefs(config.blob_order)}
+        --tool_data[i]={math.random(),math.random(),math.random()*general_scale*2-general_scale,random_coefs(config.blob_order)}
+        --tool_data[i]={0.5,0.5,general_scale,random_coefs(config.blob_order)}
+        tool_data[i]={math.random(),math.random(),general_scale,random_coefs(config.blob_order)}
     end
     --]]
     --[[
@@ -255,13 +258,22 @@ function zernike_der_function( pos,arguments )
         math.sqrt(10)*(-12*X*X*Y+4*Y*Y*Y)*arguments[14]
     return Point(ox,oy)
 end
-
+function outside_field_calc(x,y)
+    return Point(math.cos(outside_angle),math.sin(outside_angle))*config.outside_strength
+    --[[
+    --local center=Point(map_w/2,map_h/2)
+    local center=Point(map_w,map_h)
+    local dc=center-Point(x,y)
+    dc:normalize()
+    --return dc*config.outside_strength
+    return Point(dc[2],-dc[1])
+    --]]
+end
 function update_field(  )
-    local default_field=Point(math.cos(outside_angle),math.sin(outside_angle))*config.outside_strength
     --zernike version
     for x=0,map_w-1 do
     for y=0,map_h-1 do
-        local value=default_field--*(y/map_h)
+        local value=outside_field_calc(x,y)--*(y/map_h)
         for i=0,current_tool_count-1 do
             local td=tool_data[i+1]--tool_data:get(i,0)
             local local_pos=Point(x/map_w,y/map_h)-Point(td[1],td[2])
@@ -505,6 +517,7 @@ draw_agents=init_draw_agents([==[
 #line __LINE__
     //color=vec4(pos_out.w,0,0,1);
     color=vec4(palette(atan(pos_out.w,pos_out.z),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
+    //color=vec4(palette(length(pos_out.wz),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
 
 ]==])
 end
@@ -529,6 +542,7 @@ draw_field=init_draw_field([==[
         vec3 agent_data=clamp(data2.xyz/agent_iterations,0,1);
 
         vec3 col_agent=pow(log(agent_data+vec3(1)),vec3(agent_gamma));
+        //vec3 col_agent=pow(agent_data,vec3(agent_gamma));
         float l=length(col_agent);
         col_agent/=l;
         l = (l*(1 + l / agent_opacity)) / (l + 1);
@@ -631,12 +645,21 @@ function sample_at( x,y )
     local v_y=vxl_y*(1-ty)+vxh_y*ty
     return v_x,v_y
 end
+function rotate( x,y,angle )
+  local s = math.sin(angle);
+  local c = math.cos(angle);
+
+  local xnew = x * c - y * s;
+  local ynew = x * s + y * c;
+  return xnew,ynew
+end
 function update_agents(  )
     local max_speed=1
     local max_speed_destroy=2
-    local move_mult=0.05 --or dt
-    local move_mult2=0.5
-    local chance_min=0.000001
+    local move_mult=0.125 --or dt
+    local move_mult2=0.05
+    local speed_mix=1
+    local chance_min=0.00125
     --local gravity=0.5
 
     local i=1
@@ -654,6 +677,9 @@ function update_agents(  )
         ]]
 
         local speed=math.sqrt(dx*dx+dy*dy)
+        local normed_speed=speed/max_speed_destroy
+
+
         --print(i,a.r,a.g,dx,dy,speed)
         --at speed==max_speed chance=0.01
         --at speed==max_speed_destroy chance= 1
@@ -667,8 +693,21 @@ function update_agents(  )
             remove=true
         else
             --update speed
+            --[[
             a.b=a.b+dx*move_mult2
             a.a=a.a+dy*move_mult2
+            --]]
+            -- [[
+            local cur_speed=math.sqrt(a.b*a.b+a.a*a.a)
+            --idea is that when speed is close to max, force is backwards
+            dx,dy=rotate(dx,dy,math.pi*cur_speed)
+            a.b=a.b+dx*move_mult2
+            a.a=a.a+dy*move_mult2
+            --]]
+            --[[
+            a.b=a.b*(1-speed_mix)+dx*speed_mix
+            a.a=a.a*(1-speed_mix)+dy*speed_mix
+            --]]
             --update position
 
             a.r=a.r+a.b*move_mult
@@ -710,6 +749,8 @@ function update()
     imgui.Text(string.format("Agent count:%d",agent_count))
     if imgui.Button("Reset agents") then
         reset_agents()
+        draw_agents.clear()
+        iterations=1
     end
     if imgui.Button("Step agents") then
         update_agents()
