@@ -26,7 +26,7 @@ local oversample=1/4
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
 
-local influence_size=0.4
+local influence_size=0.8
 local max_tool_count=30
 current_tool_count=current_tool_count or 0
 --x,y,type,???
@@ -654,8 +654,8 @@ function rotate( x,y,angle )
   return xnew,ynew
 end
 function update_agents(  )
-    local max_speed=1
-    local max_speed_destroy=2
+    local max_speed=2
+    local max_speed_destroy=5
     local move_mult=0.125 --or dt
     local move_mult2=0.05
     local speed_mix=1
@@ -699,6 +699,9 @@ function update_agents(  )
             --]]
             -- [[
             local cur_speed=math.sqrt(a.b*a.b+a.a*a.a)
+            cur_speed=cur_speed/max_speed_destroy
+            --cur_speed=(cur_speed-max_speed)/max_speed_destroy
+            if cur_speed<0 then cur_speed=0 end
             --idea is that when speed is close to max, force is backwards
             dx,dy=rotate(dx,dy,math.pi*cur_speed)
             a.b=a.b+dx*move_mult2
