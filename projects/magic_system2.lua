@@ -26,7 +26,7 @@ local oversample=1/4
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
 
-local influence_size=0.8
+local influence_size=0.3
 local max_tool_count=30
 current_tool_count=current_tool_count or 0
 --x,y,type,???
@@ -403,24 +403,49 @@ void main(){
     
     return ret
 end
-
-
+function generate_attribute_strings( tbl )
+    local attribute_list,attribute_variables,attribute_assigns,attribute_variables_frag
+    attribute_list=""
+    attribute_variables=""
+    attribute_assigns=""
+    attribute_variables_frag=""
+    for i,v in ipairs(tbl) do
+        local attrib_name=v.name_attrib or (v.name .. "_attrib")
+        local var_name=v.name
+        attribute_list=attribute_list..string.format("layout(location = %d) in vec4 %s;\n",v.pos_idx,attrib_name)
+        attribute_variables=attribute_variables..string.format("out vec4 %s;\n",var_name)
+        attribute_assigns=attribute_assigns..string.format("%s=%s;\n",var_name,attrib_name)
+        attribute_variables_frag=attribute_variables_frag..string.format("in vec4 %s;\n",var_name)
+    end
+    return attribute_list,attribute_variables,attribute_assigns,attribute_variables_frag
+end
 function init_draw_agents(draw_string,settings)
-    settings=settings or {offscreen=true}
+    settings=settings or {}
     local uniform_list=settings.uniforms or {}
-    local uniform_string=generate_uniforms_string(uniform_list)
+    local attributes=settings.attributes or {}
 
-    local draw_shader=shaders.Make(
+    local uniform_string=generate_uniforms_string(uniform_list)
+    local attribute_list,attribute_variables,attribute_assigns,attribute_variables_frag=generate_attribute_strings(attributes)
+    settings.attrib_buffers={} or settings.attrib_buffers
+    for i,v in ipairs(attributes) do
+        settings.attrib_buffers[v.name]=settings.attrib_buffers[v.name] or buffer_data.Make()
+        v.attr_buffer=settings.attrib_buffers[v.name]
+    end
+    local vert_shader=string.format(
 [==[
 #version 330
 #line __LINE__ 99
 layout(location = 0) in vec4 position;
 
+%s
+#line __LINE__ 99
 uniform int pix_size;
 uniform vec4 params;
 uniform vec2 rez;
 
 out vec4 pos_out;
+%s
+#line __LINE__ 99
 void main()
 {
     vec2 normed=(position.xy/vec2(1280/4))*2-vec2(1,1);
@@ -430,15 +455,20 @@ void main()
     gl_Position.z = 0;
     gl_Position.w = 1.0;
     pos_out=position;
+    %s
+    #line __LINE__ 99
 }
 ]==],
-string.format([==[
+attribute_list,attribute_variables,attribute_assigns
+)
+    local frag_shader=string.format(
+[==[
 #version 330
 #line __LINE__ 99
 
 out vec4 color;
 in vec4 pos_out;
-
+%s
 #line __LINE__ 99
 %s
 #line __LINE__ 99
@@ -450,15 +480,27 @@ void main(){
     %s
 #line __LINE__ 99
 }
-]==],uniform_string,draw_string))
+]==],
+attribute_variables_frag,
+uniform_string,draw_string)
+    print(vert_shader,frag_shader)
+    local draw_shader=shaders.Make(vert_shader,frag_shader)
     local need_clear=false
     local agent_buffers=buffer_data.Make()
     local tex_offscreen=textures:Make()
     tex_offscreen:use(0,1)
     tex_offscreen:set(map_w,map_h,1)
-    local update_agents=function ( buffer,count )
+    local update_agents=function ( buffer,count ,attribs)
+        attribs=attribs or {}
         agent_buffers:use()
         agent_buffers:set(buffer.d,count*4*4)
+        -- [[
+        for i,v in ipairs(attributes) do
+            local buf=attribs[v.name] or v.buffer
+            v.attr_buffer:use()
+            v.attr_buffer:set(buf.d,count*4*4)
+        end
+        --]]
         __unbind_buffer()
     end
     local draw=function( count )
@@ -477,6 +519,15 @@ void main(){
             __clear()
             need_clear=false
         end
+
+        for i,v in ipairs(attributes) do
+            v.attr_buffer:use()
+            if v.is_int then
+                draw_shader:push_iattribute(0,v.pos_idx,v.count or 4) --TODO type,stride
+            else
+                draw_shader:push_attribute(0,v.pos_idx,v.count or 4)--TODO type,stride
+            end
+        end 
 
         agent_buffers:use()
         draw_shader:draw_points(0,count,4)
@@ -512,15 +563,22 @@ void main(){
 end
 
 
-
 if draw_agents==nil or regen_shader then
 draw_agents=init_draw_agents([==[
 #line __LINE__
+    //color=vec4(1,0,0,1);
     //color=vec4(pos_out.w,0,0,1);
-    color=vec4(palette(atan(pos_out.w,pos_out.z),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
+    //color=vec4(palette(atan(pos_out.w,pos_out.z),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
     //color=vec4(palette(length(pos_out.wz),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
-
-]==])
+    //color=agent_color;
+    color=vec4(palette(agent_color.x,vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);;
+]==],
+{
+    attributes={
+        {pos_idx=1,name="agent_color",buffer=agents_color}
+    },
+    offscreen=true,
+})
 end
 
 if draw_field==nil or regen_shader then
@@ -656,17 +714,20 @@ function rotate( x,y,angle )
   return xnew,ynew
 end
 function update_agents(  )
-    local max_speed=2
-    local max_speed_destroy=5
+    local max_speed=1
+    local max_speed_destroy=2
     local move_mult=0.125 --or dt
-    local move_mult2=0.05
+    local move_mult2=0.5
     local speed_mix=1
     local chance_min=0.00125
+    local lifetime_step=0.01
     --local gravity=0.5
 
     local i=1
     while i<agent_count do
         local a=agents:get(i-1,0)
+        local ac=agents_color:get(i-1,0)
+        ac.r=ac.r-lifetime_step
         --get flow direction at location
         local dx,dy=sample_at(a.r,a.g)
         --[[
@@ -691,6 +752,9 @@ function update_agents(  )
         end
         --remove if too fast
         local remove=false
+        if ac.r<0 then
+            remove=true
+        end
         if chance>math.random() then
             remove=true
         else
@@ -752,6 +816,9 @@ function update()
         iterations=iterations+1
     end
     draw_field.draw()
+    if imgui.Button("Save") then
+        save_img()
+    end
     imgui.Text(string.format("Agent count:%d",agent_count))
     if imgui.Button("Reset agents") then
         reset_agents()
@@ -770,8 +837,6 @@ function update()
         draw_field.clear()
         iterations=1
     end
-    if imgui.Button("Save") then
-        save_img()
-    end
+   
     imgui.End()
 end
