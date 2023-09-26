@@ -40,6 +40,7 @@ local max_agent_count=10000
 agent_count=agent_count or 0
 if agents==nil or agents.w~=max_agent_count then
     agents=make_flt_buffer(max_agent_count,1)
+    agents_color=make_flt_buffer(max_agent_count,1)
 end
 
 local outside_angle=math.random()*math.pi*2
@@ -595,6 +596,7 @@ function add_bundles( max_val )
         for j=1,agents_per_bundle do
             local x,y=random_in_circle(spread,choice_center[2],choice_center[3])
             agents:set(agent_count,0,{x,y,0,0})
+            agents_color:set(agent_count,0,{1,0,0,1})
             agent_count=agent_count+1
         end
     end
@@ -723,6 +725,7 @@ function update_agents(  )
         end
         if remove then
             agents:set(i-1,0,agents:get(agent_count-1,0))
+            agents_color:set(i-1,0,agents_color:get(agent_count-1,0))
             agent_count=agent_count-1
         else
             i=i+1
