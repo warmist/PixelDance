@@ -626,7 +626,102 @@ function save_img()
     img_buf:read_frame()
     img_buf:save(string.format("saved_%d.png",os.time(os.date("!*t"))))
 end
+function mix( v_low,v_high,v )
+    return v_low*(1-v)+v_high*v
+end
+function black_body_spectrum( l,temperature)
+    --[[
+    float h=6.626070040e-34; //Planck constant
+    float c=299792458; //Speed of light
+    float k=1.38064852e-23; //Boltzmann constant
+    --]]
+    local const_1=5.955215e-17;--h*c*c
+    local const_2=0.0143878;--(h*c)/k
+    local top=(2*const_1);
+    local bottom=(math.exp((const_2)/(temperature*l))-1)*l*l*l*l*l;
+    return top/bottom;
+end
+function black_body(iter, temp)
+    return black_body_spectrum(mix(380*1e-9,740*1e-9,iter),temp);
+end
+function D65_approx(iter)
+    --3rd order fit on D65
+    local wl=mix(380,740,iter);
+    --return (-1783+9.98*wl-(0.0171)*wl*wl+(9.51e-06)*wl*wl*wl)*1e12;
+    return (-1783.1047729784+9.977734354*wl-(0.0171304983)*wl*wl+(0.0000095146)*wl*wl*wl);
+end
+function D65_blackbody(iter, temp)
+    --local wl=mix(380,740,iter);
+    --[[
+    float mod=-5754+27.3*wl-0.043*wl*wl+(2.26e-05)*wl*wl*wl;
+    return black_body(wl*1e-9,temp)-mod;
+    ]]
+    --6th order poly fit on black_body/D65
+    --[[
+    float mod=6443-67.8*wl*(
+            1-0.004365781*wl*(
+                1-(2.31e-3)*wl*(
+                    1-(1.29e-03)*wl*(
+                        1-(6.68e-04)*wl*(
+                            1-(2.84e-04)*wl
+                                        )
+                                    )
+                                )
+                             )
+                            );
+    ]]
+    --float mod=6443-67.8*wl+0.296*wl*wl-(6.84E-04)*wl*wl*wl+(8.84E-07)*wl*wl*wl*wl-
+    --  6.06E-10*wl*wl*wl*wl*wl+1.72E-13*wl*wl*wl*wl*wl*wl;
 
+    --[[float mod=6449.3916465248
+    +wl*(
+        -67.868524542
+        +wl*(0.2960426028
+            +wl*((-0.0006846726)
+                +wl*((8.852e-7)+
+                    wl*((-6e-10)+0*wl)
+                    )
+                )
+            )
+        );
+
+    return black_body(wl*1e-9,temp)*mod*1e-8;]]
+    local b65=black_body(iter,6503.5);
+    return D65_approx(iter)*(black_body(iter,temp)/b65);
+end
+function gaussian_value( x, alpha,  mu, sigma1,  sigma2) 
+    local s=sigma1
+    if x>=mu then
+        s=sigma2
+    end
+    local squareRoot = (x - mu)/(s);
+    return alpha * math.exp( -(squareRoot * squareRoot)/2 );
+end
+
+function xyz_from_normed_waves(v_in)
+    local ret={}
+    ret.x = gaussian_value(v_in,  1.056, 0.6106, 0.10528, 0.0861)
+        + gaussian_value(v_in,  0.362, 0.1722, 0.04444, 0.0742)
+        + gaussian_value(v_in, -0.065, 0.3364, 0.05667, 0.0728);
+
+    ret.y = gaussian_value(v_in,  0.821, 0.5244, 0.1303, 0.1125)
+        + gaussian_value(v_in,  0.286, 0.4192, 0.0452, 0.0864);
+
+    ret.z = gaussian_value(v_in,  1.217, 0.1583, 0.0328, 0.1)
+        + gaussian_value(v_in,  0.681, 0.2194, 0.0722, 0.0383);
+
+    return ret;
+end
+function color_from_t(t)
+    local w=xyz_from_normed_waves(t)
+    local b=D65_blackbody(t,6503.5)
+    --local b=black_body(h,6503.5)
+    --local b=1
+    w.x=w.x*b
+    w.y=w.y*b
+    w.z=w.z*b
+    return w;
+end
 local agents_per_bundle=10
 function add_bundles( max_val )
     max_val=max_val or math.huge
@@ -651,10 +746,11 @@ function add_bundles( max_val )
     end    
     for i=1,bundles_left do
         local choice_center=choices[i]
+        local col=color_from_t(0)
         for j=1,agents_per_bundle do
             local x,y=random_in_circle(spread,choice_center[2],choice_center[3])
             agents:set(agent_count,0,{x,y,0,0})
-            agents_color:set(agent_count,0,{1,0,0,1})
+            agents_color:set(agent_count,0,{col.x,col.y,col.z,0})
             agent_count=agent_count+1
         end
     end
@@ -727,7 +823,7 @@ function update_agents(  )
     while i<agent_count do
         local a=agents:get(i-1,0)
         local ac=agents_color:get(i-1,0)
-        ac.r=ac.r-lifetime_step
+        ac.a=ac.a+lifetime_step
         --get flow direction at location
         local dx,dy=sample_at(a.r,a.g)
         --[[
@@ -752,12 +848,16 @@ function update_agents(  )
         end
         --remove if too fast
         local remove=false
-        if ac.r<0 then
+        if ac.a>1 then
             remove=true
         end
         if chance>math.random() then
             remove=true
         else
+            local col=color_from_t(ac.a)
+            ac.r=col.x
+            ac.g=col.y
+            ac.b=col.z
             --update speed
             --[[
             a.b=a.b+dx*move_mult2
