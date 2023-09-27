@@ -20,8 +20,8 @@
 
 require "common"
 
-local win_w=1280
-local win_h=1280
+local win_w=1024
+local win_h=1024
 local oversample=1/4
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -60,8 +60,8 @@ config=make_config({
     {"tool_scale",0.25,type="float",min=0,max=2},
 
     {"draw_layer",0,type="int",min=0,max=2,watch=true},
-    {"agent_opacity",1,type="floatsci",min=0.01,max=1,watch=true},
-    {"agent_gamma",1,type="float",min=0.01,max=2,watch=true},
+    {"agent_opacity",1,type="floatsci",min=-8,max=1,watch=true},
+    {"agent_gamma",1,type="float",min=0,max=2,watch=true},
 },config)
 
 
@@ -348,6 +348,62 @@ uniform sampler2D tex_main;
 #line __LINE__ 99
 %s
 #line __LINE__ 99
+vec3 YxyToXyz(vec3 v)
+{
+    vec3 ret;
+    ret.y=v.x;
+    float small_x = v.y;
+    float small_y = v.z;
+    ret.x = ret.y*(small_x / small_y);
+    float small_z=1-small_x-small_y;
+
+    //all of these are the same
+    ret.z = ret.x/small_x-ret.x-ret.y;
+    return ret;
+}
+vec3 xyz2rgb( vec3 c ) {
+    vec3 v =  c / 100.0 * mat3(
+        3.2406255, -1.5372080, -0.4986286,
+        -0.9689307, 1.8757561, 0.0415175,
+        0.0557101, -0.2040211, 1.0569959
+    );
+    vec3 r;
+    r=v;
+    /* srgb conversion
+    r.x = ( v.r > 0.0031308 ) ? (( 1.055 * pow( v.r, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.r;
+    r.y = ( v.g > 0.0031308 ) ? (( 1.055 * pow( v.g, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.g;
+    r.z = ( v.b > 0.0031308 ) ? (( 1.055 * pow( v.b, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.b;
+    //*/
+    return r;
+}
+vec3 tonemap(vec3 light,float cur_exp,float white_point)
+{
+    float lum_white =white_point*white_point;
+
+    float Y=light.y;
+
+    Y=Y*exp(cur_exp);
+
+    if(white_point<0)
+        Y = Y / (1 + Y); //simple compression
+    else
+        Y = (Y*(1 + Y / lum_white)) / (Y + 1); //allow to burn out bright areas
+
+    float m=Y/light.y;
+    light.y=Y;
+    light.xz*=m;
+
+
+    vec3 ret=xyz2rgb((light)*100);
+    ///*
+    if(ret.x>1)ret.x=1;
+    if(ret.y>1)ret.y=1;
+    if(ret.z>1)ret.z=1;
+    //*/
+    float s=smoothstep(1,8,length(ret));
+    return mix(ret,vec3(1),s);
+    //return ret;
+}
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
     return a + b*cos( 6.28318*(c*t+d) );
@@ -448,7 +504,7 @@ out vec4 pos_out;
 #line __LINE__ 99
 void main()
 {
-    vec2 normed=(position.xy/vec2(1280/4))*2-vec2(1,1);
+    vec2 normed=(position.xy/vec2(1024/4))*2-vec2(1,1);
     normed.y=-normed.y;
     gl_Position.xy = normed;//mod(normed,vec2(1,1));
     gl_PointSize=1;
@@ -570,8 +626,8 @@ draw_agents=init_draw_agents([==[
     //color=vec4(pos_out.w,0,0,1);
     //color=vec4(palette(atan(pos_out.w,pos_out.z),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
     //color=vec4(palette(length(pos_out.wz),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
-    //color=agent_color;
-    color=vec4(palette(agent_color.x,vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);;
+    color=vec4(agent_color.xyz*pow(agent_color.w,1),1);
+    //color=vec4(palette(agent_color.x,vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);;
 ]==],
 {
     attributes={
@@ -595,9 +651,18 @@ draw_field=init_draw_field([==[
         out_col=vec4(len,len,len,1);
     }else
     {
-        out_col=vec4(0,0,0,1);
-        normed.y=-normed.y;
         vec4 data2=texture(tex_agents,normed);
+
+        data2/=agent_iterations;
+        //data2.xyz=log(data2.xyz+vec3(1));
+        //data2*=agent_gamma;
+        data2.xyz=pow(data2.xyz,vec3(agent_gamma));
+
+        out_col.xyz=tonemap(data2.xyz,agent_opacity,1);
+        out_col.w=1;
+
+        /*out_col=vec4(0,0,0,1);
+        normed.y=-normed.y;
         vec3 agent_data=clamp(data2.xyz/agent_iterations,0,1);
 
         vec3 col_agent=pow(log(agent_data+vec3(1)),vec3(agent_gamma));
@@ -606,7 +671,7 @@ draw_field=init_draw_field([==[
         col_agent/=l;
         l = (l*(1 + l / agent_opacity)) / (l + 1);
         col_agent*=l;
-        out_col.xyz+=col_agent;
+        out_col.xyz+=col_agent;*/
     }
     color=out_col;
 
@@ -722,7 +787,7 @@ function color_from_t(t)
     w.z=w.z*b
     return w;
 end
-local agents_per_bundle=10
+local agents_per_bundle=2500
 function add_bundles( max_val )
     max_val=max_val or math.huge
     local bundles_left=math.floor((max_agent_count-agent_count)/agents_per_bundle)
@@ -746,10 +811,16 @@ function add_bundles( max_val )
     end    
     for i=1,bundles_left do
         local choice_center=choices[i]
-        local col=color_from_t(0)
         for j=1,agents_per_bundle do
             local x,y=random_in_circle(spread,choice_center[2],choice_center[3])
-            agents:set(agent_count,0,{x,y,0,0})
+            local dx=choice_center[2]-x
+            local dy=choice_center[3]-y
+            local dist=math.sqrt(dx*dx+dy*dy)
+
+            --local col=color_from_t(math.sqrt(dist/spread))
+            --local col=color_from_t(dist/spread)
+            local col=color_from_t((dist/spread)*(dist/spread))
+            agents:set(agent_count,0,{x,y,-dx/dist,-dy/dist})
             agents_color:set(agent_count,0,{col.x,col.y,col.z,0})
             agent_count=agent_count+1
         end
@@ -811,7 +882,7 @@ function rotate( x,y,angle )
 end
 function update_agents(  )
     local max_speed=1
-    local max_speed_destroy=2
+    local max_speed_destroy=5
     local move_mult=0.125 --or dt
     local move_mult2=0.5
     local speed_mix=1
@@ -854,10 +925,12 @@ function update_agents(  )
         if chance>math.random() then
             remove=true
         else
+            --[[
             local col=color_from_t(ac.a)
             ac.r=col.x
             ac.g=col.y
             ac.b=col.z
+            --]]
             --update speed
             --[[
             a.b=a.b+dx*move_mult2
@@ -865,6 +938,7 @@ function update_agents(  )
             --]]
             -- [[
             local cur_speed=math.sqrt(a.b*a.b+a.a*a.a)
+            --local cur_speed=math.sqrt(ac.r*ac.r+ac.g*ac.g+ac.b*ac.b)
             cur_speed=cur_speed/max_speed_destroy
             --cur_speed=(cur_speed-max_speed)/max_speed_destroy
             if cur_speed<0 then cur_speed=0 end
@@ -881,9 +955,9 @@ function update_agents(  )
 
             a.r=a.r+a.b*move_mult
             a.g=a.g+a.a*move_mult
-            if a.r<0 or a.g<0 or a.r>map_w or a.g>map_h then
+            --[[if a.r<0 or a.g<0 or a.r>map_w or a.g>map_h then
                 remove=true
-            end
+            end--]]
             a.r,a.g=clamp_coord(a.r,a.g)
             
         end
