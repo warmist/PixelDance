@@ -165,6 +165,9 @@ int lua_build_program(lua_State* L)
     std::vector<cl_kernel> kernels(num_kernels);
     err = clCreateKernelsInProgram(program, num_kernels, kernels.data(), &num_kernels);
     ERRCHECK(err, "Failed to create kernel");
+
+    lua_newtable(L);
+    
     clReleaseProgram(program);
     for (uint32_t i = 0; i < num_kernels; i++)
     {
@@ -190,8 +193,15 @@ int lua_build_program(lua_State* L)
             lua_setfield(L, -2, "__index");
         }
         lua_setmetatable(L, -2);
+
+        char kernel_name[255];
+        size_t kernel_len = 0;
+        err = clGetKernelInfo(kernels[i], CL_KERNEL_FUNCTION_NAME, 255, &kernel_name, &kernel_len);
+        ERRCHECK(err, "Failed to get kernel name");
+        lua_setfield(L, -2, kernel_name);
+        
     }
-    return kernels.size();
+    return 1;
 }
 int set_buffer(lua_State* L)
 {

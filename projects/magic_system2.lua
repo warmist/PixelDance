@@ -787,7 +787,7 @@ function color_from_t(t)
     w.z=w.z*b
     return w;
 end
-local agents_per_bundle=2500
+local agents_per_bundle=100
 function add_bundles( max_val )
     max_val=max_val or math.huge
     local bundles_left=math.floor((max_agent_count-agent_count)/agents_per_bundle)
@@ -805,7 +805,7 @@ function add_bundles( max_val )
     end
     shuffle_table(choices)
     --place agents with spread X
-    local spread=5
+    local spread=25
     if #choices<bundles_left then
         bundles_left=#choices
     end    
@@ -938,12 +938,13 @@ function update_agents(  )
             --]]
             -- [[
             local cur_speed=math.sqrt(a.b*a.b+a.a*a.a)
-            --local cur_speed=math.sqrt(ac.r*ac.r+ac.g*ac.g+ac.b*ac.b)
+            local cur_speed_col=ac.r*ac.r
+            local col_val=math.exp(-cur_speed_col/40000)
             cur_speed=cur_speed/max_speed_destroy
             --cur_speed=(cur_speed-max_speed)/max_speed_destroy
             if cur_speed<0 then cur_speed=0 end
             --idea is that when speed is close to max, force is backwards
-            dx,dy=rotate(dx,dy,math.pi*cur_speed)
+            dx,dy=rotate(dx,dy,math.pi*cur_speed*col_val)
             a.b=a.b+dx*move_mult2
             a.a=a.a+dy*move_mult2
             --]]

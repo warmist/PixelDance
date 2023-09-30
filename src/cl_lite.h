@@ -58,6 +58,7 @@ typedef cl_bitfield         cl_device_exec_capabilities;
 #define CL_KERNEL_PRIVATE_MEM_SIZE                  0x11B4
 #define CL_KERNEL_GLOBAL_WORK_SIZE                  0x11B5
 
+#define CL_KERNEL_FUNCTION_NAME                     0x1190
 
 #define CL_CONTEXT_PLATFORM                         0x1084
 
@@ -125,7 +126,8 @@ CL_TYPE_LIST
     CLE(cl_mem, clCreateFromGLBuffer,cl_context context,uint32_t flags, unsigned int bufob, int32_t* errcode_ret)\
     CLE(cl_mem, clCreateFromGLTexture,cl_context context,uint32_t flags,unsigned int target,int miplevel,unsigned int texture,int32_t* errcode_ret)\
     CLE(int32_t, clEnqueueAcquireGLObjects, cl_command_queue command_queue,uint32_t num_objects,const cl_mem* mem_objects,uint32_t num_events_in_wait_list,const cl_event* event_wait_list,cl_event* event)\
-    CLE(int32_t, clEnqueueReleaseGLObjects, cl_command_queue command_queue,uint32_t num_objects,const cl_mem* mem_objects,uint32_t num_events_in_wait_list,const cl_event* event_wait_list,cl_event* event)
+    CLE(int32_t, clEnqueueReleaseGLObjects, cl_command_queue command_queue,uint32_t num_objects,const cl_mem* mem_objects,uint32_t num_events_in_wait_list,const cl_event* event_wait_list,cl_event* event)\
+    CLE(int32_t, clGetKernelInfo, cl_kernel kernel,uint32_t param_name,size_t param_value_size,void* param_value, size_t* param_value_size_ret)
 
 #define CLE(ret, name, ...) typedef ret CL_DECL name##proc(__VA_ARGS__);name##proc * name;
 CLLITE_CL_LIST
