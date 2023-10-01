@@ -218,6 +218,10 @@ static int push_attribute(lua_State* L)
 	{
 		data = lua_topointer(L, 2); //TODO: check pointer?
 	}
+	else if(lua_type(L,2)==LUA_TNUMBER)
+	{
+		data = (void*)(int)lua_tonumber(L, 2);
+	}
 	//if (data == nullptr)
 	//	luaL_error(L,"Incorrect second argument: expected pointer to array");
     int pos_idx;
@@ -255,6 +259,10 @@ static int push_iattribute(lua_State* L)
     {
         data = lua_topointer(L, 2); //TODO: check pointer?
     }
+	else if (lua_type(L, 2) == LUA_TNUMBER)
+	{
+		data = (void*)(int)lua_tonumber(L, 2);
+	}
     //TODO: all data==nullptr does not make sense anymore when doing bind-vao
     //if (data == nullptr)
     //    luaL_error(L, "Incorrect second argument: expected pointer to array");

@@ -295,14 +295,15 @@ int lua_create_buffer_gl(lua_State* L)
 
     
     cl_mem buffer;
-    if (auto tex = luaL_checkudata(L, 1, "texture"))
+    auto tex = luaL_testudata(L, 1, "texture");
+    if (tex)
     {
         auto t = *(gl_texture**)tex;
         unsigned int tex_id = 0;
         tex_id = t->id;
         buffer = clCreateFromGLTexture(context, flags, GL_TEXTURE_2D, 0, tex_id, &err);
     }
-    else if (auto buf = luaL_checkudata(L, 1, "buffer_data"))
+    else if (auto buf = luaL_checkudata(L, 1, "buffer_data")) //TODO: better error message if this fails. Should be: either texture or buffer_data
     {
         auto b = *(gl_texture**)buf;
         unsigned int bufob = 0;

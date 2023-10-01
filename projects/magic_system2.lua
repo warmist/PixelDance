@@ -22,7 +22,7 @@ require "common"
 
 local win_w=1024
 local win_h=1024
-local oversample=1/4
+local oversample=1/2
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
 
@@ -310,7 +310,7 @@ function update_field(  )
     draw_field.update(field)
 end
 function generate_uniform_string( v )
-    return string.format("uniform %s %s;\n",v[1],v[2])
+    return string.format("uniform %s %s;\n",v.type,v.name)
 end
 function generate_uniforms_string( uniform_list,texture_list )
     local uniform_string=""
@@ -321,7 +321,7 @@ function generate_uniforms_string( uniform_list,texture_list )
     end
     if texture_list~=nil then
         for i,v in ipairs(texture_list) do
-            uniform_string=uniform_string..generate_uniform_string({"sampler2D",v[2]})
+            uniform_string=uniform_string..generate_uniform_string({type="sampler2D",name=v.name})
         end
     end
     return uniform_string
@@ -329,9 +329,16 @@ end
 function update_uniform( shader,utype,name,value_table )
     local types={
         int=shader.set_i,
-        float=shader.set
+        float=shader.set,
+        vec2=shader.set,
+        vec3=shader.set,
+        vec4=shader.set
     }
-    types[utype](shader,name,value_table[name])
+    if type(value_table[name])=="table" then
+        types[utype](shader,name,unpack(value_table[name]))
+    else
+        types[utype](shader,name,value_table[name])
+    end
 end
 function init_draw_field(draw_string,settings)
     settings=settings or {}
@@ -431,8 +438,8 @@ void main(){
         draw_shader:use()
         texture:use(0,0,0)
         for i,v in ipairs(settings.textures or {}) do
-            v[1]:use(i)
-            draw_shader:set_i(v[2],i)
+            v.texture:use(i)
+            draw_shader:set_i(v.name,i)
         end
         draw_shader:set_i('tex_main',0)
         draw_shader:draw_quad()
@@ -441,8 +448,8 @@ void main(){
         draw_shader:use()
         for i,v in ipairs(uniform_list) do
             --todo more formats!
-            if tbl[v[2]]~=nil then
-                update_uniform(draw_shader,v[1],v[2],tbl)
+            if tbl[v.name]~=nil then
+                update_uniform(draw_shader,v.type,v.name,tbl)
             end
         end
     end
@@ -504,7 +511,7 @@ out vec4 pos_out;
 #line __LINE__ 99
 void main()
 {
-    vec2 normed=(position.xy/vec2(1024/4))*2-vec2(1,1);
+    vec2 normed=(position.xy/rez)*2-vec2(1,1);
     normed.y=-normed.y;
     gl_Position.xy = normed;//mod(normed,vec2(1,1));
     gl_PointSize=1;
@@ -579,9 +586,9 @@ uniform_string,draw_string)
         for i,v in ipairs(attributes) do
             v.attr_buffer:use()
             if v.is_int then
-                draw_shader:push_iattribute(0,v.pos_idx,v.count or 4) --TODO type,stride
+                draw_shader:push_iattribute(v.offset or 0,v.pos_idx,v.count or 4,v.type,v.stride)
             else
-                draw_shader:push_attribute(0,v.pos_idx,v.count or 4)--TODO type,stride
+                draw_shader:push_attribute(v.offset or 0,v.pos_idx,v.count or 4,v.type,v.stride)
             end
         end 
 
@@ -598,8 +605,8 @@ uniform_string,draw_string)
         draw_shader:use()
         for i,v in ipairs(uniform_list) do
             --todo more formats!
-            if tbl[v[2]]~=nil then
-                update_uniform(draw_shader,v[2],tbl)
+            if tbl[v.name]~=nil then
+                update_uniform(draw_shader,v.type,v.name,tbl)
             end
         end
     end
@@ -632,6 +639,9 @@ draw_agents=init_draw_agents([==[
 {
     attributes={
         {pos_idx=1,name="agent_color",buffer=agents_color}
+    },
+    uniforms={
+        {name="rez",type="vec2"},
     },
     offscreen=true,
 })
@@ -677,12 +687,12 @@ draw_field=init_draw_field([==[
 
 ]==],{
     uniforms={
-        {"int","draw_layer"},
-        {"float","agent_opacity"},
-        {"float","agent_gamma"},
-        {"float","agent_iterations"},
+        {type="int",  name="draw_layer"},
+        {type="float",name="agent_opacity"},
+        {type="float",name="agent_gamma"},
+        {type="float",name="agent_iterations"},
     },
-    textures={{draw_agents.tex_offscreen,"tex_agents"}}
+    textures={{texture=draw_agents.tex_offscreen,name="tex_agents"}}
 })
 end
 
@@ -881,13 +891,15 @@ function rotate( x,y,angle )
   return xnew,ynew
 end
 function update_agents(  )
-    local max_speed=1
-    local max_speed_destroy=5
-    local move_mult=0.125 --or dt
-    local move_mult2=0.5
+    local force_ignore=1
+    local max_force_destroy=4
+
+    local move_mult=0.01 --or dt
+    local move_mult2=0.05
     local speed_mix=1
     local chance_min=0.00125
-    local lifetime_step=0.01
+    local lifetime_step=0.0001
+    local max_speed_destroy=1/move_mult
     --local gravity=0.5
 
     local i=1
@@ -906,20 +918,19 @@ function update_agents(  )
         cy=cy/lc
         ]]
 
-        local speed=math.sqrt(dx*dx+dy*dy)
-        local normed_speed=speed/max_speed_destroy
-
+        local cur_force=math.sqrt(dx*dx+dy*dy)
+        local cur_speed=math.sqrt(a.b*a.b+a.a*a.a)
 
         --print(i,a.r,a.g,dx,dy,speed)
         --at speed==max_speed chance=0.01
         --at speed==max_speed_destroy chance= 1
-        local chance=((speed-max_speed)/(max_speed_destroy-max_speed))*(1-chance_min)+chance_min
+        local chance=((cur_force-force_ignore)/(max_force_destroy-force_ignore))*(1-chance_min)+chance_min
         if chance<chance_min then
             chance=chance_min
         end
         --remove if too fast
         local remove=false
-        if ac.a>1 then
+        if ac.a>1 or cur_speed>max_speed_destroy then
             remove=true
         end
         if chance>math.random() then
@@ -937,12 +948,20 @@ function update_agents(  )
             a.a=a.a+dy*move_mult2
             --]]
             -- [[
-            local cur_speed=math.sqrt(a.b*a.b+a.a*a.a)
+            
+
             local cur_speed_col=ac.r*ac.r
-            local col_val=math.exp(-cur_speed_col/40000)
-            cur_speed=cur_speed/max_speed_destroy
+            local color_spread=180
+            local col_val=math.exp(-cur_speed_col/color_spread*color_spread)
+            --cur_speed=cur_speed/max_speed_destroy
             --cur_speed=(cur_speed-max_speed)/max_speed_destroy
+            -- [[
             if cur_speed<0 then cur_speed=0 end
+            if cur_speed>1 then cur_speed=1 end
+            cur_speed=1-math.pow(1-cur_speed,0.4)
+            --]]
+            --cur_speed=cur_speed/math.sqrt(1+cur_speed*cur_speed)
+            --cur_speed=cur_speed*max_speed_destroy
             --idea is that when speed is close to max, force is backwards
             dx,dy=rotate(dx,dy,math.pi*cur_speed*col_val)
             a.b=a.b+dx*move_mult2
@@ -982,11 +1001,12 @@ function update()
     if config.__change_events.any then
         draw_field.update_uniforms(config)
     end
-    draw_field.update_uniforms{agent_iterations=iterations}
+    draw_field.update_uniforms{agent_iterations=iterations,rez={map_w,map_h}}
     if config.sim_agents then
         update_agents()
     end
     if config.draw_trails then
+        draw_agents.update_uniforms{rez={map_w,map_h}}
         draw_agents.draw(agent_count)
         iterations=iterations+1
     end

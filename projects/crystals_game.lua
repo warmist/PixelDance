@@ -36,9 +36,10 @@
 			- stuff like some structures must be placed in a grid now there are multiple choices
 		* resources
 			- energy-like - has no direct map location. "alive" tiles can store for no cost
-				- transport energy e.g. diagonally 
+				- transport energy e.g. diagonally
 			- matter-like - takes up space. storages have dedicated place for it. Movement is difficult?
 			- research-like ?
+				- could be connection limited (i.e. must have N connections to "grow")
 			- supply-like (i.e like in rts supplies) - max unit support
 				- supply pixels e.g. two up, one right (thus enforce some sort of structure)
 		* interactions
@@ -59,7 +60,7 @@ require "common"
 local ffi=require "ffi"
 local w=256
 local h=256
-local cl_kernel,init_grid=opencl.make_program[==[
+local cl_kernels=opencl.make_program[==[
 #line __LINE__
 #define W 256
 #define H 256
@@ -240,8 +241,8 @@ void main()
 local time=0
 local size=ffi.new("size")
 function init_buffer(  )
-	init_grid:set(0,buffers[1])
-	init_grid:run(w*h)
+	cl_kernels.init_grid:set(0,buffers[1])
+	cl_kernels.init_grid:run(w*h)
 end
 init_buffer()
 function update(  )
@@ -251,14 +252,15 @@ function update(  )
 	--setup stuff
 	size.w=w
 	size.h=h
-	--cl_kernel:set(2,size)
-	cl_kernel:set(0,buffers[1])
-	cl_kernel:set(1,buffers[2])
-	cl_kernel:set(2,display_buffer)
-	cl_kernel:set(3,time)
+	local update_grid=cl_kernels.update_grid
+	--update_grid:set(2,size)
+	update_grid:set(0,buffers[1])
+	update_grid:set(1,buffers[2])
+	update_grid:set(2,display_buffer)
+	update_grid:set(3,time)
 	--  run kernel
 	display_buffer:aquire()
-	cl_kernel:run(w*h)
+	update_grid:run(w*h)
 	display_buffer:release()
 	--opengl draw
 	--  read from cl
