@@ -884,7 +884,7 @@ int main(int argc, char** argv)
         }
         ImGui::SFML::Update(window, deltaClock.restart());
         auto& io = ImGui::GetIO();
-        if (!io.WantCaptureMouse)
+        if (!io.WantCaptureMouse && project_exists)
         {
             auto& style = ImGui::GetStyle();
             style.Alpha = default_alpha*0.1;
