@@ -133,7 +133,7 @@ int lua_run_kernel(lua_State* L)
     global_size = ceil(count / (float)local_size) * local_size;
     err=clEnqueueNDRangeKernel(queue, *kernel, 1, NULL, &global_size, &local_size, 0, NULL, NULL);
     ERRCHECK(err, "Failed to enqueue kernel");
-    clFinish(queue);//TODO optional?
+    //clFinish(queue);//TODO optional?
     return 0;
 }
 int lua_build_program(lua_State* L)
@@ -216,6 +216,7 @@ int set_buffer(lua_State* L)
     size_t offset = luaL_optinteger(L, 4, 0);
     auto err=clEnqueueWriteBuffer(queue, *buf, true, offset, size, data, 0, nullptr, nullptr);
     ERRCHECK(err, "Failed to enqueue write");
+    clFinish(queue);
     return 0;
 }
 int get_buffer(lua_State* L)
@@ -234,6 +235,7 @@ int get_buffer(lua_State* L)
     size_t offset = luaL_optinteger(L, 4, 0);
     auto err=clEnqueueReadBuffer(queue, *buf, true, offset, size, data, 0, nullptr, nullptr);
     ERRCHECK(err, "Failed to enqueue read");
+    clFinish(queue); //TODO: might actually use events here for waiting for data when you need
     return 0;
 }
 template <typename T>

@@ -64,9 +64,33 @@ static int set_texture_data(lua_State* L)
 	auto format = luaL_optint(L, arg++, 0);
 
 	auto f = formats[format];
-	//GL_TRAP;
+	GL_TRAP;
 	glTexImage2D(GL_TEXTURE_2D, 0, f.internal_format, w, h, 0, f.format, f.type, data);
-	//GL_TRAP;
+	GL_TRAP;
+	return 0;
+}
+
+static int set_texture_subdata(lua_State* L)
+{
+	auto s = check(L, 1);
+	const void* data = nullptr;
+	int arg = 3;
+	if ((lua_type(L, 2) == 10) /*cdata*/ || (lua_type(L, 2) == LUA_TLIGHTUSERDATA))
+	{
+		data = lua_topointer(L, 2); //TODO: check pointer?
+	}
+	else
+		arg = 2;
+	auto w = luaL_checkint(L, arg++);
+	auto h = luaL_checkint(L, arg++);
+	auto format = luaL_optint(L, arg++, 0);
+	auto xoff = luaL_optint(L, arg++,0);
+	auto yoff = luaL_optint(L, arg++,0);
+
+	auto f = formats[format];
+	GL_TRAP;
+    glTexSubImage2D(GL_TEXTURE_2D, 0, xoff, yoff, w, h, f.format, f.type, data);
+	GL_TRAP;
 	return 0;
 }
 static int get_texture_data(lua_State* L)
@@ -79,6 +103,36 @@ static int get_texture_data(lua_State* L)
 	auto f = formats[format];
 	glGetTexImage(GL_TEXTURE_2D, 0, f.format, f.type, data);
 	//GL_TRAP;
+	return 0;
+}
+static int print_debug_info(lua_State* L)
+{
+#define INFO_LIST\
+	X(GL_TEXTURE_WIDTH)\
+	X(GL_TEXTURE_HEIGHT)\
+	X(GL_TEXTURE_INTERNAL_FORMAT)\
+	X(GL_TEXTURE_RED_SIZE)\
+	X(GL_TEXTURE_GREEN_SIZE)\
+	X(GL_TEXTURE_BLUE_SIZE)\
+	X(GL_TEXTURE_ALPHA_SIZE)
+
+	GLenum info[] = {
+#define X(v) v,
+		INFO_LIST
+#undef X
+	};
+	const char* names[] = {
+#define X(v) #v,
+		INFO_LIST
+#undef X
+	};
+	printf("Texture debug:\n");
+	for (size_t i = 0; i < sizeof(info) / sizeof(GLenum); i++)
+	{
+		GLint value;
+		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, info[i], &value);
+		printf("\t%s:%d (0x%x)\n", names[i], value, value);
+	}
 	return 0;
 }
 GLuint fbuffer = -1;
@@ -141,8 +195,15 @@ static int make_lua_texture(lua_State* L)
 		lua_pushcfunction(L, set_texture_data);
 		lua_setfield(L, -2, "set");
 
+		lua_pushcfunction(L, set_texture_subdata);
+		lua_setfield(L, -2, "set_sub");
+
 		lua_pushcfunction(L, get_texture_data);
 		lua_setfield(L, -2, "read");
+
+
+		lua_pushcfunction(L, print_debug_info);
+		lua_setfield(L, -2, "debug");
 
 		lua_pushcfunction(L, set_render_target);
 		lua_setfield(L, -2, "render_to");
