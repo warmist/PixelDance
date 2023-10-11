@@ -7,7 +7,7 @@ require "common"
 
 local win_w=1024
 local win_h=1024
-local oversample=1
+local oversample=1/4
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
 
@@ -56,10 +56,12 @@ function resize_agents(agent_count)
 end
 resize_agents(max_agent_count)
 
-field_texture=textures:Make()
-field_texture:use(0)
-field_texture:set(map_w,map_h,FLTA_PIX)
-local display_buffer=opencl.make_buffer_gl(field_texture)
+if field_texture==nil then
+    field_texture=textures:Make()
+    field_texture:use(0)
+    field_texture:set(map_w,map_h,FLTA_PIX)
+    display_buffer=opencl.make_buffer_gl(field_texture)
+end
 
 kernels=opencl.make_program
 [==[
@@ -129,8 +131,8 @@ __kernel void advance_particles(__global float8* input,
         	old_vec/=length(old_vec);
         	old_vec*=max_speed;
         }
-        agent_data.s23=lorenz_addition(old_vec,rotate2d(add_speed,M_PI*1*(length(old_vec)/max_speed)),max_speed);
-        //agent_data.s23=lorenz_addition(old_vec,add_speed,max_speed);
+        //agent_data.s23=lorenz_addition(old_vec,rotate2d(add_speed,M_PI*2*(length(old_vec)/max_speed)),max_speed);
+        agent_data.s23=lorenz_addition(old_vec,add_speed,max_speed);
         //agent_data.s23=old_vec+add_speed;
 
 		//agent_data.s23+=rotate2d(field.s01*field_mult,M_PI*2*old_speed*col_variation);
@@ -294,6 +296,9 @@ function init_agents(  )
 	--]]
 end
 function update_agents(  )
+    if agent_count==0 then
+        return
+    end
 	local k=kernels.advance_particles
 	k:set(0,cl_agent_buffers[1])
 	k:set(1,cl_agent_buffers[2])
@@ -583,7 +588,7 @@ draw_agents=init_draw_agents([==[
     //color=vec4(palette(atan(pos_out.w,pos_out.z),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
     //color=vec4(palette(length(pos_out.wz),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
     //color=vec4(agent_color.xyz,1);
-    float life_min=0.1;
+    float life_min=0.8;
     float life_max=1;
     float smoothness=0.05;
     float life=smoothstep(life_min-smoothness,life_min+smoothness,lifetime)-smoothstep(life_max-smoothness,life_max+smoothness,lifetime);
@@ -675,7 +680,7 @@ void main(){
     float len=min(length(data.xy),1);
     vec4 out_col;
     if (draw_layer==0)
-        out_col=vec4(palette(angle,vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75))*len,1);
+        out_col=vec4(palette(angle,vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
     else if(draw_layer==1)
     {
         len=1-len;
@@ -771,6 +776,7 @@ function default_field_value( x,y )
 	--return Point(math.cos(default_angle),math.sin(default_angle))*config.outside_strength
 	local P=Point(x,y)
 	local C=Point(map_w/2,map_h/2)
+    --local C=Point(map_w/2,-map_h/2)
 	--local C=Point(-map_w/2,-map_h/2)
 	local D=C-P
 	D:normalize()
@@ -778,14 +784,46 @@ function default_field_value( x,y )
 	--return Point(D[2],-D[1])*config.outside_strength,0.5
 	return Point(D[1],D[2])*config.outside_strength,0.5
 end
+function ring_function( dr,da,count,color,angle_offset,rotation)
+    local s=exp_falloff(dr)*config.tool_scale
+    local bias=1 --TODO
+    local force=Point(s*(math.cos(da*count+angle_offset)*0.5+0.5),s*(math.sin(da*count+angle_offset)*0.5+0.5))
+    force=force:rotate(rotation or 0)
+    return Point(force[1],force[2],color),s
+end
+function global_field_value( x,y )
+    local rings={
+        {count=4,radius=0.3,color=0,aoffset=0},
+        {count=8,radius=0.4,color=0.9,aoffset=math.pi*2*5/8,rotation=math.pi/2},
+        {count=16,radius=0.5,color=0.1,aoffset=-math.pi*2*7/16,rotation=-math.pi/4},
+        {count=32,radius=0.6,color=0.75,aoffset=math.pi*2*13/32,rotation=math.pi/4},
+    }
+    local r=math.sqrt(x*x+y*y)
+    local a=math.atan2(y,x)
+    local wsum=0
+    local ret=Point(0,0,0)
+    for i,v in ipairs(rings) do
+
+        local dr=math.abs(r-v.radius)
+        if dr<config.influence_size then
+            local da=a
+            local vr,w=ring_function(dr/config.influence_size,da,v.count,v.color,v.aoffset,v.rotation)
+            ret=ret+vr
+            wsum=wsum+w
+        end
+    end
+    ret[3]=ret[3]/#rings
+    return ret,wsum
+end
 function init_tools(  )
+    --[==[
 	--[[local tool_list={
 		{center=Point(0.5,0.5),power=-config.tool_scale,tool_fun=tool_orthogonal,scale_fun=quadratic_scaling},
 		{center=Point(0.75,0.5),power=config.tool_scale,tool_fun=tool_direct,scale_fun=quadratic_scaling},
 	}--]]
 	local tool_list={}
-	--[ [ total random
-	local offset=0.1;
+	--[[ total random
+	local offset=0.35;
 	for i=1,config.blob_count do
 		local power1=math.random(0,1)*2-1
 		table.insert(tool_list,{
@@ -860,10 +898,23 @@ function init_tools(  )
         buf:set(x,y,{value[1],value[2],0,color_value/weight_sum})
     end
     end
-
+    --]==]
+    local default_influence=.001
+    local buf=make_flt_buffer(map_w,map_h)
+    local cx=map_w/2
+    local cy=map_h/2
+    for x=0,map_w-1 do
+    for y=0,map_h-1 do
+        local value_g,color_g=default_field_value(x,y)
+        local value,wsum=global_field_value((x-cx)/(map_w/2),(y-cy)/(map_h/2))--*(y/map_h)
+        local color=value[3]
+        value=(value+value_g*default_influence)/(wsum+default_influence)
+        buf:set(x,y,{value[1],value[2],0,color})
+    end
+    end
     __unbind_buffer()
 
-    field_texture:use(1)
+    field_texture:use(0)
 	field_texture:set_sub(buf.d,buf.w,buf.h,FLTA_PIX)
 
 end
@@ -885,27 +936,30 @@ function update()
     __clear()
     imgui.Begin("Magic system test")
     draw_config(config)
+    for i=1,1 do
+        if config.sim_agents then
+            update_agents()
+            agent_iteration=agent_iteration+1
+        end
+        if config.draw_trails then
+        	draw_agents.shader:use()
+        	draw_agents.update_uniforms({rez={map_w,map_h},lifetime=agent_iteration/config.max_agent_iterations})
+        	gl_agent_buffers[1]:use()
+        	--push_attribute (offset/data,id/name,num_of_id,type,stride)
+        	draw_agents.shader:push_attribute(0,1,4,GL_FLOAT,8*4)
+        	draw_agents.shader:push_attribute(4*4,2,4,GL_FLOAT,8*4)
+        	--draw_agents.shader:draw_points(0,agent_count,4)
+            draw_agents.draw(agent_count)
+        	__unbind_buffer()
+        	
+            iterations=iterations+1
+        end
+
+    end
     if config.__change_events.any then
         draw_field.update_uniforms(config)
     end
     draw_field.update_uniforms{agent_iterations=iterations,rez={map_w,map_h}}
-    if config.sim_agents then
-        update_agents()
-        agent_iteration=agent_iteration+1
-    end
-    if config.draw_trails then
-    	draw_agents.shader:use()
-    	draw_agents.update_uniforms({rez={map_w,map_h},lifetime=agent_iteration/config.max_agent_iterations})
-    	gl_agent_buffers[1]:use()
-    	--push_attribute (offset/data,id/name,num_of_id,type,stride)
-    	draw_agents.shader:push_attribute(0,1,4,GL_FLOAT,8*4)
-    	draw_agents.shader:push_attribute(4*4,2,4,GL_FLOAT,8*4)
-    	--draw_agents.shader:draw_points(0,agent_count,4)
-        draw_agents.draw(agent_count)
-    	__unbind_buffer()
-    	
-        iterations=iterations+1
-    end
     draw_field.draw()
     if imgui.Button("Save") then
         save_img()
