@@ -691,7 +691,7 @@ void main(){
 
 
         data2/=agent_iterations;
-        //data2.xyz=log(data2.xyz+vec3(1));
+        data2.xyz=log(data2.xyz+vec3(1));
         //data2*=agent_gamma;
         data2.xyz=pow(data2.xyz,vec3(agent_gamma));
 
@@ -782,21 +782,21 @@ function default_field_value( x,y )
 	D:normalize()
 
 	--return Point(D[2],-D[1])*config.outside_strength,0.5
-	return Point(D[1],D[2])*config.outside_strength,0.5
+	return Point(-D[1],-D[2])*config.outside_strength,0.5
 end
 function ring_function( dr,da,count,color,angle_offset,rotation)
-    local s=exp_falloff(dr)*config.tool_scale
-    local bias=1 --TODO
-    local force=Point(s*(math.cos(da*count+angle_offset)*0.5+0.5),s*(math.sin(da*count+angle_offset)*0.5+0.5))
+    local s=exp_scaling(dr*config.influence_size)*config.tool_scale
+    local bias=0 --TODO
+    local force=Point(s*(math.cos(da*count+angle_offset)+bias),s*(math.sin(da*count+angle_offset)+bias))
     force=force:rotate(rotation or 0)
     return Point(force[1],force[2],color),s
 end
 function global_field_value( x,y )
     local rings={
-        {count=4,radius=0.3,color=0,aoffset=0},
-        {count=8,radius=0.4,color=0.9,aoffset=math.pi*2*5/8,rotation=math.pi/2},
-        {count=16,radius=0.5,color=0.1,aoffset=-math.pi*2*7/16,rotation=-math.pi/4},
-        {count=32,radius=0.6,color=0.75,aoffset=math.pi*2*13/32,rotation=math.pi/4},
+        {count=7,radius=0.3,color=0.5,aoffset=0,rotation=math.pi/3},
+        {count=4,radius=0.4,color=0.9,aoffset=0,rotation=-math.pi/2,power=0.4},
+        {count=7,radius=0.6,color=0.1,aoffset=math.pi/4,rotation=-math.pi/3,power=0.2},
+        --{count=7,radius=0.8,color=0.75,aoffset=0,rotation=-math.pi/3},
     }
     local r=math.sqrt(x*x+y*y)
     local a=math.atan2(y,x)
@@ -808,7 +808,7 @@ function global_field_value( x,y )
         if dr<config.influence_size then
             local da=a
             local vr,w=ring_function(dr/config.influence_size,da,v.count,v.color,v.aoffset,v.rotation)
-            ret=ret+vr
+            ret=ret+vr*(v.power or 1)
             wsum=wsum+w
         end
     end
