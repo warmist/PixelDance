@@ -22,7 +22,7 @@ require "common"
 
 local win_w=1024
 local win_h=1024
-local oversample=1/2
+local oversample=1
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
 

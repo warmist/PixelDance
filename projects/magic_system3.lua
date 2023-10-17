@@ -1,13 +1,52 @@
 --[[
 	see magic_system2.lua
 	but in opencl
+    ISSUES:
+        * tonemapping/log-normed/etc dont change the visuals that much
+        * other coloring ideas needed
+        * META - many different configs possible how to track?
+    IDEAS:
+        * pressure - probably needs fork
+            basically limit how much crowding can happen
+        * animate color spread param
+        * color spread by placing bigger points (same integrated light amount)
+    IDEAS IMPLEMENTED:
+        $1 grouped spawning
+        $2 movement
+            $ second order flowfield
+            $2.1 speed of light constrain
+            $2.2 speed of light constrain and rotate by f(current_normalized_speed)
+            $2.3 simple max speed(s)
+            $2.4 normed speed stepping
+        $3 color spread
+            $3.1 color spread by force influence
+            $3.2 color spread by rotation
+
+        $color
+            $ CIEXYZ color system
+            $ blackbody with "realistic" atmospheric source
+            $ lognormed intensity
+            $ Reinhard tonemapping
+            $ custom rgb full saturate
+            $ limit noise by placing point only when they moved somewhat
+        $flowfield gen
+            $global
+                $ source/sink at (center/somepoint)
+                $ curl/anticurl at -"-
+            $features
+                $ source/sink/curl/anticulr at point
+            $ falloff
+                $ linear
+                $ square
+                $ exp
+
 --]]
 
 require "common"
 
 local win_w=1024
 local win_h=1024
-local oversample=1/4
+local oversample=1
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
 
@@ -26,13 +65,14 @@ config=make_config({
 
     {"seed",0,type="int",min=0,max=10000000},
 
-    {"max_agent_iterations",2000,type="int",min=10,max=10000},
+    {"max_agent_iterations",300,type="int",min=10,max=10000},
     {"field_mult",0.05,type="float",min=0,max=2},
     {"speed_mult",1,type="float",min=0,max=2},
     {"color_spread",10,type="float",min=0,max=25},
 
     {"draw_layer",0,type="int",min=0,max=2,watch=true},
-    {"agent_whitepoint",1,type="floatsci",min=-8,max=1,watch=true},
+    {"agent_mult",1,type="floatsci",min=-8,max=8,watch=true},
+    {"agent_whitepoint",1,type="floatsci",min=-0.001,max=10,watch=true},
     {"agent_gamma",1,type="float",min=0,max=2,watch=true},
 },config)
 
@@ -104,7 +144,10 @@ __kernel void advance_particles(__global float8* input,
 		float4 color=(float2)(input[i*8+2],input[i*8+3]);
 		*/
 		float4 field=read_imagef(read_tex,default_sampler,agent_data.s01/(float2)(map_w,map_h));
+        //normal stepping
 		agent_data.s01+=agent_data.s23*speed_mult;
+        //$ 2.4 normed speed stepping
+        //agent_data.s01+=normalize(agent_data.s23)*speed_mult;
 
 		if(agent_data.s0<0 || agent_data.s0>map_w || agent_data.s1<0 ||agent_data.s1>map_h)
 			agent_data.s7=-1;
@@ -117,22 +160,34 @@ __kernel void advance_particles(__global float8* input,
 		float old_speed=length(agent_data.s23)*col_variation;
 		old_speed=clamp(old_speed,0.0f,1.0f);
         old_speed=1-pow(1-old_speed,0.4f);
-        float2 add_speed=field.s01*field_mult*col_variation;
+
+        //$3.1 color spread by force influence
+        //float2 add_speed=field.s01*field_mult*col_variation;
+        float2 add_speed=field.s01*field_mult;
+        
+
         float max_speed=10.0f;
         //float max_speed=10.0f;
+        float2 old_vec=agent_data.s23;
+        //$2.3 simple max speed(s)
         if(length(add_speed)>max_speed)
         {
         	add_speed/=length(add_speed);
         	add_speed*=max_speed;
         }
-        float2 old_vec=agent_data.s23;
         if(length(old_vec)>max_speed)
         {
         	old_vec/=length(old_vec);
         	old_vec*=max_speed;
         }
+        //$2.2 speed of light constrain and rotate by f(current_normalized_speed)
         //agent_data.s23=lorenz_addition(old_vec,rotate2d(add_speed,M_PI*2*(length(old_vec)/max_speed)),max_speed);
-        agent_data.s23=lorenz_addition(old_vec,add_speed,max_speed);
+        //$2.1 speed of light constrain
+        //agent_data.s23=lorenz_addition(old_vec,add_speed,max_speed);
+        //$3.2 color spread by rotation
+        agent_data.s23=lorenz_addition(old_vec,rotate2d(add_speed,col_variation*M_PI*2),max_speed);
+
+        //no constrain movement
         //agent_data.s23=old_vec+add_speed;
 
 		//agent_data.s23+=rotate2d(field.s01*field_mult,M_PI*2*old_speed*col_variation);
@@ -264,6 +319,7 @@ __kernel void init_agents(__global float8* output,__read_only image2d_t read_tex
 }
 ]==]
 function init_agents(  )
+    --$1 grouped spawning
 	agent_count=max_agent_count
 	local k=kernels.init_agents
 	display_buffer:aquire()
@@ -588,7 +644,7 @@ draw_agents=init_draw_agents([==[
     //color=vec4(palette(atan(pos_out.w,pos_out.z),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
     //color=vec4(palette(length(pos_out.wz),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
     //color=vec4(agent_color.xyz,1);
-    float life_min=0.8;
+    float life_min=0.5;
     float life_max=1;
     float smoothness=0.05;
     float life=smoothstep(life_min-smoothness,life_min+smoothness,lifetime)-smoothstep(life_max-smoothness,life_max+smoothness,lifetime);
@@ -691,11 +747,12 @@ void main(){
 
 
         data2/=agent_iterations;
+        #if 1
         data2.xyz=log(data2.xyz+vec3(1));
-        //data2*=agent_gamma;
+        #endif
         data2.xyz=pow(data2.xyz,vec3(agent_gamma));
 
-        out_col.xyz=tonemap(data2.xyz,agent_whitepoint,1);
+        out_col.xyz=tonemap(data2.xyz,agent_mult,agent_whitepoint);
         out_col.w=1;
 
         /*
@@ -718,6 +775,7 @@ void main(){
 {
 	uniforms={
 		{type="int",  name="draw_layer"},
+        {type="float",name="agent_mult"},
         {type="float",name="agent_whitepoint"},
         {type="float",name="agent_gamma"},
         {type="float",name="agent_iterations"},
@@ -775,14 +833,15 @@ local tool_falloff={
 function default_field_value( x,y )
 	--return Point(math.cos(default_angle),math.sin(default_angle))*config.outside_strength
 	local P=Point(x,y)
-	local C=Point(map_w/2,map_h/2)
-    --local C=Point(map_w/2,-map_h/2)
+	--local C=Point(map_w/2,map_h/2)
+    --local C=Point(0,map_h/2)
+    local C=Point(map_w/2,map_h*2)
 	--local C=Point(-map_w/2,-map_h/2)
 	local D=C-P
 	D:normalize()
 
-	--return Point(D[2],-D[1])*config.outside_strength,0.5
-	return Point(-D[1],-D[2])*config.outside_strength,0.5
+	return Point(D[2],-D[1])*config.outside_strength,0.5
+	--return Point(-D[1],-D[2])*config.outside_strength,0.5
 end
 function ring_function( dr,da,count,color,angle_offset,rotation)
     local s=exp_scaling(dr*config.influence_size)*config.tool_scale
@@ -793,10 +852,12 @@ function ring_function( dr,da,count,color,angle_offset,rotation)
 end
 function global_field_value( x,y )
     local rings={
-        {count=7,radius=0.3,color=0.5,aoffset=0,rotation=math.pi/3},
-        {count=4,radius=0.4,color=0.9,aoffset=0,rotation=-math.pi/2,power=0.4},
-        {count=7,radius=0.6,color=0.1,aoffset=math.pi/4,rotation=-math.pi/3,power=0.2},
-        --{count=7,radius=0.8,color=0.75,aoffset=0,rotation=-math.pi/3},
+        {count=4,radius=0.39,color=0.5,aoffset=0,rotation=math.pi/3,power=0.2},
+        {count=9,radius=0.4,color=0.9,aoffset=0,rotation=-math.pi/2,power=0.4},
+        {count=7,radius=0.43,color=0.1,aoffset=0,rotation=-math.pi/3,power=0.8},
+        {count=65,radius=0.52,color=0.9,aoffset=math.pi/2,rotation=math.pi,power=0.9},
+        {count=3,radius=0.55,color=0.1,aoffset=math.pi/4,rotation=-math.pi/4,power=0.8},
+        {count=3,radius=0.75,color=0.75,aoffset=0,rotation=-math.pi/3},
     }
     local r=math.sqrt(x*x+y*y)
     local a=math.atan2(y,x)
@@ -837,7 +898,7 @@ function init_tools(  )
 		})
 	end
 	--]]
-	--[[ 3 rings
+	-- [[ 3 rings
 	local rfun1=tool_functions[math.random(1,#tool_functions)]
 	local rfun2=tool_functions[math.random(1,#tool_functions)]
 	local sfun1=tool_falloff[math.random(1,#tool_falloff)]
@@ -849,33 +910,39 @@ function init_tools(  )
 	local power2=math.random(0,1)*2-1
 	for i=0,2 do
 		local angle=math.pi*2*(i/3)
+        local normed_i=i/2
 		table.insert(tool_list,{
 			center=Point(math.cos(angle)*rad1+0.5,math.sin(angle)*rad1+0.5),
 			power=config.tool_scale*power1,
 			tool_fun=rfun1,
 			scale_fun=sfun1,
-			color_value=0.8,
+			color_value=normed_i,
+            --color_value=0.8,
 		})
 	end
 
-	for i=0,5 do
-		local angle=math.pi*2*(i/6)+math.pi/12
+	for i=0,3 do
+		local angle=math.pi*2*(i/4)+math.pi/12
+        local normed_i=i/3
 		table.insert(tool_list,{
 			center=Point(math.cos(angle)*rad2+0.5,math.sin(angle)*rad2+0.5),
-			power=config.tool_scale*power2,
+			power=config.tool_scale*power2*0.2,
 			tool_fun=rfun2,
 			scale_fun=sfun2,
-			color_value=0.5,
+			--color_value=0.5,
+            color_value=1-normed_i,
 		})
 	end
-	for i=0,11 do
-		local angle=math.pi*2*(i/12)-math.pi/6
+	for i=0,6 do
+		local angle=math.pi*2*(i/7)-math.pi/6
+        local normed_i=i/6
 		table.insert(tool_list,{
 			center=Point(math.cos(angle)*rad3+0.5,math.sin(angle)*rad3+0.5),
-			power=config.tool_scale*power1,
+			power=config.tool_scale*power1*0.1,
 			tool_fun=rfun1,
 			scale_fun=sfun2,
-			color_value=0.2,
+			--color_value=0.2,
+            color_value=normed_i,
 		})
 	end
 	--]]
