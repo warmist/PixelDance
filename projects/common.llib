@@ -117,6 +117,7 @@ F_PIX=2
 FL_PIX=3
 U8_PIX=4
 U32_PIX=5
+U32_1C_PIX=6
 
 size_of_data={
 	[RGBA_PIX]=4*1,
@@ -125,6 +126,7 @@ size_of_data={
 	[FL_PIX]=4*2,
 	[U8_PIX]=1,
 	[U32_PIX]=4*4,
+	[U32_1C_PIX]=4*1,
 }
 
 make_image_buffer= make_buffer("rgba_pixel",RGBA_PIX,{0,0,0,255})
@@ -134,6 +136,7 @@ make_flt_half_buffer=make_buffer("float_half_pixel",FL_PIX,{0,0})
 make_char_buffer=make_buffer("uint8_t",U8_PIX,0)
 make_u32_buffer=make_buffer("uint_pixel",U32_PIX,{0,0,0,0})
 make_f4_buffer= make_buffer("float4",FLTA_PIX,{0,0,0,1})
+make_u32_1c_buffer= make_buffer("uint32_t",U32_1C_PIX,0)
 
 make_matrix=make_float_buffer
 function make_ident_matrix( w,h )

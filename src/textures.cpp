@@ -46,6 +46,7 @@ static const gl_tex_format formats[] = {
 	{ GL_RG32F,GL_RG,GL_FLOAT},
 	{ GL_R8,GL_RED,GL_UNSIGNED_BYTE},
 	{ GL_RGBA32UI, GL_RGBA_INTEGER, GL_UNSIGNED_INT},
+	{ GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT},
 };
 //if second arg is not ptr to data, create empty texture!
 static int set_texture_data(lua_State* L)

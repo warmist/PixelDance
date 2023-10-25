@@ -29,7 +29,10 @@
             $ Reinhard tonemapping
             $ custom rgb full saturate
             $ limit noise by placing point only when they moved somewhat
-        $flowfield gen
+        $ 5 flowfield gen
+            $ 5.1 pure random
+            $ 5.2 blocky random
+            $ blocky octtree random
             $global
                 $ source/sink at (center/somepoint)
                 $ curl/anticurl at -"-
@@ -68,14 +71,14 @@ config=make_config({
     {"max_agent_iterations",300,type="int",min=10,max=10000},
     {"field_mult",0.05,type="float",min=0,max=2},
     {"speed_mult",1,type="float",min=0,max=2},
+    {"intensity_cutoff",0.2,type="float",min=0,max=1},
     {"color_spread",10,type="float",min=0,max=25},
 
-    {"draw_layer",0,type="int",min=0,max=2,watch=true},
+    {"draw_layer",0,type="int",min=0,max=3,watch=true},
     {"agent_mult",1,type="floatsci",min=-8,max=8,watch=true},
     {"agent_whitepoint",1,type="floatsci",min=-0.001,max=10,watch=true},
     {"agent_gamma",1,type="float",min=0,max=2,watch=true},
 },config)
-
 
 AGENT_SIZE=4*8 --floats*(vec2 pos,vec2 speed,vec4 color)
 
@@ -132,7 +135,9 @@ float2 lorenz_addition(float2 v,float2 u,float light_speed)
 }
 __kernel void advance_particles(__global float8* input,
 	__global float8* output,__read_only image2d_t read_tex,int count,
-	float color_spread,float speed_mult,float field_mult,float map_w,float map_h)
+	float color_spread,float speed_mult,float field_mult,float map_w,float map_h
+    //,__read_only image2d_t last_frame
+    )
 {
 	int i=get_global_id(0);
 	if(i>=0 && i<count)
@@ -162,8 +167,8 @@ __kernel void advance_particles(__global float8* input,
         old_speed=1-pow(1-old_speed,0.4f);
 
         //$3.1 color spread by force influence
-        //float2 add_speed=field.s01*field_mult*col_variation;
-        float2 add_speed=field.s01*field_mult;
+        float2 add_speed=field.s01*field_mult*col_variation;
+        //float2 add_speed=field.s01*field_mult;
         
 
         float max_speed=10.0f;
@@ -181,11 +186,11 @@ __kernel void advance_particles(__global float8* input,
         	old_vec*=max_speed;
         }
         //$2.2 speed of light constrain and rotate by f(current_normalized_speed)
-        //agent_data.s23=lorenz_addition(old_vec,rotate2d(add_speed,M_PI*2*(length(old_vec)/max_speed)),max_speed);
+        agent_data.s23=lorenz_addition(old_vec,rotate2d(add_speed,M_PI*2*(length(old_vec)/max_speed)),max_speed);
         //$2.1 speed of light constrain
         //agent_data.s23=lorenz_addition(old_vec,add_speed,max_speed);
         //$3.2 color spread by rotation
-        agent_data.s23=lorenz_addition(old_vec,rotate2d(add_speed,col_variation*M_PI*2),max_speed);
+        //agent_data.s23=lorenz_addition(old_vec,rotate2d(add_speed,col_variation*M_PI*2),max_speed);
 
         //no constrain movement
         //agent_data.s23=old_vec+add_speed;
@@ -195,12 +200,7 @@ __kernel void advance_particles(__global float8* input,
 		//if(length(agent_data.s23)>1.0f)
 		//	agent_data.s23/=length(agent_data.s23);
 		output[i]=agent_data;
-		/*
-		output[i*8+0]=pos.x;
-		output[i*8+1]=pos.y;
-		output[i*8+2]=speed.x;
-		output[i*8+3]=speed.y;
-		*/
+
 	}
 }
 
@@ -295,23 +295,38 @@ __kernel void init_agents(__global float8* output,__read_only image2d_t read_tex
 	int i=get_global_id(0);
 	if(i>=0 && i+offset<max_count)
 	{
+        float t;
+		float8 agent_data;
+#if 0
+        //$ grouped circle placement
 		float2 center=(float2)(sx,sy);//(float2)(256.0f);
-		float max_spread=25.0f;
+		float max_spread=5.0f;
 
 		float p1=sqrt(float_from_hash(lowbias32(seed+i)))*max_spread;
 		float p2=float_from_hash(lowbias32(seed*8+i*1377))*M_PI*2;
 
 		float p3=float_from_hash(lowbias32(seed*77+i*111));
 		float angle=((float)i/10000)*6.28318530718;
-		float8 agent_data;
 		//agent_data.s01=(float2)(256.f)+(float2)(cos(angle),sin(angle))*p;//*256.0f*0.5f;
 		//agent_data.s01=(float2)(p1,p2);
 		agent_data.s01=(float2)(cos(p2),sin(p2))*p1+(float2)(sx,sy);
 		agent_data.s23=(float2)(0,0);//(-cos(angle),-sin(angle));
 		float2 delta=center-agent_data.s01;
 		//float t=length(delta)/256.0f;(float)i/(float)count;
-		float t=length(delta)/max_spread;
+		t=length(delta)/max_spread;
 		t*=t;
+#else
+        //$ pure random placement
+        float p1=float_from_hash(lowbias32(seed+i))*sx;
+        float p2=float_from_hash(lowbias32(seed*8+i*1377))*sy;
+        float p3=float_from_hash(lowbias32(seed*77+i*111));
+        float p4=float_from_hash(lowbias32(seed*34+i*12))*M_PI*2;
+        t=p3;
+        float color_spread=0.0f;
+        agent_data.s01=(float2)(p1,p2);
+        //agent_data.s23=(float2)(cos(t*M_PI*2),sin(t*M_PI*2))*2.f;
+        agent_data.s23=(float2)(cos(p4),sin(p4))*((1-color_spread)+(1-t)*color_spread)*9.f;
+#endif
 		agent_data.s456=xyz_from_normed_waves(t)*D65_blackbody(t,6503.5);
 		agent_data.s7=t;
 		output[i+offset]=agent_data;
@@ -331,8 +346,14 @@ function init_agents(  )
 	local bundle_count=math.floor(max_agent_count/bundle_size)
 	for i=0,bundle_count-1 do
 		k:seti(3,math.random(0,9999999))
+        --[==[ for grouped
 		k:seti(4,math.random(0,map_w))
 		k:seti(5,math.random(0,map_h))
+        --]==]
+        -- [==[ for pure rand
+        k:seti(4,map_w)
+        k:seti(5,map_h)
+        --]==]
 		k:seti(6,i*bundle_size)
 		k:seti(7,bundle_size)
 		k:run(bundle_size)
@@ -644,13 +665,10 @@ draw_agents=init_draw_agents([==[
     //color=vec4(palette(atan(pos_out.w,pos_out.z),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
     //color=vec4(palette(length(pos_out.wz),vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
     //color=vec4(agent_color.xyz,1);
-    float life_min=0.5;
-    float life_max=1;
-    float smoothness=0.05;
-    float life=smoothstep(life_min-smoothness,life_min+smoothness,lifetime)-smoothstep(life_max-smoothness,life_max+smoothness,lifetime);
+    float life=lifetime;
     if(agent_color.w<0)
     	life=0;
-    color=vec4(agent_color.xyz*life,1);
+    color=vec4(agent_color.xyz*life,life);
     //color=vec4(palette(agent_color.x,vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);;
 ]==],
 {
@@ -741,7 +759,7 @@ void main(){
     {
         len=1-len;
         out_col=vec4(len,len,len,1);
-    }else
+    }else if(draw_layer==2)
     {
         vec4 data2=texture(tex_agents,normed);
 
@@ -768,6 +786,16 @@ void main(){
         col_agent*=l;
         out_col.xyz+=col_agent;
         */
+    } else
+    {
+        vec4 data2=texture(tex_agents,normed);
+        data2/=agent_iterations;
+        #if 1
+        data2.a=log(data2.a+1);
+        #endif
+        data2.a=pow(data2.a,agent_gamma);
+        float v=data2.a*exp(agent_mult);
+        out_col=vec4(palette(v,vec3(0.4),vec3(0.6,0.4,0.3),vec3(1,2,3),vec3(0.5,0.25,0.75)),1);
     }
     color=out_col;
 }
@@ -833,12 +861,18 @@ local tool_falloff={
 function default_field_value( x,y )
 	--return Point(math.cos(default_angle),math.sin(default_angle))*config.outside_strength
 	local P=Point(x,y)
-	--local C=Point(map_w/2,map_h/2)
+	local C=Point(map_w/2,map_h/2)
     --local C=Point(0,map_h/2)
-    local C=Point(map_w/2,map_h*2)
+    --local C=Point(map_w/2,map_h*2)
 	--local C=Point(-map_w/2,-map_h/2)
 	local D=C-P
-	D:normalize()
+    local l=D:len()
+	if l<0.000001 then
+        D=Point(0,0)
+    else
+        D:normalize()
+    end
+
 
 	return Point(D[2],-D[1])*config.outside_strength,0.5
 	--return Point(-D[1],-D[2])*config.outside_strength,0.5
@@ -850,14 +884,89 @@ function ring_function( dr,da,count,color,angle_offset,rotation)
     force=force:rotate(rotation or 0)
     return Point(force[1],force[2],color),s
 end
+random_field_table=random_field_table or {}
+function init_random_field( scale )
+    random_field_table.scale=scale
+
+    --no of elements = scale^2
+    for x=1,scale do
+    for y=1,scale do
+        random_field_table[x+y*scale]=Point(math.random()*2-1,math.random()*2-1,math.random())
+    end
+    end
+end
+function lookup_random( tbl,x,y )
+    --remap x,y in [-1,1] to [1,scale]
+    local sx=math.floor((x+1)*tbl.scale/2)+1
+    local sy=math.floor((y+1)*tbl.scale/2)+1
+    local value=tbl[sx+sy*tbl.scale]
+    return value
+end
+function fake_random( x,y )
+    --return math.sin(x*73.154+y*75.0185)
+    return math.sin(x*x*73.154+y*y*75.0185)
+end
+function random_field( x,y )
+    --return Point(fake_random(x,y),fake_random(x,y))*config.tool_scale
+    --$ 5.1 pure random
+    --sucks tbh
+    --return Point(math.random()*2-1,math.random()*2-1)*config.tool_scale
+    --$ 5.2 blocky random
+    return lookup_random(random_field_table,x,y)
+end
+function recursive_set_octree( buf,iter,max_iter,box )
+    box=box or {0,0,map_w-1,map_h-1}
+    --local rnd_val=Point(math.random()*2-1,math.random()*2-1,math.random())
+    local rnd_val=Point(math.random()*2-1,math.random()*2-1,math.random())*math.pow(2,-iter)
+    for x=box[1],box[3] do
+    for y=box[2],box[4] do
+        local val=buf:get(x,y)
+        if iter==0 then
+            local v=rnd_val+default_field_value(x,y)
+            val.r=v[1]
+            val.g=v[2]
+            val.a=v[3]
+        else
+            val.r=(val.r+rnd_val[1])/2
+            val.g=(val.g+rnd_val[2])/2
+            --val.r=rnd_val[1]
+            val.a=(val.a+rnd_val[3])/2
+        end
+    end
+    end
+    local sy=box[2]
+    local h=box[4]-sy
+    local my=sy+math.floor(h/2)
+    local hy=box[4]
+
+    local sx=box[1]
+    local w=box[3]-sx
+    local mx=sx+math.floor(w/2)
+    local hx=box[3]
+
+    local subboxes={
+        {sx,sy,mx,my},
+        {mx+1,sy,hx,my},
+        {sx,my+1,mx,hy},
+        {mx+1,my+1,hx,hy},
+    }
+    if iter>=max_iter then
+        return
+    end
+    for i=1,#subboxes do
+        if math.random()>0.1 or iter<3 then
+            recursive_set_octree(buf,iter+1,max_iter,subboxes[i])
+        end
+    end
+end
 function global_field_value( x,y )
     local rings={
-        {count=4,radius=0.39,color=0.5,aoffset=0,rotation=math.pi/3,power=0.2},
+        {count=3,radius=0.39,color=0.5,aoffset=0,rotation=math.pi/3,power=0.2},
         {count=9,radius=0.4,color=0.9,aoffset=0,rotation=-math.pi/2,power=0.4},
-        {count=7,radius=0.43,color=0.1,aoffset=0,rotation=-math.pi/3,power=0.8},
-        {count=65,radius=0.52,color=0.9,aoffset=math.pi/2,rotation=math.pi,power=0.9},
+        {count=27,radius=0.43,color=0.1,aoffset=0,rotation=-math.pi/3,power=0.8},
+        {count=9,radius=0.52,color=0.9,aoffset=math.pi/2,rotation=math.pi,power=0.9},
         {count=3,radius=0.55,color=0.1,aoffset=math.pi/4,rotation=-math.pi/4,power=0.8},
-        {count=3,radius=0.75,color=0.75,aoffset=0,rotation=-math.pi/3},
+        {count=27,radius=0.75,color=0.75,aoffset=0,rotation=-math.pi/3},
     }
     local r=math.sqrt(x*x+y*y)
     local a=math.atan2(y,x)
@@ -966,10 +1075,11 @@ function init_tools(  )
     end
     end
     --]==]
-    local default_influence=.001
     local buf=make_flt_buffer(map_w,map_h)
     local cx=map_w/2
     local cy=map_h/2
+    -- [==[
+    local default_influence=.001
     for x=0,map_w-1 do
     for y=0,map_h-1 do
         local value_g,color_g=default_field_value(x,y)
@@ -979,6 +1089,22 @@ function init_tools(  )
         buf:set(x,y,{value[1],value[2],0,color})
     end
     end
+    --]==]
+    --[==[
+    init_random_field(32)
+    for x=0,map_w-1 do
+    for y=0,map_h-1 do
+        local value_g,color_g=default_field_value(x,y)
+        local value,wsum=random_field((x-cx)/(map_w/2),(y-cy)/(map_h/2))--*(y/map_h)
+        --TODO: some better color value?
+        value=(value*(1-config.outside_strength)*config.tool_scale+value_g*config.outside_strength)
+        buf:set(x,y,{value[1],value[2],0,value[3]})
+    end
+    end
+    --]==]
+    --[==[
+    recursive_set_octree(buf,0,6)
+    --]==]
     __unbind_buffer()
 
     field_texture:use(0)
@@ -998,6 +1124,7 @@ function reset_agents(  )
     iterations=1
     agent_iteration=1
 end
+draw_field.update_uniforms(config)
 function update()
     __no_redraw()
     __clear()
@@ -1010,7 +1137,13 @@ function update()
         end
         if config.draw_trails then
         	draw_agents.shader:use()
-        	draw_agents.update_uniforms({rez={map_w,map_h},lifetime=agent_iteration/config.max_agent_iterations})
+            local actual_lifetime=agent_iteration/config.max_agent_iterations
+            if actual_lifetime<config.intensity_cutoff then
+                actual_lifetime=0
+            else
+                actual_lifetime=1
+            end
+        	draw_agents.update_uniforms({rez={map_w,map_h},lifetime=actual_lifetime})
         	gl_agent_buffers[1]:use()
         	--push_attribute (offset/data,id/name,num_of_id,type,stride)
         	draw_agents.shader:push_attribute(0,1,4,GL_FLOAT,8*4)

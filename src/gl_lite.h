@@ -82,7 +82,9 @@ distribute, and modify this file as you see fit.
 #define GL_RG32F                          0x8230
 #define GL_RG                             0x8227
 #define GL_RGBA32UI                       0x8D70
+#define GL_R32UI                          0x8236
 #define GL_RGBA_INTEGER                   0x8D99
+#define GL_RED_INTEGER                    0x8D94
 #define GL_CLAMP_VERTEX_COLOR_ARB         0x891A
 #define GL_CLAMP_FRAGMENT_COLOR_ARB       0x891B
 #define GL_CLAMP_READ_COLOR_ARB           0x891C
