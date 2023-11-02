@@ -238,6 +238,20 @@ int get_buffer(lua_State* L)
     clFinish(queue); //TODO: might actually use events here for waiting for data when you need
     return 0;
 }
+int copy_to_buffer(lua_State* L)
+{
+    auto buf1 = check_mem(L, 1);
+    auto buf2 = check_mem(L, 2);
+    size_t size = luaL_checkinteger(L, 3);
+    
+    size_t offset1 = luaL_optinteger(L, 4, 0);
+    size_t offset2 = luaL_optinteger(L, 5, 0);
+
+    auto err = clEnqueueCopyBuffer(queue, *buf1, *buf2, offset1, offset2, size, 0, nullptr, nullptr);
+    ERRCHECK(err, "Failed to enqueue copy");
+    clFinish(queue); //TODO: might actually use events here for waiting for data when you need
+    return 0;
+}
 template <typename T>
 int fill_buffer(lua_State* L)
 {
@@ -383,6 +397,9 @@ int lua_create_buffer(lua_State* L)
 
         lua_pushcfunction(L, fill_buffer<float>);
         lua_setfield(L, -2, "fill");
+
+        lua_pushcfunction(L, copy_to_buffer);
+        lua_setfield(L, -2, "copy_to");
 
         lua_pushcfunction(L, fill_buffer<int>);
         lua_setfield(L, -2, "fill_i");

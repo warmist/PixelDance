@@ -117,6 +117,8 @@ CL_TYPE_LIST
                 void* ptr,uint32_t num_events_in_wait_list,const cl_event* event_wait_list,cl_event* event)\
     CLE(int32_t,    clEnqueueFillBuffer,cl_command_queue command_queue, cl_mem  buffer, const void* pattern,size_t  pattern_size, size_t  offset, size_t  size, \
                 uint32_t num_events_in_wait_list,const cl_event* event_wait_list, cl_event* event)\
+    CLE(int32_t,    clEnqueueCopyBuffer, cl_command_queue command_queue, cl_mem src_buffer, cl_mem dst_buffer, size_t src_offset, size_t  dst_offset, size_t size,\
+                uint32_t num_events_in_wait_list,const cl_event* event_wait_list, cl_event* event)\
     CLE(int32_t,    clGetKernelWorkGroupInfo,cl_kernel kernel,cl_device_id device,uint32_t param_name,\
                 size_t param_value_size,void* param_value,size_t* param_value_size_ret)\
     CLE(int32_t,    clEnqueueNDRangeKernel,cl_command_queue command_queue,cl_kernel kernel,uint32_t work_dim,const size_t* global_work_offset,\
@@ -128,6 +130,7 @@ CL_TYPE_LIST
     CLE(int32_t, clEnqueueAcquireGLObjects, cl_command_queue command_queue,uint32_t num_objects,const cl_mem* mem_objects,uint32_t num_events_in_wait_list,const cl_event* event_wait_list,cl_event* event)\
     CLE(int32_t, clEnqueueReleaseGLObjects, cl_command_queue command_queue,uint32_t num_objects,const cl_mem* mem_objects,uint32_t num_events_in_wait_list,const cl_event* event_wait_list,cl_event* event)\
     CLE(int32_t, clGetKernelInfo, cl_kernel kernel,uint32_t param_name,size_t param_value_size,void* param_value, size_t* param_value_size_ret)
+    
 
 #define CLE(ret, name, ...) typedef ret CL_DECL name##proc(__VA_ARGS__);name##proc * name;
 CLLITE_CL_LIST

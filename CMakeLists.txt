@@ -7,88 +7,126 @@ project (pixeldance CXX C)
 set(TARGET_NAME "pixeldance")
 
 if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
-   message(FATAL_ERROR "In-source builds are not allowed.")
+    message(FATAL_ERROR "In-source builds are not allowed.")
 endif()
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/")
 
+
+OPTION(BUILD_VERSION2 "Build second gen pixeldance" FALSE)
 #dependancies
-set(SFML_STATIC_LIBRARIES TRUE)
-FIND_PACKAGE( SFML 2.5 COMPONENTS graphics window system)
 
 SET(IMGUI "../imgui" CACHE PATH "Path to imgui")
-add_definitions(-DIMGUI_USER_CONFIG="imconfig-SFML.h")
+    
+if(BUILD_VERSION2)
 
+else()
+    add_definitions(-DIMGUI_USER_CONFIG="imconfig-SFML.h")
+    set(SFML_STATIC_LIBRARIES TRUE)
+    FIND_PACKAGE( SFML 2.5 COMPONENTS graphics window system)
+endif()
 SET(LUA "../luajit" CACHE PATH "Path to lua")
 
 
-set(CMAKE_INSTALL_OPENMP_LIBRARIES TRUE)
-set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION .)
-include(InstallRequiredSystemLibraries)
+#set(CMAKE_INSTALL_OPENMP_LIBRARIES TRUE) borked?
+#set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION .)
+#include(InstallRequiredSystemLibraries)
 
-message(STATUS OPENMP: ${MSVC_OPENMP_DIR})
+#message(STATUS OPENMP: ${MSVC_OPENMP_DIR})
 
 option(EMBED_ASSETS "pack assets into binary" OFF)
 if(EMBED_ASSETS)
-  include(EmbedFileFTO)
-  embed_file("${PROJECT_SOURCE_DIR}/assets/cp437_12x12.png")
+    include(EmbedFileFTO)
+    embed_file("${PROJECT_SOURCE_DIR}/assets/cp437_12x12.png")
 else()
-  set(EMBEDDED_HDRS)
-  set(EMBEDDED_LIBS)
-  add_definitions(-DNO_EMBEDS)
+    set(EMBEDDED_HDRS)
+    set(EMBEDDED_LIBS)
+    add_definitions(-DNO_EMBEDS)
 endif()
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+if(BUILD_VERSION2)
+find_package(Vulkan REQUIRED) 
+endif()
 
+set(SRC_VER_1
+    src/main.cpp
+    src/imgui-SFML.cpp
+    src/lua_buffers.cpp
+    src/shaders.cpp
+    src/textures.cpp
+    src/buffer_data.cpp
+    ${IMGUI}/imgui.cpp
+    ${IMGUI}/imgui_draw.cpp
+    ${IMGUI}/imgui_demo.cpp
+    src/lua_opencl.cpp
+)
+set(SRC_VER_2
+    src/main_win32.cpp
+    src/lua_vk.cpp
+)
 set(SRCS
-  src/main.cpp
-  src/imgui-SFML.cpp
-  src/filesys.cpp
-  src/limgui.cpp
-  src/lua_buffers.cpp
-  src/shaders.cpp
-  src/textures.cpp
-  src/buffer_data.cpp
-  src/lua_random.cpp
-  src/lua_opencl.cpp
-  src/matrix.cpp
-  src/lua_kd.cpp
-  ${IMGUI}/imgui.cpp
-  ${IMGUI}/imgui_draw.cpp
-  ${IMGUI}/imgui_demo.cpp
+    src/filesys.cpp
+    src/limgui.cpp
+    src/lua_random.cpp
+    src/matrix.cpp
+    src/lua_kd.cpp
+
+)
+set(HDRS_VER_1
+    src/imconfig-SFML.h
+    src/imgui-SFML.h
+    src/lua_buffers.h
+    src/shaders.h
+    src/gl_lite.h
+    src/cl_lite.h
+    src/textures.hpp
+    src/buffer_data.hpp
+    src/lua_opencl.h
+    src/lua_vk.h
+)
+set(HDRS_VER_2
+    src/win32_lite.h
+)
+set(HDRS
+    src/filesys.h
+    src/limgui.h
+    src/stb_image.h
+    src/stb_image_write.h
+    src/lua_random.h
+    src/pcg_random.h
+    src/matrix.h
+    src/nanoflann.hpp
+    src/lua_kd.h
+    ${LUA}/lua.hpp
+    ${LUA}/lualib.h
 )
 
-set(HDRS
-  src/imconfig-SFML.h
-  src/imgui-SFML.h
-  src/filesys.h
-  src/limgui.h
-  src/stb_image.h
-  src/stb_image_write.h
-  src/lua_buffers.h
-  src/shaders.h
-  src/gl_lite.h
-  src/cl_lite.h
-  src/textures.hpp
-  src/buffer_data.hpp
-  src/lua_random.h
-  src/lua_opencl.h
-  src/pcg_random.h
-  src/matrix.h
-  src/nanoflann.hpp
-  src/lua_kd.h
-  ${LUA}/lua.hpp
-  ${LUA}/lualib.h
-)
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
-INCLUDE_DIRECTORIES(${IMGUI})
-INCLUDE_DIRECTORIES(${LUA})
+if(BUILD_VERSION2)
+    list(APPEND SRCS ${SRC_VER_2})
+    list(APPEND HDRS ${HDRS_VER_2})
+else()
+    list(APPEND SRCS ${SRC_VER_1})
+    list(APPEND HDRS ${HDRS_VER_1})
+endif()
 
 add_executable(${TARGET_NAME}
   ${SRCS} ${HDRS}
   ${EMBEDDED_HDRS} ${EMBEDDED_LIBS}
 )
 
-target_link_libraries(${TARGET_NAME}  sfml-graphics sfml-window sfml-system ${LUA}/lua51.lib )
+target_link_libraries(${TARGET_NAME} ${LUA}/lua51.lib)
+if(BUILD_VERSION2)
+    target_link_libraries(${TARGET_NAME} Vulkan::Vulkan)
+else()
+    target_link_libraries(${TARGET_NAME}  sfml-graphics sfml-window sfml-system )
+endif()
+
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+INCLUDE_DIRECTORIES(${IMGUI})
+INCLUDE_DIRECTORIES(${LUA})
+
+
+
 install(TARGETS ${TARGET_NAME} DESTINATION .)
 install(DIRECTORY projects DESTINATION .)
