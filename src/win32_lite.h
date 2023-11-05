@@ -10,7 +10,10 @@ namespace min_win
     struct event
     {
     };
+
     typedef void* (* event_loop_t)(const event*,void*);
+    typedef void* (__stdcall* win_callback_t)(void*, unsigned int, uint64_t*, uint64_t*);
+
     struct window_state
     {
         //settings
@@ -19,7 +22,8 @@ namespace min_win
         //state
         void* hinstance;
         void* hwnd;
-        event_loop_t* event_callback;
+        event_loop_t event_callback;
+        win_callback_t window_proc;
     };
     void show(window_state& state);
     void event_loop(window_state& state);
@@ -59,7 +63,7 @@ extern "C" {
 
 
 
-    typedef void* (__stdcall* win_proc)(void*, unsigned int, uint64_t*, uint64_t*);
+
     __declspec(dllimport)
         int
         __stdcall
@@ -68,7 +72,7 @@ extern "C" {
     struct win_class_ex_A {
         unsigned int      cbSize;
         unsigned int      style;
-        win_proc   lpfnWndProc;
+        min_win::win_callback_t   lpfnWndProc;
         int       cbClsExtra;
         int       cbWndExtra;
         void* hInstance;
@@ -207,6 +211,7 @@ namespace min_win
             return DefWindowProcA(hwnd, msg, wparam, lparam);
             break;
         }
+        return nullptr;
     }
     void min_win::show(window_state& state)
     {
@@ -219,6 +224,9 @@ namespace min_win
 
         win_class.cbSize = sizeof(win_class);
         win_class.style = 0x1 | 0x2;
+        if(state.window_proc)
+            win_class.lpfnWndProc = state.window_proc;
+        else
         win_class.lpfnWndProc = &win_proc;
         win_class.hInstance = state.hinstance;
         /*
