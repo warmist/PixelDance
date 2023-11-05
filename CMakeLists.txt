@@ -59,6 +59,7 @@ set(SRC_VER_1
     ${IMGUI}/imgui_draw.cpp
     ${IMGUI}/imgui_demo.cpp
     src/lua_opencl.cpp
+    src/limgui.cpp
 )
 set(SRC_VER_2
     src/main_win32.cpp
@@ -66,7 +67,6 @@ set(SRC_VER_2
 )
 set(SRCS
     src/filesys.cpp
-    src/limgui.cpp
     src/lua_random.cpp
     src/matrix.cpp
     src/lua_kd.cpp
@@ -83,13 +83,13 @@ set(HDRS_VER_1
     src/buffer_data.hpp
     src/lua_opencl.h
     src/lua_vk.h
+    src/limgui.h
 )
 set(HDRS_VER_2
     src/win32_lite.h
 )
 set(HDRS
     src/filesys.h
-    src/limgui.h
     src/stb_image.h
     src/stb_image_write.h
     src/lua_random.h
@@ -116,7 +116,7 @@ add_executable(${TARGET_NAME}
 
 target_link_libraries(${TARGET_NAME} ${LUA}/lua51.lib)
 if(BUILD_VERSION2)
-    target_link_libraries(${TARGET_NAME} Vulkan::Vulkan)
+    target_link_libraries(${TARGET_NAME} Vulkan::Vulkan )
 else()
     target_link_libraries(${TARGET_NAME}  sfml-graphics sfml-window sfml-system )
 endif()
