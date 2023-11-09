@@ -5,6 +5,8 @@
 	TODO:
 		* refill particles everyonce a while
 		* https://en.wikipedia.org/wiki/Maximal_entropy_random_walk
+		* quantum wave
+		* prefer sticking to already existing atoms
 ]]
 require "common"
 -- see waves.lua
@@ -459,10 +461,10 @@ float func(vec2 pos)
 
 	#endif
 	#if 1
-	vec2 p=vec2(0.2,0.4);
+	vec2 p=vec2(0.0,0.4);
 	//vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.65;
 	if(time<max_time)
-	//if(length(pos+p)<0.005)
+	if(length(pos+p)<0.005)
 		return 1;//sin(time*fr*M_PI/1000);
 	#endif
 	//return 0.1;//0.0001*sin(time/1000)/(1+length(pos));
@@ -642,7 +644,7 @@ function gui()
     	fill_buffer()
     end
     imgui.SameLine()
-    if imgui.Button("WaveCollapse") or current_tick>3000 then
+    if imgui.Button("WaveCollapse") or current_tick>4000 then
     	local trg_tex=texture_buffers:get_cur().t
     	trg_tex:use(0,1)
     	local pixels=wave_collapse(trg_tex)
@@ -652,7 +654,7 @@ function gui()
 		current_frame=0
 		start_set_pixel()
 		for i,v in ipairs(pixels) do
-			set_big_pixel(v[1],v[2],8)
+			set_big_pixel(v[1],v[2],4)
 		end
 		end_set_pixel()
     end
@@ -726,13 +728,17 @@ function wave_collapse( tex )
 	make_io_buffer()
 	io_buffer:read_texture(tex)
 	local m1=0;
-
+	local max_v=0
 	for x=0,io_buffer.w-1 do
 		for y=0,io_buffer.h-1 do
 			local v=io_buffer:get(x,y)
+			if max_v<math.abs(v) then
+				max_v=math.abs(v)
+			end
 			m1=m1+math.abs(v)
 		end
 	end
+	--[[
 	for i=1,1 do
 		local r=math.random()
 		local m2=0
@@ -749,6 +755,24 @@ function wave_collapse( tex )
 			end
 			if done then break end
 		end
+	end
+	--]]
+	local choices={}
+	local count_choices=100
+	for x=0,io_buffer.w-1 do
+		for y=0,io_buffer.h-1 do
+			local v=math.abs(io_buffer:get(x,y))
+			if v>=max_v*0.99 then
+				table.insert(choices,{x,y})
+				--if #choices>=count_choices then
+				--	table.insert(ret,choices[math.random(1,#choices)])
+				--	return ret
+				--end
+			end
+		end
+	end
+	if #choices>=1 then
+		table.insert(ret,choices[math.random(1,#choices)])
 	end
 	return ret
 end
