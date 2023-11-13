@@ -113,6 +113,7 @@ function read_visits_buf( fname )
 	end
 end
 local force_reload_image=true
+mask_file=mask_file or "saved_1699854183.png"
 function make_visits_texture()
 	--[[
 	if visit_tex==nil then
@@ -124,7 +125,7 @@ function make_visits_texture()
 	end
 	--]]
 	if force_reload_image or visit_tex==nil then
-		local image_mask=load_png("saved_1611143854.png")
+		local image_mask=load_png(mask_file)
 		visit_tex={t=textures:Make(),w=image_mask.w,h=image_mask.h}
 		visit_tex.t:use(0,1)
 		image_mask:write_texture(visit_tex.t)
@@ -154,6 +155,7 @@ end
 
 texture_buffers=texture_buffers or {}
 function make_sand_buffer()
+	print("making sand tex")
 	local t={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
 	t.t:use(0,1)
 	t.t:set(size[1]*oversample,size[2]*oversample,2)
@@ -164,8 +166,9 @@ function make_textures()
 	if #texture_buffers==0 or
 		texture_buffers[1].w~=size[1]*oversample or
 		texture_buffers[1].h~=size[2]*oversample then
-		--print("making tex")
+		
 		for i=1,NUM_BUFFERS do
+			print("making tex",i)
 			local t={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
 			t.t:use(0,1)
 			t.t:set(size[1]*oversample,size[2]*oversample,2)
@@ -198,6 +201,7 @@ config=make_config({
 	{"a",1,type="float",min=-1,max=1},
 	{"b",1,type="float",min=-1,max=1},
 	{"color",{124/255,50/255,30/255},type="color"},
+	{"monotone",false,type="boolean"},
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"gain",1,type="float",min=-5,max=5},
 	{"draw",true,type="boolean"},
@@ -205,6 +209,7 @@ config=make_config({
 	{"animate",false,type="boolean"},
 	{"animate_simple",false,type="boolean"},
 	{"size_mult",true,type="boolean"},
+	{"draw_form",false,type="boolean"},
 },config)
 
 
@@ -234,6 +239,7 @@ uniform float add;
 uniform float v_gamma;
 uniform float v_gain;
 uniform vec3 mid_color;
+uniform int monotone;
 #define M_PI 3.14159265358979323846264338327950288
 float f(float v)
 {
@@ -290,13 +296,17 @@ void main(){
 	//*/
 	//color.xyz=vec3(lv);
 	//color.xyz=isoline_color((lv-0.5)*2);
-	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,2.0,2.0),vec3(3.0,2.0,1.0)),1);
+	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,3.0,3.0),vec3(3.5,2.5,1.5)),1);
+	if(monotone==1)
+		color=vec4(vec3(lv),1);
+	else
+		color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,1.0),vec3(0.3,0.2,0.2)+vec3(0.2)),1);
 	color.a=1;
 	vec3 col_back=vec3(0);
 	vec3 col_top=vec3(1);
 	float break_pos=0.5;
 	float break_inv=1/break_pos;
-	///* color with a down to dark break
+	/* color with a down to dark break
 	//lv=1-lv;
 	if(lv>break_pos)
 		color.xyz=mix(col_back,col_top,(lv-break_pos)/(1-break_pos));
@@ -343,6 +353,7 @@ uniform vec2 tex_size;
 uniform vec2 nm_vec;
 uniform vec2 ab_vec;
 //uniform vec2 dpos;
+uniform int draw_form;
 
 #define M_PI 3.14159265358979323846264338327950288
 //randoms
@@ -634,6 +645,13 @@ float ankh_sdf(in vec2 st)
 
 	return step(v,0);//max(max(ret,h1),max(d,h2));
 }
+float holed_tri(in vec2 st)
+{
+	float ret=-sdEquilateralTriangle(st.xy/0.8);
+	ret=opUnion(ret,sdCircle(st,0.1));
+
+	return step(ret-0.05,0);
+}
 float damaged_circle2(in vec2 st)
 {
 	//sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,8,0.2,0,w)
@@ -746,13 +764,14 @@ float DX(int dx,int dy,vec2 normed)
 }*/
 float hash(float n) { return fract(sin(n) * 1e4); }
 float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
+//sound generating function
 float func(vec2 pos)
 {
 	//if(length(pos)<0.0025 && time<100)
 	//	return cos(time/freq)+cos(time/(2*freq/3))+cos(time/(3*freq/2));
 	//vec2 pos_off=vec2(cos(time*0.001)*0.5,sin(time*0.001)*0.5);
 	//if(sh_ring(pos,1.2,1.1,0.001)>0)
-	float max_time=5000;
+	float max_time=1000;
 	float min_freq=1;
 	float max_freq=5;
 	float ang=atan(pos.y,pos.x);
@@ -762,28 +781,39 @@ float func(vec2 pos)
 	float fn1=fr*M_PI/1000;
 	float fn2=fr2*M_PI/1000;
 
-	float max_a=4;
+	float max_a=7;
 	float r=0.4;
-	#if 1
+	#if 0
 		if(time<max_time)
-		if(length(pos+vec2(0.0,0.0))<0.005)
+		if(length(pos+vec2(0.0,0.0))<0.05)
 			return ab_vec.x*(fract(fn1*time)*2-1)
 			+ab_vec.y*(fract(fn2*time)*2-1);
 	#endif
-	#if 0
+	#if 1
 		//if(time<max_time)
 			//if(pos.x<-0.35)
 				//return (hash(time*freq2)*hash(pos*freq))/2;
 				//return ab_vec.x*n4rand(pos*fr2);
 		float ret=0;
-
-		if(length(pos+vec2(0.0,0.0))<0.005)
-			for(int i=1;i<10;i++)
+		float dist_val=99999;//
+		const int MAX_P=4;
+		for(int i=0;i<MAX_P;i++)
+		{
+			float a=M_PI*2*(float(i)/float(MAX_P));
+			dist_val=min(dist_val,length(pos+vec2(cos(a),sin(a))*0.25));
+		}
+		float amp=1;
+		float amp_scale=1/2;
+		float freq_scale=1.5;
+		if(time<max_time)
+		if(dist_val<0.005)
+			for(int i=1;i<4;i++)
 			{
-				ret+=ab_vec.x*cos(time*fr+pos.x*hash(pos.y))+
-					 ab_vec.y*cos(time*fr2+pos.y*hash(pos.x));
-				fr=fr/2.0;
-				fr2=fr2/2.0;
+				ret+=amp*ab_vec.x*cos(time*fr)+ //+pos.x*hash(pos.y)
+					 amp*ab_vec.y*cos(time*fr2); //+pos.y*hash(pos.x)
+				amp=amp*amp_scale;
+				fr=fr*freq_scale;
+				fr2=fr2*freq_scale;
 			}
 		return ret/10;
 	#endif
@@ -808,7 +838,7 @@ float func(vec2 pos)
 
 		vec2 dv=vec2(cos(ang)*r,sin(ang)*r);
 		if(length(pos+dv)<0.005)
-		//if(time<max_time)
+		if(time<max_time)
 			return (
 			ab_vec.x*sin(fn1*time+ang*nm_vec.x)
 			+ab_vec.y*sin(fn2*time+ang*nm_vec.y)
@@ -843,7 +873,7 @@ float func(vec2 pos)
 	#if 0
 		float r2=length(pos);
 		float a2=atan(pos.y,pos.x);
-	//if(time<max_time)
+	if(time<max_time)
 		return (
 		ab_vec.x*sin(time*fn1
 		//+pos.x*M_PI*2*nm_vec.x
@@ -861,6 +891,20 @@ float func(vec2 pos)
 	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.1;
 	//if(time<max_time)
 	if(abs(length(pos)-0.5)<0.005)
+		return ab_vec.x*sin(-time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y)+
+			   ab_vec.y*sin(-time*fr2*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
+	//if(length(pos+vec2(0,0.5)+p)<0.005)
+	//	return sin(time*fr2*M_PI/1000);
+
+
+	#endif
+	#if 0
+
+
+	vec2 p=vec2(cos(time*fr2*M_PI/1000),sin(time*fr2*M_PI/1000))*0.1;
+	float a=atan(pos.y,pos.x);
+	//if(time<max_time)
+	if(abs(length(pos)-0.5+cos(a*5)*0.01)<0.005)
 		return ab_vec.x*sin(-time*fr*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y)+
 			   ab_vec.y*sin(-time*fr2*M_PI/1000+ang*nm_vec.x+rad*nm_vec.y);
 	//if(length(pos+vec2(0,0.5)+p)<0.005)
@@ -968,7 +1012,7 @@ float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 	ret+=texture(values[3],normed).x*(-BdA-CdA+2);
 	ret+=texture(values[2],normed).x*(2*BdA-2*DxdA-2*DydA);
 	ret+=texture(values[1],normed).x*(-BdA+CdA-2);
-	ret+=texture(values[0],normed).x*;
+	ret+=texture(values[0],normed).x*A;
 	ret+=DxdA*(DX(1,0,normed)+DX(-1,0,normed));
 	ret+=DydA*(DX(0,1,normed)+DX(0,-1,normed));
 	ret+=func(pos)/A;
@@ -1197,15 +1241,17 @@ float c_shape(vec2 pos)
 	return radial_shape(pos);
 }
 #define TDX(dx,dy) textureOffset(input_map,normed,ivec2(dx,dy)).x
-#define DRAW_FORM 0
+
 void main(){
 	float v=0;
-	float max_d=1;
-	float w=0.005;
+	float max_d=0.8;
+	float w=0.0025;
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	//float sh_v=0;
-	float sh_v=1-max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
+	//float sh_v=holed_tri(pos.xy);
+	float sh_v=sdEquilateralTriangle(pos.xy/max_d);
+	//float sh_v=1-max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
 	//float sh_v=1-max(1-sdCircle(pos.xy,0.98)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
 	//float sh_v=1-damaged_circle(pos.xy);
 	//float sh_v=damaged_circle2(pos.xy);
@@ -1214,17 +1260,17 @@ void main(){
 	//float sh_v=sdCircle2(pos.xy,0.98);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=1-leaf(pos.xy,w);
-	//float sh_v=chalice(pos.xy,w);
+	//float sh_v=1-chalice(pos.xy*0.75,w);
 	//float sh_v=slit_experiment(pos.xy,w);
 	//float sh_v=1-flower(pos.xy,w);
 	//float sh_v=1-balance(pos.xy,w);
 	//float sh_v=sh_jaws(pos.xy,w);
-	//float sh_v=1-sh_polyhedron(pos.xy,4,0.4,0,w);
+	//float sh_v=1-sh_polyhedron(pos.xy,7,0.6,0,w);
 	//float sh_v=1-ankh(pos.xy,w);
 	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
 	normed.y=1-normed.y;
-	//float sh_v=step(texture(input_map,normed).x,0.6);
+	//float sh_v=step(texture(input_map,normed).x,0.3);
 	float sh_v3=sdCircle(pos.xy,0.98);
 #if 0
 	vec4 sh_v2;
@@ -1267,41 +1313,44 @@ void main(){
 	avg_c.y=0.5*(sh_v2.x+sh_v2.y);
 #endif
 	avg_c*=avg_c;
-#if DRAW_FORM
-	//v=(avg_c.x-min_c*min_c)/(max_c-min_c);
-	v=sh_v;
-	//vec2 dv=vec2(dFdx(sh_v),dFdy(sh_v));
-	//normalize(dv);
-	v=1-smoothstep(-w,w,v);
-#else
-
-	/*if(sh_v<=0)
+	if(draw_form==1)
 	{
-		if(init==1)
-			v=calc_init_value(pos.xy,avg_c);
-		else
-			v=calc_new_value(pos.xy,avg_c);
+		//v=(avg_c.x-min_c*min_c)/(max_c-min_c);
+		v=sh_v;
+		//vec2 dv=vec2(dFdx(sh_v),dFdy(sh_v));
+		//normalize(dv);
+		v=1-smoothstep(-w,w,v);
 	}
-	else if(sh_v>0)*/
-	{
-		//todo: derivate
-		/*vec2 dir=-normalize(pos.xy);
-		if(init==1)
-			v=boundary_condition_init(pos.xy,dir);
-		else
-			v=boundary_condition(pos.xy,dir);*/
-	}
-	float l=clamp(length(pos.xy),0,1);
-	float radiation=0.9999;
-	if(sh_v<=0)
-		v=calc_new_value(pos.xy,avg_c);
-	else if(sh_v3<=0)
-	//else
-		v=calc_new_value(pos.xy,avg_c)*radiation;
 	else
-		v=calc_new_value(pos.xy,avg_c)*mix(radiation,radiation*radiation*radiation,l);
-	//else v=0;
-#endif
+	{
+		/*if(sh_v<=0)
+		{
+			if(init==1)
+				v=calc_init_value(pos.xy,avg_c);
+			else
+				v=calc_new_value(pos.xy,avg_c);
+		}
+		else if(sh_v>0)*/
+		{
+			//todo: derivate
+			/*vec2 dir=-normalize(pos.xy);
+			if(init==1)
+				v=boundary_condition_init(pos.xy,dir);
+			else
+				v=boundary_condition(pos.xy,dir);*/
+		}
+		float l=clamp(length(pos.xy),0,1);
+		float radiation=0.99;
+		if(sh_v<=0)
+			v=calc_new_value(pos.xy,avg_c);
+		else if(sh_v3<=0)
+		//else
+			v=calc_new_value(pos.xy,avg_c)*radiation;
+		else
+			v=calc_new_value(pos.xy,avg_c)*mix(radiation,radiation*radiation*radiation,l);
+		//else v=0;
+	}
+
 	color=vec4(v,0,0,1);
 }
 ]==]
@@ -1344,9 +1393,18 @@ end
 
 local need_save
 local single_shot_value
+
 function gui()
 	imgui.Begin("Waviness")
 	draw_config(config)
+
+	local ok,new_mask=imgui.InputText("Mask",mask_file)
+	mask_file=new_mask
+
+	imgui.SameLine()
+	if imgui.Button("Reload mask") then
+		make_visits_texture()
+	end
 	if config.size_mult then
 		size_mult=1
 	else
@@ -1362,6 +1420,7 @@ function gui()
 	imgui.SameLine()
 	if imgui.Button("Reset Accumlate") then
 		clear_sand()
+		need_clear=true
 	end
 	if imgui.Button("SingleShotNorm") then
 		single_shot_value=true
@@ -1369,6 +1428,11 @@ function gui()
 	imgui.SameLine()
 	if imgui.Button("ClearNorm") then
 		single_shot_value=nil
+	end
+	imgui.SameLine()
+	if imgui.Button("Silence") then
+		config.a=0
+		config.b=0
 	end
 --[[
 	if imgui.Button("Clear image") then
@@ -1437,6 +1501,11 @@ function waves_solve(  )
 	solver_shader:set("freq2",config.freq2)
 	solver_shader:set("nm_vec",config.n,config.m)
 	solver_shader:set("ab_vec",config.a,config.b)
+	if config.draw_form then
+		solver_shader:set_i("draw_form",1)
+	else
+		solver_shader:set_i("draw_form",0)
+	end
 	local trg_tex=texture_buffers[id_next];
 	trg_tex.t:use(NUM_BUFFERS)
 	solver_shader:set("tex_size",trg_tex.w,trg_tex.h)
@@ -1488,7 +1557,7 @@ function calc_range_value( tex )
 	end
 	return m1,m2
 end
-
+need_clear=true
 function draw_texture( id )
 	local id_next=(solver_iteration+NUM_BUFFERS-1) % NUM_BUFFERS +1
 	local src_tex=texture_buffers[id_next];
@@ -1503,6 +1572,10 @@ function draw_texture( id )
 		add_shader:blend_add()
 		--add_shader:blend_default()
 		--draw_shader:set("in_col",config.color[1],config.color[2],config.color[3],config.color[4])
+		if need_clear then
+			__clear()
+			need_clear=false
+		end
 		if not trg_tex.t:render_to(trg_tex.w,trg_tex.h) then
 			error("failed to set framebuffer up")
 		end
@@ -1511,6 +1584,11 @@ function draw_texture( id )
 
 		if config.draw or id  then
 			draw_shader:use()
+			if config.monotone then
+				draw_shader:set_i("monotone",1)
+			else
+				draw_shader:set_i("monotone",0)
+			end
 			draw_shader:blend_default()
 			trg_tex.t:use(0,1)
 			local minv,maxv
@@ -1547,6 +1625,7 @@ function draw_texture( id )
 		need_draw=true
 	end
 	if need_draw then
+		add_shader:use()
 		if config.draw or single_shot_value then
 			local minv,maxv
 			if single_shot_value==true then

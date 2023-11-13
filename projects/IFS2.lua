@@ -427,6 +427,7 @@ vec3 tonemap(vec3 light,float cur_exp)
     //float s=smoothstep(0.8,1.2,max(light.x,max(light.y,light.z))-1);//length(light));
     //float s=0;
     //float s=smoothstep(1,8,dot(ret,ret));
+    //ret=pow(ret,vec3(0.5));
     float s=smoothstep(1,8,length(ret));
 	///*
     if(ret.x>1)ret.x=1;
@@ -1795,7 +1796,7 @@ function get_forced_insert_complex(  )
 			"c_mul(p,s)","c_mul(c_mul(p,s),p)","c_mul(c_mul(p,s),c_mul(p,s))",
 			"c_mul(p,s)","c_mul(c_mul(p,s),s)","c_mul(c_mul(p,s),c_mul(s,s))",
 		}
-		local NO_PICKS=12
+		local NO_PICKS=3
 		for i=1,NO_PICKS do
 			table.insert(tbl_insert,rand_choices[math.random(1,#rand_choices)])
 		end
@@ -2142,10 +2143,9 @@ function rand_function(  )
 	local tbl_insert_x,tbl_insert_y=get_forced_insert()
 	--]==]
 	--chebyshev_poly_series(10)
-	--str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert)
 	--str_cmplx="(s/length(s)+p/length(p))*(0.5+global_seeds.x)"
-	--str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert_cmplx)
-	str_cmplx=random_math_complex_intervals(rand_complexity,5,nil,tbl_insert_cmplx)
+	str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert_cmplx)
+	--str_cmplx=random_math_complex_intervals(rand_complexity,5,nil,tbl_insert_cmplx)
 
 	--str_cmplx=random_math_complex(15,"cheb_eval(R)",tbl_insert)
 	--str_cmplx=random_math_complex(15,"c_mul(cheb_eval(c_mul(vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)),(s-p))),R)",tbl_insert)

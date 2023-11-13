@@ -961,12 +961,19 @@ function recursive_set_octree( buf,iter,max_iter,box )
 end
 function global_field_value( x,y )
     local rings={
+<<<<<<< Updated upstream
         {count=3,radius=0.39,color=0.5,aoffset=0,rotation=math.pi/3,power=0.2},
         {count=9,radius=0.4,color=0.9,aoffset=0,rotation=-math.pi/2,power=0.4},
         {count=27,radius=0.43,color=0.1,aoffset=0,rotation=-math.pi/3,power=0.8},
         {count=9,radius=0.52,color=0.9,aoffset=math.pi/2,rotation=math.pi,power=0.9},
         {count=3,radius=0.55,color=0.1,aoffset=math.pi/4,rotation=-math.pi/4,power=0.8},
         {count=27,radius=0.75,color=0.75,aoffset=0,rotation=-math.pi/3},
+=======
+        {count=7,radius=0.3,color=0.5,aoffset=0,rotation=math.pi/3},
+        {count=9,radius=0.4,color=0.9,aoffset=0,rotation=-math.pi/2,power=0.4},
+        {count=12,radius=0.6,color=0.1,aoffset=math.pi/4,rotation=-math.pi/3,power=0.2},
+        {count=7,radius=0.8,color=0.75,aoffset=0,rotation=-math.pi/3},
+>>>>>>> Stashed changes
     }
     local r=math.sqrt(x*x+y*y)
     local a=math.atan2(y,x)

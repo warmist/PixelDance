@@ -175,7 +175,7 @@ GLLITE_GL_LIST_WIN32
 #undef GLE
 
 bool gl_lite_init();
-#define GL_TRAP if (auto err = glGetError() ) { printf("GlError:%d (%x)\n", err,err); __debugbreak(); }
+#define GL_TRAP if (auto err = glGetError() ) { printf("GlError:%d (%x)\n\t" __FILE__ " at %d \n", err,err,__LINE__); __debugbreak(); }
 #endif //GL_LITE_H
 
 // =============================================================================
