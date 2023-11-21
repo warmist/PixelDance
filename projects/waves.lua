@@ -132,17 +132,7 @@ function make_visits_texture()
  	end
 end
 make_visits_texture()
-function count_lines( s )
-	local n=0
-	for i in s:gmatch("\n") do n=n+1 end
-	return n
-end
-function shader_make( s_in )
-	local sl=count_lines(s_in)
-	s="#version 330\n#line "..(debug.getinfo(2, 'l').currentline-sl).."\n"
-	s=s..s_in
-	return shaders.Make(s)
-end
+
 local size=STATE.size
 img_buf=make_image_buffer(size[1],size[2])
 
@@ -206,14 +196,15 @@ config=make_config({
 	{"gain",1,type="float",min=-5,max=5},
 	{"draw",true,type="boolean"},
 	{"accumulate",false,type="boolean"},
-	{"animate",false,type="boolean"},
-	{"animate_simple",false,type="boolean"},
 	{"size_mult",true,type="boolean"},
 	{"draw_form",false,type="boolean"},
 },config)
 
 
-add_shader=shader_make[==[
+add_shader=shaders.Make[==[
+#version 330
+#line __LINE__
+
 out vec4 color;
 in vec3 pos;
 uniform sampler2D values;
@@ -230,6 +221,7 @@ void main(){
 ]==]
 draw_shader=shaders.Make[==[
 #version 330
+#line __LINE__
 
 out vec4 color;
 in vec3 pos;
@@ -331,7 +323,10 @@ void main(){
 #endif
 }
 ]==]
-solver_shader=shader_make[==[
+solver_shader=shaders.Make[==[
+#version 330
+#line __LINE__
+
 out vec4 color;
 in vec3 pos;
 uniform sampler2D values[4];
@@ -764,7 +759,7 @@ float DX(int dx,int dy,vec2 normed)
 }*/
 float hash(float n) { return fract(sin(n) * 1e4); }
 float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
-//sound generating function
+//sound generating function or driving function
 float func(vec2 pos)
 {
 	//if(length(pos)<0.0025 && time<100)
@@ -783,13 +778,13 @@ float func(vec2 pos)
 
 	float max_a=7;
 	float r=0.4;
-	#if 0
-		if(time<max_time)
-		if(length(pos+vec2(0.0,0.0))<0.05)
+	#if 1
+		//if(time<max_time)
+		if(length(pos+vec2(0.0,0.0))<0.1)
 			return ab_vec.x*(fract(fn1*time)*2-1)
 			+ab_vec.y*(fract(fn2*time)*2-1);
 	#endif
-	#if 1
+	#if 0
 		//if(time<max_time)
 			//if(pos.x<-0.35)
 				//return (hash(time*freq2)*hash(pos*freq))/2;
@@ -819,7 +814,7 @@ float func(vec2 pos)
 	#endif
 	#if 0
 		if(time<max_time)
-		if(pos.x<-0.35)
+		if(pos.x+pos.y<-0.0)
 			return (
 		ab_vec.x*sin(fn1
 		//+pos.x*M_PI*2*nm_vec.x
@@ -1250,7 +1245,7 @@ void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	//float sh_v=0;
 	//float sh_v=holed_tri(pos.xy);
-	float sh_v=sdEquilateralTriangle(pos.xy/max_d);
+	//float sh_v=sdEquilateralTriangle(pos.xy/max_d);
 	//float sh_v=1-max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
 	//float sh_v=1-max(1-sdCircle(pos.xy,0.98)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
 	//float sh_v=1-damaged_circle(pos.xy);
@@ -1265,7 +1260,7 @@ void main(){
 	//float sh_v=1-flower(pos.xy,w);
 	//float sh_v=1-balance(pos.xy,w);
 	//float sh_v=sh_jaws(pos.xy,w);
-	//float sh_v=1-sh_polyhedron(pos.xy,7,0.6,0,w);
+	float sh_v=1-sh_polyhedron(pos.xy,5,0.8,0,w);
 	//float sh_v=1-ankh(pos.xy,w);
 	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
@@ -1393,7 +1388,53 @@ end
 
 local need_save
 local single_shot_value
-
+sim_thread=false
+sim_thread_progress=0
+function animate_accumulation()
+    local wait_for_settle=10000
+    local frame_count=100
+    local frame_wait=5
+    reset_state()
+    config.accumulate=false
+    --start emitting waves
+    for k=1,wait_for_settle do
+    	coroutine.yield()
+    end
+	-- [[ disable waves and wait to settle
+	config.a=0
+	config.b=0
+	for k=1,wait_for_settle do
+    	coroutine.yield()
+    end
+    --]]
+    config.accumulate=true
+    --start capturing frames
+    for i=1,frame_count do
+    	sim_thread_progress=i/frame_count
+    	config.draw=false
+    	for i=1,frame_wait do
+    		coroutine.yield()
+    	end
+    	config.draw=true
+    	need_save=true
+    	coroutine.yield()
+    end
+    sim_thread=nil
+end
+function animation_system(  )
+	if imgui.CollapsingHeader("Animation") then
+	    if not sim_thread then
+	        if imgui.Button("Start Animate") then
+	           sim_thread=coroutine.create(animate_accumulation)
+	        end
+	    else
+	        if imgui.Button("Stop Animate") then
+	            sim_thread=nil
+	        end
+	        imgui.Text(string.format("Progress:%g",sim_thread_progress))
+	    end
+	end
+end
 function gui()
 	imgui.Begin("Waviness")
 	draw_config(config)
@@ -1446,6 +1487,7 @@ function gui()
 	if imgui.Button("Save buffer") then
 		need_buf_save=true
 	end
+	animation_system()
 	imgui.End()
 end
 
@@ -1675,82 +1717,24 @@ anim_spline=anim_spline or Catmull(gen_points(3,3))
 anim_spline_step=anim_spline_step or 0
 
 
-function animate_step(  )
-	local t=current_frame/frame_count
-	if t>=1 then
-		config.animate=false
-	end
-
-	local spline_p
-	--spline_p,anim_spline_step=step_along_spline(anim_spline,anim_spline_step,1/frame_count,1/(10*frame_count))
-	--[[
-	spline_p=anim_spline:get(t)
 
 
-	local fr1={0.5,1.05}
-	local fr2={2.0,2.5}
-	local decay2={0.01,0.1}
-	config.freq=lerp(fr1[1],fr1[2],spline_p[1])
-	config.freq2=lerp(fr2[1],fr2[2],spline_p[2])
-	config.decay2=lerp(decay2[1],decay2[2],spline_p[3])
-
-	print(string.format("%.3g %.3g %.3g %.3g || %.3g %.3g %.3g",t,config.freq,config.freq2,config.decay2,spline_p[1],spline_p[2],spline_p[3]))
-	--]]
-	current_frame=current_frame+1
-end
-
-last_animate=false
-function auto_clear_ticks(  )
-	if last_animate~= config.animate_simple then
-		last_animate= config.animate_simple
-		current_tick=0
-		current_frame=0
-	end
-end
 function update_real(  )
 	__no_redraw()
 	if config.pause then
 		__clear()
 		draw_texture()
 	else
-		auto_clear_ticks()
-		if config.animate then
-			current_tick=current_tick+1
-			if current_tick>=tick_count then
-				animate_step(  )
-				__clear()
-				draw_texture(current_frame)
-
-				current_tick=0
-				reset_state()
-				clear_sand()
-			elseif current_tick>=tick_wait then
-				__clear()
-				draw_texture()
-			end
-		elseif config.animate_simple then
-			current_tick=current_tick+1
-			if current_tick>=tick_skip then
-				__clear()
-				config.draw=true
-				draw_texture(current_frame)
-				current_tick=0
-				current_frame=current_frame+1
-				config.draw=false
-				if current_frame>frame_count then
-					config.animate_simple=false
-				end
-				clear_sand()
-			else
-				__clear()
-				draw_texture()
-			end
-		else
-			current_tick=0
-			current_frame=0
-			__clear()
-			draw_texture()
-		end
+		__clear()
+		draw_texture()
+    	if sim_thread then
+        --print("!",coroutine.status(sim_thread))
+	        local ok,err=coroutine.resume(sim_thread)
+	        if not ok then
+	            print("Error:",err)
+	            sim_thread=nil
+	        end
+    	end
 		auto_clear()
 		waves_solve()
 	end
