@@ -70,7 +70,7 @@ function make_buffer( typename,type_id,default_pixel )
 			end
 		end
 		img.write_texture=function(t, tex )
-			tex:use(0)
+			tex:use(1)
 			tex:set(t.d,t.w,t.h,t.type)
 		end
 		img.read_texture=function(t, tex )
@@ -832,4 +832,124 @@ function Grapher:add_value( v )
 		end
 		self.buffer:set(self.current_size-1,0,v)
 	end
+end
+
+----------------------------------------------------------------
+--  Simplified shaders
+----------------------------------------------------------------
+function generate_uniform_string( v )
+    return string.format("uniform %s %s;\n",v.type,v.name)
+end
+function generate_uniforms_string( uniform_list,texture_list )
+    local uniform_string=""
+    if uniform_list~=nil then
+        for i,v in ipairs(uniform_list) do
+            uniform_string=uniform_string..generate_uniform_string(v)
+        end
+    end
+    if texture_list~=nil then
+        for k,v in pairs(texture_list) do
+            uniform_string=uniform_string..generate_uniform_string({type="sampler2D",name=k})
+        end
+    end
+    return uniform_string
+end
+function update_uniform( shader,utype,name,value_table )
+    local types={
+        int=shader.set_i,
+        float=shader.set,
+        vec2=shader.set,
+        vec3=shader.set,
+        vec4=shader.set
+    }
+    if type(value_table[name])=="table" then
+        types[utype](shader,name,unpack(value_table[name]))
+    else
+        types[utype](shader,name,value_table[name])
+    end
+end
+function generate_attribute_strings( tbl )
+    local attribute_list,attribute_variables,attribute_assigns,attribute_variables_frag
+    attribute_list=""
+    attribute_variables=""
+    attribute_assigns=""
+    attribute_variables_frag=""
+    for i,v in ipairs(tbl) do
+        local attrib_name=v.name_attrib or (v.name .. "_attrib")
+        local var_name=v.name
+        attribute_list=attribute_list..string.format("layout(location = %d) in vec4 %s;\n",v.pos_idx,attrib_name)
+        attribute_variables=attribute_variables..string.format("out vec4 %s;\n",var_name)
+        attribute_assigns=attribute_assigns..string.format("%s=%s;\n",var_name,attrib_name)
+        attribute_variables_frag=attribute_variables_frag..string.format("in vec4 %s;\n",var_name)
+    end
+    return attribute_list,attribute_variables,attribute_assigns,attribute_variables_frag
+end
+function generate_default_texture( texture_list )
+    if texture_list.tex_main==nil or tex_main.tex_main.texture==nil then
+        texture_list.tex_main={texture=textures:Make()}
+    end
+end
+function init_draw_field(draw_string,settings)
+    settings=settings or {}
+    local texture_list=settings.textures or {}
+    local uniform_list=settings.uniforms or {}
+    if not settings.no_default_texture then
+        generate_default_texture(texture_list)
+    end
+    local uniform_string=generate_uniforms_string(uniform_list,texture_list)
+    local shader_string=string.format([==[
+#version 330
+#line __LINE__ 99
+
+out vec4 color;
+in vec3 pos;
+
+#line __LINE__ 99
+%s
+#line __LINE__ 99
+%s
+]==],uniform_string,draw_string)
+
+    local draw_shader=shaders.Make(shader_string)
+    local texture=texture_list.tex_main
+
+    local update_texture=function ( buffer )
+        buffer:write_texture(texture.texture)
+    end
+    local draw=function(  )
+        -- clear
+        if need_clear then
+            __clear()
+            need_clear=false
+        end
+        draw_shader:use()
+        local i=0
+        for k,v in pairs(texture_list) do
+            v.texture:use(i)
+            draw_shader:set_i(k,i)
+            i=i+1
+        end
+
+        draw_shader:draw_quad()
+    end
+    local update_uniforms=function ( tbl )
+        draw_shader:use()
+        for i,v in ipairs(uniform_list) do
+            --todo more formats!
+            if tbl[v.name]~=nil then
+                update_uniform(draw_shader,v.type,v.name,tbl)
+            end
+        end
+    end
+    local ret={
+        shader=draw_shader,
+        draw=draw,
+        update=update_texture,
+        textures=texture_list,
+        update_uniforms=update_uniforms,
+        clear=function (  )
+            need_clear=true
+        end
+    }
+    return ret
 end
