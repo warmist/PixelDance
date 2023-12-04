@@ -132,7 +132,41 @@ function make_visits_texture()
  	end
 end
 make_visits_texture()
+function make_visits_from_other( other_tex )
+	local vmin=math.huge
+	local vmax=-math.huge
+	if other_tex then
+		other_tex.t:use(0,1)
+		io_buffer:read_texture(other_tex.t)
+		for x=0,io_buffer.w-1 do
+		for y=0,io_buffer.h-1 do
+			local v=io_buffer:get(x,y)
+			if v<vmin then vmin=v end
+			if v>vmax then vmax=v end
+		end
+		end
 
+		for x=0,io_buffer.w-1 do
+		for y=0,io_buffer.h-1 do
+			local v=io_buffer:get(x,y)
+			v=(v-vmin)/(vmax-vmin)
+			io_buffer:set(x,y,v)
+		end
+		end
+	else
+		vmin=0
+		vmax=1
+		for x=0,io_buffer.w-1 do
+		for y=0,io_buffer.h-1 do
+			io_buffer:set(x,y,0)
+		end
+		end
+	end
+	--img_buf:
+	visit_tex={t=textures:Make(),w=io_buffer.w,h=io_buffer.h}
+	visit_tex.t:use(0,1)
+	io_buffer:write_texture(visit_tex.t)
+end
 local size=STATE.size
 img_buf=make_image_buffer(size[1],size[2])
 
@@ -172,6 +206,7 @@ make_textures()
 function make_io_buffer(  )
 	if io_buffer==nil or io_buffer.w~=size[1]*oversample or io_buffer.h~=size[2]*oversample then
 		io_buffer=make_float_buffer(size[1]*oversample,size[2]*oversample)
+		io_buffer_dirty=true
 	end
 end
 
@@ -190,6 +225,7 @@ config=make_config({
 	{"m",1,type="int",min=0,max=15},
 	{"a",1,type="float",min=-1,max=1},
 	{"b",1,type="float",min=-1,max=1},
+	{"angle_offset",0,type="float",min=0,max=math.pi*2},
 	{"color",{124/255,50/255,30/255},type="color"},
 	{"monotone",false,type="boolean"},
 	{"gamma",1,type="float",min=0.01,max=5},
@@ -349,7 +385,7 @@ uniform vec2 nm_vec;
 uniform vec2 ab_vec;
 //uniform vec2 dpos;
 uniform int draw_form;
-
+uniform float angle_offset;
 #define M_PI 3.14159265358979323846264338327950288
 //randoms
 float nrand( vec2 n )
@@ -776,15 +812,15 @@ float func(vec2 pos)
 	float fn1=fr*M_PI/1000;
 	float fn2=fr2*M_PI/1000;
 
-	float max_a=7;
+	float max_a=4;
 	float r=0.4;
-	#if 1
+	#if 0
 		//if(time<max_time)
 		if(length(pos+vec2(0.0,0.0))<0.1)
 			return ab_vec.x*(fract(fn1*time)*2-1)
 			+ab_vec.y*(fract(fn2*time)*2-1);
 	#endif
-	#if 0
+	#if 1
 		//if(time<max_time)
 			//if(pos.x<-0.35)
 				//return (hash(time*freq2)*hash(pos*freq))/2;
@@ -794,18 +830,20 @@ float func(vec2 pos)
 		const int MAX_P=4;
 		for(int i=0;i<MAX_P;i++)
 		{
-			float a=M_PI*2*(float(i)/float(MAX_P));
-			dist_val=min(dist_val,length(pos+vec2(cos(a),sin(a))*0.25));
+			float a=M_PI*2*(float(i)/float(MAX_P))+angle_offset;
+			dist_val=min(dist_val,length(pos+vec2(cos(a),sin(a))*0.6));
 		}
 		float amp=1;
-		float amp_scale=1/2;
-		float freq_scale=1.5;
-		if(time<max_time)
+		float amp_scale=2;
+		float freq_scale=0.5;
+		//if(time<max_time)
 		if(dist_val<0.005)
-			for(int i=1;i<4;i++)
+			for(int i=1;i<6;i++)
 			{
-				ret+=amp*ab_vec.x*cos(time*fr)+ //+pos.x*hash(pos.y)
-					 amp*ab_vec.y*cos(time*fr2); //+pos.y*hash(pos.x)
+				//ret+=amp*ab_vec.x*cos(time*fr+pos.x*hash(pos.y))+
+				//	 amp*ab_vec.y*cos(time*fr2+pos.y*hash(pos.x));
+				ret+=amp*ab_vec.x*cos(time*fr)+
+					 amp*ab_vec.y*cos(time*fr2);
 				amp=amp*amp_scale;
 				fr=fr*freq_scale;
 				fr2=fr2*freq_scale;
@@ -813,8 +851,8 @@ float func(vec2 pos)
 		return ret/10;
 	#endif
 	#if 0
-		if(time<max_time)
-		if(pos.x+pos.y<-0.0)
+		//if(time<max_time)
+		if(pos.x<-0.0)
 			return (
 		ab_vec.x*sin(fn1
 		//+pos.x*M_PI*2*nm_vec.x
@@ -831,9 +869,9 @@ float func(vec2 pos)
 	{
 		float ang=(a/max_a)*M_PI*2;
 
-		vec2 dv=vec2(cos(ang)*r,sin(ang)*r);
+		vec2 dv=vec2(cos(ang+angle_offset),sin(ang+angle_offset))*r;
 		if(length(pos+dv)<0.005)
-		if(time<max_time)
+		//if(time<max_time)
 			return (
 			ab_vec.x*sin(fn1*time+ang*nm_vec.x)
 			+ab_vec.y*sin(fn2*time+ang*nm_vec.y)
@@ -843,14 +881,16 @@ float func(vec2 pos)
 	#if 0
 		vec2 normed=(pos.xy+vec2(1,1))/2;
 		float val=texture(input_map,normed).x;
-
-		val=(log(val+1)-input_map_swing.x)/(input_map_swing.y-input_map_swing.x);
+		//val=step(val,0.3);
+		//val=(log(val+1)-input_map_swing.x)/(input_map_swing.y-input_map_swing.x);
 		/*
 		val=clamp(val,0,1);
 		val=gain(val,v_gain);
 		val=pow(val,vec4(v_gamma));
 		*/
-		return sin(time*fn1+val*fr2);
+		//return sin(time*fn1+val*fr2);
+		//return ab_vec.x*sin(time*fn1)*val+ab_vec.y*sin(time*fn2)*val;
+		return ab_vec.x*sin(time*fn1+val)+ab_vec.y*sin(time*fn2+val);
 	#endif
 	#if 0
 	//if(time<max_time)
@@ -1260,12 +1300,12 @@ void main(){
 	//float sh_v=1-flower(pos.xy,w);
 	//float sh_v=1-balance(pos.xy,w);
 	//float sh_v=sh_jaws(pos.xy,w);
-	float sh_v=1-sh_polyhedron(pos.xy,5,0.8,0,w);
+	//float sh_v=1-sh_polyhedron(pos.xy,7,0.8,0,w);
 	//float sh_v=1-ankh(pos.xy,w);
 	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
 	normed.y=1-normed.y;
-	//float sh_v=step(texture(input_map,normed).x,0.3);
+	float sh_v=step(texture(input_map,normed).x,0.3);
 	float sh_v3=sdCircle(pos.xy,0.98);
 #if 0
 	vec4 sh_v2;
@@ -1335,14 +1375,17 @@ void main(){
 				v=boundary_condition(pos.xy,dir);*/
 		}
 		float l=clamp(length(pos.xy),0,1);
-		float radiation=0.99;
+		float radiation=pow(0.999,abs(l-0.5)*1.0+0.5);
+		//float lb=texture(input_map,normed).x;
+		//lb=clamp(lb,0,1);
+		//float radiation=pow(0.99,(1-lb)*0.75+0.25);
 		if(sh_v<=0)
-			v=calc_new_value(pos.xy,avg_c);
-		else if(sh_v3<=0)
-		//else
 			v=calc_new_value(pos.xy,avg_c)*radiation;
+		//else if(sh_v3<=0)
+		//else
+		//	v=calc_new_value(pos.xy,avg_c)*radiation;
 		else
-			v=calc_new_value(pos.xy,avg_c)*mix(radiation,radiation*radiation*radiation,l);
+			v=calc_new_value(pos.xy,avg_c)*radiation*radiation;//mix(radiation,radiation*radiation*radiation,l);
 		//else v=0;
 	}
 
@@ -1371,13 +1414,32 @@ function auto_clear(  )
 		end
 	end
 end
+function clear_texture( b )
+	if io_buffer_dirty then
+		for i=0,io_buffer.w*io_buffer.h do
+			io_buffer:set(i,0,0)
+		end
+		io_buffer_dirty=false
+	end
+	io_buffer:write_texture(b)
+end
 function clear_sand(  )
-	make_sand_buffer()
+	--make_sand_buffer()
+	--need_clear=true
+	make_io_buffer(  )
+	if texture_buffers.sand then
+		clear_texture(texture_buffers.sand.t)
+	end
+end
+function clear_solver()
+	make_io_buffer(  )
+	for i=1,NUM_BUFFERS do
+		clear_texture(texture_buffers[i].t)
+	end
 end
 function clear_buffers(  )
-	texture_buffers={}
-	make_textures()
-	--TODO: @PERF
+	clear_sand()
+	clear_solver()
 end
 
 function reset_state(  )
@@ -1385,14 +1447,13 @@ function reset_state(  )
 	solver_iteration=0
 	clear_buffers()
 end
-
 local need_save
 local single_shot_value
 sim_thread=false
 sim_thread_progress=0
 function animate_accumulation()
     local wait_for_settle=10000
-    local frame_count=100
+    local frame_count=1000
     local frame_wait=5
     reset_state()
     config.accumulate=false
@@ -1416,8 +1477,41 @@ function animate_accumulation()
     		coroutine.yield()
     	end
     	config.draw=true
+    	need_save=true --TODO: does not actually save ALL the frames???!??!?
+    	coroutine.yield()
+    end
+    sim_thread=nil
+end
+function animate_rotation()
+    local wait_for_settle=2500
+    local frame_count=100
+    local angle_step=0.1*math.pi/frame_count
+    for i=1,frame_count do
+    	config.angle_offset=angle_step*(i-1)
+    	reset_state()
+	    config.draw=false
+    	config.a=1
+		config.b=-1
+    	config.accumulate=false
+	    --start emitting waves
+	    for k=1,wait_for_settle do
+	    	coroutine.yield()
+	    end
+		-- [[ disable waves and wait to settle
+		config.a=0
+		config.b=0
+		for k=1,wait_for_settle do
+	    	coroutine.yield()
+	    end
+	    --]]
+    	config.accumulate=true
+    	for k=1,wait_for_settle do
+	    	coroutine.yield()
+	    end
+	    config.draw=true
     	need_save=true
     	coroutine.yield()
+    	sim_thread_progress=i/frame_count
     end
     sim_thread=nil
 end
@@ -1425,7 +1519,8 @@ function animation_system(  )
 	if imgui.CollapsingHeader("Animation") then
 	    if not sim_thread then
 	        if imgui.Button("Start Animate") then
-	           sim_thread=coroutine.create(animate_accumulation)
+	           --sim_thread=coroutine.create(animate_accumulation)
+	           sim_thread=coroutine.create(animate_rotation)
 	        end
 	    else
 	        if imgui.Button("Stop Animate") then
@@ -1446,6 +1541,14 @@ function gui()
 	if imgui.Button("Reload mask") then
 		make_visits_texture()
 	end
+	if imgui.Button("From accumulate") then
+		make_visits_from_other(texture_buffers.sand)
+	end
+	imgui.SameLine()
+	if imgui.Button("Clear mask") then
+		make_visits_from_other(nil)
+	end
+	
 	if config.size_mult then
 		size_mult=1
 	else
@@ -1461,7 +1564,6 @@ function gui()
 	imgui.SameLine()
 	if imgui.Button("Reset Accumlate") then
 		clear_sand()
-		need_clear=true
 	end
 	if imgui.Button("SingleShotNorm") then
 		single_shot_value=true
@@ -1526,7 +1628,7 @@ function waves_solve(  )
 		solver_shader:set_i("values["..i.."]",i)
 	end
 	local id_next=(solver_iteration+NUM_BUFFERS-1) % NUM_BUFFERS +1
-
+	solver_shader:set("angle_offset",config.angle_offset)
 	solver_shader:set("v_gamma",config.gamma)
 	solver_shader:set("v_gain",config.gain)
 	solver_shader:set("source_pos",spline_p[1],spline_p[2],spline_p[3],spline_p[4])
@@ -1551,10 +1653,16 @@ function waves_solve(  )
 	local trg_tex=texture_buffers[id_next];
 	trg_tex.t:use(NUM_BUFFERS)
 	solver_shader:set("tex_size",trg_tex.w,trg_tex.h)
-	if not trg_tex.t:render_to(trg_tex.w,trg_tex.h) then
-		error("failed to set framebuffer up")
+	if need_clear_solver then
+		clear_solver()
+		need_clear_solver=false
+	else
+		if not trg_tex.t:render_to(trg_tex.w,trg_tex.h) then
+			error("failed to set framebuffer up")
+		end
+
+		solver_shader:draw_quad()
 	end
-	solver_shader:draw_quad()
 	__render_to_window()
 
 
@@ -1580,12 +1688,14 @@ end
 function save_tex( tex ,minv,maxv)
 	make_io_buffer()
 	io_buffer:read_texture(tex.t)
+	io_buffer_dirty=true
 	buffer_save(io_buffer,minv,maxv,"waves_out.buf")
 	bwrite()
 end
 function calc_range_value( tex )
 	make_io_buffer()
 	io_buffer:read_texture(tex.t)
+	io_buffer_dirty=true
 	local m1=math.huge;
 	local m2=-math.huge;
 	for x=0,io_buffer.w-1 do
@@ -1599,7 +1709,8 @@ function calc_range_value( tex )
 	end
 	return m1,m2
 end
-need_clear=true
+need_clear=false
+need_clear_solver=false
 function draw_texture( id )
 	local id_next=(solver_iteration+NUM_BUFFERS-1) % NUM_BUFFERS +1
 	local src_tex=texture_buffers[id_next];
@@ -1610,14 +1721,16 @@ function draw_texture( id )
 	add_shader:set_i("values",0)
 	add_shader:set("mult",1)
 	local need_draw=false
-	if config.accumulate and not config.pause then
+	if need_clear then
+		clear_sand()
+		need_clear=false
+	end
+	if (config.accumulate and not config.pause) then
+		
 		add_shader:blend_add()
 		--add_shader:blend_default()
 		--draw_shader:set("in_col",config.color[1],config.color[2],config.color[3],config.color[4])
-		if need_clear then
-			__clear()
-			need_clear=false
-		end
+		
 		if not trg_tex.t:render_to(trg_tex.w,trg_tex.h) then
 			error("failed to set framebuffer up")
 		end
