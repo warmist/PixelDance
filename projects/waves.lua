@@ -112,7 +112,7 @@ function read_visits_buf( fname )
 	end
 	end
 end
-local force_reload_image=true
+local force_reload_image=false
 mask_file=mask_file or "saved_1699854183.png"
 function make_visits_texture()
 	--[[
@@ -131,11 +131,20 @@ function make_visits_texture()
 		image_mask:write_texture(visit_tex.t)
  	end
 end
-make_visits_texture()
+--make_visits_texture()
 function make_visits_from_other( other_tex )
 	local vmin=math.huge
 	local vmax=-math.huge
+	local count_bins=1000
+	local bins={}
+	for i=1,count_bins do
+		bins[i]=0
+	end
 	if other_tex then
+		local want_part_of_image_to_this_value=0.2
+		local what_part_of_image=0.9
+		local power_default=3
+
 		other_tex.t:use(0,1)
 		io_buffer:read_texture(other_tex.t)
 		for x=0,io_buffer.w-1 do
@@ -145,12 +154,52 @@ function make_visits_from_other( other_tex )
 			if v>vmax then vmax=v end
 		end
 		end
+		if vmax-vmin<0.001 then
+			return
+		end
+		--remap so that at threshold 0.5 there are X amount of pixels
+		for x=0,io_buffer.w-1 do
+		for y=0,io_buffer.h-1 do
+			local v=io_buffer:get(x,y)
+			local bin_id=math.floor((count_bins-1)*(v-vmin)/(vmax-vmin))+1
+			if bins[bin_id]==nil then
+				print(bin_id,x,y,(v-vmin)/(vmax-vmin))
+			end
+			bins[bin_id]=bins[bin_id]+1
+		end
+		end
+		local bin_size=io_buffer.w*io_buffer.h
 
+		
+		local partial_sum=0
+		local bin_nr=math.floor(count_bins/2)
+		for i=1,count_bins do
+			partial_sum=partial_sum+bins[i]/bin_size
+			if partial_sum>what_part_of_image then
+				bin_nr=i
+				break
+			end
+		end
+		local current_level=bin_nr/count_bins
+		local cur_power=math.log(want_part_of_image_to_this_value)/math.log(current_level)
+		if bin_nr==1 then
+			cur_power=power_default
+			print("First bin too high, power set to:",cur_power)
+		else
+			print("Figured out power:",cur_power," at bin:",bin_nr," psum:",partial_sum)
+		end
+		partial_sum=0
+		for i=1,count_bins do
+			print("\t",bins[i]/bin_size,partial_sum,i/count_bins,math.pow(i/count_bins,cur_power))
+			partial_sum=partial_sum+bins[i]/bin_size
+		end
 		for x=0,io_buffer.w-1 do
 		for y=0,io_buffer.h-1 do
 			local v=io_buffer:get(x,y)
 			v=(v-vmin)/(vmax-vmin)
-			io_buffer:set(x,y,v)
+			
+			io_buffer:set(x,y,math.pow(v,cur_power))
+
 		end
 		end
 	else
@@ -167,6 +216,7 @@ function make_visits_from_other( other_tex )
 	visit_tex.t:use(0,1)
 	io_buffer:write_texture(visit_tex.t)
 end
+
 local size=STATE.size
 img_buf=make_image_buffer(size[1],size[2])
 
@@ -211,7 +261,9 @@ function make_io_buffer(  )
 end
 
 make_io_buffer()
-
+if visit_tex==nil then
+	make_visits_from_other()
+end
 config=make_config({
 	{"pause",false,type="boolean"},
 	{"dt",1,type="float",min=0.001,max=2},
@@ -820,7 +872,7 @@ float func(vec2 pos)
 			return ab_vec.x*(fract(fn1*time)*2-1)
 			+ab_vec.y*(fract(fn2*time)*2-1);
 	#endif
-	#if 1
+	#if 0
 		//if(time<max_time)
 			//if(pos.x<-0.35)
 				//return (hash(time*freq2)*hash(pos*freq))/2;
@@ -850,9 +902,9 @@ float func(vec2 pos)
 			}
 		return ret/10;
 	#endif
-	#if 0
+	#if 1
 		//if(time<max_time)
-		if(pos.x<-0.0)
+		//if(pos.x<-0.0)
 			return (
 		ab_vec.x*sin(fn1
 		//+pos.x*M_PI*2*nm_vec.x
@@ -1300,12 +1352,13 @@ void main(){
 	//float sh_v=1-flower(pos.xy,w);
 	//float sh_v=1-balance(pos.xy,w);
 	//float sh_v=sh_jaws(pos.xy,w);
-	//float sh_v=1-sh_polyhedron(pos.xy,7,0.8,0,w);
+	//float sh_v=1-sh_polyhedron(pos.xy,5,0.8,0,w);
 	//float sh_v=1-ankh(pos.xy,w);
 	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
 	normed.y=1-normed.y;
-	float sh_v=step(texture(input_map,normed).x,0.3);
+	float sh_v=step(texture(input_map,normed*vec2(1,-1)).x,0.1);
+	//sh_v=min(sh_v,1-sh_polyhedron(pos.xy,5,0.8,0,w));
 	float sh_v3=sdCircle(pos.xy,0.98);
 #if 0
 	vec4 sh_v2;
@@ -1351,6 +1404,10 @@ void main(){
 	if(draw_form==1)
 	{
 		//v=(avg_c.x-min_c*min_c)/(max_c-min_c);
+
+		//float lb=texture(input_map,normed*vec2(1,-1)).x;
+		//v=lb;
+
 		v=sh_v;
 		//vec2 dv=vec2(dFdx(sh_v),dFdy(sh_v));
 		//normalize(dv);
@@ -1375,8 +1432,10 @@ void main(){
 				v=boundary_condition(pos.xy,dir);*/
 		}
 		float l=clamp(length(pos.xy),0,1);
-		float radiation=pow(0.999,abs(l-0.5)*1.0+0.5);
 		//float lb=texture(input_map,normed).x;
+		float radiation=0.999;
+		//float radiation=pow(0.999,abs(l-0.5)*1.0+0.5);
+		//float radiation=pow(0.999,lb*0.5+0.5);
 		//lb=clamp(lb,0,1);
 		//float radiation=pow(0.99,(1-lb)*0.75+0.25);
 		if(sh_v<=0)
@@ -1477,11 +1536,52 @@ function animate_accumulation()
     		coroutine.yield()
     	end
     	config.draw=true
-    	need_save=true --TODO: does not actually save ALL the frames???!??!?
-    	coroutine.yield()
+    	need_save=true
+    	while need_save do
+    		coroutine.yield()
+    	end
+
     end
     sim_thread=nil
 end
+function animate_accumulation_wmask()
+    local wait_for_settle=10000
+    local wait_emit=2000
+    local frame_count=20
+    local frame_wait=10000
+    for i=1,frame_count do
+    	sim_thread_progress=i/frame_count
+	    reset_state()
+	    config.a=1
+		config.b=-1
+	    config.accumulate=false
+	    --start emitting waves
+	    for k=1,wait_emit do
+	    	coroutine.yield()
+	    end
+		-- [[ disable waves and wait to settle
+		config.a=0
+		config.b=0
+		for k=1,wait_for_settle do
+	    	coroutine.yield()
+	    end
+	    --]]
+	    config.accumulate=true
+	    
+    	config.draw=false
+    	for i=1,frame_wait do
+    		coroutine.yield()
+    	end
+    	config.draw=true
+    	need_save=true
+    	while need_save do
+    		coroutine.yield()
+    	end
+		make_visits_from_other(texture_buffers.sand)
+    end
+    sim_thread=nil
+end
+
 function animate_rotation()
     local wait_for_settle=2500
     local frame_count=100
@@ -1520,7 +1620,8 @@ function animation_system(  )
 	    if not sim_thread then
 	        if imgui.Button("Start Animate") then
 	           --sim_thread=coroutine.create(animate_accumulation)
-	           sim_thread=coroutine.create(animate_rotation)
+	           --sim_thread=coroutine.create(animate_rotation)
+	           sim_thread=coroutine.create(animate_accumulation_wmask)
 	        end
 	    else
 	        if imgui.Button("Stop Animate") then
