@@ -6,8 +6,8 @@ local ffi=require "ffi"
 		* set potential energy from nearby cells (e.g. min in same place as they are or inverted etc...)
 		* compress data (2 for pos, 2 for speed -> one float4 vs 2!)
 ]]
-w=1024
-h=1024
+w=256
+h=256
 no_particles=4
 local no_floats_per_pixel=4*2*no_particles --4 for pos, 4 for speed, times "particles" 
 
@@ -23,18 +23,18 @@ function set_values(s,tbl)
 	end)
 end
 
-local cl_kernel,init_kernel
+local kernels
 function remake_program()
-cl_kernel,init_kernel=opencl.make_program(set_values([==[
+kernels=opencl.make_program(set_values([==[
 #line __LINE__
 #define W $w$
 #define H $h$
 #define PARTICLE_COUNT $no_particles$
 
-#define TIME_STEP 0.05f
+#define TIME_STEP 0.001f
 #define GAMMA (5.0f)
 #define GAMMA2 (2.5f)
-#define DIFFUSION 0.3f
+#define DIFFUSION 0.0125f //015f
 //#define FRICTION $friction$f
 typedef struct _settings
 {
@@ -59,7 +59,7 @@ int pos_to_index(int2 p)
 	return (p2.x+p2.y*W)*2*PARTICLE_COUNT;
 }
 #if 0 //gravity based thing
-float3 del_potential( float3* qs,int i)
+float3 del_potential( float3* qs,int i,float2 npos,float dot_around)
 {
 	float3 ret=(float3)(0,0,0);
 	float3 qi=qs[i];
@@ -76,8 +76,8 @@ float3 del_potential( float3* qs,int i)
 	}
 	return gamma*ret;
 }
-#elif 0 //modified (non-singular) gravity
-float3 del_potential( float3* qs,int i)
+#elif 1 //modified (non-singular) gravity
+float3 del_potential( float3* qs,int i,float2 npos,float dot_around)
 {
 	float3 ret=(float3)(0,0,0);
 	float3 qi=qs[i];
@@ -96,14 +96,14 @@ float3 del_potential( float3* qs,int i)
 	return gamma*ret;
 }
 #elif 0 //modified (non-singular) gravity + static potential
-float3 del_potential( float3* qs,int i)
+float3 del_potential( float3* qs,int i,float2 npos,float dot_around)
 {
 	float3 ret=(float3)(0,0,0);
 	float3 qi=qs[i];
 	float gamma=GAMMA;
 	float3 static_potential[PARTICLE_COUNT]={
 		(float3)(1,0,0),
-		(float3)(0,1,0),
+		(float3)(0,0.2,0.4),
 		(float3)(0,0,1),
 	};
 	for(int j=0;j<PARTICLE_COUNT;j++)
@@ -120,7 +120,7 @@ float3 del_potential( float3* qs,int i)
 	return gamma*ret;
 }
 #elif 0 //very simple parabola potential with min at vmin
-float3 del_potential( float3* qs,int i,float2 npos)
+float3 del_potential( float3* qs,int i,float2 npos,float dot_around)
 {
 	float3 ret=(float3)(0,0,0);
 	float3 qi=qs[i];
@@ -135,7 +135,7 @@ float3 del_potential( float3* qs,int i,float2 npos)
 	}
 	return gamma*ret;
 }
-#elif 1 
+#elif 0
 float3 del_potential( float3* qs,int i,float2 npos,float dot_around)
 {
 	float3 ret=(float3)(0,0,0);
@@ -158,7 +158,7 @@ float3 del_potential( float3* qs,int i,float2 npos,float dot_around)
 	return gamma*ret;
 }
 #elif 0
-float3 del_potential( float3* qs,int i)
+float3 del_potential( float3* qs,int i,float2 npos,float dot_around)
 {
 	float3 ret=(float3)(0,0,0);
 	float3 qi=qs[i];
@@ -174,7 +174,7 @@ float3 del_potential( float3* qs,int i)
 	return gamma*ret;
 }
 #else
-float3 del_potential( float3* qs,int i)
+float3 del_potential( float3* qs,int i,float2 npos,float dot_around)
 {
 	float3 ret=(float3)(0,0,0);
 	float3 qi=qs[i];
@@ -197,7 +197,7 @@ void simulation_tick(float2 npos, float3* in_pos, float3* in_speed,
 	float step_size=TIME_STEP;
 
 	//float inv_masses=1;//todo: different masses for more fun...
-	float inv_masses[PARTICLE_COUNT]={1,1,1,1};
+	float inv_masses[PARTICLE_COUNT]={1,0.5,0.75,1.25};
 	float3 vecs[PARTICLE_COUNT];
 	for(int i=0;i<PARTICLE_COUNT;i++)
 	{
@@ -231,7 +231,7 @@ void save_data(__global __write_only float4* output, float3* pos, float3* speed)
 		//vstore3(speed[i],i*2+1,output);
 	}
 }
-/*
+///*
 float system_energy( float4* pos, float4* speed)
 {
 	float sum=0;
@@ -259,7 +259,7 @@ float system_energy( float4* pos, float4* speed)
 	sum=kin_sum+pot_sum;
 	return sum;
 }
-*/
+//*/
 float load_speed_v(__global float4* input,int offset,int i)
 {
 	return length(input[offset+i+PARTICLE_COUNT]);
@@ -355,7 +355,7 @@ float sample_around_dot2(__global float4* input,int2 pos,float4* my_pos)
 void diffusion(__global float4* input, float3* speed,int2 pos)
 {
 	float diffusion=DIFFUSION;
-	float3 sl=(float3)(length(speed[0]),length(speed[1]),length(speed[2]));
+	float3 sl=(float3)(length(speed[0])+1,length(speed[1])+1,length(speed[2])+1);
 
 	//float3 nl=laplace(input,pos)*TIME_STEP*diffusion+sl;
 	float3 nl=((avg_around(input,pos)+sl*0.2f)/sl)*diffusion+(1-diffusion);
@@ -390,11 +390,14 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 		float4 col;
 
 		int offset=i*PARTICLE_COUNT*2;//pos_to_index(pos);
+		//int offset=pos_to_index(pos);
 		load_data(input+offset,old_pos,old_speed);
-		#if 1
+#if 1
 		//float dot_around=sample_around_dot(input,pos);
 		float dot_around=sample_around_dot2(input,pos,old_pos);
-		//diffusion(input,old_speed,pos);
+#if 0
+		diffusion(input,old_speed,pos);
+#endif
 		for(int j=0;j<1;j++)
 		{
 			simulation_tick(npos,old_pos,old_speed,new_pos,new_speed,dot_around);
@@ -420,15 +423,15 @@ __kernel void update_grid(__global __read_only float4* input,__global __write_on
 				new_speed[i]=old_speed[i];
 			}
 			save_data(output+offset,new_pos,new_speed);
-		#endif
+#endif
 
 		int di=layer_id;
-		#if 0
+		#if 1
 		col.x=(new_pos[di].x+1)*0.5;
 		col.y=(new_pos[di].x+1)*0.5;
 		col.z=(new_pos[di].x+1)*0.5;
 		#endif
-		#if 1
+		#if 0
 		col.x=(new_pos[di].x+1)*0.5;
 		col.y=(new_pos[di].y+1)*0.5;
 		col.z=(new_pos[di].z+1)*0.5;
@@ -531,7 +534,7 @@ __kernel void init_grid(__global float4* output,float min_x,float min_y,float ma
 		float2 pos_normed;
 		pos_normed=(float2)(pos.x*iW,pos.y*iW);
 		float2 delta;
-		delta=convert_float2(pos-(int2)(W,H)/2)/W;
+		delta=convert_float2(pos-(int2)(W,H)/2)/(float)W;
 		float distance=dot(delta,delta);
 
 		int offset=pos_to_index(pos);
@@ -540,8 +543,8 @@ __kernel void init_grid(__global float4* output,float min_x,float min_y,float ma
 		float x_v=(min_x+pos_normed.x*(max_x-min_x))*M_PI_F*2;
 		float y_v=(min_y+pos_normed.y*(max_y-min_y))*M_PI_F;
 		float sp1=8.0f;//*(1+pos_normed.x*pos_normed.y*0.05);
-		if(distance<0.1)
-			sp1=2.0f;
+		//if(distance<0.1)
+		//	sp1=2.0f;
 		for(int j=0;j<PARTICLE_COUNT;j++)
 			set_spherical(j*1754+77.154*sp1,244*j*j+77.0,(fmod(7417.0*j,2)-1)*sp1,old_pos+j,old_speed+j);
 		//set_spherical(-2.45,3,-sp1,old_pos+1,old_speed+1);
@@ -604,7 +607,7 @@ void main()
 	//float v=texture(tex_main,normed).x;
 	//v=pow(v,2.2);
 	//color=vec4(v,v,v,1);
-	#if 1
+	#if 0
 	color.xyz=texture(tex_main,normed).xyz;
 	#else
 	color.xyz=spectral_zucconi6(texture(tex_main,normed).x);
@@ -620,11 +623,12 @@ function recal_rect()
 end
 recal_rect()
 function init_buffers(  )
-	init_kernel:set(0,buffers[1])
+	local k=kernels.init_grid
+	k:set(0,buffers[1])
 	for i=1,#start_rect do
-		init_kernel:set(i,start_rect[i])
+		k:set(i,start_rect[i])
 	end
-	init_kernel:run(w*h)
+	k:run(w*h)
 end
 init_buffers()
 function save_img( path )
@@ -705,18 +709,19 @@ function update(  )
 	--cl tick
 	--setup stuff
 	if not config.pause then
-		cl_kernel:set(0,buffers[1])
-		cl_kernel:set(1,buffers[2])
-		cl_kernel:set(2,display_buffer)
-		cl_kernel:seti(3,config.layer)
+		local k=kernels.update_grid
+		k:set(0,buffers[1])
+		k:set(1,buffers[2])
+		k:set(2,display_buffer)
+		k:seti(3,config.layer)
 		for i=1,#start_rect do
-			cl_kernel:set(i+3,start_rect[i])
+			k:set(i+3,start_rect[i])
 		end
-		cl_kernel:set(8,config.friction)
-		--cl_kernel:set(3,time)
+		k:set(8,config.friction)
+		--k:set(3,time)
 		--  run kernel
 		display_buffer:aquire()
-		cl_kernel:run(w*h)
+		k:run(w*h)
 		display_buffer:release()
 		sim_done=true
 	end

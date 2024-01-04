@@ -189,7 +189,105 @@ vec2 grad( in vec2 x )
     return vec2( F(x+h.xy) - F(x-h.xy),
                  F(x+h.yx) - F(x-h.yx) )/(2.0*h.x);
 }
+float rand1(float n){return fract(sin(n) * 43758.5453123);}
+float rand2(float n){return fract(sin(n) * 78745.6326871);}
+vec2 c_mul(vec2 self, vec2 other) {
+    return vec2(self.x * other.x - self.y * other.y, 
+                self.x * other.y + self.y * other.x);
+}
+//from: https://www.alanzucconi.com/2017/07/15/improving-the-rainbow-2/
+vec3 bump3y (vec3 x, vec3 yoffset)
+{
+    vec3 y = 1 - x * x;
+    y = clamp(y-yoffset,0,1);
+    return y;
+}
+vec3 spectral_zucconi6 (float w)
+{
+    // w: [400, 700]
+    // x: [0,   1]
+    //fixed x = clamp((w - 400.0)/ 300.0,0,1);
+    float x=w;
+    vec3 c1 = vec3(3.54585104, 2.93225262, 2.41593945);
+    vec3 x1 = vec3(0.69549072, 0.49228336, 0.27699880);
+    vec3 y1 = vec3(0.02312639, 0.15225084, 0.52607955);
+    vec3 c2 = vec3(3.90307140, 3.21182957, 3.96587128);
+    vec3 x2 = vec3(0.11748627, 0.86755042, 0.66077860);
+    vec3 y2 = vec3(0.84897130, 0.88445281, 0.73949448);
+    return
+        bump3y(c1 * (x - x1), y1) +
+        bump3y(c2 * (x - x2), y2) ;
+}
+float d_measure(vec2 a,vec2 b)
+{
+	vec2 p1=vec2(0.6,0.2);
+	vec2 p2=vec2(0.15,0.3);
+#if 0 //polar
+	float ar=atan(a.y,a.x);
+	float br=atan(b.y,b.x);
+	float ad=length(a);
+	float bd=length(b);
+	return distance(vec2(ar,ad),vec2(br,bd));
+#elif 0 //polar fixed
+	float ar=atan(a.y,a.x);
+	float br=atan(b.y,b.x);
+	float ad=length(a);
+	float bd=length(b);
+	float dr=ar-br;//min(ar-br,min(abs(ar-br+PI*2),abs(ar-br-PI*2)));
+	if(dr>PI)
+		dr-=2*PI;
+	else if(dr<-PI)
+		dr+=2*PI;
+	float dd=ad-bd;
+	return sqrt(dr*dr+dd*dd);
+#elif 1 //random bs
+	float v1=cos(a.x-b.x);
+	float v2=sin(a.y-b.y);
+	return sqrt(v1*v1+v2*v2);
+#elif 0 //z^2 complex
+	return sqrt(distance(c_mul(a,a),c_mul(b,b)));
+#elif 0 //z^3 complex
+	return sqrt(distance(c_mul(a,c_mul(a,a)),c_mul(b,c_mul(b,b))));
+#elif 0 //julia
+	for(int i=0;i<5;i++)
+	{
+		a=c_mul(a,a)+p1;
+		b=c_mul(b,b)+p2;
+	}
+	return distance(a,b);
+#elif 0 //mandelbrot
+	for(int i=0;i<100;i++)
+	{
+		p1=c_mul(p1,p1)+a;
+		p2=c_mul(p2,p2)+b;
+	}
+	return distance(p1,p2);
+#else
+	return distance(a,b); //normal
+#endif
+}
 void main(){
+	float aspect=rez.x/rez.y;
+	
+	vec2 p=pos.xy*vec2(1,1/aspect);
+	const int max_id=1000;
+	float v=0;
+	float d_min=100000;
+	for(int i=0;i<max_id;i++)
+	{
+		vec2 ptrg=vec2(rand1(i*45.123+548*params.x),rand2(i*45.123+548*params.y))*2-vec2(1);
+		float l=d_measure(p,ptrg);
+		if(l<d_min)
+		{
+			v=i;
+			d_min=l;
+		}
+	}
+	float lv=v/max_id;
+	color=vec4(spectral_zucconi6(lv),1);
+	//color=vec4(vec3(lv),1);
+}
+void main2(){
 	float aspect=rez.x/rez.y;
 	float s=5;
 	vec2 p=pos.xy*vec2(1,1/aspect);
