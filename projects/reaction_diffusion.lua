@@ -21,6 +21,7 @@ config=make_config({
 	{"k2",0.5,type="float",min=0,max=1},
 	{"k3",0.5,type="float",min=0,max=1},
 	{"k4",0.5,type="float",min=0,max=1},
+	{"reaction_scale",1,type="floatsci",min=0,max=1},
 	{"region_size",0.5,type="float",min=0.01,max=1},
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"gain",1,type="float",min=-5,max=5},
@@ -89,7 +90,7 @@ local react_diffuse
 function update_diffuse(  )
 react_diffuse=shaders.Make(string.format([==[
 #version 330
-#line 85
+#line __LINE__
 
 out vec4 color;
 in vec3 pos;
@@ -99,6 +100,7 @@ uniform vec4 kill_feed;
 
 uniform sampler2D tex_main;
 uniform float dt;
+uniform float reaction_scale;
 
 uniform vec4 map_region;
 vec4 laplace(vec2 pos) //with laplacian kernel (cnt -1,near .2,diag 0.05)
@@ -349,12 +351,13 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 	float max_len=1;
 	float l=length(c);
 	float nl=clamp(l/max_len,0,1);
-
-	vec4 r=mix(vec4(%s),-c,nl);
+	vec4 values=vec4(%s);
+	//vec4 r=mix(values,-c,nl);
 	//r=r/(l);
 	//return r*exp(-l*l/100);
 	//*k.y+vec4(%s)*k.w;
-	return r;
+	//return r;
+	return values*reaction_scale;
 }
 vec4 hyper_chaos(vec4 c,vec2 normed)
 {
@@ -701,7 +704,7 @@ void main(){
 		}
 	ret+=diffusion_value*L*dt;
 #endif
-	//ret=clamp(ret,0,1);
+	ret=clamp(ret,-1,1);
 	//float l=length(ret);
 	//l=max(l,0.0001);
 	color=ret;///l;
@@ -811,7 +814,7 @@ local normal_symbols={
 ["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,
 ["cos(R)"]=1,
 ["log(R+1.0)"]=0.5,
-["(R)/(R+1)"]=0.1,["(R)*(R)"]=20,["(R)-(R)"]=20,["(R)+(R)"]=20}
+["(R)/(R+1)"]=0.1,["(R)*(R)"]=10,["(R)-(R)"]=10,["(R)+(R)"]=10}
 
 
 function normalize( tbl )
@@ -949,13 +952,14 @@ function random_math_transfers( steps,seed,count_transfers )
 	return rstr
 end
 function sim_tick(  )
-	local dt=0.05
+	local dt=0.005
 	react_diffuse:use()
 --	react_diffuse:blend_disable()
 	react_diffuse:blend_default()
 	react_diffuse:set("diffusion",config.diff_a,config.diff_b,config.diff_c,config.diff_d)
 	react_diffuse:set("kill_feed",config.k1,config.k2,config.k3,config.k4)
 	react_diffuse:set("dt",dt)
+	react_diffuse:set("reaction_scale",config.reaction_scale)
 	react_diffuse:set("map_region",map_region[1],map_region[2],map_region[3],map_region[4])
 	local cur_buff=react_buffer:get()
 	local do_clamp
@@ -1222,11 +1226,11 @@ function gui(  )
 		reset_buffers("chaos")
 	end
 	if imgui.Button("RandMath") then
-		thingy_string=random_math(24,nil,{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
+		thingy_string=random_math(45,"R+c.y*c.y*c.x,R+c.z*c.z*c.y,R+c.w*c.w*c.z,R+c.x*c.x*c.z",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
 		print(thingy_string)
 		--eval_thingy_string()
 		update_diffuse()
-		reset_buffers("chaos")
+		reset_buffers("noise")
 	end
 	imgui.SameLine()
 	if imgui.Button("ClearCollec") then
