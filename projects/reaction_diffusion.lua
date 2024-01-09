@@ -102,7 +102,7 @@ uniform sampler2D tex_main;
 uniform float dt;
 uniform float reaction_scale;
 
-uniform vec4 map_region;
+uniform vec4 map_region[4];//w,h,used?,x or y
 vec4 laplace(vec2 pos) //with laplacian kernel (cnt -1,near .2,diag 0.05)
 {
 	vec4 ret=vec4(0);
@@ -145,10 +145,10 @@ vec4 gray_scott(vec4 c,vec2 normed)
 
 	vec4 k=kill_feed;
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
-		k.y=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region[0].x,map_region[0].y,normed.x);
+		k.y=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 	k=k*scale+offset;
@@ -173,10 +173,10 @@ vec4 schnakenberk_reaction_kinetics(vec4 cnt,vec2 normed)
 	float k3=kill_feed.z;
 	float k4=kill_feed.w;
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k3=mix(map_region.x,map_region.y,normed.x);
-		k4=mix(map_region.z,map_region.w,normed.y);
+		k3=mix(map_region[0].x,map_region[0].y,normed.x);
+		k4=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 	float aab=cnt.x*cnt.x*cnt.y;
@@ -187,10 +187,10 @@ vec4 schnakenberk_reaction_kinetics(vec4 cnt,vec2 normed)
 	vec4 offset=vec4(0,0,0,0);
 
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
-		k.y=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region[0].x,map_region[0].y,normed.x);
+		k.y=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 	k=k*scale+offset;
@@ -203,10 +203,10 @@ vec4 gierer_meinhard(vec4 cnt,vec2 normed)
 	float k2=kill_feed.y;
 	float k3=kill_feed.z;
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k1=mix(map_region.x,map_region.y,normed.x);
-		k2=mix(map_region.z,map_region.w,normed.y);
+		k1=mix(map_region[0].x,map_region[0].y,normed.x);
+		k2=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 
@@ -226,8 +226,8 @@ vec4 ruijgrok(vec4 cnt,vec2 normed)
 	float kill_rate=kill_feed.x;
 	float feed_rate=kill_feed.y;
 #ifdef MAPPING
-	kill_rate=mix(map_region.x,map_region.y,normed.x);
-	feed_rate=mix(map_region.z,map_region.w,normed.y);
+	kill_rate=mix(map_region[0].x,map_region[0].y,normed.x);
+	feed_rate=mix(map_region[0].z,map_region[0].w,normed.y);
 #endif
 	float pos_x1=cnt.y*cnt.x;
 	float pos_x2=cnt.z*cnt.x*cnt.x;
@@ -267,11 +267,11 @@ vec4 rossler(vec4 cnt,vec2 normed)
 
 	float k4=kill_feed.w;
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		//k1=mix(map_region.x,map_region.y,normed.x)*0.2+0.1;
-		k2=mix(map_region.z,map_region.w,normed.y)*0.2+0.1;
-		//k3=mix(map_region.x,map_region.y,normed.x)*20+4;
+		//k1=mix(map_region[0].x,map_region[0].y,normed.x)*0.2+0.1;
+		k2=mix(map_region[0].z,map_region[0].w,normed.y)*0.2+0.1;
+		//k3=mix(map_region[0].x,map_region[0].y,normed.x)*20+4;
 	}
 #endif
 
@@ -291,10 +291,10 @@ vec4 rossler4(vec4 c,vec2 normed)
 
 	vec4 k=kill_feed;
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
-		k.y=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region[0].x,map_region[0].y,normed.x);
+		k.y=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 	k=k*scale+offset;
@@ -340,19 +340,27 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 	vec4 k=kill_feed;
 
 #ifdef MAPPING
-	if (map_region.x>=0)
+	//if (map_region[0].z>=0 || map_region[1].z>=0 || map_region[2].z>=0 || map_region[3].z>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
-		k.y=mix(map_region.z,map_region.w,normed.y);
+		#define MAPPED_VALUE(id,value) value=mix(value,mix(map_region[id].x,map_region[id].y,mix(normed.x,normed.y,map_region[id].w)),map_region[id].z)
+		MAPPED_VALUE(0,k.x);
+		//k.x=mix(k.x,mix(0,1,mix(normed.x,normed.y,0)),1);
+		//k.y=mix(k.y,mix(0,1,mix(normed.x,normed.y,1)),1);
+		MAPPED_VALUE(1,k.y);
+		MAPPED_VALUE(2,k.z);
+		MAPPED_VALUE(3,k.w);		
 	}
 #endif
 	k=k*scale+offset;
 
 	float max_len=1;
-	float l=length(c);
-	float nl=clamp(l/max_len,0,1);
 	vec4 values=vec4(%s);
-	//vec4 r=mix(values,-c,nl);
+	//float l=length(values);
+	//float l=length(c);
+	//float l=max(max(abs(values.x),abs(values.y)),max(abs(values.z),abs(values.w)));
+	float l=max(max(abs(c.x),abs(c.y)),max(abs(c.z),abs(c.w)));
+	float nl=clamp(l/max_len,0,1);
+	values=mix(values,-c,nl);
 	//r=r/(l);
 	//return r*exp(-l*l/100);
 	//*k.y+vec4(%s)*k.w;
@@ -367,10 +375,10 @@ vec4 hyper_chaos(vec4 c,vec2 normed)
 
 	vec4 k=kill_feed;
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
-		k.y=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region[0].x,map_region[0].y,normed.x);
+		k.y=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 	k=k*scale+offset;
@@ -392,10 +400,10 @@ vec4 lorenz_system(vec4 c,vec2 normed)
 
 	vec4 k=kill_feed;
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
-		k.y=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region[0].x,map_region[0].y,normed.x);
+		k.y=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 	k=k*scale+offset;
@@ -421,11 +429,11 @@ vec4 chen_attractor(vec4 c,vec2 normed)
 
 	vec4 k=kill_feed;
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		//k.x=mix(map_region.x,map_region.y,normed.x);
-		k.y=mix(map_region.z,map_region.w,normed.y);
-		k.z=mix(map_region.x,map_region.y,normed.x);
+		//k.x=mix(map_region[0].x,map_region[0].y,normed.x);
+		k.y=mix(map_region[0].z,map_region[0].w,normed.y);
+		k.z=mix(map_region[0].x,map_region[0].y,normed.x);
 	}
 #endif
 
@@ -445,12 +453,12 @@ vec4 clifford_attractor(vec4 c, vec2 normed)
 	vec4 k=kill_feed;
 
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
-		k.y=mix(map_region.z,map_region.w,normed.x);
-		//k.z=mix(map_region.z,map_region.w,normed.y);
-		//k.w=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region[0].x,map_region[0].y,normed.x);
+		k.y=mix(map_region[0].z,map_region[0].w,normed.x);
+		//k.z=mix(map_region[0].z,map_region[0].w,normed.y);
+		//k.w=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 
@@ -467,10 +475,10 @@ vec4 hopalong_attractor1(vec4 c,vec2 normed)
 	vec4 k=kill_feed*8-vec4(4);
 
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x)*4-2;
-		k.y=mix(map_region.z,map_region.w,normed.y)*4-2;
+		k.x=mix(map_region[0].x,map_region[0].y,normed.x)*4-2;
+		k.y=mix(map_region[0].z,map_region[0].w,normed.y)*4-2;
 	}
 #endif
 	return vec4(
@@ -486,10 +494,10 @@ vec4 hopalong_attractor2(vec4 c,vec2 normed)
 	vec4 k=kill_feed*8-vec4(4);
 
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
-		k.y=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region[0].x,map_region[0].y,normed.x);
+		k.y=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 
@@ -510,12 +518,12 @@ vec4 coullet_attractor(vec4 c, vec2 normed)
 	vec4 k=kill_feed;
 
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
-		k.y=mix(map_region.z,map_region.w,normed.x);
-		//k.z=mix(map_region.z,map_region.w,normed.y);
-		//k.w=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region[0].x,map_region[0].y,normed.x);
+		k.y=mix(map_region[0].z,map_region[0].w,normed.x);
+		//k.z=mix(map_region[0].z,map_region[0].w,normed.y);
+		//k.w=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 
@@ -536,10 +544,10 @@ vec4 chaos_4d(vec4 c, vec2 normed)
 
 	vec4 k=kill_feed;
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
-		k.y=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region[0].x,map_region[0].y,normed.x);
+		k.y=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 	k=k*scale+offset;
@@ -565,10 +573,10 @@ vec4 gumowski_mira_attractor(vec4 c,vec2 normed)
 	vec4 k=kill_feed;
 
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
-		k.z=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region[0].x,map_region[0].y,normed.x);
+		k.z=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 	k=k*scale+offset;
@@ -591,10 +599,10 @@ vec4 rampe1_modded(vec4 c,vec2 normed)
 	float ke=-0.8;
 	float kf=0.7;
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
-		k.y=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region[0].x,map_region[0].y,normed.x);
+		k.y=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 	k=k*scale+offset;
@@ -617,11 +625,11 @@ vec4 coupled_attractors(vec4 c,vec2 normed)
 	vec4 k=kill_feed;
 
 #ifdef MAPPING
-	if (map_region.x>=0)
+	if (map_region[0].x>=0)
 	{
-		k.x=mix(map_region.x,map_region.y,normed.x);
-		//k.y=mix(map_region.z,map_region.w,normed.y);
-		k.z=mix(map_region.z,map_region.w,normed.y);
+		k.x=mix(map_region[0].x,map_region[0].y,normed.x);
+		//k.y=mix(map_region[0].z,map_region[0].w,normed.y);
+		k.z=mix(map_region[0].z,map_region[0].w,normed.y);
 	}
 #endif
 	k=k*scale+offset;
@@ -704,7 +712,7 @@ void main(){
 		}
 	ret+=diffusion_value*L*dt;
 #endif
-	ret=clamp(ret,-1,1);
+	//ret=clamp(ret,-1,1);
 	//float l=length(ret);
 	//l=max(l,0.0001);
 	color=ret;///l;
@@ -770,7 +778,7 @@ void main(){
 	else
 		color.xyz=vec3(0,0,lv);
 	color.w=1;
-	*/
+	//*/
 }
 ]==]
 
@@ -951,8 +959,12 @@ function random_math_transfers( steps,seed,count_transfers )
 	local rstr=table.concat(ret,",")
 	return rstr
 end
+function set_region( id,v1,v2,is_used,xory )
+	print(string.format("map_region[%d]={%g, %g, %g, %g}",id-1,v1,v2,is_used,xory))
+	react_diffuse:set("map_region["..(id-1).."]",v1,v2,is_used,xory)
+end
 function sim_tick(  )
-	local dt=0.005
+	local dt=0.05
 	react_diffuse:use()
 --	react_diffuse:blend_disable()
 	react_diffuse:blend_default()
@@ -960,7 +972,15 @@ function sim_tick(  )
 	react_diffuse:set("kill_feed",config.k1,config.k2,config.k3,config.k4)
 	react_diffuse:set("dt",dt)
 	react_diffuse:set("reaction_scale",config.reaction_scale)
-	react_diffuse:set("map_region",map_region[1],map_region[2],map_region[3],map_region[4])
+	for i=1,4 do
+		if mapping_parameters[1]==i and map_region[1]>=0 then
+			set_region(i,map_region[1],map_region[2],1,0)
+		elseif mapping_parameters[2]==i and map_region[1]>=0 then
+			set_region(i,map_region[3],map_region[4],1,1)
+		else
+			set_region(i,0,0,0,0)
+		end
+	end
 	local cur_buff=react_buffer:get()
 	local do_clamp
 	if config.clamp_edges then
