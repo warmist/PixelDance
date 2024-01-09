@@ -960,7 +960,6 @@ function random_math_transfers( steps,seed,count_transfers )
 	return rstr
 end
 function set_region( id,v1,v2,is_used,xory )
-	print(string.format("map_region[%d]={%g, %g, %g, %g}",id-1,v1,v2,is_used,xory))
 	react_diffuse:set("map_region["..(id-1).."]",v1,v2,is_used,xory)
 end
 function sim_tick(  )
@@ -1006,8 +1005,8 @@ init_size=1
 function reset_buffers(rnd,do_rand)
 	local b=io_buffer
 
-	local center=1
-	local scale=1
+	local center=0
+	local scale=2
 	local min_value=center-scale/2
 	local max_value=center+scale/2
 	--[[
@@ -1032,12 +1031,15 @@ function reset_buffers(rnd,do_rand)
 						math.random()*(max_value-min_value)+min_value,
 						math.random()*(max_value-min_value)+min_value,
 						math.random()*(max_value-min_value)+min_value,
-					math.random()*(max_value-min_value)+min_value})
+						math.random()*(max_value-min_value)+min_value})
 					else
 						b:set(x,y,v)
 					end
 				else
-					b:set(x,y,{1,0,0,0})
+					b:set(x,y,{1,
+					math.random()*(max_value-min_value)+min_value,
+					math.random()*(max_value-min_value)+min_value,
+					math.random()*(max_value-min_value)+min_value})
 				end
 			elseif rnd=="noise" then
 				b:set(x,y,{
@@ -1246,7 +1248,7 @@ function gui(  )
 		reset_buffers("chaos")
 	end
 	if imgui.Button("RandMath") then
-		thingy_string=random_math(45,"R+c.y*c.y*c.x,R+c.z*c.z*c.y,R+c.w*c.w*c.z,R+c.x*c.x*c.z",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
+		thingy_string=random_math(10,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
 		print(thingy_string)
 		--eval_thingy_string()
 		update_diffuse()
@@ -1276,6 +1278,29 @@ function gui(  )
 	if imgui.Button("FullMap") then
 		map_region={0,1,0,1}
 		config.region_size=0.5
+		reset_buffers("noise")
+	end
+	imgui.SameLine()
+
+	if imgui.Button("NextMap") then
+		if mapping_parameters[1]==1 then
+			mapping_parameters[1]=3
+			mapping_parameters[2]=4
+		else
+			mapping_parameters[1]=1
+			mapping_parameters[2]=2
+		end
+		config.region_size=0.5
+		print("Mapping:",mapping_parameters[1],mapping_parameters[2])
+		local cx=config["k"..mapping_parameters[1]]
+		local cy=config["k"..mapping_parameters[2]]
+
+		local low_x=math.max(0,cx-config.region_size)
+		local low_y=math.max(0,cy-config.region_size)
+		local high_x=math.min(1,cx+config.region_size)
+		local high_y=math.min(1,cy+config.region_size)
+
+		map_region={low_x,high_x,low_y,high_y}
 		reset_buffers("noise")
 	end
 	imgui.SameLine()
