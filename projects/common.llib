@@ -953,3 +953,11 @@ in vec3 pos;
     }
     return ret
 end
+
+function sign( v )
+    if v>=0 then
+        return 1
+    else
+        return -1
+    end
+end
