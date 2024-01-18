@@ -6,7 +6,19 @@
 --]]
 
 
+--[==[
+	
+	A next gen logic: just check two cells and after step there is only
+		* left as is (e.g. same dir, no gap, no overlap (atleast from these two))
+		* removed as one overlaps the other
+		* added as a gap opens
+		* added two as two gap opens
 
+if a,b are dirs. a=< and b=> then two cells are created with direction???
+total different setups: 8*8=64
+maybe direction is not needed? just some sort of derivative?
+then you need somewhat around 8*7? (i.e. one of 8 dir and then one of 7) cw and ccw?
+--]==]
 
 require "common"
 local map_w=256
