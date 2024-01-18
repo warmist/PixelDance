@@ -15,13 +15,19 @@ local cx=math.floor(map_w/2)
 local cy=math.floor(map_h/2)
 local dir_to_dx={ 1, 1, 0,-1,-1,-1, 0, 1}
 local dir_to_dy={ 0,-1,-1,-1, 0, 1, 1, 1}
+ruleset={
+	{skip=0},
+	{skip=1},
+}
+local rulecount=#ruleset
+
 wavefront={
 	
 }
 for i,v in ipairs(dir_to_dx) do
 	local dx=v
 	local dy=dir_to_dy[i]
-	wavefront[i]={p=Point(cx+dx,cy+dy),d=Point(dx,dy),skip=0}
+	wavefront[i]={p=Point(cx+dx,cy+dy),d=i,skip=0}
 end
 grid=grid or make_float_buffer(map_w,map_h)
 local default_height=1
@@ -55,8 +61,17 @@ void main(){
     },
 }
 )
+--TODO: this should be fixed values i.e. gap has only few possible values
+function mix(s,e,v)
+  return (s+math.floor((e-s)*v+0.5))%8
+end
 function interpolate_dir( start_d,end_d,value )
-	--TODO
+	local delta=math.abs(end_d-start_d)
+	if delta>4 then
+	  return mix(end_d,start_d+8,1-value)
+	else
+		return mix(start_d,end_d,value)
+	end
 end
 function create_new_cells( cell,last_cell,tbl )
 	local delta=cell.p-last_cell.p
@@ -67,48 +82,79 @@ function create_new_cells( cell,last_cell,tbl )
 	local sdy=sign(dy)
 
 	if math.abs(dx)+math.abs(dy)==1 then --cells are connected - done
-		return
+		return false
 	end
 	--note connected so we fill in the gap
 	if math.abs(dx)>math.abs(dy) then
 		local step_dy=dy/math.abs(dx)
 		for i=1,math.abs(dx) do
 			local p=Point(cell.p[1]+i*sdx,math.floor(cell.p[2]+step_dy*i+0.5))
-			local d=interpolate_dir(cell.d,last_cell.d,i/math.abs(dx))
+			local d=interpolate_dir(cell.d,last_cell.d,i/math.abs(dx))+1
 			table.insert(tbl,{p=p,d=d,skip=0})
 		end
 	else
 		local step_dx=dx/math.abs(dy)
 		for i=1,math.abs(dy) do
 			local p=Point(math.floor(cell.p[1]+step_dx*i+0.5),cell.p[2]+i*sdy)
-			local d=interpolate_dir(cell.d,last_cell.d,i/math.abs(dy))
+			local d=interpolate_dir(cell.d,last_cell.d,i/math.abs(dy))+1
 			table.insert(tbl,{p=p,d=d,skip=0})
 		end
 	end
+	return true
 end
 function step_cell( c )
 	local dir=c.d
 	c.p=c.p+Point(dir_to_dx[dir],dir_to_dy[dir])
 end
+function process_state_cell( c )
+	if c.p[1]<0 then c.p[1]=map_w-1 end
+	if c.p[1]>=map_w-1 then c.p[1]=0 end
+
+	if c.p[2]<0 then c.p[2]=map_h-1 end
+	if c.p[2]>=map_h-1 then c.p[2]=0 end
+
+	if c.p[1]>=0 and c.p[1]<map_w-1 and c.p[2]>=0 and c.p[2]<map_h-1 then
+		local v=math.floor(grid:get(c.p[1],c.p[2])*(rulecount-1))+1
+		--set skip
+		c.skip=ruleset[v].skip
+		--change state
+		local nv=v+1
+		if nv>rulecount then
+			nv=1
+		end
+
+		local new_value=(nv-1)/rulecount
+		grid:set(c.p[1],c.p[2],new_value)
+	end
+end
 function wave_advance(  )
 	local new_wavefront={}
 	--first advance all non skipped
+	print("WF:",#wavefront)
 	for i,v in ipairs(wavefront) do
-		set_value_at(v)
+		print(v,v.p,v.d,v.skip)
+		--TODO: fix this so skipping only skips once and then continues
+		--i.e. rules are: state(i.e. value) + skip/noskip, skip only delays the move one tick
+
 		if v.skip==0 then
 			step_cell(v)
+			process_state_cell(v)
 		else
 			v.skip=v.skip-1
 		end
 	end
-	local last_c
+	--go over wavefront, removing cells where they overlap and filling in the gaps
 	for i,v in ipairs(wavefront) do
-		if last_c==nil or last_c.p~=v.p then
-			create_new_cells(v,last_c,new_wavefront)
-			last_c=c
-			table.insert(new_wavefront,last_p)
-		end
+		local c1=v
+		local c2
+		if i<#wavefront then c2=wavefront[i+1] else c2=wavefront[1] end
+		if c1.p~=c2.p then --two cells overlapping
+			if not create_new_cells(c1,c2,new_wavefront) then
+				table.insert(new_wavefront,c1)
+			end
+		end		
 	end
+	wavefront=new_wavefront
 end
 
 function draw(  )
@@ -117,7 +163,9 @@ function draw(  )
 end
 
 function update(  )
-    wave_advance()
+	if imgui.Button("Step") then
+    	wave_advance()
+    end
     __no_redraw()
     draw()
 end
