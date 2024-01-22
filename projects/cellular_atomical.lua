@@ -14,7 +14,9 @@
     * also some properties are part of particle type some are not
         - velocity is seperate
         - other are not
-
+    TODO:
+        * add non-stochastic momentum
+        * for now simpler rules, todo more complex?
 --]===]
 require 'common'
 require 'bit'
@@ -110,7 +112,7 @@ function enumerate_allowed_momentums_ex(depth,tbl )
         for i=0,8 do
             local d=dir_to_dx[i]
             local nk=tostring(i)
-            new_tbl[nk]={dx=d[1],dy=d[2]}   
+            new_tbl[nk]={dx=d[1],dy=d[2]}  
         end
 
     else
@@ -140,7 +142,30 @@ function list_momentums( depth )
     end
     print("Total:",count," out of ",count_max," percent",math.floor(count*100/count_max))
 end
-list_momentums(3)
-function apply_rule()
+function apply_rule( pos,rule,momentums )
+    local chosen_momentum=momentums[math.random(1,#momentums)]
     
+end
+function find_and_apply_rule(pid)
+    local pos=particles.pos[pid]
+    local type=particles.type[pid]
+    --TODO: rule needs to be sure that if A+B=C that B+A=C
+    --get stuff around the atom
+    local around=get_around(pos)
+    --get applicable rules
+    local applicable_rules=rules[type][around]
+    if applicable_rules then
+        local results={}
+        for i,v in ipairs(applicable_rules) do
+            --check allowed momentum(s)
+            local m=get_momentums_around(pos,v)
+            if has_valid_momentum(m,v.result) then
+                --only transform if at least one valid momentum exist
+                table.insert(results,{v,m})
+            end
+        end
+        --pick random choice out of valid ones
+        local choice=results[math.random(1,#results)]
+        apply_rule(pos,choice[1],choice[2])
+    end
 end
