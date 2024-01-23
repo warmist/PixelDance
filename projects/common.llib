@@ -737,14 +737,29 @@ function gif_saver:frame( buffer,delay )
 end
 
 
-function shuffle_table(tbl)
-  for i = #tbl, 2, -1 do
-    local j = math.random(i)
-    tbl[i], tbl[j] = tbl[j], tbl[i]
-  end
-  return tbl
+function shuffle_table(tbl,rnd)
+    rnd=rnd or math.random
+    for i = #tbl, 2, -1 do
+        local j = rnd(i)
+        tbl[i], tbl[j] = tbl[j], tbl[i]
+    end
+    return tbl
 end
-
+function shuffled_iterator_ipairs( tbl,rnd )
+    rnd=rnd or math.random
+    local indexes={}
+    for i,v in ipairs(tbl) do
+        table.insert(indexes,i)
+    end
+    shuffle_table(indexes,rnd)
+    local iter_state=1
+    return function (  )
+        if indexes[iter_state]~=nil then
+            iter_state=iter_state+1
+            return tbl[indexes[iter_state-1]]
+        end
+    end
+end
 -------------------------------------------------
 DisjointSet=class(function (cls, ...)
     cls:new(...)

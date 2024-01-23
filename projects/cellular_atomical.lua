@@ -17,6 +17,11 @@
     TODO:
         * add non-stochastic momentum
         * for now simpler rules, todo more complex?
+        * apply rules only when "colliding"
+        * add a partial momentum requirement 
+            (i.e. i want one of outputs have X probably 0/non0 to be rotation agnostic)
+    ISSUES:
+        * no "agreed upon" priority if two recipes match
 --]===]
 require 'common'
 require 'bit'
@@ -35,7 +40,15 @@ local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 local MAX_ATOM_TYPES=2
 
-rules=rules or {}
+
+rules=rules or {
+--example rules
+-- [==[ split-recombine
+    [1]={{match={2},change_self={2},create={2}}} --when 2 is around split
+    [2]={{match={2},change_self={1},destroy={2}}} --when another of 2 is around, combine
+--]==]
+
+}
 --[==[
     movement (i.e. momentum) rules
     allowed transformations:
@@ -142,30 +155,34 @@ function list_momentums( depth )
     end
     print("Total:",count," out of ",count_max," percent",math.floor(count*100/count_max))
 end
-function apply_rule( pos,rule,momentums )
-    local chosen_momentum=momentums[math.random(1,#momentums)]
+function apply_rule( rule,pos,type,vel,around_type,around_vel )
     
+    local valid_momentum=enum_valid_momentum(m,v.result)
+    if #valid_momentum>0 then
+        --only transform if at least one valid momentum exist
+        table.insert(results,{v,valid_momentum})
+    end
+    shuffle_table(momentums)
+    for _,chosen_momentum in ipairs(momentums) do
+        
+    end
 end
 function find_and_apply_rule(pid)
     local pos=particles.pos[pid]
     local type=particles.type[pid]
+    local vel=particles.dir[pid]
     --TODO: rule needs to be sure that if A+B=C that B+A=C
     --get stuff around the atom
-    local around=get_around(pos)
+    local around_type,around_vel=get_around(pos)
     --get applicable rules
-    local applicable_rules=rules[type][around]
-    if applicable_rules then
-        local results={}
-        for i,v in ipairs(applicable_rules) do
-            --check allowed momentum(s)
-            local m=get_momentums_around(pos,v)
-            if has_valid_momentum(m,v.result) then
-                --only transform if at least one valid momentum exist
-                table.insert(results,{v,m})
-            end
+    local applicable_rules=enum_rules(pos,type,vel,around_type,around_vel)
+    if #applicable_rules==0 then
+        return
+    end
+    shuffle_table(applicable_rules)
+    for _,rule in ipairs(applicable_rules) do
+        if apply_rule(rule,pos,type,vel,around_type,around_vel) then
+            return
         end
-        --pick random choice out of valid ones
-        local choice=results[math.random(1,#results)]
-        apply_rule(pos,choice[1],choice[2])
     end
 end
