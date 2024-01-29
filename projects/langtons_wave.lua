@@ -2,23 +2,18 @@
 	langtons ant but a wavefront
 		* each cell has direction and position
 		* if nearby cells diverge, add new ones to have continous wavefront
-		* instead of L/R actions that could be taken are Advance and Slowdown
+		* instead of L/R actions that could be taken are:
+			* Advance and Slowdown
+				- Pro: simple, nice interaction with wave adding new cells
+				- Cons: nothing happens on empty field
+			* phase change - some sort of state change??
+				-??
+			* cw/ccw in the chain of particles - does nothing if ants are stateless
+			* flip: fw->back
+				- Pro: interesting, simple to create
+				- Cons: collapses on empty field :| (maybe don't allow to step into same occupied tiles?)
 --]]
 
-
---[==[
-	
-	A next gen logic: just check two cells and after step there is only
-		* left as is (e.g. same dir, no gap, no overlap (atleast from these two))
-		* removed as one overlaps the other
-		* added as a gap opens
-		* added two as two gap opens
-
-if a,b are dirs. a=< and b=> then two cells are created with direction???
-total different setups: 8*8=64
-maybe direction is not needed? just some sort of derivative?
-then you need somewhat around 8*7? (i.e. one of 8 dir and then one of 7) cw and ccw?
---]==]
 
 require "common"
 local map_w=256
