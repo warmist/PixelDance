@@ -11,7 +11,9 @@
 			* cw/ccw in the chain of particles - does nothing if ants are stateless
 			* flip: fw->back
 				- Pro: interesting, simple to create
-				- Cons: collapses on empty field :| (maybe don't allow to step into same occupied tiles?)
+				- Cons: 
+					- collapses on empty field :| (maybe don't allow to step into same occupied tiles?)
+					- flipping can form a pixels that have opposite directions and fillers would have 0 movement
 --]]
 
 
@@ -22,9 +24,71 @@ local cx=math.floor(map_w/2)
 local cy=math.floor(map_h/2)
 local dir_to_dx={ 1, 1, 0,-1,-1,-1, 0, 1}
 local dir_to_dy={ 0,-1,-1,-1, 0, 1, 1, 1}
+
+function cheb_dist( p1,p2 )
+	return math.max(math.abs(p2[1]-p1[1]),math.abs(p2[2]-p1[2]))
+end
+function index_mod( i,m )
+	return (i-1)%m+1
+end
+function get_delta_cell_after_move( cell_dir,c1_dir,c2_dir )
+	local c1={dir_to_dx[cell_dir],dir_to_dy[cell_dir]}
+	local c2={dir_to_dx[c1_dir],dir_to_dy[c1_dir]}
+	local c3={-dir_to_dx[c2_dir],-dir_to_dy[c2_dir]}
+	local dx,dy=c1[1]+c2[1]+c3[1],c1[2]+c2[2]+c3[2]
+	return dx,dy
+end
+function print_all_choices(  )
+	local s=""
+	local x=""
+	local v=""
+	
+  for j=1,8 do
+  	for k=1,8 do
+  	  for i=1,8 do
+    		local j_mod=index_mod(j+9-i,8)
+    	  local k_mod=index_mod(k+9-i,8)
+    		local dx,dy=get_delta_cell_after_move(1,j_mod,k_mod)
+    		local dist=math.max(math.abs(dx),math.abs(dy))
+    		s=s..dist
+    		x=x..j_mod
+    		v=v..k_mod
+  	  end
+    	s=s.." "
+    	x=x.." "
+    	v=v.." "
+    end
+  end
+	print(x)
+	print(v)
+	print(s)
+	print("============")
+	s=""
+	x=""
+	v=""
+  for j=1,8 do
+  	for k=1,8 do
+  	  for i=1,8 do
+    		local j_mod=index_mod(j+9-i,8)
+    	  local k_mod=index_mod(k+9-i,8)
+    		local dx,dy=get_delta_cell_after_move(i,j,k)
+    		local dist=math.max(math.abs(dx),math.abs(dy))
+    		s=s..dist
+    		x=x..j
+    		v=v..k
+  	  end
+    	s=s.." "
+    	x=x.." "
+    	v=v.." "
+    end
+  end
+	print(x)
+	print(v)
+	print(s)
+end
 ruleset={
-	{skip=0},
-	{skip=1},
+	{skip=0,dir_adv=0},
+	{skip=1,dir_adv=0},
 }
 local rulecount=#ruleset
 
@@ -37,17 +101,38 @@ for i,v in ipairs(dir_to_dx) do
 	wavefront[i]={p=Point(cx+dx,cy+dy),d=i,skip=0}
 end
 grid=grid or make_float_buffer(map_w,map_h)
+count_grid=count_grid or make_char_buffer(map_w,map_h)
+
 local default_height=1
 function init_grid(  )
     for x=0,map_w-1 do
         for y=0,map_h-1 do
             grid:set(x,y,default_height)
+            count_grid:set(x,y,0)
         end
     end
 end
 init_grid()
 
+--[==[
+	two cells move, what happens to a new cell(s)?
 
+	X no cell
+	some cells create two (e.g. 1/5)
+
+	  12345678
+	 --------
+	1|X1223881
+	2|2X233411
+	3|23X34452
+	4|334X4556
+	5|3445X566
+	6|785
+	7|
+	8|
+
+
+--]==]
 draw_field=init_draw_field(
 [==[
 #line __LINE__
@@ -109,21 +194,30 @@ function create_new_cells( cell,last_cell,tbl )
 	end
 	return true
 end
+function calculate_new_pos( p,dir )
+	local ret=p+Point(dir_to_dx[dir],dir_to_dy[dir])
+
+	if ret[1]<0 then ret[1]=map_w-1 end
+	if ret[1]>=map_w-1 then ret[1]=0 end
+
+	if ret[2]<0 then ret[2]=map_h-1 end
+	if ret[2]>=map_h-1 then ret[2]=0 end
+	return ret
+end
 function step_cell( c )
 	local dir=c.d
-	c.p=c.p+Point(dir_to_dx[dir],dir_to_dy[dir])
+	c.p=calculate_new_pos(c.p,dir)
 end
 function process_state_cell( c )
-	if c.p[1]<0 then c.p[1]=map_w-1 end
-	if c.p[1]>=map_w-1 then c.p[1]=0 end
-
-	if c.p[2]<0 then c.p[2]=map_h-1 end
-	if c.p[2]>=map_h-1 then c.p[2]=0 end
-
 	if c.p[1]>=0 and c.p[1]<map_w-1 and c.p[2]>=0 and c.p[2]<map_h-1 then
 		local v=math.floor(grid:get(c.p[1],c.p[2])*(rulecount-1))+1
 		--set skip
 		c.skip=ruleset[v].skip
+		--adv dir (e.g. flip)
+		if ruleset[v].dir_adv>0 then
+			c.d=(c.d+ruleset[v].dir_adv-1)%4+1
+		end
+
 		--change state
 		local nv=v+1
 		if nv>rulecount then
@@ -134,18 +228,41 @@ function process_state_cell( c )
 		grid:set(c.p[1],c.p[2],new_value)
 	end
 end
+function clear_counts(  )
+	for x=0,map_w-1 do
+        for y=0,map_h-1 do
+            count_grid:set(x,y,0)
+        end
+    end
+end
+function increment_count( p )
+	count_grid:set(p[1],p[2],count_grid:get(p[1],p[2])+1)
+end
+function can_step( c )
+	local p=calculate_new_pos(c.p,c.d)
+	return count_grid:get(p[1],p[2])==1
+end
 function wave_advance(  )
 	local new_wavefront={}
 	--first advance all non skipped
 	print("WF:",#wavefront)
+	clear_counts()
 	for i,v in ipairs(wavefront) do
-		print(v,v.p,v.d,v.skip)
+		increment_count(v.p)
+		if v.skip==0 then
+			increment_count(calculate_new_pos(v.p,v.d))
+		end
+	end
+	for i,v in ipairs(wavefront) do
+		
 		--TODO: fix this so skipping only skips once and then continues
 		--i.e. rules are: state(i.e. value) + skip/noskip, skip only delays the move one tick
 
 		if v.skip==0 then
-			step_cell(v)
-			process_state_cell(v)
+			if can_step(v) then
+				step_cell(v)
+				process_state_cell(v)
+			end
 		else
 			v.skip=v.skip-1
 		end
