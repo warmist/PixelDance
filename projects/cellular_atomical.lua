@@ -11,6 +11,8 @@
                 - charge: (sum before = sum after, can be +1/-1 and/or partials?)
                 - color: (r+g+b=w, w+(-g)+(-b)=r, etc...)
                 - mass: a bit complicated? but probably like charge with only positive
+        * "group" - i.e. any set that has a neutral element (e.g. 0) and an operation (+)
+            
     * also some properties are part of particle type some are not
         - velocity is seperate
         - other are not
@@ -20,8 +22,11 @@
         * apply rules only when "colliding"
         * add a partial momentum requirement 
             (i.e. i want one of outputs have X probably 0/non0 to be rotation agnostic)
+        * self destroy not supported
     ISSUES:
         * no "agreed upon" priority if two recipes match
+    RANDOM:
+        * add vacuum energy like thing
 --]===]
 require 'common'
 require 'bit'
@@ -41,11 +46,27 @@ local size=STATE.size
 local MAX_ATOM_TYPES=2
 
 
+function init_arrays(  )
+    particles=particles or {}
+    local p=particles
+    p.count=0
+    p.pos=make_flt_half_buffer(max_particle_count,1)
+    p.type=make_char_buffer(max_particle_count,1)
+    p.dir=make_char_buffer(max_particle_count,1)
+
+
+    grid=grid or {}
+    local g=grid
+    g.type=make_char_buffer(map_w,map_h)
+    g.dir=make_char_buffer(map_w,map_h)
+    g.move_to=make_char_buffer(map_w,map_h)
+end
+
 rules=rules or {
 --example rules
 -- [==[ split-recombine
-    [1]={{match={2},change_self={2},create={2}}} --when 2 is around split
-    [2]={{match={2},change_self={1},destroy={2}}} --when another of 2 is around, combine
+    [1]={{match={2},change_self=2,create={2}}} --when 2 is around split
+    [2]={{match={2},change_self=1,destroy={2}}} --when another of 2 is around, combine
 --]==]
 
 }
@@ -140,7 +161,31 @@ function enumerate_allowed_momentums_ex(depth,tbl )
     end
     return enumerate_allowed_momentums_ex(depth-1,new_tbl)
 end
+function enum_rules( pos,type,vel,around_type,around_vel,count_around)
+    local my_rules=rules[type]
+    local ret_rules={}
+    for i,v in ipairs(my_rules) do
+        local add=true
+        do
+            local count_before=1+count_around
+            --check if we have space to add
+            if count_around+v.create-v.destroy>8 then
+                add=false
+                break
+            end
+            --check if we match all of the "match"
+            local ok,matching=try_match(around_type,v.match)
+            if not ok then
+                add=false
+                break
+            end
+            local count_involved=1+#matching
+            local count_after=count_involved+v.create-v.destroy
+            --check if momentum sums can exist
 
+        while false
+    end
+end
 function list_momentums( depth )
     local t=enumerate_allowed_momentums_ex(depth)
     local count=0
@@ -167,21 +212,54 @@ function apply_rule( rule,pos,type,vel,around_type,around_vel )
         
     end
 end
+function fix_pos( x,y )
+    x=math.floor(x)
+    y=math.floor(y)
+
+    if x<0 then x=map_w-1 end
+    if y<0 then y=map_h-1 end
+    if x>=map_w then x=0 end
+    if y>=map_h then y=0 end
+
+    return x,y
+end
+function get_around( pos )
+    local ret_type={}
+    local ret_dir={}
+    local count=0
+    for i=1,8 do
+        local dx=dir_to_dx[i]
+        local dy=dir_to_dy[i]
+
+        local tx=pos[1]+dx
+        local ty=pos[2]+dy
+        tx,ty=fix_pos(tx,ty)
+
+        ret_dir[i]=grid.dir:get(tx,ty)
+        local t=grid.type:get(tx,ty)
+        ret_type[i]=t
+
+        if t>0 then
+            count_around=count_around+1
+        end
+    end
+    return ret_type,ret_dir,count_around
+end
 function find_and_apply_rule(pid)
     local pos=particles.pos[pid]
     local type=particles.type[pid]
     local vel=particles.dir[pid]
     --TODO: rule needs to be sure that if A+B=C that B+A=C
     --get stuff around the atom
-    local around_type,around_vel=get_around(pos)
+    local around_type,around_vel,count_around=get_around(pos)
     --get applicable rules
-    local applicable_rules=enum_rules(pos,type,vel,around_type,around_vel)
+    local applicable_rules=enum_rules(pos,type,vel,around_type,around_vel,count_around)
     if #applicable_rules==0 then
         return
     end
     shuffle_table(applicable_rules)
     for _,rule in ipairs(applicable_rules) do
-        if apply_rule(rule,pos,type,vel,around_type,around_vel) then
+        if apply_rule(rule,pos,type,vel,around_type,around_vel,count_around) then
             return
         end
     end
