@@ -40,6 +40,7 @@ function get_delta_cell_after_move( cell_dir,c1_dir,c2_dir )
 end
 function print_all_choices(  )
 	local s=""
+	local s2=""
 	local x=""
 	local v=""
 	
@@ -47,14 +48,22 @@ function print_all_choices(  )
   	for k=1,8 do
   	  for i=1,8 do
     		local j_mod=index_mod(j+9-i,8)
-    	  local k_mod=index_mod(k+9-i,8)
+    	  	local k_mod=index_mod(k+9-i,8)
     		local dx,dy=get_delta_cell_after_move(1,j_mod,k_mod)
     		local dist=math.max(math.abs(dx),math.abs(dy))
+
+    		local dx2,dy2=get_delta_cell_after_move(i,j,k)
+    		local dist2=math.max(math.abs(dx2),math.abs(dy2))
+    		if dist~=dist2 then
+    			print("Mismatch:",i,j,k,dist,dist2)
+    		end
     		s=s..dist
+    		s2=s2..dist2
     		x=x..j_mod
     		v=v..k_mod
   	  end
     	s=s.." "
+    	s2=s2.." "
     	x=x.." "
     	v=v.." "
     end
@@ -62,33 +71,11 @@ function print_all_choices(  )
 	print(x)
 	print(v)
 	print(s)
-	print("============")
-	s=""
-	x=""
-	v=""
-  for j=1,8 do
-  	for k=1,8 do
-  	  for i=1,8 do
-    		local j_mod=index_mod(j+9-i,8)
-    	  local k_mod=index_mod(k+9-i,8)
-    		local dx,dy=get_delta_cell_after_move(i,j,k)
-    		local dist=math.max(math.abs(dx),math.abs(dy))
-    		s=s..dist
-    		x=x..j
-    		v=v..k
-  	  end
-    	s=s.." "
-    	x=x.." "
-    	v=v.." "
-    end
-  end
-	print(x)
-	print(v)
-	print(s)
+	print(s2)
 end
 ruleset={
 	{skip=0,dir_adv=0},
-	{skip=1,dir_adv=0},
+	{skip=0,dir_adv=0},
 }
 local rulecount=#ruleset
 
@@ -133,6 +120,7 @@ init_grid()
 
 
 --]==]
+
 draw_field=init_draw_field(
 [==[
 #line __LINE__
@@ -169,7 +157,7 @@ function create_new_cells( cell,last_cell,tbl )
 	local delta=cell.p-last_cell.p
 	local dx=delta[1]
 	local dy=delta[2]
-
+	--print(dx,dy,last_cell.p,cell.p)
 	local sdx=sign(dx)
 	local sdy=sign(dy)
 
@@ -180,15 +168,17 @@ function create_new_cells( cell,last_cell,tbl )
 	if math.abs(dx)>math.abs(dy) then
 		local step_dy=dy/math.abs(dx)
 		for i=1,math.abs(dx) do
-			local p=Point(cell.p[1]+i*sdx,math.floor(cell.p[2]+step_dy*i+0.5))
-			local d=interpolate_dir(cell.d,last_cell.d,i/math.abs(dx))+1
+			local p=Point(last_cell.p[1]+i*sdx,math.floor(last_cell.p[2]+step_dy*i+0.5))
+			--print(i,p)
+			local d=interpolate_dir(last_cell.d,cell.d,i/math.abs(dx))+1
 			table.insert(tbl,{p=p,d=d,skip=0})
 		end
 	else
 		local step_dx=dx/math.abs(dy)
 		for i=1,math.abs(dy) do
-			local p=Point(math.floor(cell.p[1]+step_dx*i+0.5),cell.p[2]+i*sdy)
-			local d=interpolate_dir(cell.d,last_cell.d,i/math.abs(dy))+1
+			local p=Point(math.floor(last_cell.p[1]+step_dx*i+0.5),last_cell.p[2]+i*sdy)
+			--print(i,p)
+			local d=interpolate_dir(last_cell.d,cell.d,i/math.abs(dy))+1
 			table.insert(tbl,{p=p,d=d,skip=0})
 		end
 	end
@@ -259,10 +249,10 @@ function wave_advance(  )
 		--i.e. rules are: state(i.e. value) + skip/noskip, skip only delays the move one tick
 
 		if v.skip==0 then
-			if can_step(v) then
+			--if can_step(v) then
 				step_cell(v)
 				process_state_cell(v)
-			end
+			--end
 		else
 			v.skip=v.skip-1
 		end
@@ -288,6 +278,11 @@ end
 
 function update(  )
 	if imgui.Button("Step") then
+		--[[wavefront={
+			{p=Point(25,10),d=3,skip=0},
+			{p=Point(75,45),d=6,skip=0},
+			{p=Point(30,25),d=6,skip=0}
+		}]]
     	wave_advance()
     end
     __no_redraw()
