@@ -87,6 +87,13 @@ for i,v in ipairs(dir_to_dx) do
 	local dy=dir_to_dy[i]
 	wavefront[i]={p=Point(cx+dx,cy+dy),d=i,skip=0}
 end
+--[[
+wavefront={
+	{p=Point(25,10),d=3,skip=0},
+	{p=Point(75,45),d=6,skip=0},
+	{p=Point(30,25),d=5,skip=0}
+}
+--]]
 grid=grid or make_float_buffer(map_w,map_h)
 count_grid=count_grid or make_char_buffer(map_w,map_h)
 
@@ -171,7 +178,9 @@ function create_new_cells( cell,last_cell,tbl )
 			local p=Point(last_cell.p[1]+i*sdx,math.floor(last_cell.p[2]+step_dy*i+0.5))
 			--print(i,p)
 			local d=interpolate_dir(last_cell.d,cell.d,i/math.abs(dx))+1
-			table.insert(tbl,{p=p,d=d,skip=0})
+			if #tbl<5000 then
+				table.insert(tbl,{p=p,d=d,skip=0})
+			end
 		end
 	else
 		local step_dx=dx/math.abs(dy)
@@ -179,7 +188,9 @@ function create_new_cells( cell,last_cell,tbl )
 			local p=Point(math.floor(last_cell.p[1]+step_dx*i+0.5),last_cell.p[2]+i*sdy)
 			--print(i,p)
 			local d=interpolate_dir(last_cell.d,cell.d,i/math.abs(dy))+1
-			table.insert(tbl,{p=p,d=d,skip=0})
+			if #tbl<5000 then
+				table.insert(tbl,{p=p,d=d,skip=0})
+			end
 		end
 	end
 	return true
@@ -264,7 +275,7 @@ function wave_advance(  )
 		if i<#wavefront then c2=wavefront[i+1] else c2=wavefront[1] end
 		if c1.p~=c2.p then --two cells overlapping
 			if not create_new_cells(c1,c2,new_wavefront) then
-				table.insert(new_wavefront,c1)
+				--table.insert(new_wavefront,c1)
 			end
 		end		
 	end
@@ -277,14 +288,10 @@ function draw(  )
 end
 
 function update(  )
-	if imgui.Button("Step") then
-		--[[wavefront={
-			{p=Point(25,10),d=3,skip=0},
-			{p=Point(75,45),d=6,skip=0},
-			{p=Point(30,25),d=6,skip=0}
-		}]]
+	--if imgui.Button("Step") then
+		
     	wave_advance()
-    end
+    --end
     __no_redraw()
     draw()
 end
