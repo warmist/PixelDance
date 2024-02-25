@@ -1,0 +1,61 @@
+
+function generate_assigns( set,word )
+	--for each element in the word:
+	local choice_per_word_char={}
+	local indexes={}
+	local total_count=0
+	for i,v in ipairs(word) do
+		--find possibles choices from set
+		local choices={}
+		choice_per_word_char[i]=choices
+		for ii,vv in ipairs(set) do
+			if v==vv then
+				table.insert(choices,ii)
+			end
+		end
+		indexes[i]=1
+	end
+	total_count=#choice_per_word_char[1]
+	for i=2,#word do
+		total_count=total_count*#choice_per_word_char[i]
+	end
+	--iterate over choices
+	return total_count,function (  )
+		--indexes: 0,0; 0,1; 1,0;1,1...
+		local chosen={}
+		--form a permutation(?) and return it
+		for i,v in ipairs(word) do
+			if indexes[i]>#word then
+				return
+			end
+			chosen[i]={i,choice_per_word_char[i][indexes[i]]}
+		end
+		--advance indexes
+		for i=#word,1,-1 do
+			indexes[i]=indexes[i]+1
+			if indexes[i]>#word and i>1 then
+				indexes[i]=1
+			else
+				break
+			end
+		end
+		return chosen
+	end
+end
+
+return generate_assigns
+--[==[
+local input_set={1,1,2,2,3,3}
+local word={1,2}
+local counter=0
+for assignment in generate_assigns(input_set,word) do
+	print("==============")
+	for i,v in ipairs(assignment) do
+		print('\t',i,v[1],v[2],word[v[1]],input_set[v[2]])
+	end
+	counter=counter+1
+	if counter>10 then
+		error("somethings wrong")
+	end
+end
+--]==]

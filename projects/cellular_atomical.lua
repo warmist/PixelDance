@@ -25,12 +25,27 @@
         * self destroy not supported
     ISSUES:
         * no "agreed upon" priority if two recipes match
+
+
+    REDO 1:
+        * simplify rules:
+            - only apply when colliding
+            - all are matching equally
+            - place by:
+                - momentum or random
+
     RANDOM:
         * add vacuum energy like thing
+            - i.e. particles appear and dissapear with some constrains
+        * light-like particles: raycast a line if hitting anything react
+            A) destroy (convert) when failing reaction
+            B) stop at "valid location" (randomize momentum somehow?)
+
+
 --]===]
 require 'common'
 require 'bit'
-
+local gen_assign=require 'set_select'
 local win_w=1024
 local win_h=1024
 
@@ -64,11 +79,12 @@ end
 
 rules=rules or {
 --example rules
--- [==[ split-recombine
+--[==[ split-recombine
     [1]={{match={2},change_self=2,create={2}}} --when 2 is around split
     [2]={{match={2},change_self=1,destroy={2}}} --when another of 2 is around, combine
 --]==]
-
+    {match={1,2},out={2,2,2}},
+    {match={2,2},out={1}},
 }
 --[==[
     movement (i.e. momentum) rules
@@ -160,6 +176,60 @@ function enumerate_allowed_momentums_ex(depth,tbl )
         end
     end
     return enumerate_allowed_momentums_ex(depth-1,new_tbl)
+end
+function numerical_concat( tbl )
+    local ret=0
+    local mult=1
+    for i=1,#tbl do
+        ret=ret+tbl[i]*mult
+        mult=mult*10
+    end
+    return ret
+end
+--[[
+    around 112233
+
+    rules:
+        1123 <1 (4 choices!)
+        112 <2? (2 choices)
+        123 <2? (6?)
+        23 <3 (4)
+        3 <4 (2)
+--]]
+function enum_rules_new( pos,around_type,around_vel,count_around)
+
+    --first do all partial matches for rules
+    --TODO: might include all in the result, but for now match biggest part
+    local ret_rules={}
+    for i,v in ipairs(rules) do
+        local add=true
+        do
+            local count_possible,iterator=gen_assign(around,rule)
+            if count_possible==0 then
+                add=false
+                break
+            end
+            local count_before=1+count_around
+            --check if we have space to add
+            if count_around+v.create-v.destroy>8 then
+                add=false
+                break
+            end
+            --check if we match all of the "match"
+            local ok,matching=try_match(around_type,v.match)
+            if not ok then
+                add=false
+                break
+            end
+            local count_involved=1+#matching
+            local count_after=count_involved+v.create-v.destroy
+            --check if momentum sums can exist
+        end
+        if add then
+            table.insert(ret_rules,v)
+        end
+    end
+    return ret_rules
 end
 function enum_rules( pos,type,vel,around_type,around_vel,count_around)
     local my_rules=rules[type]
