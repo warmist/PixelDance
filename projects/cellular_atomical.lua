@@ -33,6 +33,7 @@
             - all are matching equally
             - place by:
                 - momentum or random
+                - semi random (i.e. so that it would not hit collision center)
 
     RANDOM:
         * add vacuum energy like thing
@@ -76,7 +77,18 @@ function init_arrays(  )
     g.dir=make_char_buffer(map_w,map_h)
     g.move_to=make_char_buffer(map_w,map_h)
 end
-
+init_arrays()
+function particle_move( pid )
+    --remove at pos
+    --increment pos by velocity
+    --add at new pos
+end
+function particle_add( ... )
+    -- TODO
+end
+function particle_remove( ... )
+    -- TODO
+end
 rules=rules or {
 --example rules
 --[==[ split-recombine
@@ -177,25 +189,7 @@ function enumerate_allowed_momentums_ex(depth,tbl )
     end
     return enumerate_allowed_momentums_ex(depth-1,new_tbl)
 end
-function numerical_concat( tbl )
-    local ret=0
-    local mult=1
-    for i=1,#tbl do
-        ret=ret+tbl[i]*mult
-        mult=mult*10
-    end
-    return ret
-end
---[[
-    around 112233
 
-    rules:
-        1123 <1 (4 choices!)
-        112 <2? (2 choices)
-        123 <2? (6?)
-        23 <3 (4)
-        3 <4 (2)
---]]
 function enum_rules_new( pos,around_type,around_vel,count_around)
 
     --first do all partial matches for rules
@@ -203,30 +197,36 @@ function enum_rules_new( pos,around_type,around_vel,count_around)
     local ret_rules={}
     for i,v in ipairs(rules) do
         local add=true
+        local to_add={rule=v}
         do
+
             local count_possible,iterator=gen_assign(around,rule)
+            --print('\t',i,v[1],v[2],rule[v[1]],around[v[2]])
             if count_possible==0 then
                 add=false
                 break
             end
-            local count_before=1+count_around
+            --TODO: list all pick rand?
+            to_add.assignment=iterator()
+
             --check if we have space to add
-            if count_around+v.create-v.destroy>8 then
+            local diff=#rule.out-#rule.match
+            local count_before=count_around
+            if count_around+diff>9 then
                 add=false
                 break
             end
-            --check if we match all of the "match"
-            local ok,matching=try_match(around_type,v.match)
-            if not ok then
-                add=false
-                break
-            end
-            local count_involved=1+#matching
-            local count_after=count_involved+v.create-v.destroy
             --check if momentum sums can exist
+            local momentum_sum=get_sum(around_vel,to_add.assignment)
+            local momentum_out=get_valid_momentum(momentum_sum,v.out)
+            if momentum_out==nil then
+                add=false
+                break
+            end
+            to_add.momentum_out=momentum_out
         end
         if add then
-            table.insert(ret_rules,v)
+            table.insert(ret_rules,to_add)
         end
     end
     return ret_rules
@@ -297,7 +297,7 @@ function get_around( pos )
     local ret_type={}
     local ret_dir={}
     local count=0
-    for i=1,8 do
+    for i=0,8 do
         local dx=dir_to_dx[i]
         local dy=dir_to_dy[i]
 
@@ -315,22 +315,63 @@ function get_around( pos )
     end
     return ret_type,ret_dir,count_around
 end
-function find_and_apply_rule(pid)
-    local pos=particles.pos[pid]
-    local type=particles.type[pid]
-    local vel=particles.dir[pid]
-    --TODO: rule needs to be sure that if A+B=C that B+A=C
-    --get stuff around the atom
+function find_and_apply_rule(pos)
+    --get stuff pos
     local around_type,around_vel,count_around=get_around(pos)
     --get applicable rules
-    local applicable_rules=enum_rules(pos,type,vel,around_type,around_vel,count_around)
+    local applicable_rules=enum_rules(around_type,around_vel,count_around)
     if #applicable_rules==0 then
-        return
+        return 0
     end
-    shuffle_table(applicable_rules)
-    for _,rule in ipairs(applicable_rules) do
-        if apply_rule(rule,pos,type,vel,around_type,around_vel,count_around) then
-            return
+    --TODO: option to shuffle all rules
+    --shuffle_table(applicable_rules)
+    --TODO more than one rule per "tick"
+    if apply_rule(applicable_rules[0]) then
+        return 1
+    end
+    return 0
+end
+
+function resolve_collision( pos )
+    --try applying rules
+    --if failed and/or rest of stuff exchanges momentum somehow...
+    --i.e. like it had rule match=out="exact match after rules"
+end
+
+function sim_tick(  )
+    --clear grid
+    --TODO
+    --for each particle
+    for i=0,particles.count-1 do
+        --add to <move to buffer>
+        local pos=particles.pos:get(i,0)
+        local x=math.floor(pos.r)
+        local y=math.floor(pos.g)
+        grid.move_to:set(x,y,grid.move_to:get(x,y)+1)
+    end
+    for i=0,particles.count-1 do
+        --check if it's only particle moving into the tile
+        
+        local pos=particles.pos:get(i,0)
+        local x=math.floor(pos.r)
+        local y=math.floor(pos.g)
+        local trg_move=grid.move_to:get(x,y)
+        if trg_move==1 then
+            -- if yes, just move
+            particle_move(i)
+        else
+            -- if no do resolve collision(pos)
+            --TODO: we could use <only involved in collision> or "quantum effects" pull in stuff around
+            resolve_collision({x,y})
         end
     end
+end
+
+function draw(  )
+    
+end
+
+function update(  )
+    sim_tick()
+    update()
 end
