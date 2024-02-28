@@ -79,15 +79,44 @@ function init_arrays(  )
 end
 init_arrays()
 function particle_move( pid )
+    local dir=particles.dir:get(i,0)
+    if dir==0 then --not moving so nothing todo
+        return
+    end
+    local pos=particles.pos:get(i,0)
+    local x=math.floor(pos.r)
+    local y=math.floor(pos.g)
     --remove at pos
+    local ptype=grid.type:get(x,y)
+    grid.type:set(x,y,0)
+    --grid.dir:set(x,y,0) --optional
+
     --increment pos by velocity
+    x=x+dir_to_dx[dir]
+    y=y+dir_to_dy[dir]
     --add at new pos
+    grid.type:set(x,y,ptype)
+    grid.dir:set(x,y,dir)
 end
-function particle_add( ... )
-    -- TODO
+function particle_add( x,y,type,dir )
+    local old_count=particles.count
+    particles.dir:set(old_count,0,dir)
+    particles.type:set(old_count,0,type)
+    particles.pos:set(old_count,0,{r=x,g=y})
+
+    grid.type:set(x,y,type)
+    grid.dir:set(x,y,dir)
+    particles.count=particles.count+1
+    return particles.count-1
 end
-function particle_remove( ... )
-    -- TODO
+function particle_remove( pid )
+    local old_count=particles.count-1
+
+    particles.dir:set(pid,0,particles.dir:get(old_count,0))
+    particles.type:set(pid,0,particles.type:get(old_count,0))
+    particles.pos:set(pid,0,particles.pos:get(old_count,0))
+    particles.count=particles.count-1
+    return particles.count
 end
 rules=rules or {
 --example rules
@@ -340,30 +369,40 @@ end
 
 function sim_tick(  )
     --clear grid
-    --TODO
+    local g=grid
+    for x=0,map_w-1 do
+    for y=0,map_h-1 do
+        g.move_to:set(x,y,0)
+    end
+    end
     --for each particle
     for i=0,particles.count-1 do
         --add to <move to buffer>
         local pos=particles.pos:get(i,0)
         local x=math.floor(pos.r)
         local y=math.floor(pos.g)
-        grid.move_to:set(x,y,grid.move_to:get(x,y)+1)
+        g.move_to:set(x,y,g.move_to:get(x,y)+1)
     end
+
+    local collisions={}
+    
     for i=0,particles.count-1 do
         --check if it's only particle moving into the tile
-        
         local pos=particles.pos:get(i,0)
         local x=math.floor(pos.r)
         local y=math.floor(pos.g)
-        local trg_move=grid.move_to:get(x,y)
+        local trg_move=g.move_to:get(x,y)
         if trg_move==1 then
             -- if yes, just move
             particle_move(i)
         else
-            -- if no do resolve collision(pos)
-            --TODO: we could use <only involved in collision> or "quantum effects" pull in stuff around
-            resolve_collision({x,y})
+            -- if not add to a list of collisions to resolve
+            table.insert(collisions,{x,y})
         end
+    end
+    for i,v in ipairs(collisions) do
+        --TODO: we could use <only involved in collision> or "quantum effects" pull in stuff around
+        resolve_collision(v)
     end
 end
 
