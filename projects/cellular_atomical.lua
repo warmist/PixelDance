@@ -203,7 +203,7 @@ function enumerate_allowed_momentums_ex(depth,tbl )
         for i=0,8 do
             local d=dir_to_dx[i]
             local nk=tostring(i)
-            new_tbl[nk]={dx=d[1],dy=d[2]}  
+            new_tbl[nk]={dx=d[1],dy=d[2]} 
         end
 
     else
@@ -300,15 +300,17 @@ function list_momentums( depth )
     print("Total:",count," out of ",count_max," percent",math.floor(count*100/count_max))
 end
 function apply_rule( rule,pos,type,vel,around_type,around_vel )
-    
+
     local valid_momentum=enum_valid_momentum(m,v.result)
     if #valid_momentum>0 then
         --only transform if at least one valid momentum exist
         table.insert(results,{v,valid_momentum})
+    else
+        return 0
     end
     shuffle_table(momentums)
     for _,chosen_momentum in ipairs(momentums) do
-        
+
     end
 end
 function fix_pos( x,y )
@@ -355,7 +357,7 @@ function find_and_apply_rule(pos)
     --TODO: option to shuffle all rules
     --shuffle_table(applicable_rules)
     --TODO more than one rule per "tick"
-    if apply_rule(applicable_rules[0]) then
+    if apply_rule(applicable_rules[0]) then --TODO: this might fail due to momentum. Maybe try another one?
         return 1
     end
     return 0
@@ -364,7 +366,10 @@ end
 function resolve_collision( pos )
     --try applying rules
     --if failed and/or rest of stuff exchanges momentum somehow...
+    find_and_apply_rule(pos)
     --i.e. like it had rule match=out="exact match after rules"
+    local around=get_around(pos)
+    redistribute_momentum(around)
 end
 
 function sim_tick(  )
