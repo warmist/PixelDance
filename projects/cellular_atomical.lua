@@ -51,7 +51,7 @@ local win_w=1024
 local win_h=1024
 
 --__set_window_size(win_w,win_h)
-local oversample=1/8
+local oversample=1/16
 
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
@@ -59,8 +59,8 @@ local map_h=math.floor(win_h*oversample)
 local aspect_ratio=win_w/win_h
 local map_aspect_ratio=map_w/map_h
 local size=STATE.size
-local MAX_ATOM_TYPES=2
-
+local MAX_ATOM_TYPES=3
+local max_particle_count=10000
 
 function init_arrays(  )
     particles=particles or {}
@@ -78,25 +78,46 @@ function init_arrays(  )
     g.move_to=make_char_buffer(map_w,map_h)
 end
 init_arrays()
+function get_particle_next_pos( pid ,pos)
+    local dir=particles.dir:get(pid,0)
+
+    if dir==0 then
+        --TODO: no floor here :|
+        return pos.r,pos.g
+    end
+
+    local x=math.floor(pos.r)
+    local y=math.floor(pos.g)
+
+    local tx,ty=fix_pos(dir_to_dx[dir][1]+x,dir_to_dx[dir][2]+y)
+
+    return tx,ty
+end
 function particle_move( pid )
-    local dir=particles.dir:get(i,0)
+    local dir=particles.dir:get(pid,0)
     if dir==0 then --not moving so nothing todo
         return
     end
-    local pos=particles.pos:get(i,0)
+    local pos=particles.pos:get(pid,0)
     local x=math.floor(pos.r)
     local y=math.floor(pos.g)
     --remove at pos
-    local ptype=grid.type:get(x,y)
+    --local ptype=grid.type:get(x,y)
+    local ptype=particles.type:get(pid,0)
     grid.type:set(x,y,0)
     --grid.dir:set(x,y,0) --optional
 
     --increment pos by velocity
-    x=x+dir_to_dx[dir]
-    y=y+dir_to_dy[dir]
+    x=x+dir_to_dx[dir][1]
+    y=y+dir_to_dx[dir][2]
+    x,y=fix_pos(x,y)
     --add at new pos
-    grid.type:set(x,y,ptype)
+    --if dir==0 then
+        grid.type:set(x,y,ptype)
+    --end
     grid.dir:set(x,y,dir)
+
+    particles.pos:set(pid,0,{r=x,g=y})
 end
 function particle_add( x,y,type,dir )
     local old_count=particles.count
@@ -108,6 +129,10 @@ function particle_add( x,y,type,dir )
     grid.dir:set(x,y,dir)
     particles.count=particles.count+1
     return particles.count-1
+end
+math.randomseed(os.time())
+for i=1,100 do
+    particle_add(math.random(0,map_w-1),math.random(0,map_h-1),math.random(1,MAX_ATOM_TYPES),math.random(0,8))
 end
 function particle_remove( pid )
     local old_count=particles.count-1
@@ -281,8 +306,7 @@ function enum_rules( pos,type,vel,around_type,around_vel,count_around)
             local count_involved=1+#matching
             local count_after=count_involved+v.create-v.destroy
             --check if momentum sums can exist
-
-        while false
+        end
     end
 end
 function list_momentums( depth )
@@ -362,14 +386,27 @@ function find_and_apply_rule(pos)
     end
     return 0
 end
-
-function resolve_collision( pos )
+function redistribute_momentum( members )
+    local tbl={}
+    for i,v in ipairs(members) do
+        local d=particles.dir:get(v,0)
+        tbl[i]=d
+    end
+    shuffle_table(tbl)
+    for i,v in ipairs(members) do
+        particles.dir:set(v,0,tbl[i])
+    end
+end
+function resolve_collision( x,y,colliding )
     --try applying rules
     --if failed and/or rest of stuff exchanges momentum somehow...
-    find_and_apply_rule(pos)
+    
+    --NB: this should not remove "removed particles" as colliding is invalidated then
+    --find_and_apply_rule(pos) 
+
     --i.e. like it had rule match=out="exact match after rules"
-    local around=get_around(pos)
-    redistribute_momentum(around)
+    --local around=get_around(pos)
+    redistribute_momentum(colliding)
 end
 
 function sim_tick(  )
@@ -386,36 +423,68 @@ function sim_tick(  )
         local pos=particles.pos:get(i,0)
         local x=math.floor(pos.r)
         local y=math.floor(pos.g)
+        --add to current location
         g.move_to:set(x,y,g.move_to:get(x,y)+1)
+        --add to next location
+        local tx,ty=get_particle_next_pos(i,pos)
+        g.move_to:set(tx,ty,g.move_to:get(tx,ty)+1)
     end
-
+    -- [[
     local collisions={}
     
     for i=0,particles.count-1 do
         --check if it's only particle moving into the tile
         local pos=particles.pos:get(i,0)
-        local x=math.floor(pos.r)
-        local y=math.floor(pos.g)
-        local trg_move=g.move_to:get(x,y)
+        local tx,ty=get_particle_next_pos(i,pos)
+        local trg_move=g.move_to:get(tx,ty)
         if trg_move==1 then
             -- if yes, just move
             particle_move(i)
         else
             -- if not add to a list of collisions to resolve
-            table.insert(collisions,{x,y})
+            --table.insert(collisions,{x,y})
+            local idx=tx+ty*map_w
+            collisions[idx]=collisions[idx] or {x=tx,y=ty}
+            table.insert(collisions[idx],i)
         end
     end
-    for i,v in ipairs(collisions) do
+    for i,v in pairs(collisions) do
         --TODO: we could use <only involved in collision> or "quantum effects" pull in stuff around
-        resolve_collision(v)
+        --TODO: could recover x/y from id
+        resolve_collision(v.x,v.y,v)
     end
+    --]]
 end
-
-function draw(  )
+draw_field=init_draw_field(
+[==[
+#line __LINE__
+vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
+{
+    return a + b*cos( 6.28318*(c*t+d) );
+}
+void main(){
+    vec2 normed=(pos.xy+vec2(1,-1))*vec2(0.5,-0.5);
+    normed=(normed-vec2(0.5,0.5))+vec2(0.5,0.5);
+    vec4 data=texture(tex_main,normed);
+    //data.x*=data.x;
+    float normed_particle=data.x*255/5;
+    vec3 c=palette(normed_particle,vec3(0.2),vec3(0.8),vec3(1.5,0.5,1.0),vec3(0.5,0.5,0.25));
+    color=vec4(c,1);
     
+}
+]==],
+{
+    uniforms={
+    },
+}
+)
+function draw(  )
+    draw_field.update(grid.type)
+    draw_field.draw()   
 end
 
 function update(  )
+    __no_redraw()
     sim_tick()
-    update()
+    draw()
 end
