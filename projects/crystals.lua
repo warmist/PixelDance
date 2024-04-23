@@ -7,7 +7,7 @@ local win_w=1024
 local win_h=1024
 
 __set_window_size(win_w,win_h)
-local oversample=0.0125
+local oversample=0.125
 local map_w=math.floor(win_w*oversample)
 local map_h=math.floor(win_h*oversample)
 
@@ -224,23 +224,54 @@ function clear_nn( x,y )
 		if ty<0 then ty=map_h-1 end
 		if ty>=map_h then ty=0 end
 
-		material:set(tx,ty,material:get(tx,ty)-config.material_needed*1.1)
+		material:set(tx,ty,material:get(tx,ty)-config.material_needed/6)
 	end
+end
+function count_mat_nn( x,y )
+	-- [[
+	local dx={1,0,1,-1,-1,0}
+	local dy={0,1,1,0,-1,-1}
+	--]]
+	--[[
+	local dx={1,0,-1,0}
+	local dy={0,-1,0,1}
+	--]]
+	--[[
+					sample_tex(1,0);
+				sample_tex(0,1);
+				sample_tex(1,1);
+
+				sample_tex(-1,0);
+				sample_tex(-1,-1);
+				sample_tex(0,-1);
+				]]
+	local ret=0
+	for i=1,#dx do
+		local tx=x+dx[i]
+		if tx<0 then tx=map_w-1 end
+		if tx>=map_w then tx=0 end
+		local ty=y+dy[i]
+		if ty<0 then ty=map_h-1 end
+		if ty>=map_h then ty=0 end
+		local v=material:get(tx,ty)
+		ret=ret+v
+	end
+	return ret
 end
 function crystal_step()
 	material:read_texture(mat_tex1)
 	local crystal_chances={
-		[0]=0.0000001, --0
-		0.001,--1
-		1,
-		0.01,
-		0.0001,--4
+		[0]=0.0001, --0
+		0.0,--1
 		0.1,
+		0.2,
+		0.0,--4
+		0.0,
 		0,
 		0.000001,
-		0.000001,
+		0,
 	}
-	local chance_mod=0.05
+	local chance_mod=0.25
 	for x=0,map_w-1 do
 		for y=0,map_h-1 do
 			local v=material:get(x,y)
@@ -250,16 +281,17 @@ function crystal_step()
 				pp=pp*pp
 				local r =1-math.exp(pp/(-c*c))--crystal_chances[c]
 				]]
-				local r =1--crystal_chances[c]*chance_mod
-				if c>0 and v>config.material_needed then
+				local r =crystal_chances[c]*chance_mod
+				if  v>config.material_needed and r>math.random() then
 					--material:set(x,y,0)
-					--material:set(x,y,material:get(x,y)-config.material_needed*1.1)
+					material:set(x,y,material:get(x,y)-config.material_needed*1.1)
 					clear_nn(x,y)
 					local c=config.color
 					img_buf:set(x,y,{c[1]*255,c[2]*255,c[3]*255,255})
 				end
 			end
-			if v>=config.material_melt then
+			local mnn=count_mat_nn(x,y)/6
+			if mnn>=config.material_melt or (x==0 and y==0) then
 				if img_buf:get(x,y).a~=0 then
 					material:set(x,y,material:get(x,y)+config.material_needed)
 					img_buf:set(x,y,{0,0,0,0})
@@ -302,6 +334,7 @@ vec2 pixel_to_array(vec2 pos)
 	//bravais lattice to pixel
 	//we normalize the "a" to be 1
 	//then we only have "b" and angle
+	return vec2(0);
 }
 vec2 pixel_to_axial_hex(vec2 pos)
 {
@@ -364,7 +397,7 @@ void main(){
 	float hex_size=0.5;
 
 	vec2 normed=pos.xy;//(pos.xy+vec2(1,1))/2;
-	normed=pix_to_hex(normed*v,hex_size).xy;
+	normed=pix_to_hex(normed*v,hex_size).xy+0.1;
 	//normed=pixel_to_axial_hex(normed*v);
 	//normed.y+=floor(normed.x/2);
 	//normed=hex_to_array(normed,v);
@@ -395,8 +428,10 @@ void main(){
     //color=vec4(max(pixel.x,pixel_c.x),pixel_c.y,pixel_c.z,1);
 
     color=vec4(clamp(pixel*(1-pixel_c.a)+pixel_c,0,1).xyz,1);
-    //if(normed.x<0 || normed.x>1 || normed.y<0 || normed.y>1)
-    //	color.xyz=vec3(0);
+#if 0
+    if(normed.x<0 || normed.x>1 || normed.y<0 || normed.y>1)
+    	color.xyz=vec3(0);
+#endif
 }
 ]==])
 function draw(  )
@@ -490,7 +525,7 @@ function update(  )
 	end
 	imgui.End()
 	if config.simulate then
-		config.simulate=false
+		--config.simulate=false
 		if config.add_mat >0 then
 			mat_tex1:use(0)
 			material:read_texture(mat_tex1)
@@ -499,7 +534,7 @@ function update(  )
 			local cx,cy,cz=pix_to_hex({0,0})
 			--cx,cy=hex_to_array(cx,cy)
 			local dist=math.min(math.floor(map_w/15),math.floor(map_h/15))
-			print(cx,cy,cz)
+			--print(cx,cy,cz)
 			-- [==[
 			add_mat(cx,cy,config.add_mat) --0,0,0
 
@@ -554,7 +589,7 @@ function update(  )
 			--]]
 			material:write_texture(mat_tex1)
 		end
-		--[[
+		-- [[
 		diffuse_and_decay(mat_tex1,mat_tex2,map_w,map_h,0.5,config.decay,config.diffuse_steps,img_tex1)
 		if(config.diffuse_steps%2==1) then
 			local c=mat_tex1
@@ -562,7 +597,7 @@ function update(  )
 			mat_tex2=c
 	    end
 	    crystal_step()
-	    ]]
+	    --]]
 	end
 	draw()
 	if need_save then
