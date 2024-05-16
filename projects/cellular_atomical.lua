@@ -131,7 +131,7 @@ function particle_add( x,y,type,dir )
     return particles.count-1
 end
 math.randomseed(os.time())
-for i=1,100 do
+for i=1,3000 do
     particle_add(math.random(0,map_w-1),math.random(0,map_h-1),math.random(1,MAX_ATOM_TYPES),math.random(0,8))
 end
 function particle_remove( pid )
@@ -397,12 +397,12 @@ function redistribute_momentum( members )
         particles.dir:set(v,0,tbl[i])
     end
 end
-function resolve_collision( x,y,colliding )
+function resolve_collision( x,y,colliding,dead)
     --try applying rules
     --if failed and/or rest of stuff exchanges momentum somehow...
-    
+
     --NB: this should not remove "removed particles" as colliding is invalidated then
-    --find_and_apply_rule(pos) 
+    --find_and_apply_rule(pos,dead)
 
     --i.e. like it had rule match=out="exact match after rules"
     --local around=get_around(pos)
@@ -448,11 +448,13 @@ function sim_tick(  )
             table.insert(collisions[idx],i)
         end
     end
+    local dead={}
     for i,v in pairs(collisions) do
         --TODO: we could use <only involved in collision> or "quantum effects" pull in stuff around
         --TODO: could recover x/y from id
-        resolve_collision(v.x,v.y,v)
+        resolve_collision(v.x,v.y,v,dead)
     end
+    --TODO: remove dead in specific order so not to mess up the ids
     --]]
 end
 draw_field=init_draw_field(
