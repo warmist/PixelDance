@@ -397,39 +397,56 @@ function redistribute_momentum( members )
         particles.dir:set(v,0,tbl[i])
     end
 end
-function resolve_collision( x,y,colliding,dead)
+function resolve_collision( x,y,colliding)
     --try applying rules
     --if failed and/or rest of stuff exchanges momentum somehow...
 
     --NB: this should not remove "removed particles" as colliding is invalidated then
-    --find_and_apply_rule(pos,dead)
+    find_and_apply_rule(colliding)
 
     --i.e. like it had rule match=out="exact match after rules"
     --local around=get_around(pos)
     redistribute_momentum(colliding)
 end
-
+function remove_dead(  )
+    --go over all, and remove type -1
+    local i=0
+    while i<particles.count do
+        if particles.type:get(i,0)==-1 then
+            particle_remove(i)
+        else
+            i=i+1
+        end
+    end
+end
 function sim_tick(  )
-    --clear grid
     local g=grid
-    for x=0,map_w-1 do
-    for y=0,map_h-1 do
-        g.move_to:set(x,y,0)
+    --clear grid
+    local function clear_grid(  )
+        for x=0,map_w-1 do
+        for y=0,map_h-1 do
+            g.move_to:set(x,y,0)
+        end
+        end
     end
+    local function update_moves(  )
+        --for each particle
+        for i=0,particles.count-1 do
+            --add to <move to buffer>
+            local pos=particles.pos:get(i,0)
+            local x=math.floor(pos.r)
+            local y=math.floor(pos.g)
+            --add to current location
+            g.move_to:set(x,y,g.move_to:get(x,y)+1)
+            --add to next location
+            local tx,ty=get_particle_next_pos(i,pos)
+            g.move_to:set(tx,ty,g.move_to:get(tx,ty)+1)
+        end
     end
-    --for each particle
-    for i=0,particles.count-1 do
-        --add to <move to buffer>
-        local pos=particles.pos:get(i,0)
-        local x=math.floor(pos.r)
-        local y=math.floor(pos.g)
-        --add to current location
-        g.move_to:set(x,y,g.move_to:get(x,y)+1)
-        --add to next location
-        local tx,ty=get_particle_next_pos(i,pos)
-        g.move_to:set(tx,ty,g.move_to:get(tx,ty)+1)
-    end
+    clear_grid()
+    update_moves()
     -- [[
+    --calculate collisions
     local collisions={}
     
     for i=0,particles.count-1 do
@@ -438,8 +455,7 @@ function sim_tick(  )
         local tx,ty=get_particle_next_pos(i,pos)
         local trg_move=g.move_to:get(tx,ty)
         if trg_move==1 then
-            -- if yes, just move
-            particle_move(i)
+            --moving will be done after collision resolution
         else
             -- if not add to a list of collisions to resolve
             --table.insert(collisions,{x,y})
@@ -448,13 +464,28 @@ function sim_tick(  )
             table.insert(collisions[idx],i)
         end
     end
-    local dead={}
+
     for i,v in pairs(collisions) do
         --TODO: we could use <only involved in collision> or "quantum effects" pull in stuff around
         --TODO: could recover x/y from id
-        resolve_collision(v.x,v.y,v,dead)
+        resolve_collision(v.x,v.y,v)
     end
-    --TODO: remove dead in specific order so not to mess up the ids
+    remove_dead()
+    clear_grid()
+    update_moves()
+    for i=0,particles.count-1 do
+        --check if it's only particle moving into the tile
+        local pos=particles.pos:get(i,0)
+        local tx,ty=get_particle_next_pos(i,pos)
+        local trg_move=g.move_to:get(tx,ty)
+        if trg_move==1 then
+            -- if yes, move
+            particle_move(i)
+        else
+            --do nothing, we will do collisions next step
+        end
+    end
+    
     --]]
 end
 draw_field=init_draw_field(
