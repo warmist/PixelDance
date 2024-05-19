@@ -323,17 +323,16 @@ function list_momentums( depth )
     end
     print("Total:",count," out of ",count_max," percent",math.floor(count*100/count_max))
 end
-function apply_rule( rule,pos,type,vel,around_type,around_vel )
+function apply_rule( rule)
 
-    local valid_momentum=enum_valid_momentum(m,v.result)
-    if #valid_momentum>0 then
+    local valid_momentum=enum_valid_momentum(rule,v.result)
+    local momentums
+    if #valid_momentum==0 then
         --only transform if at least one valid momentum exist
-        table.insert(results,{v,valid_momentum})
-    else
         return 0
     end
-    shuffle_table(momentums)
-    for _,chosen_momentum in ipairs(momentums) do
+    shuffle_table(valid_momentum)
+    for _,chosen_momentum in ipairs(valid_momentum) do
 
     end
 end
@@ -370,9 +369,7 @@ function get_around( pos )
     end
     return ret_type,ret_dir,count_around
 end
-function find_and_apply_rule(pos)
-    --get stuff pos
-    local around_type,around_vel,count_around=get_around(pos)
+function find_and_apply_rule(colliding)
     --get applicable rules
     local applicable_rules=enum_rules(around_type,around_vel,count_around)
     if #applicable_rules==0 then
@@ -397,10 +394,14 @@ function redistribute_momentum( members )
         particles.dir:set(v,0,tbl[i])
     end
 end
-function resolve_collision( x,y,colliding)
+function resolve_collision( colliding)
     --try applying rules
     --if failed and/or rest of stuff exchanges momentum somehow...
-
+    --TODO: alternative here would pull in rest of stuff around
+    --pull_in_stuff(colliding)
+    --get info about ids
+    local particle_types
+    local particle_momentums
     --NB: this should not remove "removed particles" as colliding is invalidated then
     find_and_apply_rule(colliding)
 
@@ -447,6 +448,7 @@ function sim_tick(  )
     update_moves()
     -- [[
     --calculate collisions
+    --collision format: x,y and list of ids
     local collisions={}
     
     for i=0,particles.count-1 do
@@ -468,7 +470,7 @@ function sim_tick(  )
     for i,v in pairs(collisions) do
         --TODO: we could use <only involved in collision> or "quantum effects" pull in stuff around
         --TODO: could recover x/y from id
-        resolve_collision(v.x,v.y,v)
+        resolve_collision(v)
     end
     remove_dead()
     clear_grid()
