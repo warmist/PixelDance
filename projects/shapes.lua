@@ -18,15 +18,12 @@ function count_lines( s )
 	return n
 end
 
-function shader_make( s_in )
-	local sl=count_lines(s_in)
-	s="#version 330\n#line "..(debug.getinfo(2, 'l').currentline-sl).."\n"
-	s=s..s_in
-	return shaders.Make(s)
-end
 
 
-shapes_shader=shader_make[==[
+shapes_shader=shaders.Make[==[
+
+#version 330
+#line __LINE__
 
 #define PI 3.14159265
 #define TAU (2*PI)
@@ -220,8 +217,8 @@ vec3 spectral_zucconi6 (float w)
 }
 float d_measure(vec2 a,vec2 b)
 {
-	vec2 p1=vec2(0.6,0.2);
-	vec2 p2=vec2(0.15,0.3);
+	vec2 p1=vec2(0.1,-0.5);
+	vec2 p2=vec2(0.5,0.5);
 #if 0 //polar
 	float ar=atan(a.y,a.x);
 	float br=atan(b.y,b.x);
@@ -229,6 +226,8 @@ float d_measure(vec2 a,vec2 b)
 	float bd=length(b);
 	return distance(vec2(ar,ad),vec2(br,bd));
 #elif 0 //polar fixed
+	//a-=p1;
+	//b-=p2;
 	float ar=atan(a.y,a.x);
 	float br=atan(b.y,b.x);
 	float ad=length(a);
@@ -239,11 +238,15 @@ float d_measure(vec2 a,vec2 b)
 	else if(dr<-PI)
 		dr+=2*PI;
 	float dd=ad-bd;
+	//return length(vec2(cos(dr),sin(dr))*dd);
 	return sqrt(dr*dr+dd*dd);
-#elif 1 //random bs
+#elif 0 //random bs
 	float v1=cos(a.x-b.x);
 	float v2=sin(a.y-b.y);
 	return sqrt(v1*v1+v2*v2);
+#elif 0 //random bs polynomial
+	//todo more
+	return pow(distance(a*a*a,b*b*b),1/3.0f);
 #elif 0 //z^2 complex
 	return sqrt(distance(c_mul(a,a),c_mul(b,b)));
 #elif 0 //z^3 complex
@@ -266,16 +269,23 @@ float d_measure(vec2 a,vec2 b)
 	return distance(a,b); //normal
 #endif
 }
-void main(){
+void main_rnd(){
 	float aspect=rez.x/rez.y;
 	
 	vec2 p=pos.xy*vec2(1,1/aspect);
-	const int max_id=1000;
+
+	float r0=abs(params.x);
+	float r1=abs(params.y);
+	float r2=abs(params.z);
+
+	const int max_id=50;
 	float v=0;
 	float d_min=100000;
 	for(int i=0;i<max_id;i++)
 	{
+
 		vec2 ptrg=vec2(rand1(i*45.123+548*params.x),rand2(i*45.123+548*params.y))*2-vec2(1);
+
 		float l=d_measure(p,ptrg);
 		if(l<d_min)
 		{
@@ -284,6 +294,174 @@ void main(){
 		}
 	}
 	float lv=v/max_id;
+	color=vec4(spectral_zucconi6(lv),1);
+	//color=vec4(vec3(lv),1);
+}
+int circle_intersect(vec2 p1, vec2 p2, float r1,float r2,out vec2 out1,out vec2 out2)
+{
+	float R=distance(p1,p2);
+	float rd=r1*r1-r2*r2;
+	if(R<r1+r2)
+	{
+		vec2 c=(p1+p2)*0.5;
+		vec2 d2=(p2-p1)*(rd)/(2*R*R);
+		float D=0.5*sqrt(2*(r1*r1+r2*r2)/(R*R)-(rd*rd/(R*R*R*R))-1);
+		out1=c+d2+D*vec2(p2.y-p1.y,p1.x-p2.x);
+		out2=c+d2-D*vec2(p2.y-p1.y,p1.x-p2.x);
+		return 2;
+	}
+	else
+		return 0;
+}
+void main(){ //lattice version
+
+	float aspect=rez.x/rez.y;
+	
+	vec2 p=pos.xy*vec2(1,1/aspect);
+	p*=2;
+	//lattice axis and size
+	vec2 lat_dx=vec2(1,0);
+	//vec2 lat_dy=vec2(-0.5,sqrt(3)/2); //120 deg, 2/3*pi
+	float alpha=(3.14159265359)/3;
+	vec2 lat_dy=vec2(cos(alpha),sin(alpha));
+
+	vec2 local_p;
+	//TODO: could be simplified if we take lat_dx/dy as mat2
+	local_p.x=(dot(p,lat_dx)/dot(lat_dx,lat_dx));
+	local_p.y=(dot(p,lat_dy)/dot(lat_dy,lat_dy));
+	//repeat the lattice
+	local_p=mod(local_p,1.0f);
+	//TODO: add mirroring/rotations here!
+
+	float d_min=1e23;
+	float v=0;
+	//list of points inside lattice
+	vec2 point_list[]={
+		vec2(0,0),
+		vec2(.25,.125),
+		vec2(.125,.125),
+		vec2(.25,.25),
+		vec2(.75,0),
+		vec2(.3,.3333333),
+	};
+#if 1
+	vec2 nn[]={
+		vec2(0,1),
+		vec2(1,1),
+		vec2(1,0),
+		vec2(1,-1),
+		vec2(0,-1),
+		vec2(-1,-1),
+		vec2(-1,0),
+		vec2(-1,1),
+	};
+#else
+	vec2 nn[]={
+		vec2(0,1),
+		vec2(1,0),
+		vec2(0,-1),
+		vec2(-1,0),
+	};
+#endif
+	for(int i=0;i<point_list.length();i++)
+	{
+		//check if p is nearest to inner point
+		float l=d_measure(local_p,point_list[i]);
+		if(l<d_min)
+		{
+			v=i;
+			d_min=l;
+		}
+		//also check nearest next lattice cell
+		for(int k=0;k<nn.length();k++)
+		{
+			//TODO: mirror rotate here too!
+			vec2 nn_offset=nn[k].x*lat_dx+nn[k].y*lat_dy;
+			float l=d_measure(local_p,point_list[i]+nn_offset);
+			if(l<d_min)
+			{
+				//v=i+point_list.length()*k;
+				v=i;
+				d_min=l;
+			}
+		}
+	}
+	//float lv=v/(point_list.length()*nn.length());
+	float lv=v/point_list.length();
+	color=vec4(spectral_zucconi6(lv*0.9+0.1),1);
+}
+void main_circles(){
+	float aspect=rez.x/rez.y;
+	
+	vec2 p=pos.xy*vec2(1,1/aspect);
+
+	float r0=abs(params.x); //middle circle at 0,0
+	float r1=abs(params.y); //dist from center
+	float r2=abs(params.z); //other circles
+
+	const int count_circles=21;
+	float v=0.33;
+	float d_min=length(p);//100000;
+	vec2 i1,i2;
+
+	vec2 c1_center=vec2(0,0);
+	for(int i=0;i<count_circles;i++)
+	{
+		float a=i/float(count_circles)*TAU;
+		vec2 c2_center=vec2(cos(a),sin(a))*r1;//+(vec2(rand1(i*45.123+548*params.w),rand2(i*45.123+548*params.w))*2-vec2(1))*0.1;
+		for(int j=0;j<count_circles;j++)
+		{
+			float b=j/float(count_circles)*TAU+0.7;
+			vec2 c3_center=vec2(cos(b),sin(b))*(r1+0.25);
+			if(i!=j)
+			{
+				int icount=circle_intersect(c2_center,c3_center,r1,r2,i1,i2);
+				if(icount==2)
+				{
+					float l=d_measure(p,i1);
+					if(l<d_min)
+					{
+						v=(a+b)/2;
+						//v=i*count_circles+j;
+						//v=(abs(c2_center.x)+abs(c3_center.x)+abs(c2_center.y)+abs(c3_center.y))*0.25;
+						d_min=l;
+					}
+					l=d_measure(p,i2);
+					if(l<d_min)
+					{
+						v=(a+b)/2;
+						//v=i*count_circles+j;
+						//v=(abs(c2_center.x)+abs(c3_center.x)+abs(c2_center.y)+abs(c3_center.y))*0.25;
+						d_min=l;
+					}
+				}
+			}
+		}
+		//intersect center
+		int icount=circle_intersect(c1_center,c2_center,r0,r2,i1,i2);
+		if(icount==2)
+		{
+			float l=d_measure(p,i1);
+			if(l<d_min)
+			{
+				v=i*count_circles;
+				//v=(abs(c2_center.x));
+				v=a;
+				d_min=l;
+			}
+			l=d_measure(p,i2);
+			if(l<d_min)
+			{
+				//v=i*count_circles;
+				//v=(abs(c2_center.y));
+				v=a;
+				d_min=l;
+			}
+		}
+	}
+	//float lv=v*1+0.5;//(count_circles*count_circles);
+	//float lv=v/(count_circles*count_circles);
+	float lv=v/(TAU);
 	color=vec4(spectral_zucconi6(lv),1);
 	//color=vec4(vec3(lv),1);
 }
@@ -313,12 +491,7 @@ void main2(){
 }
 ]==]
 params=params or {0,0,0,0,0,0,0}
-params={
-9.3313011112722,
--11.59379606321,
--4.806311207397,
-7.0688061593346,
-}
+
 function randomize_params(  )
 	local h=2
 	for i=1,#params do
