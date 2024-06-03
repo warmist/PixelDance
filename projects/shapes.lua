@@ -21,8 +21,7 @@ end
 
 
 shapes_shader=shaders.Make[==[
-
-#version 330
+#version 420
 #line __LINE__
 
 #define PI 3.14159265
@@ -34,6 +33,7 @@ in vec3 pos;
 
 uniform vec2 rez;
 uniform vec4 params;
+
 //sdfs
 float sdCircle( vec2 p, float r )
 {
@@ -313,15 +313,38 @@ int circle_intersect(vec2 p1, vec2 p2, float r1,float r2,out vec2 out1,out vec2 
 	else
 		return 0;
 }
-vec2 rotate_point(vec2 p,ivec2 lat_coord)
+vec2 rotate(vec2 v, float a) {
+	float s = sin(a);
+	float c = cos(a);
+	mat2 m = mat2(c, s, -s, c);
+	return m * v;
+}
+vec2 rotate_point(vec2 p,ivec2 lat_coord) //misnomer should be something like apply mirror/rotation or sth...
 {
-	//test mirror
-#if 0
-	if(lat_coord.x%2)
+	//somehow this should repeat points inside the unit cell as e.g. p6 has 6 triangles inside the cell
+#if 1
+	/*
+	if(lat_coord.y%2==0)
 		p.x*=-1;
+	if(lat_coord.x%2==0)
+		p.y*=-1;
+	*/
+	/*
+	if(lat_coord.x%2==0)
+	{
+		p*=-1;
+	}
+	*/
+	/*
+	if(lat_coord.y%2==0)
+	{
+		p=rotate(p-vec2(0.5),PI/2)+vec2(0.5);
+	}
+	*/
 #endif
 	return p;
 }
+
 void main(){ //lattice version
 
 	float aspect=rez.x/rez.y;
@@ -331,54 +354,49 @@ void main(){ //lattice version
 	//lattice axis and size
 	vec2 lat_dx=vec2(1,0);
 	//vec2 lat_dy=vec2(-0.5,sqrt(3)/2); //120 deg, 2/3*pi
-	float alpha=(3.14159265359)/3;
+	float alpha=PI/3;//PI/2;
 	vec2 lat_dy=vec2(cos(alpha),sin(alpha));
 
 	vec2 local_p;
 	//TODO: could be simplified if we take lat_dx/dy as mat2
 	local_p.x=(dot(p,lat_dx)/dot(lat_dx,lat_dx));
 	local_p.y=(dot(p,lat_dy)/dot(lat_dy,lat_dy));
-	//repeat the lattice
 	vec2 lat_p;
-	local_p.x=modf(local_p.x,lat_p.x);
-	local_p.y=modf(local_p.y,lat_p.y);
-	if(local_p.x<0)
-	{
-		//local_p.x*=-1;
-		lat_p.x-=1;
-	}
-	if(local_p.y<0)
-	{
-		//local_p.y*=-1;
-		lat_p.y-=1;
-	}
+
+	//repeat the lattice
+	lat_p=local_p-fract(local_p);
+	local_p=fract(local_p);
+
 	ivec2 ilat_p=ivec2(lat_p);
-	
-	//local_p-=vec2(0.0,0.7)*((lat_p.y+lat_p.x)%2);
+
 
 	float d_min=1e23;
-	
+	//if(length(ilat_p)>2) d_min=0; //DEBUG
 
 	float v=0;
 	//list of points inside lattice
-	vec2 point_list[]={
-		vec2(0.1,0.1),
-		vec2(.25,.125),
-		vec2(.125,.3),
-		vec2(0.5-0.1,0.5-0.1),
-		vec2(0.5-.25,0.5-.125),
-		vec2(0.5-.125,0.5-.3),
+	vec2 point_list[]= {
+		/*vec2(1,0)*0.4+vec2(0.5),
+		vec2(cos(2*PI/4),sin(2*PI/4))*0.4+vec2(0.5),
+		vec2(cos(4*PI/4),sin(4*PI/4))*0.4+vec2(0.5),
+		vec2(cos(6*PI/4),sin(6*PI/4))*0.4+vec2(0.5),
+		*/
+		vec2(.5,.5),
+		vec2(.7,.2),
+		vec2(.46,.1),
+		vec2(.167,.5),
+		vec2(.8,.1478),
 	};
 #if 1
 	ivec2 nn[]={
-		ivec2(0,1),
-		ivec2(1,1),
-		ivec2(1,0),
-		ivec2(1,-1),
-		ivec2(0,-1),
-		ivec2(-1,-1),
-		ivec2(-1,0),
-		ivec2(-1,1),
+		{0,1},
+		{1,1},
+		{1,0},
+		{1,-1},
+		{0,-1},
+		{-1,-1},
+		{-1,0},
+		{-1,1},
 	};
 #else
 	ivec2 nn[]={
@@ -391,28 +409,46 @@ void main(){ //lattice version
 	for(int i=0;i<point_list.length();i++)
 	{
 		//check if p is nearest to inner point
-		float l=d_measure(local_p,rotate_point(point_list[i],ilat_p));
+		vec2 check_pt=point_list[i];
+		check_pt=rotate(check_pt-vec2(0.5),params[0])+vec2(0.5);
+#define USE_LOCAL_COMPARE 0
+
+#if USE_LOCAL_COMPARE
+		float l=d_measure(local_p,rotate_point(check_pt,ilat_p));
+#else
+		//first turn into cartesian coords
+		vec2 global_p=local_p.x*lat_dx+local_p.y*lat_dy;
+		vec2 check_rot=rotate_point(check_pt,ilat_p);
+		vec2 global_check=check_rot.x*lat_dx+check_rot.y*lat_dy;
+		float l=d_measure(global_p,global_check);
+#endif
 		if(l<d_min)
 		{
-			v=i%3;
+			v=i;
 			d_min=l;
 		}
 		//also check nearest next lattice cell
 		for(int k=0;k<nn.length();k++)
 		{
-			//TODO: mirror rotate here too!
-			vec2 nn_offset=nn[k].x*lat_dx+nn[k].y*lat_dy;
-			float l=d_measure(local_p,rotate_point(point_list[i],ilat_p+nn[k])+nn_offset);
+			vec2 nn_offset=nn[k];//nn[k].x+nn[k].y;
+#if USE_LOCAL_COMPARE
+			float l=d_measure(local_p,rotate_point(check_pt,ilat_p+nn[k])+nn_offset);
+#else
+			vec2 global_nn_offset=nn[k].x*lat_dx+nn[k].y*lat_dy;
+			vec2 check_rot2=rotate_point(check_pt,ilat_p+nn[k]);
+			vec2 global_check2=check_rot2.x*lat_dx+check_rot2.y*lat_dy;
+			float l=d_measure(global_p,global_check2+global_nn_offset);
+#endif
 			if(l<d_min)
 			{
-				//v=i+point_list.length()*k;
-				v=i%3;
+				v=i+point_list.length()*k;
+				//v=i;
 				d_min=l;
 			}
 		}
 	}
-	//float lv=v/(point_list.length()*nn.length());
-	float lv=v/(point_list.length()/2);
+	float lv=v/(point_list.length()*nn.length());
+	//float lv=v/(point_list.length());
 	color=vec4(spectral_zucconi6(lv*0.9+0.1),1);
 }
 void main_circles(){
