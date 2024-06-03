@@ -313,12 +313,21 @@ int circle_intersect(vec2 p1, vec2 p2, float r1,float r2,out vec2 out1,out vec2 
 	else
 		return 0;
 }
+vec2 rotate_point(vec2 p,ivec2 lat_coord)
+{
+	//test mirror
+#if 0
+	if(lat_coord.x%2)
+		p.x*=-1;
+#endif
+	return p;
+}
 void main(){ //lattice version
 
 	float aspect=rez.x/rez.y;
 	
 	vec2 p=pos.xy*vec2(1,1/aspect);
-	p*=2;
+	p*=5;
 	//lattice axis and size
 	vec2 lat_dx=vec2(1,0);
 	//vec2 lat_dy=vec2(-0.5,sqrt(3)/2); //120 deg, 2/3*pi
@@ -330,46 +339,62 @@ void main(){ //lattice version
 	local_p.x=(dot(p,lat_dx)/dot(lat_dx,lat_dx));
 	local_p.y=(dot(p,lat_dy)/dot(lat_dy,lat_dy));
 	//repeat the lattice
-	local_p=mod(local_p,1.0f);
-	//TODO: add mirroring/rotations here!
+	vec2 lat_p;
+	local_p.x=modf(local_p.x,lat_p.x);
+	local_p.y=modf(local_p.y,lat_p.y);
+	if(local_p.x<0)
+	{
+		//local_p.x*=-1;
+		lat_p.x-=1;
+	}
+	if(local_p.y<0)
+	{
+		//local_p.y*=-1;
+		lat_p.y-=1;
+	}
+	ivec2 ilat_p=ivec2(lat_p);
+	
+	//local_p-=vec2(0.0,0.7)*((lat_p.y+lat_p.x)%2);
 
 	float d_min=1e23;
+	
+
 	float v=0;
 	//list of points inside lattice
 	vec2 point_list[]={
-		vec2(0,0),
+		vec2(0.1,0.1),
 		vec2(.25,.125),
-		vec2(.125,.125),
-		vec2(.25,.25),
-		vec2(.75,0),
-		vec2(.3,.3333333),
+		vec2(.125,.3),
+		vec2(0.5-0.1,0.5-0.1),
+		vec2(0.5-.25,0.5-.125),
+		vec2(0.5-.125,0.5-.3),
 	};
 #if 1
-	vec2 nn[]={
-		vec2(0,1),
-		vec2(1,1),
-		vec2(1,0),
-		vec2(1,-1),
-		vec2(0,-1),
-		vec2(-1,-1),
-		vec2(-1,0),
-		vec2(-1,1),
+	ivec2 nn[]={
+		ivec2(0,1),
+		ivec2(1,1),
+		ivec2(1,0),
+		ivec2(1,-1),
+		ivec2(0,-1),
+		ivec2(-1,-1),
+		ivec2(-1,0),
+		ivec2(-1,1),
 	};
 #else
-	vec2 nn[]={
-		vec2(0,1),
-		vec2(1,0),
-		vec2(0,-1),
-		vec2(-1,0),
+	ivec2 nn[]={
+		ivec2(0,1),
+		ivec2(1,0),
+		ivec2(0,-1),
+		ivec2(-1,0),
 	};
 #endif
 	for(int i=0;i<point_list.length();i++)
 	{
 		//check if p is nearest to inner point
-		float l=d_measure(local_p,point_list[i]);
+		float l=d_measure(local_p,rotate_point(point_list[i],ilat_p));
 		if(l<d_min)
 		{
-			v=i;
+			v=i%3;
 			d_min=l;
 		}
 		//also check nearest next lattice cell
@@ -377,17 +402,17 @@ void main(){ //lattice version
 		{
 			//TODO: mirror rotate here too!
 			vec2 nn_offset=nn[k].x*lat_dx+nn[k].y*lat_dy;
-			float l=d_measure(local_p,point_list[i]+nn_offset);
+			float l=d_measure(local_p,rotate_point(point_list[i],ilat_p+nn[k])+nn_offset);
 			if(l<d_min)
 			{
 				//v=i+point_list.length()*k;
-				v=i;
+				v=i%3;
 				d_min=l;
 			}
 		}
 	}
 	//float lv=v/(point_list.length()*nn.length());
-	float lv=v/point_list.length();
+	float lv=v/(point_list.length()/2);
 	color=vec4(spectral_zucconi6(lv*0.9+0.1),1);
 }
 void main_circles(){
