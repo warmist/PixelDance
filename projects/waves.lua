@@ -235,6 +235,13 @@ function make_sand_buffer()
 	t.t:set(size[1]*oversample,size[2]*oversample,2)
 	texture_buffers.sand=t
 end
+function make_sum_buffer()
+	print("making sum tex")
+	local t={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
+	t.t:use(0,1)
+	t.t:set(size[1]*oversample,size[2]*oversample,FLTA_PIX)
+	texture_buffers.sum=t
+end
 NUM_BUFFERS=3
 function make_textures()
 	if #texture_buffers==0 or
@@ -249,6 +256,7 @@ function make_textures()
 			texture_buffers[i]=t
 		end
 		make_sand_buffer()
+		make_sum_buffer()
 	end
 end
 make_textures()
@@ -307,6 +315,67 @@ void main(){
 	color=vec4(lv,lv,lv,1);
 }
 ]==]
+add_wavelen_shader=shaders.Make[==[
+#version 330
+#line __LINE__
+
+out vec4 color;
+in vec3 pos;
+uniform sampler2D values;
+uniform float wavelen;
+float black_body_spectrum(float l,float temperature )
+{
+	/*float h=6.626070040e-34; //Planck constant
+	float c=299792458; //Speed of light
+	float k=1.38064852e-23; //Boltzmann constant
+	*/
+	float const_1=5.955215e-17;//h*c*c
+	float const_2=0.0143878;//(h*c)/k
+	float top=(2*const_1);
+	float bottom=(exp((const_2)/(temperature*l))-1)*l*l*l*l*l;
+	return top/bottom;
+}
+float black_body(float iter,float temp)
+{
+	return black_body_spectrum(mix(380*1e-9,740*1e-9,iter),temp);
+}
+float D65_approx(float iter)
+{
+	//3rd order fit on D65
+	float wl=mix(380,740,iter);
+	return (-1783.1047729784+9.977734354*wl-(0.0171304983)*wl*wl+(0.0000095146)*wl*wl*wl);
+}
+float D65_blackbody(float iter,float temp)
+{
+	float b65=black_body(iter,6503.5);
+	return D65_approx(iter)*(black_body(iter,temp)/b65);
+}
+float gaussian(float x, float alpha, float mu, float sigma1, float sigma2) {
+  float squareRoot = (x - mu)/(x < mu ? sigma1 : sigma2);
+  return alpha * exp( -(squareRoot * squareRoot)/2 );
+}
+vec3 xyz_from_normed_waves(float v_in)
+{
+	vec3 ret;
+	ret.x = gaussian(v_in,  1.056, 0.6106, 0.10528, 0.0861)
+		+ gaussian(v_in,  0.362, 0.1722, 0.04444, 0.0742)
+		+ gaussian(v_in, -0.065, 0.3364, 0.05667, 0.0728);
+
+	ret.y = gaussian(v_in,  0.821, 0.5244, 0.1303, 0.1125)
+	    + gaussian(v_in,  0.286, 0.4192, 0.0452, 0.0864);
+
+	ret.z = gaussian(v_in,  1.217, 0.1583, 0.0328, 0.1)
+	    + gaussian(v_in,  0.681, 0.2194, 0.0722, 0.0383);
+
+	return ret;
+}
+
+void main(){
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	float value=texture(values,normed).x;
+	color=vec4(xyz_from_normed_waves(wavelen)*D65_blackbody(wavelen,6503.5)*value,1);
+}
+]==]
 draw_shader=shaders.Make[==[
 #version 330
 #line __LINE__
@@ -321,6 +390,10 @@ uniform float v_gain;
 uniform vec3 mid_color;
 uniform int monotone;
 #define M_PI 3.14159265358979323846264338327950288
+
+#define SPECTRAL 0
+
+#define LOG_MODE 0
 float f(float v)
 {
 #if LOG_MODE
@@ -365,8 +438,11 @@ void main(){
 			color=vec4(0,0,lv,1);
 		}
 #else
+#if LOG_MODE
+	float lv=f(abs(log(texture(values,normed).x+1)+add))*mult;
+#else
 	float lv=f(abs(texture(values,normed).x+add))*mult;
-	//float lv=f(abs(log(texture(values,normed).x+1)+add))*mult;
+#endif
 	//lv=pow(1-lv,gamma);
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
@@ -377,10 +453,15 @@ void main(){
 	//color.xyz=vec3(lv);
 	//color.xyz=isoline_color((lv-0.5)*2);
 	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,3.0,3.0),vec3(3.5,2.5,1.5)),1);
+#if SPECTRAL
+	float wavelen=0.5;
+	color.xyz=xyz_from_normed_waves(wavelen)*D65_blackbody(wavelen,6503.5)*lv;
+#else
 	if(monotone==1)
 		color=vec4(vec3(lv),1);
 	else
 		color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.0,1.0,1.0),vec3(0.3,0.2,0.2)+vec3(0.2)),1);
+#endif
 	color.a=1;
 	vec3 col_back=vec3(0);
 	vec3 col_top=vec3(1);
@@ -409,6 +490,83 @@ void main(){
 	//*/
 
 #endif
+}
+]==]
+draw_spectral_shader=shaders.Make[==[
+#version 330
+#line __LINE__
+
+out vec4 color;
+in vec3 pos;
+
+uniform sampler2D values;
+
+uniform float v_gamma;
+uniform float v_gain;
+uniform float avg_lum;
+uniform float whitepoint;
+uniform float exposure;
+
+vec3 xyz2rgb( vec3 c ) {
+    vec3 v =  c / 100.0 * mat3(
+        3.2406, -1.5372, -0.4986,
+        -0.9689, 1.8758, 0.0415,
+        0.0557, -0.2040, 1.0570
+    );
+    vec3 r;
+    r.x = ( v.r > 0.0031308 ) ? (( 1.055 * pow( v.r, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.r;
+    r.y = ( v.g > 0.0031308 ) ? (( 1.055 * pow( v.g, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.g;
+    r.z = ( v.b > 0.0031308 ) ? (( 1.055 * pow( v.b, ( 1.0 / 2.4 ))) - 0.055 ) : 12.92 * v.b;
+    return r;
+}
+
+float gain(float x, float k)
+{
+    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
+    return (x<0.5)?a:1.0-a;
+}
+
+vec3 eye_adapt_and_stuff(vec3 light)
+{
+	float lum_white = pow(10,whitepoint);
+	//lum_white*=lum_white;
+
+	//tocieYxy
+	float sum=light.x+light.y+light.z;
+	float x=light.x/sum;
+	float y=light.y/sum;
+	float Y=light.y;
+
+	Y = (Y* exposure )/avg_lum;
+
+	if(whitepoint<0)
+    	Y = Y / (1 + Y); //simple compression
+	else
+    	Y = (Y*(1 + Y / lum_white)) / (Y + 1); //allow to burn out bright areas
+
+    //transform back to cieXYZ
+    light.y=Y;
+    float small_x = x;
+    float small_y = y;
+    light.x = light.y*(small_x / small_y);
+    light.z = light.x / small_x - light.x - light.y;
+
+    return light*100;
+}
+
+void main()
+{
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	color=texture(values,normed);
+
+	color.xyz=eye_adapt_and_stuff(color.xyz);
+	color.xyz=pow(color.xyz,vec3(v_gamma));
+	color.xyz=xyz2rgb(color.xyz);
+
+	float s=smoothstep(1,8,length(color.xyz));
+	//float s=0;
+    color.xyz=mix(color.xyz,vec3(1),s);
+
 }
 ]==]
 solver_shader=shaders.Make[==[
@@ -1336,7 +1494,7 @@ void main(){
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	//float sh_v=0;
-	//float sh_v=holed_tri(pos.xy);
+	float sh_v=holed_tri(pos.xy);
 	//float sh_v=sdEquilateralTriangle(pos.xy/max_d);
 	//float sh_v=1-max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
 	//float sh_v=1-max(1-sdCircle(pos.xy,0.98)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
@@ -1357,7 +1515,7 @@ void main(){
 	//float sh_v=radial_shape(pos.xy);
 	//vec2 mm=vec2(0.45);
 	normed.y=1-normed.y;
-	float sh_v=step(texture(input_map,normed*vec2(1,-1)).x,0.1);
+	//float sh_v=step(texture(input_map,normed*vec2(1,-1)).x,0.8);
 	//sh_v=min(sh_v,1-sh_polyhedron(pos.xy,5,0.8,0,w));
 	float sh_v3=sdCircle(pos.xy,0.98);
 #if 0
@@ -1488,6 +1646,14 @@ function clear_sand(  )
 	make_io_buffer(  )
 	if texture_buffers.sand then
 		clear_texture(texture_buffers.sand.t)
+	end
+end
+function clear_sum(  )
+	--make_sand_buffer()
+	--need_clear=true
+	make_io_buffer(  )
+	if texture_buffers.sum then
+		clear_texture(texture_buffers.sum.t)
 	end
 end
 function clear_solver()
@@ -1631,6 +1797,27 @@ function animation_system(  )
 	    end
 	end
 end
+function add_to_sum(  )
+	local src_tex=texture_buffers.sand;
+	local trg_tex=texture_buffers.sum;
+
+	add_wavelen_shader:use()
+	src_tex.t:use(0,1)
+	add_wavelen_shader:set_i("values",0)
+	add_wavelen_shader:set("wavelen",0.5)
+	local need_draw=false
+	if need_clear then
+		clear_sum()
+		need_clear=false
+	end
+
+	add_wavelen_shader:blend_add()
+	if not trg_tex.t:render_to(trg_tex.w,trg_tex.h) then
+		error("failed to set framebuffer up")
+	end
+	add_wavelen_shader:draw_quad()
+	__render_to_window()
+end
 function gui()
 	imgui.Begin("Waviness")
 	draw_config(config)
@@ -1683,6 +1870,9 @@ function gui()
 		clear_buffers()
 	end
 ]]
+	if imgui.Button("AddToSum") then
+		add_to_sum()
+	end
 	if imgui.Button("Save image") then
 		need_save=true
 	end
@@ -1929,8 +2119,6 @@ function lerp( st,en,v )
 end
 anim_spline=anim_spline or Catmull(gen_points(3,3))
 anim_spline_step=anim_spline_step or 0
-
-
 
 
 function update_real(  )
