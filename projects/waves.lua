@@ -235,6 +235,54 @@ function make_sand_buffer()
 	t.t:set(size[1]*oversample,size[2]*oversample,2)
 	texture_buffers.sand=t
 end
+function find_minmax_sum(  )
+	texture_buffers.sum.t:use(0,0)
+	local lmin={math.huge,math.huge,math.huge}
+	local lmax={-math.huge,-math.huge,-math.huge}
+
+	local llmin=math.huge
+	local llmax=-math.huge
+	make_io_buffer3()
+	io_buffer3:read_texture(texture_buffers.sum.t)
+	io_buffer3_dirty=true
+	local avg_lum=0
+	local count=0
+	for x=0,io_buffer3.w-1 do
+	for y=0,io_buffer3.h-1 do
+		local v=io_buffer3:get(x,y)
+		if v.d[0]<lmin[1] then lmin[1]=v.d[0] end
+		if v.d[1]<lmin[2] then lmin[2]=v.d[1] end
+		if v.d[2]<lmin[3] then lmin[3]=v.d[2] end
+
+		if v.d[0]>lmax[1] then lmax[1]=v.d[0] end
+		if v.d[1]>lmax[2] then lmax[2]=v.d[1] end
+		if v.d[2]>lmax[3] then lmax[3]=v.d[2] end
+		--local lum=math.sqrt(v.g*v.g+v.r*v.r+v.b*v.b)--math.abs(v.g+v.r+v.b)
+		--local lum=math.sqrt(v.g*v.g+v.r*v.r)
+
+		local lum=math.abs(v.d[1])
+		if llmin>lum then llmin=lum end
+		if llmax<lum then llmax=lum end
+		avg_lum=avg_lum+lum
+		--local lum=math.abs(v.g)
+		--local lum=math.abs(v.g)+math.abs(v.r)+math.abs(v.b)
+		--if lum > config.min_value then
+			--avg_lum=avg_lum+math.log(1+lum)
+			count=count+1
+		--end
+
+	end
+	end
+	avg_lum = avg_lum / count;
+	--avg_lum = math.exp(avg_lum / count);
+
+	--[[
+	for i,v in ipairs(lmax) do
+		print(i,v)
+	end
+	--]]
+	return lmin,lmax,avg_lum,llmin,llmax
+end
 function make_sum_buffer()
 	print("making sum tex")
 	local t={t=textures:Make(),w=size[1]*oversample,h=size[2]*oversample}
@@ -267,8 +315,14 @@ function make_io_buffer(  )
 		io_buffer_dirty=true
 	end
 end
-
 make_io_buffer()
+function make_io_buffer3(  )
+	if io_buffer3==nil or io_buffer3.w~=size[1]*oversample or io_buffer3.h~=size[2]*oversample then
+		io_buffer3=make_f4_buffer(size[1]*oversample,size[2]*oversample)
+		io_buffer3_dirty=true
+	end
+end
+make_io_buffer3()
 if visit_tex==nil then
 	make_visits_from_other()
 end
@@ -277,10 +331,10 @@ config=make_config({
 	{"dt",1,type="float",min=0.001,max=2},
 	{"freq",0.5,type="float",min=0,max=1},
 	{"freq2",0.5,type="float",min=0,max=1},
-	{"decay1",0.00001,type="floatsci",min=0,max=0.01,power=10},
-	{"decay2",0.00001,type="floatsci",min=0,max=0.01,power=10},
-	{"decay3",0.00001,type="floatsci",min=0,max=0.01,power=10},
-	{"decay4",0.00001,type="floatsci",min=0,max=0.01,power=10},
+	{"decay1",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
+	{"decay2",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
+	{"decay3",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
+	{"decay4",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
 	{"n",1,type="int",min=0,max=15},
 	{"m",1,type="int",min=0,max=15},
 	{"a",1,type="float",min=-1,max=1},
@@ -290,10 +344,13 @@ config=make_config({
 	{"monotone",false,type="boolean"},
 	{"gamma",1,type="float",min=0.01,max=5},
 	{"gain",1,type="float",min=-5,max=5},
+	{"exposure",1,type="float",min=0,max=10},
+	{"whitepoint",-0.01,type="float",min=-0.01,max=1},
 	{"draw",true,type="boolean"},
 	{"accumulate",false,type="boolean"},
 	{"size_mult",true,type="boolean"},
 	{"draw_form",false,type="boolean"},
+	{"draw_sum",false,type="boolean"},
 },config)
 
 
@@ -323,6 +380,7 @@ out vec4 color;
 in vec3 pos;
 uniform sampler2D values;
 uniform float wavelen;
+uniform float weight;
 float black_body_spectrum(float l,float temperature )
 {
 	/*float h=6.626070040e-34; //Planck constant
@@ -373,7 +431,10 @@ vec3 xyz_from_normed_waves(float v_in)
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float value=texture(values,normed).x;
+	value*=weight;
 	color=vec4(xyz_from_normed_waves(wavelen)*D65_blackbody(wavelen,6503.5)*value,1);
+	//value=value/(1+value);
+	//color=vec4(xyz_from_normed_waves(value)*D65_blackbody(value,6503.5)*wavelen,1);
 }
 ]==]
 draw_shader=shaders.Make[==[
@@ -559,12 +620,12 @@ void main()
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	color=texture(values,normed);
 
-	color.xyz=eye_adapt_and_stuff(color.xyz);
 	color.xyz=pow(color.xyz,vec3(v_gamma));
+	color.xyz=eye_adapt_and_stuff(color.xyz);
 	color.xyz=xyz2rgb(color.xyz);
 
-	float s=smoothstep(1,8,length(color.xyz));
-	//float s=0;
+	//float s=smoothstep(1,8,length(color.xyz));
+	float s=0;
     color.xyz=mix(color.xyz,vec3(1),s);
 
 }
@@ -1022,7 +1083,7 @@ float func(vec2 pos)
 	float fn1=fr*M_PI/1000;
 	float fn2=fr2*M_PI/1000;
 
-	float max_a=4;
+	float max_a=6;
 	float r=0.4;
 	#if 0
 		//if(time<max_time)
@@ -1060,7 +1121,7 @@ float func(vec2 pos)
 			}
 		return ret/10;
 	#endif
-	#if 1
+	#if 0
 		//if(time<max_time)
 		//if(pos.x<-0.0)
 			return (
@@ -1102,7 +1163,7 @@ float func(vec2 pos)
 		//return ab_vec.x*sin(time*fn1)*val+ab_vec.y*sin(time*fn2)*val;
 		return ab_vec.x*sin(time*fn1+val)+ab_vec.y*sin(time*fn2+val);
 	#endif
-	#if 0
+	#if 1
 	//if(time<max_time)
 		return (
 		ab_vec.x*sin(time*fn1
@@ -1494,9 +1555,9 @@ void main(){
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	//float sh_v=0;
-	float sh_v=holed_tri(pos.xy);
+	//float sh_v=holed_tri(pos.xy);
 	//float sh_v=sdEquilateralTriangle(pos.xy/max_d);
-	//float sh_v=1-max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
+	//float sh_v=1-max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,12,0.2,0,w),0);
 	//float sh_v=1-max(1-sdCircle(pos.xy,0.98)-sh_polyhedron(pos.xy,8,0.2,0,w),0);
 	//float sh_v=1-damaged_circle(pos.xy);
 	//float sh_v=damaged_circle2(pos.xy);
@@ -1505,7 +1566,7 @@ void main(){
 	//float sh_v=sdCircle2(pos.xy,0.98);
 	//float sh_v=dagger(pos.xy,w);
 	//float sh_v=1-leaf(pos.xy,w);
-	//float sh_v=1-chalice(pos.xy*0.75,w);
+	float sh_v=1-chalice(pos.xy*0.75,w);
 	//float sh_v=slit_experiment(pos.xy,w);
 	//float sh_v=1-flower(pos.xy,w);
 	//float sh_v=1-balance(pos.xy,w);
@@ -1591,18 +1652,18 @@ void main(){
 		}
 		float l=clamp(length(pos.xy),0,1);
 		//float lb=texture(input_map,normed).x;
-		float radiation=0.999;
+		float radiation=0.9995;
 		//float radiation=pow(0.999,abs(l-0.5)*1.0+0.5);
 		//float radiation=pow(0.999,lb*0.5+0.5);
 		//lb=clamp(lb,0,1);
 		//float radiation=pow(0.99,(1-lb)*0.75+0.25);
 		if(sh_v<=0)
-			v=calc_new_value(pos.xy,avg_c)*radiation;
+			v=calc_new_value(pos.xy,avg_c);
 		//else if(sh_v3<=0)
 		//else
 		//	v=calc_new_value(pos.xy,avg_c)*radiation;
 		else
-			v=calc_new_value(pos.xy,avg_c)*radiation*radiation;//mix(radiation,radiation*radiation*radiation,l);
+			v=calc_new_value(pos.xy,avg_c)*radiation;//mix(radiation,radiation*radiation*radiation,l);
 		//else v=0;
 	}
 
@@ -1640,6 +1701,15 @@ function clear_texture( b )
 	end
 	io_buffer:write_texture(b)
 end
+function clear_texture3( b )
+	if io_buffer3_dirty then
+		for i=0,io_buffer3.w*io_buffer3.h do
+			io_buffer3:set(i,0,{d={0,0,0,0}})
+		end
+		io_buffer3_dirty=false
+	end
+	io_buffer3:write_texture(b)
+end
 function clear_sand(  )
 	--make_sand_buffer()
 	--need_clear=true
@@ -1651,10 +1721,11 @@ end
 function clear_sum(  )
 	--make_sand_buffer()
 	--need_clear=true
-	make_io_buffer(  )
+	make_io_buffer3(  )
 	if texture_buffers.sum then
-		clear_texture(texture_buffers.sum.t)
+		clear_texture3(texture_buffers.sum.t)
 	end
+	sum_count=0
 end
 function clear_solver()
 	make_io_buffer(  )
@@ -1665,6 +1736,7 @@ end
 function clear_buffers(  )
 	clear_sand()
 	clear_solver()
+	--clear_sum()
 end
 
 function reset_state(  )
@@ -1781,13 +1853,62 @@ function animate_rotation()
     end
     sim_thread=nil
 end
+function animate_spectral(  )
+	local f1_start=3
+	local f1_end=2
+	local f2_start=0.2
+	local f2_end=0.8
+	local frame_count=20
+	clear_sum()
+	local wait_for_settle=2000
+	local integrate_wait=1000
+
+
+
+
+	for i=0,frame_count do
+		reset_state()
+
+		local t=i/frame_count
+		print("Frame:",i,t)
+		config.draw=false
+		config.a=1
+		config.b=-1
+		config.accumulate=false
+
+		config.freq=lerp(f1_start,f1_end,t)
+		config.freq2=lerp(f2_start,f2_end,t)
+		--start emitting waves
+	    for k=1,wait_for_settle do
+	    	coroutine.yield()
+	    end
+		-- [[ disable waves and wait to settle
+		config.a=0
+		config.b=0
+		for k=1,wait_for_settle do
+	    	coroutine.yield()
+	    end
+	    --]]
+	    config.accumulate=true
+
+		for k=1,integrate_wait do
+    		coroutine.yield()
+    	end
+
+		add_to_sum(t)
+		--clear_sand()
+		sim_thread_progress=t
+	end
+	sim_thread=nil
+end
 function animation_system(  )
 	if imgui.CollapsingHeader("Animation") then
 	    if not sim_thread then
 	        if imgui.Button("Start Animate") then
 	           --sim_thread=coroutine.create(animate_accumulation)
 	           --sim_thread=coroutine.create(animate_rotation)
-	           sim_thread=coroutine.create(animate_accumulation_wmask)
+	           --sim_thread=coroutine.create(animate_accumulation_wmask)
+	           sim_thread=coroutine.create(animate_spectral)
 	        end
 	    else
 	        if imgui.Button("Stop Animate") then
@@ -1797,14 +1918,19 @@ function animation_system(  )
 	    end
 	end
 end
-function add_to_sum(  )
+sum_count=0 or sum_count
+function add_to_sum( wavelen,w )
+	w=w or 1
+	sum_count=sum_count+1
 	local src_tex=texture_buffers.sand;
 	local trg_tex=texture_buffers.sum;
 
 	add_wavelen_shader:use()
 	src_tex.t:use(0,1)
 	add_wavelen_shader:set_i("values",0)
-	add_wavelen_shader:set("wavelen",0.5)
+	add_wavelen_shader:set("wavelen",wavelen)
+	add_wavelen_shader:set("weight",w)
+	print("adding:",sum_count)
 	local need_draw=false
 	if need_clear then
 		clear_sum()
@@ -1817,6 +1943,35 @@ function add_to_sum(  )
 	end
 	add_wavelen_shader:draw_quad()
 	__render_to_window()
+	add_wavelen_shader:blend_default()
+end
+
+function render_sum(  )
+	--[[
+	uniform sampler2D values;
+
+uniform float v_gamma;
+uniform float v_gain;
+uniform float avg_lum;
+uniform float whitepoint;
+uniform float exposure;
+
+	]]
+
+	local lmin,lmax,avg_lum,llmin,llmax=find_minmax_sum()
+	draw_spectral_shader:use()
+	texture_buffers.sum.t:use(1,0)
+	draw_spectral_shader:set_i("values",1)
+	draw_spectral_shader:set("v_gamma",config.gamma)
+	draw_spectral_shader:set("v_gain",config.gain)
+	draw_spectral_shader:set("exposure",config.exposure)
+	draw_spectral_shader:set("whitepoint",config.whitepoint)
+	draw_spectral_shader:set("avg_lum",avg_lum)
+	draw_spectral_shader:draw_quad()
+	if need_save then
+		need_save=false
+		save_img()
+	end
 end
 function gui()
 	imgui.Begin("Waviness")
@@ -1871,7 +2026,11 @@ function gui()
 	end
 ]]
 	if imgui.Button("AddToSum") then
-		add_to_sum()
+		add_to_sum(math.random())
+	end
+	imgui.SameLine()
+	if imgui.Button("ClearToSum") then
+		clear_sum()
 	end
 	if imgui.Button("Save image") then
 		need_save=true
@@ -2128,7 +2287,11 @@ function update_real(  )
 		draw_texture()
 	else
 		__clear()
-		draw_texture()
+		if config.draw_sum then
+			render_sum()
+		else
+			draw_texture()
+		end
     	if sim_thread then
         --print("!",coroutine.status(sim_thread))
 	        local ok,err=coroutine.resume(sim_thread)
