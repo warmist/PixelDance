@@ -331,10 +331,10 @@ config=make_config({
 	{"dt",1,type="float",min=0.001,max=2},
 	{"freq",0.5,type="float",min=0,max=1},
 	{"freq2",0.5,type="float",min=0,max=1},
-	{"decay1",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
-	{"decay2",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
-	{"decay3",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
-	{"decay4",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
+	{"decay1",0.00001,type="floatsci",min=1e-6,max=0.01,power=4},
+	{"decay2",0.00001,type="floatsci",min=1e-6,max=0.01,power=4},
+	{"decay3",0.00001,type="floatsci",min=1e-6,max=0.01,power=4},
+	{"decay4",0.00001,type="floatsci",min=1e-6,max=0.01,power=4},
 	{"n",1,type="int",min=0,max=15},
 	{"m",1,type="int",min=0,max=15},
 	{"a",1,type="float",min=-1,max=1},
@@ -1091,14 +1091,14 @@ float func(vec2 pos)
 			return ab_vec.x*(fract(fn1*time)*2-1)
 			+ab_vec.y*(fract(fn2*time)*2-1);
 	#endif
-	#if 0
+	#if 1
 		//if(time<max_time)
 			//if(pos.x<-0.35)
 				//return (hash(time*freq2)*hash(pos*freq))/2;
 				//return ab_vec.x*n4rand(pos*fr2);
 		float ret=0;
 		float dist_val=99999;//
-		const int MAX_P=4;
+		const int MAX_P=8;
 		for(int i=0;i<MAX_P;i++)
 		{
 			float a=M_PI*2*(float(i)/float(MAX_P))+angle_offset;
@@ -1163,7 +1163,7 @@ float func(vec2 pos)
 		//return ab_vec.x*sin(time*fn1)*val+ab_vec.y*sin(time*fn2)*val;
 		return ab_vec.x*sin(time*fn1+val)+ab_vec.y*sin(time*fn2+val);
 	#endif
-	#if 1
+	#if 0
 	//if(time<max_time)
 		return (
 		ab_vec.x*sin(time*fn1
@@ -1564,9 +1564,9 @@ void main(){
 	//float sh_v=sh_wavy(pos.xy,max_d);
 	//float sh_v=sdCircle(pos.xy,0.6);
 	//float sh_v=sdCircle2(pos.xy,0.98);
-	//float sh_v=dagger(pos.xy,w);
+	float sh_v=1-dagger(pos.xy,w);
 	//float sh_v=1-leaf(pos.xy,w);
-	float sh_v=1-chalice(pos.xy*0.75,w);
+	//float sh_v=1-chalice(pos.xy*0.75,w);
 	//float sh_v=slit_experiment(pos.xy,w);
 	//float sh_v=1-flower(pos.xy,w);
 	//float sh_v=1-balance(pos.xy,w);
@@ -1652,7 +1652,7 @@ void main(){
 		}
 		float l=clamp(length(pos.xy),0,1);
 		//float lb=texture(input_map,normed).x;
-		float radiation=0.9995;
+		float radiation=0.999;
 		//float radiation=pow(0.999,abs(l-0.5)*1.0+0.5);
 		//float radiation=pow(0.999,lb*0.5+0.5);
 		//lb=clamp(lb,0,1);
@@ -1854,14 +1854,18 @@ function animate_rotation()
     sim_thread=nil
 end
 function animate_spectral(  )
-	local f1_start=3
-	local f1_end=2
-	local f2_start=0.2
-	local f2_end=0.8
-	local frame_count=20
+	local f1_start=0.9
+	local f1_end=1.0
+	local f2_start=0.15
+	local f2_end=0.2
+
+	local angle_start=-0.1
+	local angle_end=0.1
+
+	local frame_count=100
 	clear_sum()
-	local wait_for_settle=2000
-	local integrate_wait=1000
+	local wait_for_settle=500
+	local integrate_wait=4000
 
 
 
@@ -1876,16 +1880,26 @@ function animate_spectral(  )
 		config.b=-1
 		config.accumulate=false
 
+		-- [[
 		config.freq=lerp(f1_start,f1_end,t)
 		config.freq2=lerp(f2_start,f2_end,t)
+		--]]
+		config.angle_offset=math.pi+lerp(angle_start,angle_end,t)
 		--start emitting waves
-	    for k=1,wait_for_settle do
+	    for k=1,wait_for_settle/2 do
 	    	coroutine.yield()
 	    end
+	    -- [[ invert source for half of time
+	    config.a=-1
+		config.b=1
+	    for k=1,wait_for_settle/2 do
+	    	coroutine.yield()
+	    end
+	    --]]
 		-- [[ disable waves and wait to settle
 		config.a=0
 		config.b=0
-		for k=1,wait_for_settle do
+		for k=1,wait_for_settle*4 do
 	    	coroutine.yield()
 	    end
 	    --]]
