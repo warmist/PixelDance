@@ -331,10 +331,10 @@ config=make_config({
 	{"dt",1,type="float",min=0.001,max=2},
 	{"freq",0.5,type="float",min=0,max=1},
 	{"freq2",0.5,type="float",min=0,max=1},
-	{"decay1",0.00001,type="floatsci",min=1e-6,max=0.01,power=4},
-	{"decay2",0.00001,type="floatsci",min=1e-6,max=0.01,power=4},
-	{"decay3",0.00001,type="floatsci",min=1e-6,max=0.01,power=4},
-	{"decay4",0.00001,type="floatsci",min=1e-6,max=0.01,power=4},
+	{"decay1",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
+	{"decay2",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
+	{"decay3",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
+	{"decay4",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
 	{"n",1,type="int",min=0,max=15},
 	{"m",1,type="int",min=0,max=15},
 	{"a",1,type="float",min=-1,max=1},
@@ -624,10 +624,15 @@ void main()
 	color.xyz=eye_adapt_and_stuff(color.xyz);
 	color.xyz=xyz2rgb(color.xyz);
 
-	//float s=smoothstep(1,8,length(color.xyz));
 	float s=0;
+	//float s=smoothstep(1,8,length(color.xyz));
     color.xyz=mix(color.xyz,vec3(1),s);
-
+#if 0
+    color.xyz=clamp(color.xyz,vec3(0),vec3(1));
+	color.x=gain(color.x,v_gain);
+	color.y=gain(color.y,v_gain);
+	color.z=gain(color.z,v_gain);
+#endif
 }
 ]==]
 solver_shader=shaders.Make[==[
@@ -875,6 +880,22 @@ float dagger(in vec2 st,float fw)
 	v=max(v,sh_polyhedron(st+vec2(0,-0.2),3,0.25,M_PI/3,fw));
 	return v;
 }
+float freq_testing(in vec2 st,float fw)
+{
+	float v=0;
+	v=opUnion(v,sdBox(st,vec2(0.8,0.2)));
+	v=opUnion(v,sdBox(st+vec2(0.8,0),vec2(0.05,1)));
+	v=opUnion(v,sdBox(st+vec2(0.6,0),vec2(0.06,1)));
+	v=opUnion(v,sdBox(st+vec2(0.4,0),vec2(0.07,1)));
+	v=opUnion(v,sdBox(st+vec2(0.2,0),vec2(0.08,1)));
+	v=opUnion(v,sdBox(st+vec2(0,0),vec2(0.09,1)));
+	v=opUnion(v,sdBox(st+vec2(-0.8,0),vec2(0.05,1)));
+	v=opUnion(v,sdBox(st+vec2(-0.6,0),vec2(0.06,1)));
+	v=opUnion(v,sdBox(st+vec2(-0.4,0),vec2(0.07,1)));
+	v=opUnion(v,sdBox(st+vec2(-0.2,0),vec2(0.08,1)));
+
+	return step(0,v);
+}
 float leaf(in vec2 st,float fw)
 {
 	float size=0.35;
@@ -1066,6 +1087,12 @@ float DX(int dx,int dy,vec2 normed)
 }*/
 float hash(float n) { return fract(sin(n) * 1e4); }
 float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
+vec2 rotate(vec2 v, float a) {
+	float s = sin(a);
+	float c = cos(a);
+	mat2 m = mat2(c, s, -s, c);
+	return m * v;
+}
 //sound generating function or driving function
 float func(vec2 pos)
 {
@@ -1084,14 +1111,15 @@ float func(vec2 pos)
 	float fn2=fr2*M_PI/1000;
 
 	float max_a=6;
-	float r=0.4;
+	float r=0.2;
+	vec2 prot=rotate(pos,angle_offset);
 	#if 0
 		//if(time<max_time)
-		if(length(pos+vec2(0.0,0.0))<0.1)
+		if(length(pos+vec2(cos(angle_offset),sin(angle_offset))*r)<0.05)
 			return ab_vec.x*(fract(fn1*time)*2-1)
 			+ab_vec.y*(fract(fn2*time)*2-1);
 	#endif
-	#if 1
+	#if 0
 		//if(time<max_time)
 			//if(pos.x<-0.35)
 				//return (hash(time*freq2)*hash(pos*freq))/2;
@@ -1163,18 +1191,30 @@ float func(vec2 pos)
 		//return ab_vec.x*sin(time*fn1)*val+ab_vec.y*sin(time*fn2)*val;
 		return ab_vec.x*sin(time*fn1+val)+ab_vec.y*sin(time*fn2+val);
 	#endif
-	#if 0
+	#if 1
 	//if(time<max_time)
-		return (
+		float ret_v=(
 		ab_vec.x*sin(time*fn1
 		//+pos.x*M_PI*2*nm_vec.x
 		//+pos.y*M_PI*2*nm_vec.y
-		)*cos(pos.x*M_PI*nm_vec.x)+
+		)*cos(prot.x*M_PI*nm_vec.x)+
 		ab_vec.y*sin(time*fn2
 		//+pos.x*M_PI*2*nm_vec.x
 		//+pos.y*M_PI*2*nm_vec.y
-		)*cos(pos.y*M_PI*nm_vec.y)
+		)*cos(prot.y*M_PI*nm_vec.y)
 		);
+		return ret_v*step(pos.y,0);
+		//return ret_v*ret_v*ret_v;
+	#endif
+	#if 0
+		float sigma=0.5;
+		float ss=sigma*sigma;
+
+		float ret_v=(
+			ab_vec.x*sin(time*fn1)*exp(-prot.x*prot.x*nm_vec.x)*cos(prot.x*M_PI*nm_vec.x)+
+			ab_vec.y*sin(time*fn2)*exp(-prot.y*prot.y*nm_vec.y)*cos(prot.y*M_PI*nm_vec.y)
+		);
+		return ret_v*ret_v*ret_v;
 	#endif
 	#if 0
 		float r2=length(pos);
@@ -1555,6 +1595,7 @@ void main(){
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	//float sh_v=0;
+	float sh_v=freq_testing(pos.xy,w);
 	//float sh_v=holed_tri(pos.xy);
 	//float sh_v=sdEquilateralTriangle(pos.xy/max_d);
 	//float sh_v=1-max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,12,0.2,0,w),0);
@@ -1564,7 +1605,7 @@ void main(){
 	//float sh_v=sh_wavy(pos.xy,max_d);
 	//float sh_v=sdCircle(pos.xy,0.6);
 	//float sh_v=sdCircle2(pos.xy,0.98);
-	float sh_v=1-dagger(pos.xy,w);
+	//float sh_v=1-dagger(pos.xy,w);
 	//float sh_v=1-leaf(pos.xy,w);
 	//float sh_v=1-chalice(pos.xy*0.75,w);
 	//float sh_v=slit_experiment(pos.xy,w);
@@ -1854,64 +1895,75 @@ function animate_rotation()
     sim_thread=nil
 end
 function animate_spectral(  )
-	local f1_start=0.9
-	local f1_end=1.0
-	local f2_start=0.15
-	local f2_end=0.2
+	local f1_start=12
+	local f1_end=12.4
+	local f2_start=5
+	local f2_end=4.6
 
-	local angle_start=-0.1
-	local angle_end=0.1
+	local angle_start=-0.02
+	local angle_end=0.02
 
-	local frame_count=100
+	local max_anim_frame=1--120
+	local frame_count=10
 	clear_sum()
-	local wait_for_settle=500
-	local integrate_wait=4000
+	local emit_time=1000
+	local wait_for_settle=3000
+	local integrate_wait=200
 
+	reset_state()
+	for anim_frame=0,max_anim_frame-1 do
+		local anim_t=anim_frame/max_anim_frame
+		local angle_offset=lerp(0,math.pi,anim_t)
+		clear_sum()
+		config.draw_sum=false
+		for i=0,frame_count do
+			reset_state()
+			--clear_sand()
+			current_time=0
+			local t=i/frame_count
+			print("Frame:",i,t)
+			config.draw=false
+			config.a=1--lerp(0.6,1,t)
+			config.b=-1
+			config.accumulate=false
 
+			-- [[
+			config.freq=lerp(f1_start,f1_end,t)
+			config.freq2=lerp(f2_start,f2_end,t)
+			--]]
+			--config.angle_offset=lerp(angle_start,angle_end,t)+angle_offset
+			--start emitting waves
+		    for k=1,emit_time do
+		    	coroutine.yield()
+		    end
+		    current_time=0
+		    --[[ invert source for half of time
+		    config.a=-1--lerp(0.6,1,t)
+			config.b=1
+		    for k=1,emit_time/2 do
+		    	coroutine.yield()
+		    end
+		    --]]
+			-- [[ disable waves and wait to settle
+			config.a=0
+			config.b=0
+			for k=1,wait_for_settle do
+		    	coroutine.yield()
+		    end
+		    --]]
+		    config.accumulate=true
 
+			for k=1,integrate_wait do
+	    		coroutine.yield()
+	    	end
 
-	for i=0,frame_count do
-		reset_state()
-
-		local t=i/frame_count
-		print("Frame:",i,t)
-		config.draw=false
-		config.a=1
-		config.b=-1
-		config.accumulate=false
-
-		-- [[
-		config.freq=lerp(f1_start,f1_end,t)
-		config.freq2=lerp(f2_start,f2_end,t)
-		--]]
-		config.angle_offset=math.pi+lerp(angle_start,angle_end,t)
-		--start emitting waves
-	    for k=1,wait_for_settle/2 do
-	    	coroutine.yield()
-	    end
-	    -- [[ invert source for half of time
-	    config.a=-1
-		config.b=1
-	    for k=1,wait_for_settle/2 do
-	    	coroutine.yield()
-	    end
-	    --]]
-		-- [[ disable waves and wait to settle
-		config.a=0
-		config.b=0
-		for k=1,wait_for_settle*4 do
-	    	coroutine.yield()
-	    end
-	    --]]
-	    config.accumulate=true
-
-		for k=1,integrate_wait do
-    		coroutine.yield()
-    	end
-
-		add_to_sum(t)
-		--clear_sand()
-		sim_thread_progress=t
+			add_to_sum(t)
+			--clear_sand()
+			sim_thread_progress=t
+		end
+		config.draw_sum=true
+		need_save=true
+		coroutine.yield()
 	end
 	sim_thread=nil
 end
