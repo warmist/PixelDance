@@ -101,7 +101,7 @@ uniform vec4 kill_feed;
 uniform sampler2D tex_main;
 uniform float dt;
 uniform float reaction_scale;
-
+#define M_PI 3.14159265358979323846264338327950288
 uniform vec4 map_region[4];//w,h,used?,x or y
 vec4 laplace(vec2 pos) //with laplacian kernel (cnt -1,near .2,diag 0.05)
 {
@@ -361,7 +361,7 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 	//float l=max(max(abs(values.x),abs(values.y)),max(abs(values.z),abs(values.w)));
 	//float l=abs(values.x)+abs(values.y)+abs(values.z)+abs(values.w);
 	
-#if 1 //nice quite "stable" setup with a big portion of chaotics
+#if 0 //nice quite "stable" setup with a big portion of chaotics
 	float l=max(max(abs(c.x),abs(c.y)),max(abs(c.z),abs(c.w)));
 	float nl=clamp(l/max_len,0,1);
 	values=mix(values,-c,nl);
@@ -382,6 +382,7 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 	//TODO: not correct :<
 	//values=vec4(-(t1+t2+t3)*c.x,(t1-t4-t5)*c.y,(t2+t4-t6)*c.z,(t3+t5+t6)*c.w);
 
+	values=vec4(-(t1+t2+t3)*c.x,t1*c.x-(t4+t5)*c.y,t2*c.x+t4*c.y-t6*c.z,t3*c.x+t5*c.y+t6*c.z);
 #endif
 	//r=r/(l);
 	//return r*exp(-l*l/100);
