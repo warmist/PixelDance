@@ -354,7 +354,7 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 	float max_len=0.9;
 	vec4 values=vec4(%s);
 	//float l=length(values);
-	float l=length(c);
+	//float l=length(c);
 	//float l=max(max(abs(values.x),abs(values.y)),max(abs(values.z),abs(values.w)));
 	//float l=abs(values.x)+abs(values.y)+abs(values.z)+abs(values.w);
 	
@@ -380,6 +380,9 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 	//values=vec4(-(t1+t2+t3)*c.x,(t1-t4-t5)*c.y,(t2+t4-t6)*c.z,(t3+t5+t6)*c.w);
 
 	values=vec4(-(t1+t2+t3)*c.x,t1*c.x-(t4+t5)*c.y,t2*c.x+t4*c.y-t6*c.z,t3*c.x+t5*c.y+t6*c.z);
+	//float l=max(max(abs(c.x),abs(c.y)),max(abs(c.z),abs(c.w)));
+	//float nl=clamp(l/max_len,0,1);
+	//values=(values/l)*nl;
 #endif
 	//r=r/(l);
 	//return r*exp(-l*l/100);
@@ -781,7 +784,8 @@ void main(){
 		}
 	ret+=diffusion_value*L*dt;
 #endif
-	//ret=clamp(ret,-1,1);
+	float limit=1;
+	ret=clamp(ret,-limit,limit);
 	//float l=length(ret);
 	//l=max(l,0.0001);
 	color=ret;///l;
@@ -887,7 +891,7 @@ void main(){
 ]==]
 local terminal_symbols={
 	["c.x"]=10,["c.y"]=10,["c.z"]=10,["c.w"]=10,
-	["1.0"]=0.1,["0.0"]=0.1,
+	["1.0"]=0.5,["0.0"]=0.5,
 	["k.x"]=1,["k.y"]=1,["k.z"]=1,["k.w"]=1,
 }
 local normal_symbols={
@@ -895,7 +899,7 @@ local normal_symbols={
 ["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,
 ["cos(R)"]=1,
 ["log(R+1.0)"]=0.5,
-["(R)/(R+1)"]=0.1,["(R)*(R)"]=10,["(R)-(R)"]=10,["(R)+(R)"]=10}
+["(R)/(R+1)"]=0.1,["(R)*(R)"]=5,["(R)-(R)"]=5,["(R)+(R)"]=5}
 
 
 function normalize( tbl )
@@ -1353,8 +1357,8 @@ function gui(  )
 		reset_buffers("chaos")
 	end
 	if imgui.Button("RandMath") then
-		thingy_string=random_math(25,"R+k.x*exp(-c.y*c.y),R+k.y*exp(-c.z*c.z),R+k.z*exp(-c.w*c.w),R+k.w*exp(-c.x*c.x)",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
-		--thingy_string=random_math(5,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x*c.x","c.y*c.y","c.z*c.w","c.w","k.x","k.y","k.z","k.w"})
+		--thingy_string=random_math(25,"R+k.x*exp(-c.y*c.y),R+k.y*exp(-c.z*c.z),R+k.z*exp(-c.w*c.w),R+k.w*exp(-c.x*c.x)",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
+		thingy_string=random_math(30,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x*c.x","c.y*c.y","c.z*c.w","c.w","k.x","k.y","k.z","k.w"})
 		--thingy_string=random_math(5,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
 		--thingy_string=random_math_transfers(2,nil,10)
 		print(thingy_string)
