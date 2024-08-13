@@ -348,19 +348,41 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 		//k.y=mix(k.y,mix(0,1,mix(normed.x,normed.y,1)),1);
 		MAPPED_VALUE(1,k.y);
 		MAPPED_VALUE(2,k.z);
-		MAPPED_VALUE(3,k.w);		
+		MAPPED_VALUE(3,k.w);
+		#undef MAPPED_VALUE	
 	}
 #endif
 	k=k*scale+offset;
 
-	float max_len=1;
+	float max_len=0.9;
 	vec4 values=vec4(%s);
 	//float l=length(values);
 	//float l=length(c);
 	//float l=max(max(abs(values.x),abs(values.y)),max(abs(values.z),abs(values.w)));
+	//float l=abs(values.x)+abs(values.y)+abs(values.z)+abs(values.w);
+	
+#if 1 //nice quite "stable" setup with a big portion of chaotics
 	float l=max(max(abs(c.x),abs(c.y)),max(abs(c.z),abs(c.w)));
 	float nl=clamp(l/max_len,0,1);
 	values=mix(values,-c,nl);
+#elif 1 //angle as transfers
+	//possible transfers:
+	// xy,xz,xw
+	// yz,yw
+	// zw
+	float t1=atan(values.y,values.x)/M_PI;
+	float t2=atan(values.z,values.x)/M_PI;
+	float t3=atan(values.w,values.x)/M_PI;
+
+	float t4=atan(values.z,values.y)/M_PI;
+	float t5=atan(values.w,values.y)/M_PI;
+
+	float t6=atan(values.w,values.z)/M_PI;
+
+	//TODO: not correct :<
+	//values=vec4(-(t1+t2+t3)*c.x,(t1-t4-t5)*c.y,(t2+t4-t6)*c.z,(t3+t5+t6)*c.w);
+
+#endif
 	//r=r/(l);
 	//return r*exp(-l*l/100);
 	//*k.y+vec4(%s)*k.w;
@@ -641,6 +663,54 @@ vec4 coupled_attractors(vec4 c,vec2 normed)
 	);
 	return r;
 }
+vec4 gravity_system(vec4 c,vec2 normed)
+{
+	vec4 scale=vec4(2);
+	vec4 offset=vec4(1);
+	vec4 k=kill_feed;
+
+#ifdef MAPPING
+	{
+		#define MAPPED_VALUE(id,value) value=mix(value,mix(map_region[id].x,map_region[id].y,mix(normed.x,normed.y,map_region[id].w)),map_region[id].z)
+		MAPPED_VALUE(0,k.x);
+		MAPPED_VALUE(1,k.y);
+		MAPPED_VALUE(2,k.z);
+		MAPPED_VALUE(3,k.w);
+		#undef MAPPED_VALUE	
+	}
+#endif
+
+
+	float dist_scale=10;
+	k=k*scale+offset;
+	//add N gravitational objects
+	vec4 p1=vec4(0.0536227111,0.6438426266,0.8652573956,0.3768059352);
+	vec4 p2=vec4(-0.4177873688,-0.6402018413,0.7268860642,-0.4794094138);
+	vec4 p3=vec4(0.2314432217,0.3561125231,-0.5187691848,0.27985918);
+	vec4 p4=vec4(0.09754087299,0.8163644817,-0.2679605181,0.7137782802);
+
+	float m1=1*k.x;
+	float m2=3*k.y;
+	float m3=4*k.z;
+	float m4=5*k.w;
+
+	vec4 d1=p1*dist_scale-c;
+	vec4 d2=p2*dist_scale-c;
+	vec4 d3=p3*dist_scale-c;
+	vec4 d4=p4*dist_scale-c;
+
+	vec4 acc=vec4(0);
+	acc+=-m1*normalize(d1)/(dot(d1,d1)+0.01);
+	acc+=-m2*normalize(d2)/(dot(d2,d2)+0.01);
+	acc+=-m3*normalize(d3)/(dot(d3,d3)+0.01);
+	acc+=-m4*normalize(d4)/(dot(d4,d4)+0.01);
+
+	vec4 pos=c+acc*50;
+	float l=length(pos);
+	pos/=(l+0.01);
+	pos*=clamp(l,0,dist_scale);
+	return pos;
+}
 vec4 actual_function(vec4 c,vec2 normed)
 {
 	return
@@ -663,6 +733,7 @@ vec4 actual_function(vec4 c,vec2 normed)
 		//coullet_attractor(c,normed)
 		//rampe1_modded(c,normed)
 		//coupled_attractors(c,normed)
+		//gravity_system(c,normed)
 		;
 }
 vec4 runge_kutta_4(vec4 c,vec2 normed,float step_dt)
@@ -765,7 +836,7 @@ void main(){
 	color=vec4(lv,lv,lv,1);
 	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,1.5,1.25),vec3(1.0,1.05,1.4)),1);
 	//color=vec4(palette(lv,vec3(0.6,0,0.3),vec3(.4,0,0.7),vec3(1,1,1),vec3(0,0.33,0.66)),1);
-	/* accent
+	///* accent
 	float accent_const=0.5;
 	if(lv<accent_const)
 		color=vec4(vec3(1)*(lv/accent_const),1);
@@ -1248,7 +1319,9 @@ function gui(  )
 		reset_buffers("chaos")
 	end
 	if imgui.Button("RandMath") then
-		thingy_string=random_math(10,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
+		thingy_string=random_math(25,"R+k.x*exp(-c.y*c.y),R+k.y*exp(-c.z*c.z),R+k.z*exp(-c.w*c.w),R+k.w*exp(-c.x*c.x)",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
+		--thingy_string=random_math(5,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x*c.x","c.y*c.y","c.z*c.w","c.w","k.x","k.y","k.z","k.w"})
+		--thingy_string=random_math(5,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
 		print(thingy_string)
 		--eval_thingy_string()
 		update_diffuse()
