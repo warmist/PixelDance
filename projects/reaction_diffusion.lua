@@ -340,12 +340,9 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 	vec4 k=kill_feed;
 
 #ifdef MAPPING
-	//if (map_region[0].z>=0 || map_region[1].z>=0 || map_region[2].z>=0 || map_region[3].z>=0)
 	{
 		#define MAPPED_VALUE(id,value) value=mix(value,mix(map_region[id].x,map_region[id].y,mix(normed.x,normed.y,map_region[id].w)),map_region[id].z)
 		MAPPED_VALUE(0,k.x);
-		//k.x=mix(k.x,mix(0,1,mix(normed.x,normed.y,0)),1);
-		//k.y=mix(k.y,mix(0,1,mix(normed.x,normed.y,1)),1);
 		MAPPED_VALUE(1,k.y);
 		MAPPED_VALUE(2,k.z);
 		MAPPED_VALUE(3,k.w);
@@ -357,7 +354,7 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 	float max_len=0.9;
 	vec4 values=vec4(%s);
 	//float l=length(values);
-	//float l=length(c);
+	float l=length(c);
 	//float l=max(max(abs(values.x),abs(values.y)),max(abs(values.z),abs(values.w)));
 	//float l=abs(values.x)+abs(values.y)+abs(values.z)+abs(values.w);
 	
@@ -888,7 +885,11 @@ void main(){
 	//color.a=1;
 }
 ]==]
-local terminal_symbols={["c.x"]=10,["c.y"]=10,["c.z"]=10,["c.w"]=10,["1.0"]=0.1,["0.0"]=0.1}
+local terminal_symbols={
+	["c.x"]=10,["c.y"]=10,["c.z"]=10,["c.w"]=10,
+	["1.0"]=0.1,["0.0"]=0.1,
+	["k.x"]=1,["k.y"]=1,["k.z"]=1,["k.w"]=1,
+}
 local normal_symbols={
 ["max(R,R)"]=0.5,["min(R,R)"]=0.5,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,
 ["sqrt(R)"]=0.1,["exp(R)"]=0.01,["atan(R,R)"]=1,["acos(R)"]=0.1,["asin(R)"]=0.1,["tan(R)"]=1,["sin(R)"]=1,
@@ -1031,6 +1032,38 @@ function random_math_transfers( steps,seed,count_transfers )
 	local rstr=table.concat(ret,",")
 	return rstr
 end
+function random_math_poly2( num )
+	local rnd_table={}
+	for x=1,4 do
+		for y=1,4 do
+
+		end
+	end
+	local ret={}
+	for z=1,4 do
+		local rand_size=1
+		local tbl={}
+		for i=1,num do
+			local t2={}
+			for j=1,i-1 do
+				table.insert(t2,"c")
+			end
+			local nums={}
+			local sum=0
+			for i=1,4 do
+				local r=math.random()*rand_size-rand_size/2
+				nums[i]=r
+				sum=sum+r
+			end
+			table.insert(t2,string.format("vec4(%g,%g,%g,%g)",nums[1]/sum,nums[2]/sum,nums[3]/sum,nums[4]/sum))
+			table.insert(tbl,string.format("dot(c,%s)",table.concat( t2, "*")))
+			rand_size=rand_size/2
+		end
+		table.insert(ret,table.concat( tbl, "+"))
+	end
+	return table.concat( ret, ", ")
+end
+
 function set_region( id,v1,v2,is_used,xory )
 	react_diffuse:set("map_region["..(id-1).."]",v1,v2,is_used,xory)
 end
@@ -1323,6 +1356,7 @@ function gui(  )
 		thingy_string=random_math(25,"R+k.x*exp(-c.y*c.y),R+k.y*exp(-c.z*c.z),R+k.z*exp(-c.w*c.w),R+k.w*exp(-c.x*c.x)",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
 		--thingy_string=random_math(5,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x*c.x","c.y*c.y","c.z*c.w","c.w","k.x","k.y","k.z","k.w"})
 		--thingy_string=random_math(5,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
+		--thingy_string=random_math_transfers(2,nil,10)
 		print(thingy_string)
 		--eval_thingy_string()
 		update_diffuse()
