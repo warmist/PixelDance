@@ -31,7 +31,7 @@ config=make_config({
 
 mapping_parameters={1,2}
 
-local oversample=0.25 --TODO: not working correctly
+local oversample=1 --TODO: not working correctly
 function update_size()
 	local trg_w=1024
 	local trg_h=1024
@@ -54,7 +54,14 @@ io_buffer=io_buffer or make_flt_buffer(size[1],size[2])
 
 map_region=map_region or {-1,0,0,0}
 thingy_string=thingy_string or "-c.x*c.y*c.y,0,0,+c.x*c.y*c.y"
-
+--[==[ nice-stable+growing+eating
+	limit=1e16
+		thingy_string="c.w+k.x*c.x*c.y,((c.y)-(k.y))-((k.w)-(c.z))+k.y*c.y*c.z,k.z+k.z*c.z*c.w,(c.y)*((k.x)-(c.x))+k.w*c.w*c.x"
+		k1=0.122
+		k2=0.592
+		k3=0.684
+		k4=0.440
+--]==]
 --feed_kill_string=feed_kill_string or "feed_rate*(1-c.x),-(kill_rate)*c.y,-(kill_rate)*(c.z),-(kill_rate)*c.w"
 feed_kill_string="-k.y,-k.y,-k.y,k.x"
 
@@ -380,6 +387,13 @@ vec4 thingy_formulas(vec4 c,vec2 normed)
 	//values=vec4(-(t1+t2+t3)*c.x,(t1-t4-t5)*c.y,(t2+t4-t6)*c.z,(t3+t5+t6)*c.w);
 
 	values=vec4(-(t1+t2+t3)*c.x,t1*c.x-(t4+t5)*c.y,t2*c.x+t4*c.y-t6*c.z,t3*c.x+t5*c.y+t6*c.z);
+
+	//pure limited transfers
+	//vec2 t1_limited=vec2(-clamp(t1,-1,0),clamp(t1,0,1))*c.yx;
+	//this might go out of bounds still as t1 and t2 happen at same time!
+	//vec2 t2_limited=vec2(-clamp(t2,-1,0),clamp(t2,0,1))*c.zx;
+	//values=vec4(t1_limited.x-t1_limited.y,t1_limited.y-t1_limited.x,0,0);
+
 	//float l=max(max(abs(c.x),abs(c.y)),max(abs(c.z),abs(c.w)));
 	//float nl=clamp(l/max_len,0,1);
 	//values=(values/l)*nl;
@@ -784,7 +798,7 @@ void main(){
 		}
 	ret+=diffusion_value*L*dt;
 #endif
-	float limit=1;
+	float limit=1e16;
 	ret=clamp(ret,-limit,limit);
 	//float l=length(ret);
 	//l=max(l,0.0001);
@@ -835,10 +849,10 @@ void main(){
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
 	//color=vec4(cnt.xyz,1);
-	color=vec4(lv,lv,lv,1);
-	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,1.5,1.25),vec3(1.0,1.05,1.4)),1);
+	//color=vec4(lv,lv,lv,1);
+	color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,1.5,1.25),vec3(1.0,1.05,1.4)),1);
 	//color=vec4(palette(lv,vec3(0.6,0,0.3),vec3(.4,0,0.7),vec3(1,1,1),vec3(0,0.33,0.66)),1);
-	///* accent
+	/* accent
 	float accent_const=0.5;
 	if(lv<accent_const)
 		color=vec4(vec3(1)*(lv/accent_const),1);
@@ -1115,14 +1129,14 @@ function reset_buffers(rnd,do_rand)
 	local b=io_buffer
 
 	local center=0
-	local scale=2
+	local scale=1e16
 	local min_value=center-scale/2
 	local max_value=center+scale/2
 	--[[
 	local min_value=-1
 	local max_value=1
 	]]
-	do_rand=false
+	do_rand=true
 	local v = {math.random()*(max_value-min_value)+min_value,
 		math.random()*(max_value-min_value)+min_value,
 		math.random()*(max_value-min_value)+min_value,
@@ -1358,8 +1372,8 @@ function gui(  )
 	end
 	if imgui.Button("RandMath") then
 		--thingy_string=random_math(25,"R+k.x*exp(-c.y*c.y),R+k.y*exp(-c.z*c.z),R+k.z*exp(-c.w*c.w),R+k.w*exp(-c.x*c.x)",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
-		thingy_string=random_math(30,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x*c.x","c.y*c.y","c.z*c.w","c.w","k.x","k.y","k.z","k.w"})
-		--thingy_string=random_math(5,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
+		--thingy_string=random_math(30,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x*c.x","c.y*c.y","c.z*c.w","c.w","k.x","k.y","k.z","k.w"})
+		thingy_string=random_math(5,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
 		--thingy_string=random_math_transfers(2,nil,10)
 		print(thingy_string)
 		--eval_thingy_string()
