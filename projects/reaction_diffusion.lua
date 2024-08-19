@@ -31,7 +31,7 @@ config=make_config({
 
 mapping_parameters={1,2}
 
-local oversample=1 --TODO: not working correctly
+local oversample=0.25 --TODO: not working correctly
 function update_size()
 	local trg_w=1024
 	local trg_h=1024
@@ -62,6 +62,8 @@ thingy_string=thingy_string or "-c.x*c.y*c.y,0,0,+c.x*c.y*c.y"
 		k3=0.684
 		k4=0.440
 --]==]
+--mix((sin(c.x))-(c.y),c.x,k.x),mix(c.z,c.y,k.y),mix((c.w)+(c.z),c.z,k.z),mix((c.y)+((c.w)/(c.w+1)),c.w,k.w)
+
 --feed_kill_string=feed_kill_string or "feed_rate*(1-c.x),-(kill_rate)*c.y,-(kill_rate)*(c.z),-(kill_rate)*c.w"
 feed_kill_string="-k.y,-k.y,-k.y,k.x"
 
@@ -823,11 +825,27 @@ float gain(float x, float k)
     float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
     return (x<0.5)?a:1.0-a;
 }
+vec4 gain(vec4 p, float k)
+{
+    float a = 0.5*pow(2.0*((p.x<0.5)?p.x:1.0-p.x), k);
+    float b = 0.5*pow(2.0*((p.y<0.5)?p.y:1.0-p.y), k);
+    float c = 0.5*pow(2.0*((p.z<0.5)?p.z:1.0-p.z), k);
+    vec4 ret;
+    ret.x=(p.x<0.5)?a:1.0-a;
+    ret.y=(p.y<0.5)?b:1.0-b;
+    ret.z=(p.z<0.5)?c:1.0-c;
+    ret.w=p.w;
+    return ret;
+}
 vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d )
 {
     return a + b*cos( 6.28318*(c*t+d) );
 }
-
+#define M_PI 3.14159265358979323846264338327950288
+float natan(float x,float y)
+{
+	return (atan(x,y)/M_PI+1)*0.5;
+}
 void main(){
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -849,8 +867,14 @@ void main(){
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
 	//color=vec4(cnt.xyz,1);
-	//color=vec4(lv,lv,lv,1);
-	color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,1.5,1.25),vec3(1.0,1.05,1.4)),1);
+	#if 0
+	vec4 tlv=vec4(natan(cnt.y,cnt.x),natan(cnt.z,cnt.y),natan(cnt.z,cnt.w),1);
+	tlv=gain(tlv,v_gain);
+	tlv=pow(tlv,vec4(v_gamma));
+	color=tlv;
+	#endif
+	color=vec4(lv,lv,lv,1);
+	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,1.5,1.25),vec3(1.0,1.05,1.4)),1);
 	//color=vec4(palette(lv,vec3(0.6,0,0.3),vec3(.4,0,0.7),vec3(1,1,1),vec3(0,0.33,0.66)),1);
 	/* accent
 	float accent_const=0.5;
@@ -905,8 +929,11 @@ void main(){
 ]==]
 local terminal_symbols={
 	["c.x"]=10,["c.y"]=10,["c.z"]=10,["c.w"]=10,
+	["c.x*c.x"]=2,["c.y*c.y"]=2,["c.z*c.z"]=2,["c.w*c.w"]=2,
+	["c.x*c.y"]=1,["c.y*c.z"]=1,["c.z*c.w"]=1,["c.w*c.x"]=1,
+
 	["1.0"]=0.5,["0.0"]=0.5,
-	["k.x"]=1,["k.y"]=1,["k.z"]=1,["k.w"]=1,
+	--["k.x"]=1,["k.y"]=1,["k.z"]=1,["k.w"]=1,
 }
 local normal_symbols={
 ["max(R,R)"]=0.5,["min(R,R)"]=0.5,["mod(R,R)"]=0.1,["fract(R)"]=0.1,["floor(R)"]=0.1,["abs(R)"]=0.1,
@@ -1373,7 +1400,8 @@ function gui(  )
 	if imgui.Button("RandMath") then
 		--thingy_string=random_math(25,"R+k.x*exp(-c.y*c.y),R+k.y*exp(-c.z*c.z),R+k.z*exp(-c.w*c.w),R+k.w*exp(-c.x*c.x)",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
 		--thingy_string=random_math(30,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x*c.x","c.y*c.y","c.z*c.w","c.w","k.x","k.y","k.z","k.w"})
-		thingy_string=random_math(5,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
+		thingy_string=random_math(5,"mix(R,c.x,k.x),mix(R,c.y,k.y),mix(R,c.z,k.z),mix(R,c.w,k.w)",{"c.x","c.y","c.z","c.w"})
+		--thingy_string=random_math(5,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
 		--thingy_string=random_math_transfers(2,nil,10)
 		print(thingy_string)
 		--eval_thingy_string()
