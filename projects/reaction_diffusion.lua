@@ -574,6 +574,27 @@ vec4 coullet_attractor(vec4 c, vec2 normed)
 			0
 	);
 }
+vec4 thomas4d(vec4 c, vec2 normed)
+{
+	vec4 k=kill_feed;
+#ifdef MAPPING
+	if (map_region[0].x>=0)
+	{
+		#define MAPPED_VALUE(id,value) value=mix(value,mix(map_region[id].x,map_region[id].y,mix(normed.x,normed.y,map_region[id].w)),map_region[id].z)
+		MAPPED_VALUE(0,k.x);
+		MAPPED_VALUE(1,k.y);
+		MAPPED_VALUE(2,k.z);
+		MAPPED_VALUE(3,k.w);
+		#undef MAPPED_VALUE	
+	}
+#endif
+	return vec4(
+		sin(c.y),
+		sin(c.z),
+		sin(c.w),
+		sin(c.x)
+	)-dot(k,c);
+}
 vec4 chaos_4d(vec4 c, vec2 normed)
 {
 	//https://www.sciencedirect.com/science/article/pii/S209044791730014X
@@ -732,6 +753,7 @@ vec4 actual_function(vec4 c,vec2 normed)
 {
 	return
 		//gray_scott(c,normed)
+		//thomas4d(c,normed)
 		//ruijgrok(c,normed)
 		//two_reacts(c,normed)
 		thingy_formulas(c,normed)
@@ -800,7 +822,7 @@ void main(){
 		}
 	ret+=diffusion_value*L*dt;
 #endif
-	float limit=1e16;
+	float limit=2;
 	ret=clamp(ret,-limit,limit);
 	//float l=length(ret);
 	//l=max(l,0.0001);
@@ -867,13 +889,13 @@ void main(){
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
 	//color=vec4(cnt.xyz,1);
-	#if 0
+	#if 1
 	vec4 tlv=vec4(natan(cnt.y,cnt.x),natan(cnt.z,cnt.y),natan(cnt.z,cnt.w),1);
 	tlv=gain(tlv,v_gain);
 	tlv=pow(tlv,vec4(v_gamma));
 	color=tlv;
 	#endif
-	color=vec4(lv,lv,lv,1);
+	//color=vec4(lv,lv,lv,1);
 	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,1.5,1.25),vec3(1.0,1.05,1.4)),1);
 	//color=vec4(palette(lv,vec3(0.6,0,0.3),vec3(.4,0,0.7),vec3(1,1,1),vec3(0,0.33,0.66)),1);
 	/* accent
@@ -1156,7 +1178,7 @@ function reset_buffers(rnd,do_rand)
 	local b=io_buffer
 
 	local center=0
-	local scale=1e16
+	local scale=2
 	local min_value=center-scale/2
 	local max_value=center+scale/2
 	--[[
@@ -1216,9 +1238,9 @@ function reset_buffers(rnd,do_rand)
 	end
 
 	if rnd=="square" then
-		local cx=math.floor(b.w/2)
+		local cx=b.w*0.125--math.floor(b.w/2)
 		local cy=math.floor(b.h/2)
-		local s=math.random(1,b.w*0.25)
+		local s=cx/2--math.random(1,b.w*0.125)
 
 		for x=cx-s,cx+s do
 			for y=cy-s,cy+s do
@@ -1400,7 +1422,8 @@ function gui(  )
 	if imgui.Button("RandMath") then
 		--thingy_string=random_math(25,"R+k.x*exp(-c.y*c.y),R+k.y*exp(-c.z*c.z),R+k.z*exp(-c.w*c.w),R+k.w*exp(-c.x*c.x)",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
 		--thingy_string=random_math(30,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x*c.x","c.y*c.y","c.z*c.w","c.w","k.x","k.y","k.z","k.w"})
-		thingy_string=random_math(5,"mix(R,c.x,k.x),mix(R,c.y,k.y),mix(R,c.z,k.z),mix(R,c.w,k.w)",{"c.x","c.y","c.z","c.w"})
+		--thingy_string=random_math(5,"mix(R,c.x,k.x),mix(R,c.y,k.y),mix(R,c.z,k.z),mix(R,c.w,k.w)",{"c.x","c.y","c.z","c.w"})
+		thingy_string=random_math(20,"mix(R,c.x,k.x),mix(R,c.y,k.y),mix(R,c.z,k.z),mix(R,c.w,k.w)",{"c.x","c.y","c.z","c.w"})
 		--thingy_string=random_math(5,"R+k.x*c.x*c.y,R+k.y*c.y*c.z,R+k.z*c.z*c.w,R+k.w*c.w*c.x",{"c.x","c.y","c.z","c.w","k.x","k.y","k.z","k.w"})
 		--thingy_string=random_math_transfers(2,nil,10)
 		print(thingy_string)
