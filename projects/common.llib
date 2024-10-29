@@ -130,6 +130,7 @@ size_of_data={
 }
 
 make_image_buffer= make_buffer("rgba_pixel",RGBA_PIX,{0,0,0,255})
+make_rgba_buffer=make_image_buffer
 make_flt_buffer= make_buffer("float_pixel",FLTA_PIX,{0,0,0,1})
 make_float_buffer=make_buffer("float",F_PIX,0)
 make_flt_half_buffer=make_buffer("float_half_pixel",FL_PIX,{0,0})
@@ -512,7 +513,7 @@ function GenPointN( N ) --ndimensional vector
 	end)
 
 	function Point.get(p)
-	  return unpack(p)
+	  return table.unpack(p)
 	end
 
 	function Point.__add(p1,p2)
