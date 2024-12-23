@@ -25,6 +25,7 @@ struct file_time
 struct watched_file
 {
     std::string path;
+    std::string unprefixed_path;
     file_time last_access;
     bool exists=false;
     bool changed=false;

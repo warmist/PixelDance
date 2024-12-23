@@ -50,6 +50,7 @@ void load_projects(const char* prefix,file_watcher& fwatch)
         //TODO: add to project list
         watched_file f;
         f.path = path_prefix + "/" + p;
+        f.unprefixed_path = p;
         f.exists = true;
         bool found = false;
         for(auto& f1:fwatch.files) //TODO: @PERF linear search each tick for all projects
@@ -779,9 +780,11 @@ int main(int argc, char** argv)
 	settings.depthBits = 24;
 	settings.stencilBits = 8;
 	settings.antialiasingLevel = 4;
-	/*settings.majorVersion = 3;
-	settings.minorVersion = 0;
-	settings.attributeFlags = sf::ContextSettings::Attribute::Core;*/
+	///*
+    settings.majorVersion = 4;
+	settings.minorVersion = 2;
+	//settings.attributeFlags = sf::ContextSettings::Attribute::Core;
+    //*/
 	//settings.sRgbCapable = true;
     sf::RenderWindow window(sf::VideoMode(1024, 1024), "PixelDance",sf::Style::Default,settings);
 	main_win = &window;
@@ -914,7 +917,7 @@ int main(int argc, char** argv)
 		ImGui::Text("FPS:%g", ImGui::GetIO().Framerate);
         const char* project_name = "<no project>";
         if (selected_project >= 0 && selected_project < fwatch.files.size())
-            project_name = fwatch.files[selected_project].path.c_str();
+            project_name = fwatch.files[selected_project].unprefixed_path.c_str();
 
         if(ImGui::BeginCombo("Current project", project_name))
         {
@@ -926,7 +929,7 @@ int main(int argc, char** argv)
             for (auto& f : fwatch.files)
             {
                 t = (selected_project == k);
-                if(ImGui::Selectable(f.path.c_str(), &t))
+                if(ImGui::Selectable(f.unprefixed_path.c_str(), &t))
                     selected_project = k;
                 k++;
             }
