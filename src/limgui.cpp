@@ -282,8 +282,7 @@ static int l_collapsing_header(lua_State*L)
 {
     //TODO: display frame, default open
     const char *str = luaL_checkstring(L, 1);
-    const char *str_id = luaL_optlstring(L, 2, NULL, NULL);
-    bool ret=ImGui::CollapsingHeader(str,str_id = NULL);
+    bool ret=ImGui::CollapsingHeader(str, ImGuiTreeNodeFlags_DefaultOpen);
     lua_pushboolean(L, ret);
     return 1;
 }
@@ -364,15 +363,13 @@ static int l_slider_float(lua_State* L)
     float v_min = lua_tonumber(L, 3);
     float v_max = lua_tonumber(L, 4);
     const char* display_format = luaL_optstring(L, 5, "%.3f");
-    float power = luaL_optnumber(L, 6, 1.0f);
-    bool ret = ImGui::SliderFloat(str, &v,v_min,v_max,display_format,power);
+    bool is_log = lua_toboolean(L, 6);
+
+    bool ret = ImGui::SliderFloat(str, &v, v_min, v_max, display_format, (is_log ? ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic : 0));
     lua_pushboolean(L, ret);
     lua_pushnumber(L, v);
     return 2;
 }
-//IMGUI_API bool          SliderFloat2(const char* label, float v[2], float v_min, float v_max, const char* display_format = "%.3f", float power = 1.0f);
-//IMGUI_API bool          SliderFloat3(const char* label, float v[3], float v_min, float v_max, const char* display_format = "%.3f", float power = 1.0f);
-//IMGUI_API bool          SliderFloat4(const char* label, float v[4], float v_min, float v_max, const char* display_format = "%.3f", float power = 1.0f);
 static int l_slider_angle(lua_State* L)
 {
     const char *str = luaL_checkstring(L, 1);
@@ -392,7 +389,7 @@ static int l_slider_int(lua_State* L)
     int v = lua_tointeger(L, 2);
     int v_min = lua_tointeger(L, 3);
     int v_max = lua_tointeger(L, 4);
-    const char* display_format = luaL_optstring(L, 5, "%.0f");
+    const char* display_format = luaL_optstring(L, 5, "%.0d");
     bool ret = ImGui::SliderInt(str, &v, v_min, v_max, display_format);
     lua_pushboolean(L, ret);
     lua_pushinteger(L, v);

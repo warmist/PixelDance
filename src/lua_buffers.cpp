@@ -47,7 +47,7 @@ void get_current_size(lua_State* L, int& x, int& y)
 
 template <typename T>
 struct buffer_value_access{
-static constexpr char* name();
+static const char* name();
 static int push(lua_State* L, const T& v);
 static T to_element(lua_State* L, int id);
 static std::vector<T>* check(lua_State* L, int id) { return *reinterpret_cast<std::vector<T>**>(luaL_checkudata(L, id, name())); }
@@ -173,7 +173,7 @@ void resize_lua_buffers(int w, int h)
 #undef DO_BUFFER_RESIZE
 
 template<>
-static constexpr char * buffer_value_access<u8x4>::name()
+static const char * buffer_value_access<u8x4>::name()
 {
 	return "color_buffer";
 }
@@ -218,7 +218,7 @@ static int present_buffer(lua_State* L)
 
 	auto tex = reinterpret_cast<sf::Texture*>(lua_touserdata(L, -1));
 	lua_pop(L, 2);
-	tex->update(reinterpret_cast<const sf::Uint8*>(ptr->data()));
+	tex->update(reinterpret_cast<const std::uint8_t*>(ptr->data()));
 	return 0;
 }
 static void fwrite_callback(void* c, void* d, int size)
@@ -280,7 +280,7 @@ static void buffer_value_access<u8x4>::add_special_methods(lua_State * L)
 }
 
 template<>
-static constexpr char * buffer_value_access<float>::name()
+static const char * buffer_value_access<float>::name()
 {
 	return "float_buffer";
 }

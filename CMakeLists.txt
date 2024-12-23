@@ -1,6 +1,6 @@
 # NEEDS: sfml (static linked), LUA (better: luajit also static) IMGUI (aka dear imgui - compiled in)
 
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required (VERSION 3.24)
 project (pixeldance CXX C)
 
 
@@ -21,8 +21,8 @@ if(BUILD_VERSION2)
 
 else()
     add_definitions(-DIMGUI_USER_CONFIG="imconfig-SFML.h")
-    set(SFML_STATIC_LIBRARIES TRUE)
-    FIND_PACKAGE( SFML 2.5 COMPONENTS graphics window system)
+    set(SFML_STATIC_LIBRARIES ON)
+    FIND_PACKAGE( SFML 3 COMPONENTS Graphics Window System)
 endif()
 SET(LUA "../luajit" CACHE PATH "Path to lua")
 
@@ -55,17 +55,21 @@ set(SRC_VER_1
     src/shaders.cpp
     src/textures.cpp
     src/buffer_data.cpp
-    ${IMGUI}/imgui.cpp
-    ${IMGUI}/imgui_draw.cpp
-    ${IMGUI}/imgui_demo.cpp
     src/lua_opencl.cpp
     src/limgui.cpp
 )
 set(SRC_VER_2
     src/main_win32.cpp
     src/lua_vk.cpp
+    ${IMGUI}/backends/imgui_impl_win32.cpp
+    ${IMGUI}/backends/imgui_impl_vulkan.cpp
 )
 set(SRCS
+    ${IMGUI}/imgui.cpp
+    #${IMGUI}/imgui_demo.cpp
+    ${IMGUI}/imgui_draw.cpp
+    ${IMGUI}/imgui_tables.cpp
+    ${IMGUI}/imgui_widgets.cpp
     src/filesys.cpp
     src/lua_random.cpp
     src/matrix.cpp
@@ -74,6 +78,7 @@ set(SRCS
 )
 set(HDRS_VER_1
     src/imconfig-SFML.h
+    src/imgui-SFML_export.h
     src/imgui-SFML.h
     src/lua_buffers.h
     src/shaders.h
@@ -97,6 +102,7 @@ set(HDRS
     src/matrix.h
     src/nanoflann.hpp
     src/lua_kd.h
+    ${IMGUI}/imgui.h
     ${LUA}/lua.hpp
     ${LUA}/lualib.h
 )
@@ -118,7 +124,7 @@ target_link_libraries(${TARGET_NAME} ${LUA}/lua51.lib)
 if(BUILD_VERSION2)
     target_link_libraries(${TARGET_NAME} Vulkan::Vulkan )
 else()
-    target_link_libraries(${TARGET_NAME}  sfml-graphics sfml-window sfml-system )
+    target_link_libraries(${TARGET_NAME}  SFML::Graphics SFML::Window SFML::System )
 endif()
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})

@@ -117,7 +117,7 @@ static int present_buffer(lua_State* L)
     lua_getfield(L, 1, "h");*/
 
     lua_getfield(L, 1, "d");
-    auto data=reinterpret_cast<const sf::Uint8*>(lua_topointer(L, -1));
+    auto data=reinterpret_cast<const std::uint8_t*>(lua_topointer(L, -1));
     lua_pop(L, 1);
     
     lua_getglobal(L, "STATE");
@@ -165,7 +165,7 @@ static int save_image_to_mem(lua_State* L)
     lua_pop(L, 1);
 
     lua_getfield(L, 1, "d");
-    auto data = reinterpret_cast<const sf::Uint8*>(lua_topointer(L, -1));
+    auto data = reinterpret_cast<const std::uint8_t*>(lua_topointer(L, -1));
     lua_pop(L, 1);
 
     size_t suffix_len = 0;
@@ -212,7 +212,7 @@ static int save_image(lua_State* L)
     lua_pop(L, 1);
 
     lua_getfield(L, 1, "d");
-    auto data = reinterpret_cast<const sf::Uint8*>(lua_topointer(L, -1));
+    auto data = reinterpret_cast<const std::uint8_t*>(lua_topointer(L, -1));
     lua_pop(L, 1);
 
     const char* path = luaL_checkstring(L, 2);
@@ -286,7 +286,7 @@ static int gif_frame(lua_State* L)
     lua_pop(L, 1);
 
     lua_getfield(L, 1, "d");
-    auto data = reinterpret_cast<const sf::Uint8*>(lua_topointer(L, -1));
+    auto data = reinterpret_cast<const std::uint8_t*>(lua_topointer(L, -1));
     lua_pop(L, 1);
 
     uint32_t delay = luaL_optint(L,2, gif_state.delay);
@@ -779,14 +779,14 @@ int main(int argc, char** argv)
 	sf::ContextSettings settings;
 	settings.depthBits = 24;
 	settings.stencilBits = 8;
-	settings.antialiasingLevel = 4;
+	settings.antiAliasingLevel = 4;
 	///*
     settings.majorVersion = 4;
 	settings.minorVersion = 2;
 	//settings.attributeFlags = sf::ContextSettings::Attribute::Core;
     //*/
 	//settings.sRgbCapable = true;
-    sf::RenderWindow window(sf::VideoMode(1024, 1024), "PixelDance",sf::Style::Default,settings);
+    sf::RenderWindow window(sf::VideoMode({ 1024, 1024 }), "PixelDance", sf::State::Windowed, settings);
 	main_win = &window;
     bool is_fps_limited = false;
     ImGui::SFML::Init(window);
@@ -799,15 +799,14 @@ int main(int argc, char** argv)
 
 	auto csize = window.getSize();
 
-	sf::Texture back_buffer;
-
-	back_buffer.create(csize.x, csize.y);
+	//sf::Texture back_buffer;
+	//back_buffer.create(csize.x, csize.y);
 	
-	sf::Sprite back_buffer_sprite;
-	back_buffer_sprite.setTexture(back_buffer,true);
+	//sf::Sprite back_buffer_sprite;
+	//back_buffer_sprite.setTexture(back_buffer,true);
 
     project current_project;
-	current_project.state = { csize ,&back_buffer};
+	current_project.state = { csize ,nullptr};
     current_project.init_lua(argv[1]);
 
     float default_alpha;
@@ -819,41 +818,41 @@ int main(int argc, char** argv)
     int old_selected = selected_project;
     sf::Clock deltaClock;
     while (window.isOpen()) {
-        sf::Event event;
 		bool need_restart = false;
         bool need_reload = false;
         bool need_print = false;
-        while (window.pollEvent(event)) {
-            ImGui::SFML::ProcessEvent(event);
-
-            if (event.type == sf::Event::Closed) {
+        while (auto event=window.pollEvent()) {
+            ImGui::SFML::ProcessEvent(window,*event);
+            
+            if (event->is<sf::Event::Closed>()) {
                 window.close();
             }
-			if (event.type == sf::Event::Resized)
+			if (auto ev=event->getIf<sf::Event::Resized>())
 			{
-				auto ev = event.size;
+				
 				//sf::Texture new_texture;
 				//new_texture
-				back_buffer.create(ev.width, ev.height);
-				back_buffer_sprite.setTextureRect(sf::IntRect(0, 0, ev.width, ev.height));
-				current_project.state = { sf::Vector2u(ev.width,ev.height),&back_buffer };
+				//back_buffer.create(ev->width, ev->height);
+				//back_buffer_sprite.setTextureRect(sf::IntRect(0, 0, ev->width, ev->height));
+				current_project.state = { ev->size,nullptr };
 				current_project.state.write(current_project.L);
-				resize_lua_buffers(ev.width, ev.height);
-				window.setView(sf::View(sf::Vector2f(ev.width / 2, ev.height / 2), sf::Vector2f(ev.width, ev.height)));
-                current_project.resize(ev.width, ev.height);
+				resize_lua_buffers(ev->size.x,ev->size.y);
+				window.setView(sf::View(sf::Vector2f(ev->size.x / 2, ev->size.y / 2), sf::Vector2f(ev->size)));
+                current_project.resize(ev->size.x, ev->size.y);
 			}
-			if (event.type == sf::Event::KeyPressed)
+			if (auto ev = event->getIf<sf::Event::KeyPressed>())
 			{
-				if (event.key.shift && event.key.control && event.key.code == sf::Keyboard::R)
+                
+				if (ev->shift && ev->control && ev->code == sf::Keyboard::Key::R)
 					need_restart = true;
-                if (event.key.shift && event.key.control && event.key.code == sf::Keyboard::E)
+                if (ev->shift && ev->control && ev->code == sf::Keyboard::Key::E)
                 {
                     for (auto& e : current_project.errors)
                     {
                         printf("%s\n", e.c_str());
                     }
                 }
-                if (event.key.shift && event.key.control && event.key.code == sf::Keyboard::T)
+                if (ev->shift && ev->control && ev->code == sf::Keyboard::Key::T)
                 {
                     need_restart = true;
                     selected_project = -1;
@@ -968,11 +967,14 @@ int main(int argc, char** argv)
         ImGui::EndChild();
         ImGui::End();
 		
-		if(auto_redraw)
+		/*if (auto_redraw)
 		{
 			window.clear();
 			window.draw(back_buffer_sprite);
 		}
+        */
+        if(!project_exists)
+            window.clear();
 		auto_redraw = true;
         ImGui::SFML::Render(window);
         window.display();
