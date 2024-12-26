@@ -43,7 +43,7 @@ distribute, and modify this file as you see fit.
 
 
 #if defined(_WIN32)
-
+#include "stdint.h"
 #define GLDECL WINAPI
 
 #define NOMINMAX
@@ -94,6 +94,20 @@ distribute, and modify this file as you see fit.
 #define GL_SEPARATE_ATTRIBS               0x8C8D
 #define GL_TRANSFORM_FEEDBACK_BUFFER      0x8C8E
 #define GL_RASTERIZER_DISCARD             0x8C89 
+#define GL_VERTEX_ARRAY_BINDING           0x85B5
+#define GL_PIXEL_PACK_BUFFER              0x88EB
+#define GL_PIXEL_UNPACK_BUFFER            0x88EC
+#define GL_PIXEL_PACK_BUFFER_BINDING      0x88ED
+#define GL_PIXEL_UNPACK_BUFFER_BINDING    0x88EF
+#define GL_NUM_EXTENSIONS                 0x821D
+#define GL_CLAMP_TO_EDGE                  0x812F
+#define GL_BLEND_SRC_RGB                  0x80C9
+#define GL_BLEND_DST_RGB                  0x80C8
+#define GL_BLEND_SRC_ALPHA                0x80CB
+#define GL_BLEND_DST_ALPHA                0x80CA
+#define GL_BLEND_EQUATION_RGB             0x8009
+#define GL_BLEND_EQUATION_ALPHA           0x883D
+#define GL_ACTIVE_TEXTURE                 0x84E0
 
 typedef char GLchar;
 typedef ptrdiff_t GLintptr;
@@ -166,6 +180,14 @@ typedef ptrdiff_t GLsizeiptr;
     GLE(void,      GetBufferSubData,        GLenum target, GLintptr offset, GLsizeiptr size,void * data )\
     GLE(void,      GetNamedBufferSubData,   GLuint buffer, GLintptr offset, GLsizeiptr size,void * data )\
     GLE(void,      GetnTexImage,            GLenum traget, GLint level,GLenum format,GLenum type,GLsizei bufsize, void* data)\
+    GLE(bool,      IsProgram,               GLuint program)\
+    GLE(void,      DetachShader,            GLuint program, GLuint shader)\
+    GLE(const uint8_t*,GetStringi,          GLenum name, GLuint index)\
+    GLE(void,      GenVertexArrays,         GLsizei n, GLuint *arrays)\
+    GLE(void,      BindVertexArray,         GLuint array)\
+    GLE(void,      DeleteVertexArrays,      GLsizei n, const GLuint* arrays)\
+    GLE(void,      BlendFuncSeparate,       GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha)\
+    GLE(void,      BlendEquationSeparate,   GLenum modeRGB, GLenum modeAlpha)\
     /* end */
 //GLE(void, DeleteTextures, GLsizei count, const GLuint * textures)
 //GLE(void, GetTexImage, GLenum target, GLint level, GLenum format, GLenum type, GLvoid * img)
