@@ -5,10 +5,11 @@ require "common"
 local ffi=require "ffi"
 local w=1024
 local h=1024
-local particle_count=13
+local particle_count=100
 config=make_config({
 	{"gain",1,type="float",min=0,max=10},
 	{"mult",1,type="float",min=0,max=10},
+	{"perturb_str",0.05,type="float",min=0,max=0.1},
 },config)
 
 
@@ -16,10 +17,10 @@ local cl_kernels=opencl.make_program[==[
 #line __LINE__
 #define W 1024
 #define H 1024
-#define PCOUNT 13
+#define PCOUNT 64
 #define M_PI 3.1415926538
 #define SMALL_SCALE_SIZE 0.005f
-#define RADIUS 0.8f
+#define RADIUS 1.0f
 int2 clamp_pos(int2 p)
 {
 	return clamp(p,0,W-1);
@@ -117,38 +118,200 @@ float teleported_value(float2 p1,float2 p2)
 
 	return -(len1+len2);
 }
-float2 potential_grad(float2 delta)
+
+float2 potential_grad_org(float2 delta) //original potential
 {
 	float dist=length(delta);
+	if(dist<SMALL_SCALE_SIZE)
+		return (float2)(0,0);
 	float2 ret;
 	ret.x=-delta.x/sqrt(dist*dist*dist);
 	ret.y=-delta.y/sqrt(dist*dist*dist);
 	return ret;
 }
+float2 potential_grad_4pow(float2 delta)
+{
+	float dist=length(delta);
+	if(dist<SMALL_SCALE_SIZE)
+		return (float2)(0,0);
+	float d4=(dist*dist);
+	d4*=d4;
+	float2 ret;
+	ret.x=-delta.x/d4;
+	ret.y=-delta.y/d4;
+	return ret;
+}
+float2 potential_grad_ln(float2 delta)
+{
+	float dist=length(delta);
+	if(dist<SMALL_SCALE_SIZE)
+		return (float2)(0,0);
+	float l4=log(dist*dist+1);
+
+	float2 ret;
+	ret.x=-delta.x/(l4*(dist*dist+1));
+	ret.y=-delta.y/(l4*(dist*dist+1));
+	return ret;
+}
+float2 potential_grad_2pow(float2 delta)
+{
+	float dist=length(delta);
+	if(dist<SMALL_SCALE_SIZE)
+		return (float2)(0,0);
+	float2 ret;
+	ret=-delta/(dist*dist);
+	return ret*0.0125f;
+}
+float2 potential_grad_exp(float2 delta)
+{
+	float dist=length(delta);
+	if(dist<SMALL_SCALE_SIZE)
+		return (float2)(0,0);
+	//if(dist>0.2)
+	//	return (float2)(0,0);
+
+	float e=-exp(-dot(delta,delta)*64);
+	return delta*e;
+}
+float2 actual_grad(float2 p)
+{
+	return potential_grad_ln(p);
+	return potential_grad_4pow(p);
+	return potential_grad_org(p);
+	return potential_grad_exp(p);
+	return potential_grad_2pow(p);
+}
 float2 teleported_value_grad(float2 p1,float2 p2)
 {
-	float2 delta_pt=p2-p1;
+	float2 delta_pt=p2+p1;
+	//float2 delta_pt=p2-p1; //was this bug for nicer effects...
 	float len=length(delta_pt);
 	if(len<SMALL_SCALE_SIZE)
 		return 0;
 	float2 v=delta_pt/len;
 	float dp=dot(v,p1);
-	float u=-dp+sqrt(dp*dp-dot(p1,p1)+RADIUS*RADIUS);
-	float2 delta1=-u*v;
-	float2 delta2=-p1-u*v-p2;
-	float2 delta3=p2+2*u*v+p2;
-	float len1=sqrt(dot(delta1,delta1));
-	float len2=sqrt(dot(delta2,delta2));
+	float rval=dp*dp-dot(p1,p1)+RADIUS*RADIUS;
+	if(rval<0)
+		return 0;
+	//if(rval<0)
+	//	rval*=-1;
 
-	//return potential_grad(delta1)+potential_grad(delta2);
-	//return potential_grad(delta1+delta2);
-	return potential_grad(-delta3);
+
+	float u1=-dp+sqrt(rval); //tv+A and circle intersection at t=u
+	float u2=-dp-sqrt(rval);
+
+
+	float2 intersect1=u1*v+p1;
+	float2 mirror_intesect1=-intersect1;
+	float2 mirror_p1_1=mirror_intesect1-u1*v;
+	float2 delta3_1=p2-mirror_p1_1;
+
+	float2 intersect2=u2*v+p1;
+	float2 mirror_intesect2=-intersect2;
+	float2 mirror_p1_2=mirror_intesect2-u2*v;
+	float2 delta3_2=p2-mirror_p1_2;
+
+	return actual_grad(delta3_1)+actual_grad(delta3_2);
+	//else
+	//	return actual_grad(-delta3_2);
+	//return actual_grad(delta1)+actual_grad(delta2);
+	//return actual_grad(delta1+delta2);
+	//return actual_grad(delta3);
 }
+float2 teleported_value_grad_angle(float2 p1,float2 p2,float angle)
+{
+	//float angle=M_PI/2; //only M_PI is stable, all other spin...
+	float2 delta_pt=p2+p1;
+	float len=length(delta_pt);
+	if(len<SMALL_SCALE_SIZE)
+		return 0;
+	float2 v=delta_pt/len;
+	float dp=dot(v,p1);
+	float rval=dp*dp-dot(p1,p1)+RADIUS*RADIUS;
+	//if(rval<0)
+	//	return 0;
+	if(rval<0)
+		rval*=-1;
+	float u=-dp+sqrt(rval);
+	float2 proj_p1=u*v+p1;
+	float2 rot_pp1=(float2)(
+		cos(angle)*proj_p1.x-sin(angle)*proj_p1.y,
+		sin(angle)*proj_p1.x+cos(angle)*proj_p1.y);
+	float2 mirror_p1=rot_pp1-u*v;
+
+	float2 delta3=p2-mirror_p1;
+
+	return actual_grad(-delta3);
+}
+
+float2 teleported_value_grad_mirror(float2 p1,float2 p2)
+{
+	float angle=M_PI;
+
+	float p1sq=dot(p1,p1);
+	if(p1sq<SMALL_SCALE_SIZE)
+		return (float2)(0,0);
+	float2 mirror_p1=RADIUS*RADIUS*p1/dot(p1,p1);
+	float2 rotated_p1=(float2)(
+		mirror_p1.x*cos(angle)-mirror_p1.y*sin(angle),
+		mirror_p1.x*sin(angle)+mirror_p1.y*cos(angle));
+
+	float2 delta_pt=p2-rotated_p1;
+	float len=length(delta_pt);
+	if(len<SMALL_SCALE_SIZE)
+		return 0;
+
+	return actual_grad(delta_pt);
+}
+
 float2 static_potential(float2 pos)
 {
-	float2 ret=0*5.f*potential_grad(pos);
+	float2 ret=0.0f*actual_grad(pos);
 
 	return ret;
+}
+float2 find_particle_offset(int j)
+{
+	float2 offset=(float2)(0,0);
+	/*
+	if(j%4==0)
+		offset=(float2)(1,0);
+	else if(j%4==1)
+		offset=(float2)(cos(2*M_PI/4),sin(2*M_PI/4));
+	else if(j%4==2)
+		offset=(float2)(cos(4*M_PI/4),sin(4*M_PI/4));
+	else
+		offset=(float2)(cos(6*M_PI/4),sin(6*M_PI/4));
+	//*/
+	/*
+	if(j%2==0)
+		offset=(float2)(1,0);
+	else
+		offset=(float2)(-1,0);
+	//*/
+	/*
+	if(j%3==0)
+		offset=(float2)(1,0);
+	else if(j%3==1)
+		offset=(float2)(cos(2*M_PI/3),sin(2*M_PI/3));
+	else
+		offset=(float2)(cos(4*M_PI/3),sin(4*M_PI/3));
+	//*/
+	/*
+	if(j%5==0)
+		offset=(float2)(1,0);//0
+	else if(j%5==1)
+		offset=(float2)(cos(2*M_PI/5),sin(2*M_PI/5));//1/5
+	else if(j%5==2)
+		offset=(float2)(cos(4*M_PI/5),sin(4*M_PI/5));//2/5
+	else if(j%5==3)
+		offset=(float2)(cos(6*M_PI/5),sin(6*M_PI/5));//3/5
+	else
+		offset=(float2)(cos(8*M_PI/5),sin(8*M_PI/5));//4/5
+	*/
+	//offset=(float2)(0,0);
+	float dist=0.5;
+	return offset*dist;
 }
 __kernel void update_grid(__global float2* particles,__global float2* output,__write_only image2d_t output_tex,float time)
 {
@@ -156,8 +319,9 @@ __kernel void update_grid(__global float2* particles,__global float2* output,__w
 	int max=W*H;//s.w*s.h;
 	float max_rad=RADIUS;
 	float rad_sq=max_rad*max_rad;
-	float electric_str=0.25;
-	float teleport_str=2.5;
+	float electric_str=0.1;
+	float teleport_str=4.0;
+	float angle_step=0.8;
 	if(i>=0 && i<max)
 	{
 		int2 pos;
@@ -167,23 +331,57 @@ __kernel void update_grid(__global float2* particles,__global float2* output,__w
 		pos_normed.x=2*pos.x/(float)(W)-1.0;
 		pos_normed.y=2*pos.y/(float)(H)-1.0;
 		float2 potential_sum=0;
+		float2 teleport_sum=0;
 		float o_rad=dot(pos_normed,pos_normed);
+		float inside_pt=0;
 		if(o_rad<rad_sq)
 		{
 			for(int j=0;j<PCOUNT;j++)
 			{
+				float2 offset;
+				offset=find_particle_offset(j);
 				float2 delta=pos_normed-particles[j];
 				float l=length(delta);
 				if(l>SMALL_SCALE_SIZE)
-					potential_sum+=electric_str*potential_grad(delta);
-				potential_sum+=teleport_str*electric_str*teleported_value_grad(particles[j],pos_normed);
+					potential_sum+=electric_str*actual_grad(delta);
+				else
+					inside_pt=1;
+				teleport_sum+=teleport_str*electric_str*teleported_value_grad(particles[j]+offset,pos_normed+offset);
+				/*
+				if(j%2==0)
+					teleport_sum+=teleport_str*electric_str*teleported_value_grad_angle(particles[j]+offset,pos_normed+offset,M_PI+angle_step);
+				else
+					teleport_sum+=teleport_str*electric_str*teleported_value_grad_angle(particles[j]+offset,pos_normed+offset,M_PI-angle_step);
+				//*/
+				/*
+				if(j%3==0)
+					teleport_sum+=teleport_str*electric_str*teleported_value_grad_angle(particles[j]+offset,pos_normed+offset,M_PI+angle_step);
+				else if(j%3==1)
+					teleport_sum+=teleport_str*electric_str*teleported_value_grad_angle(particles[j]+offset,pos_normed+offset,M_PI);
+				else
+					teleport_sum+=teleport_str*electric_str*teleported_value_grad_angle(particles[j]+offset,pos_normed+offset,M_PI-angle_step);
+				*/
+				/*
+				if(j%4==0)
+					teleport_sum+=teleport_str*electric_str*teleported_value_grad_angle(particles[j]+offset,pos_normed+offset,angle_step*2.0/3.0);
+				else if(j%4==1)
+					teleport_sum+=teleport_str*electric_str*teleported_value_grad_angle(particles[j]+offset,pos_normed+offset,angle_step/3.0);
+				else if(j%4==2)
+					teleport_sum+=teleport_str*electric_str*teleported_value_grad_angle(particles[j]+offset,pos_normed+offset,-angle_step*2.0/3.0);
+				else
+					teleport_sum+=teleport_str*electric_str*teleported_value_grad_angle(particles[j]+offset,pos_normed+offset,-angle_step/3.0);
+				*/
 			}
 			potential_sum+=electric_str*static_potential(pos_normed);
 		}
-		output[i]=potential_sum;
+		output[i]=potential_sum+teleport_sum;
 		float4 col;
-
-		col.x=sqrt(dot(potential_sum,potential_sum));
+		//float2 v=teleport_sum;
+		//float2 v=potential_sum;
+		float2 v=potential_sum+teleport_sum;
+		col.x=dot(v,v);
+		col.y=inside_pt;
+		//col.x=sqrt(dot(potential_sum,potential_sum));
 		col.w=1;
 		write_imagef(output_tex,pos,col);
 		//output_tex[i]=output[i];
@@ -195,7 +393,7 @@ __kernel void update_particles(__global float2* particles,__global float2* out_p
 	int max=PCOUNT;
 	float max_rad=RADIUS-0.001;
 	float rad_sq=max_rad*max_rad;
-	float step_size=0.1;
+	float step_size=0.01;
 	if(i>=0 && i<max)
 	{
 		float2 parr=0.5f*(particles[i]+(float2)(1.0f,1.0f));
@@ -207,11 +405,42 @@ __kernel void update_particles(__global float2* particles,__global float2* out_p
 		out_particles[i]=pout;
 	}
 }
+__kernel void recenter_particles(__global float2* particles,__global float2* out_particles)
+{
+	int i=get_global_id(0);
+	int max=PCOUNT;
+	if(i>=0 && i<max)
+	{
+		float2 avg=0;
+		for(int j=0;j<PCOUNT;j++)
+			{
+				avg+=particles[j];
+			}
+		out_particles[i]=particles[i]-avg/PCOUNT;
+	}
+}
+__kernel void perturb_particles(__global float2* particles,__global float2* out_particles,float seed,float strength)
+{
+	int i=get_global_id(0);
+	int max=PCOUNT;
+	if(i>=0 && i<max)
+	{
+		float2 pos=particles[i];
+
+		float a=0.5*(cos(1238*i/(float)max+seed)+1);
+		float r=0.5*(sin(436897*i/(float)max+seed)+1);
+		pos.x+=cos(a*M_PI*2)*sqrt(r)*strength;
+		pos.y+=sin(a*M_PI*2)*sqrt(r)*strength;
+
+		out_particles[i]=pos;
+	}
+}
+
 __kernel void init_particles(__global float2* output,float seed)
 {
 	int i=get_global_id(0);
 	int max=PCOUNT;
-	float dist=0.8;
+	float dist=0.4;
 	if(i>=0 && i<max)
 	{
 		float2 pos;
@@ -233,7 +462,7 @@ local potential_field=opencl.make_buffer(w*h*4*2)
 
 texture=textures:Make()
 texture:use(0)
-texture:set(w,h,F_PIX)
+texture:set(w,h,FL_PIX)
 local display_buffer=opencl.make_buffer_gl(texture)
 
 shader=shaders.Make[[
@@ -259,14 +488,24 @@ float gain(float x, float k)
 void main(){
     vec2 normed=(pos.xy+vec2(1,-1))*vec2(0.5,-0.5);
     normed=(normed-vec2(0.5,0.5))+vec2(0.5,0.5);
+    float anti_grad_step=0.001;
+    //vec4 data=texture(tex_main,normed);
+    //vec4 data=(texture(tex_main,normed)+texture(tex_main,normed+anti_grad_step*vec2(1,0))+texture(tex_main,normed+anti_grad_step*vec2(0,1)));
     vec4 data=texture(tex_main,normed);
+
     //data.x*=data.x;
+   	//float v=dot(data.xy,data.xy);
    	float v=data.x;
-   	//v=v/(v+1);
+   	//if(v<1)
+	//	v=100;
+   	//v=log(v+1);
+   	v=v/(v+1);
    	v=v*field_mult;
-   	v=log(v+1);
    	//v=gain(v,field_gain);
+   	//v=sqrt(sqrt(v));
     vec3 c=palette(v,vec3(0.2),vec3(0.8),vec3(1.5,0.5,1.0),vec3(0.5,0.5,0.25));
+    if(data.y>0)
+    	c=vec3(1);
     color=vec4(c,1);
 }
 ]]
@@ -311,19 +550,34 @@ function update(  )
 	update_grid:set(1,potential_field)
 	update_grid:set(2,display_buffer)
 	update_grid:set(3,time)
-	
-
 
 	--  run kernel
 	display_buffer:aquire()
 	update_grid:run(w*h)
 	display_buffer:release()
+
+	if imgui.Button("Perturb") then
+		local perturb_particles=cl_kernels.perturb_particles
+		perturb_particles:set(0,particle_buffers[2])
+		perturb_particles:set(1,particle_buffers[1])
+		perturb_particles:set(2,math.random())
+		perturb_particles:set(3,config.perturb_str)
+
+		perturb_particles:run(particle_count)
+	end
 	--particle move
 	local update_particles=cl_kernels.update_particles
 	update_particles:set(0,particle_buffers[1])
 	update_particles:set(1,particle_buffers[2])
 	update_particles:set(2,potential_field)
 	update_particles:run(particle_count)
+	local do_recenter=true
+	if do_recenter then
+		local recenter_particles=cl_kernels.recenter_particles
+		recenter_particles:set(0,particle_buffers[2])
+		recenter_particles:set(1,particle_buffers[1])
+		recenter_particles:run(particle_count)
+	end
 	--opengl draw
 	--  read from cl
 	-- actually the kernel writes it itself...
@@ -340,8 +594,12 @@ function update(  )
 	end
 	imgui.End()
 	--flip input/output
-	local b=particle_buffers[2]
-	particle_buffers[2]=particle_buffers[1]
-	particle_buffers[1]=b
+	-- [==[
+	if not do_recenter then
+		local b=particle_buffers[2]
+		particle_buffers[2]=particle_buffers[1]
+		particle_buffers[1]=b
+	end
+	--]==]
 	time=time+0.00001
 end
