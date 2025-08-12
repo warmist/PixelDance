@@ -55,6 +55,7 @@ function four_vec:new( v1,v2,v3,v4 )
 		self[3]=v3
 		self[4]=v4
 	end
+	self.directions={}
 end
 function four_vec:add( other )
 	local ret={}
@@ -80,7 +81,128 @@ end
 function four_vec:to_string(  )
 	return string.format("(4vec %d %d %d %d)",self[1],self[2],self[3],self[4])
 end
-
+function four_vec:set_direction_filled( start_dir,end_dir,face )
+	start_dir=lua_mod(start_dir,12)
+	end_dir=lua_mod(end_dir,12)
+	--print("Setting dir:",start_dir,end_dir,face.id)
+	local cur_dir
+	for i=0,11 do
+		cur_dir=lua_mod(start_dir+i,12)
+		self.directions[cur_dir]=self.directions[cur_dir] or {}
+		local sides=self.directions[cur_dir]
+		if cur_dir~=end_dir then
+			if sides.l~=nil then
+				error("Left side already set to:"..sides.l.id)
+			end
+			sides.l=face
+		end
+		if i~=0 then
+			if sides.r~=nil then
+				error("Right side already set to:"..sides.r.id)
+			end
+			sides.r=face
+		end
+		if cur_dir==end_dir then
+			break
+		end
+	end
+end
+function four_vec:directions_string()
+	local tbl={}
+	for i=1,12 do
+		local sides=self.directions[i]
+		if sides then
+			if sides.l==sides.r then
+				table.insert(tbl,sides.l.id)
+			else
+				local lid=-1
+				if sides.l then lid=sides.l.id end
+				local rid=-1
+				if sides.r then rid=sides.r.id end
+				local substr=string.format("%d/%d",lid,rid)
+				table.insert(tbl,substr)
+			end
+		else
+			table.insert(tbl,"-")
+		end
+	end
+	return table.concat( tbl, " " )
+end
+function four_vec:is_dir_empty(dir)
+	local sides=self.directions[lua_mod(dir,12)]
+	if sides==nil or (sides.l==nil and sides.r==nil) then
+		return true
+	end
+	return false
+end
+function four_vec:is_dir_lempty( dir )
+	local sides=self.directions[lua_mod(dir,12)]
+	if sides==nil or sides.l==nil then
+		return true
+	end
+	return false
+end
+function four_vec:is_dir_rempty( dir )
+	local sides=self.directions[lua_mod(dir,12)]
+	if sides==nil or sides.r==nil then
+		return true
+	end
+	return false
+end
+function four_vec:first_non_empty_back(  )
+	for i=13,2,-1 do
+		if not self:is_dir_empty(i) then
+			return i-1
+		end
+	end
+	return 0
+end
+--first empty direction in ccw
+function four_vec:first_empty( min_size )
+	local offset=self:first_non_empty_back()
+	print("O:",offset)
+	min_size=min_size or 1
+	for i=1,12 do
+		local is_empty=true
+		for mi=0,min_size-1 do
+			if mi==0 then
+				if not self:is_dir_lempty(i+mi+offset) then
+					is_empty=false
+					break
+				end
+			elseif mi==min_size-1 then
+				if not self:is_dir_rempty(i+mi+offset) then
+					is_empty=false
+					break
+				end
+			else
+				if not self:is_dir_empty(i+mi+offset) then
+					is_empty=false
+					break
+				end
+			end
+		end
+		if is_empty then
+			return lua_mod(i+offset,12)
+		end
+	end
+end
+function four_vec:first_empty_ngon( count )
+	local inner_angle=(count-2)*6/count
+	return self:first_empty(inner_angle)
+end
+function four_vec:is_filled( )
+	for i=1,12 do
+		local sides=self.directions[i]
+		if sides==nil then
+			return false
+		end
+		if sides.l==nil or sides.r==nil then
+			return false
+		end
+	end
+	return true
+end
 --vertexes can be one of G-W types
 -- G-> 12gon * 2 + 3gon to
 -- W-> 6*3gon
@@ -97,11 +219,25 @@ end
 		Then the full output might be seed+string of letters (use "_") for empty
 		Or start from vertex seed!
 --]]
+--[[
+
+]]
 local topology={
 	faces={},
 	grid=MultiKeyTable(),
 	unfinished_vertexes={},
 }
+function topology:get_point( v )
+	return self.grid:get_vec(v)
+end
+function topology:getc_point( v )
+	local pt=self.grid:get_vec(v)
+	if pt==nil then
+		self.grid:set_vec(v,v)
+	end
+	return self.grid:get_vec(v)
+end
+
 function topology:check_reverse_edge(v1,v2)
 	-- if v1 and v2 share same two faces => it's a double edge v1<->v2
 	local shared_faces={}
@@ -135,6 +271,7 @@ function topology:is_inside_edge(v1,v2,face)
 end
 function topology:add_face( vertexes,omegas )
 	local ret={vertexes={},count=#vertexes}
+	ret.id=#self.faces+1
 	for vert_id,v in ipairs(vertexes) do
 		local vv=self.grid:get(v[1],v[2],v[3],v[4])
 		--print("Get:",v[1],v[2],v[3],v[4],vv)
@@ -146,9 +283,29 @@ function topology:add_face( vertexes,omegas )
 		table.insert(vv.faces,ret)
 		table.insert(ret.vertexes,vv)
 	end
-	ret.id=#self.faces+1
+	self:link_half_edges()
+
 	table.insert(self.faces,ret)
 	return ret
+end
+function topology:add_ngon(vertex_start,start_omega,count)
+	local ret={vertexes={},count=count}
+	ret.id=#self.faces+1
+	local step=12/count
+	local inner_angle=(count-2)*6/count
+	local cur_pos=self:getc_point(vertex_start)
+	for i =1,12,step do
+		cur_pos:set_direction_filled(i+start_omega-1,i+start_omega-1+inner_angle,ret)
+		table.insert(ret.vertexes,cur_pos)
+		cur_pos=self:getc_point(cur_pos:add(four_vec.omega(i+start_omega-1)))
+	end
+	table.insert(self.faces,ret)
+	return ret
+end
+function topology:fit_ngon(vertex,count )
+	local omega=vertex:first_empty_ngon(count)
+	print("Found omega:",omega,vertex:directions_string())
+	return self:add_ngon(vertex,omega,count)
 end
 function topology:check_vertex_filled( v )
 
@@ -166,8 +323,41 @@ function topology:check_vertex_filled( v )
 	v.finished=true
 	return true
 end
-count_draw=0
+function topology:parse_string(s)
+	--3,4,6,D,*
+	local unfinished_vertexes={}
+	local cur_vertex=topology:getc_point(four_vec(0,0,0,0))
+	function advance_vertex(  )
+		cur_vertex=unfinished_vertexes[1]
+		table.remove(unfinished_vertexes,1)
+		while cur_vertex:is_filled() do
+			cur_vertex=unfinished_vertexes[1]
+			table.remove(unfinished_vertexes,1)
+		end
+	end
+	local ngon_count={
+		['3']=3,['4']=4,['6']=6,['D']=12
+	}
+	for i =1,#s do
+		local letter=s:sub(i,i)
+		print(i,letter)
+		if ngon_count[letter] then
+			local nngon=topology:fit_ngon(cur_vertex,ngon_count[letter])
+			for _,v in ipairs(nngon.vertexes) do
+				table.insert(unfinished_vertexes,v)
+			end
+		elseif letter=="*" then
+			advance_vertex()
+		else
+			error("Invalid command:"..letter)
+		end
+		if cur_vertex:is_filled() then
+			advance_vertex()
+		end
+	end
+end
 
+count_draw=0
 --add triangles of the face to buffers
 function process_face(f,tri_data,color_data,point_offset)
 	--print("Processing face:",f,"with ",#f,"vertices")
@@ -651,7 +841,7 @@ end
 fill_out_unfinished_vert(1,"W")
 --[[
 --]]
-
+--[[
 create_seed('U')
 fill_out_unfinished_vert(1," ")
 fill_out_unfinished_vert(1," ")
@@ -664,7 +854,26 @@ fill_out_unfinished_vert(1," ")
 fill_out_unfinished_vert(1," ")
 
 fill_out_unfinished_vert(1,"U")
-
+--]]
+--[[
+local start=topology:add_ngon(four_vec(0,0,0,0),1,6)
+local zero_point=start.vertexes[1]
+print(zero_point:directions_string(),zero_point:first_empty())
+for i=1,10 do
+	print("\t",i,zero_point:first_empty(i))
+end
+local s2=topology:fit_ngon(zero_point,6)
+local s3=topology:fit_ngon(zero_point,6)
+local pt2=start.vertexes[2]
+print(pt2:directions_string())
+topology:fit_ngon(pt2,3)
+topology:fit_ngon(pt2,3)
+topology:fit_ngon(s2.vertexes[2],3)
+topology:fit_ngon(s2.vertexes[2],3)
+topology:fit_ngon(s3.vertexes[2],3)
+topology:fit_ngon(s3.vertexes[2],3)
+--]]
+topology:parse_string("6663344344334434433443443**********3***********3")--4434*334434433443443")
 fill_faces(topology.faces)
 function save_gdres( name , topology )
 	local f=io.open(name..".txt","w")
