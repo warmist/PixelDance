@@ -1,13 +1,13 @@
 local ffi = require("ffi")
 --[[
-	TODO:
-		* UGH the names!!!! make them sensible
-		* add enum to match the "type_id" in make_buffer
-		* maybe rethink the make_buffer make_texture stuff so it is easier to just stamp them out and read/write
-		* generally go over the stuff and try to simplify
-		* maybe move some stuff to files so it could be easier to reuse (e.g. wave sim in other projects)
-			* wave sim
-			* agent sim
+  TODO:
+    * UGH the names!!!! make them sensible
+    * add enum to match the "type_id" in make_buffer
+    * maybe rethink the make_buffer make_texture stuff so it is easier to just stamp them out and read/write
+    * generally go over the stuff and try to simplify
+    * maybe move some stuff to files so it could be easier to reuse (e.g. wave sim in other projects)
+      * wave sim
+      * agent sim
 ]]
 ffi.cdef[[
 typedef struct { uint8_t r, g, b, a; } rgba_pixel;
@@ -20,95 +20,95 @@ char* png_load(const char* path,int* w,int* h,int* comp,int need_comp);
 ]]
 
 function make_buffer( typename,type_id,default_pixel )
-	return function(w,h)
-		local img={d=ffi.new(typename.."[?]",w*h),w=w,h=h,type=type_id}
-		img.pixel=function ( init )
-			return ffi.new(typename,init or default_pixel)
-		end
-		img.set=function ( t,x,y,v )
-			t.d[x+t.w*y]=v
-		end
-		img.get=function ( t,x,y )
-			return t.d[x+t.w*y]
-		end
-		img.sget=function ( t,x,y )
-			if x<0 then error(string.format("x negative: %g",x)) end
-			if y<0 then error(string.format("y negative: %g",y)) end
-			if x>=t.w then error(string.format("x too large: %g vs %g",x,t.w)) end
-			if y>=t.h then error(string.format("y too large: %g vs %g",y,t.h)) end
-			if x+t.w*y>=t.w*t.h then error("data index too large") end
-			return t.d[x+t.w*y]
-		end
-		img.sset=function ( t,x,y,v )
-			if x<0 then error(string.format("x negative: %g",x)) end
-			if y<0 then error(string.format("y negative: %g",y)) end
-			if x>=t.w then error(string.format("x too large: %g vs %g",x,t.w)) end
-			if y>=t.h then error(string.format("y too large: %g vs %g",y,t.h)) end
-			if x+t.w*y>=t.w*t.h then error("data index too large") end
-			t.d[x+t.w*y]=v
-		end
-		if type_id==0 then
-			img.present=function ( t )
-				__present(t)
-			end
-		end
-		img.read_frame=function ( t )
-			__read_fb(t.d,t.w,t.h)
-		end
-		img.save=function ( t,path,suffix )
-			__save_png(t,path,suffix,true)
-		end
-		img.save_mem=function ( t,suffix )
-			return __save_png_mem(t,suffix,true)
-		end
-		img.clear=function ( t,c )
-			local pix=c or t.pixel()
-			for x=0,w-1 do
-			for y=0,h-1 do
-				t:set(x,y,pix)
-			end
-			end
-		end
-		img.write_texture=function(t, tex )
-			tex:use(1)
-			tex:set(t.d,t.w,t.h,t.type)
-		end
-		img.read_texture=function(t, tex )
-			tex:read(t.d,t.type)
-		end
-		--some matrix functions... for fun?
-		img.tostring=function ( t )
-			return string.format("<arr:%s (%d x %d)>",typename,t.h,t.w)
-		end
-		img.tostring_full=function (t)
-			local ret=string.format("<arr:%s (%d x %d)>\n",typename,t.h,t.w)
+  return function(w,h)
+    local img={d=ffi.new(typename.."[?]",w*h),w=w,h=h,type=type_id}
+    img.pixel=function ( init )
+      return ffi.new(typename,init or default_pixel)
+    end
+    img.set=function ( t,x,y,v )
+      t.d[x+t.w*y]=v
+    end
+    img.get=function ( t,x,y )
+      return t.d[x+t.w*y]
+    end
+    img.sget=function ( t,x,y )
+      if x<0 then error(string.format("x negative: %g",x)) end
+      if y<0 then error(string.format("y negative: %g",y)) end
+      if x>=t.w then error(string.format("x too large: %g vs %g",x,t.w)) end
+      if y>=t.h then error(string.format("y too large: %g vs %g",y,t.h)) end
+      if x+t.w*y>=t.w*t.h then error("data index too large") end
+      return t.d[x+t.w*y]
+    end
+    img.sset=function ( t,x,y,v )
+      if x<0 then error(string.format("x negative: %g",x)) end
+      if y<0 then error(string.format("y negative: %g",y)) end
+      if x>=t.w then error(string.format("x too large: %g vs %g",x,t.w)) end
+      if y>=t.h then error(string.format("y too large: %g vs %g",y,t.h)) end
+      if x+t.w*y>=t.w*t.h then error("data index too large") end
+      t.d[x+t.w*y]=v
+    end
+    if type_id==0 then
+      img.present=function ( t )
+        __present(t)
+      end
+    end
+    img.read_frame=function ( t )
+      __read_fb(t.d,t.w,t.h)
+    end
+    img.save=function ( t,path,suffix )
+      __save_png(t,path,suffix,true)
+    end
+    img.save_mem=function ( t,suffix )
+      return __save_png_mem(t,suffix,true)
+    end
+    img.clear=function ( t,c )
+      local pix=c or t.pixel()
+      for x=0,w-1 do
+      for y=0,h-1 do
+        t:set(x,y,pix)
+      end
+      end
+    end
+    img.write_texture=function(t, tex )
+      tex:use(1)
+      tex:set(t.d,t.w,t.h,t.type)
+    end
+    img.read_texture=function(t, tex )
+      tex:read(t.d,t.type)
+    end
+    --some matrix functions... for fun?
+    img.tostring=function ( t )
+      return string.format("<arr:%s (%d x %d)>",typename,t.h,t.w)
+    end
+    img.tostring_full=function (t)
+      local ret=string.format("<arr:%s (%d x %d)>\n",typename,t.h,t.w)
 
-			for y=0,t.h-1 do
-				local l=" "
-				for x=0,t.w-1 do
-					l=l..string.format("%g ",t:get(x,y))
-				end
-				ret=ret..l.."\n"
-			end
-			return ret
-		end
-		img.buffer_data=function ( t )
-			if t.buf_data==nil then
-				t.buf_data=buffer_data.Make()
-			end
-			return t.buf_data
-		end
-		img.update_buffer_data=function ( t,count )
-			count=count or t.w*t.h
-			local b=t:buffer_data()
-			b:use()
-			b:set(t.d,count*size_of_data[type_id])
-			__unbind_buffer()
-			return b
-		end
+      for y=0,t.h-1 do
+        local l=" "
+        for x=0,t.w-1 do
+          l=l..string.format("%g ",t:get(x,y))
+        end
+        ret=ret..l.."\n"
+      end
+      return ret
+    end
+    img.buffer_data=function ( t )
+      if t.buf_data==nil then
+        t.buf_data=buffer_data.Make()
+      end
+      return t.buf_data
+    end
+    img.update_buffer_data=function ( t,count )
+      count=count or t.w*t.h
+      local b=t:buffer_data()
+      b:use()
+      b:set(t.d,count*size_of_data[type_id])
+      __unbind_buffer()
+      return b
+    end
 
-		return img
-	end
+    return img
+  end
 end
 
 RGBA_PIX=0
@@ -120,13 +120,13 @@ U32_PIX=5
 U32_1C_PIX=6
 
 size_of_data={
-	[RGBA_PIX]=4*1,
-	[FLTA_PIX]=4*4,
-	[F_PIX]=4*1,
-	[FL_PIX]=4*2,
-	[U8_PIX]=1,
-	[U32_PIX]=4*4,
-	[U32_1C_PIX]=4*1,
+  [RGBA_PIX]=4*1,
+  [FLTA_PIX]=4*4,
+  [F_PIX]=4*1,
+  [FL_PIX]=4*2,
+  [U8_PIX]=1,
+  [U32_PIX]=4*4,
+  [U32_1C_PIX]=4*1,
 }
 
 make_image_buffer= make_buffer("rgba_pixel",RGBA_PIX,{0,0,0,255})
@@ -141,168 +141,168 @@ make_u32_1c_buffer= make_buffer("uint32_t",U32_1C_PIX,0)
 
 make_matrix=make_float_buffer
 function make_ident_matrix( w,h )
-	local ret=make_float_buffer(w,h)
-	for x=0,w-1 do
-		for y=0,h-1 do
-			if x==y then
-				ret:set(x,y,1)
-			else
-				ret:set(x,y,0)
-			end
-		end
-	end
-	return ret
+  local ret=make_float_buffer(w,h)
+  for x=0,w-1 do
+    for y=0,h-1 do
+      if x==y then
+        ret:set(x,y,1)
+      else
+        ret:set(x,y,0)
+      end
+    end
+  end
+  return ret
 end
 -------------GUI
 
 function make_config(tbl,defaults)
-	local ret={}
-	defaults=defaults or {}
-	for i,v in ipairs(tbl) do
-		if defaults[v[1]]==nil then
-			ret[v[1]]= v[2]
-		else
-			ret[v[1]]=defaults[v[1]]
-		end
-		ret[i]=v
-	end
-	return ret
+  local ret={}
+  defaults=defaults or {}
+  for i,v in ipairs(tbl) do
+    if defaults[v[1]]==nil then
+      ret[v[1]]= v[2]
+    else
+      ret[v[1]]=defaults[v[1]]
+    end
+    ret[i]=v
+  end
+  return ret
 end
 
 function draw_config( tbl )
-	tbl.__change_events={}
-	for _,entry in ipairs(tbl) do
-		local name=entry[1]
-		local v=tbl[name]
-		local k=name
-		if name=="__change_events" then
-			--skip special (hidden?) entry
-		elseif type(v)=="boolean" then
-			if imgui.RadioButton(k,tbl[k]) then
-				tbl[k]=not tbl[k]
-			end
-		--[[elseif type(v)=="string" then
-			local changing
-			changing,tbl[k]=imgui.InputText(k,tbl[k])
-			entry.changing=changing
-			--]]
-		else --if type(v)~="table" then
-			
-			if entry.type=="int" then
-				local changing
-				changing,tbl[k]=imgui.SliderInt(k,tbl[k],entry.min or 0,entry.max or 100)
-				entry.changing=changing
-				imgui.SameLine()
-				if imgui.Button("R##"..k) then
-					entry.changing=true
-					tbl[k]=math.random(entry.min or 0,entry.max or 100)
-				end
-			elseif entry.type=="float" then
-				local changing
-				changing,tbl[k]=imgui.SliderFloat(k,tbl[k],entry.min or 0,entry.max or 1,"%.3f",entry.power or 1)
-				entry.changing=changing
-				imgui.SameLine()
-				if imgui.Button("R##"..k) then
-					entry.changing=true
-					local mm=entry.max or 1
-					local mi=entry.min or 0
-					tbl[k]=math.random()*(mm-mi)+mi
-				end
-			elseif entry.type=="angle" then
-				local changing
-				changing,tbl[k]=imgui.SliderAngle(k,tbl[k],entry.min or 0,(entry.max or math.pi*2)*180/math.pi)
-				entry.changing=changing
-				imgui.SameLine()
-				if imgui.Button("R##"..k) then
-					entry.changing=true
-					local mm=entry.max or math.pi*2
-					local mi=entry.min or 0
-					tbl[k]=math.random()*(mm-mi)+mi
-				end
-			elseif entry.type=="color" then
-				local changing
-				changing,tbl[k]=imgui.ColorEdit4(k,tbl[k],true)
-				entry.changing=changing
-				imgui.SameLine()
-				if imgui.Button("R##"..k) then
-					entry.changing=true
-					local mm=entry.max or 1
-					local mi=entry.min or 0
-					tbl[k]={math.random(),math.random(),math.random(),1}
-				end
-			elseif entry.type=="floatsci" then
-				local changing
-				changing,tbl[k]=imgui.SliderFloat(k,tbl[k],entry.min or 0,entry.max or 1,"%g",entry.power or 1)
-				entry.changing=changing
-				imgui.SameLine()
-				if imgui.Button("R##"..k) then
-					entry.changing=true
-					local mm=entry.max or 1
-					local mi=entry.min or 0
-					tbl[k]=math.random()*(mm-mi)+mi
-				end
-			elseif entry.type=="choice" then
-				local changing
-				changing,tbl[k]=imgui.Combo(k,tbl[k],entry.choices)
-				entry.changing=changing
-				imgui.SameLine()
-				if imgui.Button("R##"..k) then
-					entry.changing=true
-					tbl[k]=math.random(0,#entry.choices-1)
-				end
-			end
-			imgui.SameLine()
-			if imgui.Button("Z##"..k) then
-				entry.changing=true
-				tbl[k]=entry[2]
-			end
-		end
-	end
-	for _,entry in ipairs(tbl) do
-		if name~="__change_events" then
-			if entry.watch and entry.changing then
-				tbl.__change_events[entry[1]]=true
-				tbl.__change_events.any=true
-			end
-		end
-	end
+  tbl.__change_events={}
+  for _,entry in ipairs(tbl) do
+    local name=entry[1]
+    local v=tbl[name]
+    local k=name
+    if name=="__change_events" then
+      --skip special (hidden?) entry
+    elseif type(v)=="boolean" then
+      if imgui.RadioButton(k,tbl[k]) then
+        tbl[k]=not tbl[k]
+      end
+    --[[elseif type(v)=="string" then
+      local changing
+      changing,tbl[k]=imgui.InputText(k,tbl[k])
+      entry.changing=changing
+      --]]
+    else --if type(v)~="table" then
+      
+      if entry.type=="int" then
+        local changing
+        changing,tbl[k]=imgui.SliderInt(k,tbl[k],entry.min or 0,entry.max or 100)
+        entry.changing=changing
+        imgui.SameLine()
+        if imgui.Button("R##"..k) then
+          entry.changing=true
+          tbl[k]=math.random(entry.min or 0,entry.max or 100)
+        end
+      elseif entry.type=="float" then
+        local changing
+        changing,tbl[k]=imgui.SliderFloat(k,tbl[k],entry.min or 0,entry.max or 1,"%.3f",entry.power)
+        entry.changing=changing
+        imgui.SameLine()
+        if imgui.Button("R##"..k) then
+          entry.changing=true
+          local mm=entry.max or 1
+          local mi=entry.min or 0
+          tbl[k]=math.random()*(mm-mi)+mi
+        end
+      elseif entry.type=="angle" then
+        local changing
+        changing,tbl[k]=imgui.SliderAngle(k,tbl[k],entry.min or 0,(entry.max or math.pi*2)*180/math.pi)
+        entry.changing=changing
+        imgui.SameLine()
+        if imgui.Button("R##"..k) then
+          entry.changing=true
+          local mm=entry.max or math.pi*2
+          local mi=entry.min or 0
+          tbl[k]=math.random()*(mm-mi)+mi
+        end
+      elseif entry.type=="color" then
+        local changing
+        changing,tbl[k]=imgui.ColorEdit4(k,tbl[k],true)
+        entry.changing=changing
+        imgui.SameLine()
+        if imgui.Button("R##"..k) then
+          entry.changing=true
+          local mm=entry.max or 1
+          local mi=entry.min or 0
+          tbl[k]={math.random(),math.random(),math.random(),1}
+        end
+      elseif entry.type=="floatsci" then
+        local changing
+        changing,tbl[k]=imgui.SliderFloat(k,tbl[k],entry.min or 0,entry.max or 1,"%g",entry.power)
+        entry.changing=changing
+        imgui.SameLine()
+        if imgui.Button("R##"..k) then
+          entry.changing=true
+          local mm=entry.max or 1
+          local mi=entry.min or 0
+          tbl[k]=math.random()*(mm-mi)+mi
+        end
+      elseif entry.type=="choice" then
+        local changing
+        changing,tbl[k]=imgui.Combo(k,tbl[k],entry.choices)
+        entry.changing=changing
+        imgui.SameLine()
+        if imgui.Button("R##"..k) then
+          entry.changing=true
+          tbl[k]=math.random(0,#entry.choices-1)
+        end
+      end
+      imgui.SameLine()
+      if imgui.Button("Z##"..k) then
+        entry.changing=true
+        tbl[k]=entry[2]
+      end
+    end
+  end
+  for _,entry in ipairs(tbl) do
+    if name~="__change_events" then
+      if entry.watch and entry.changing then
+        tbl.__change_events[entry[1]]=true
+        tbl.__change_events.any=true
+      end
+    end
+  end
 end
 function serialize_config( tbl,tbl_name )
-	local ret=""
-	tbl_name=tbl_name or "config"
+  local ret=""
+  tbl_name=tbl_name or "config"
 
-	for _,entry in ipairs(tbl) do
-		local name=entry[1]
-		local v=tbl[name]
-		local k=name
-		if type(v)=="boolean" or type(v)=="string" then
-			ret=ret..string.format("%s[%q]=%s\n",tbl_name,k,tbl[k])
-		else --if type(v)~="table" then
-			local simple_types={int=true,float=true,angle=true,floatsci=true}
-			if simple_types[entry.type] then
-				ret=ret..string.format("%s[%q]=%s\n",tbl_name,k,tbl[k])
-			elseif entry.type=="color" then
-				local c=tbl[k]
-				ret=ret..string.format("%s[%q]={%s,%s,%s,%s}\n",tbl_name,k,c[1],c[2],c[3],c[4])
-			else
-				error("invalid config type")
-			end
-		end
-	end
-	return ret
+  for _,entry in ipairs(tbl) do
+    local name=entry[1]
+    local v=tbl[name]
+    local k=name
+    if type(v)=="boolean" or type(v)=="string" then
+      ret=ret..string.format("%s[%q]=%s\n",tbl_name,k,tbl[k])
+    else --if type(v)~="table" then
+      local simple_types={int=true,float=true,angle=true,floatsci=true}
+      if simple_types[entry.type] then
+        ret=ret..string.format("%s[%q]=%s\n",tbl_name,k,tbl[k])
+      elseif entry.type=="color" then
+        local c=tbl[k]
+        ret=ret..string.format("%s[%q]={%s,%s,%s,%s}\n",tbl_name,k,c[1],c[2],c[3],c[4])
+      else
+        error("invalid config type")
+      end
+    end
+  end
+  return ret
 end
 function is_mouse_down(  )
-	return __mouse.clicked0 and not __mouse.owned0, __mouse.x,__mouse.y
+  return __mouse.clicked0 and not __mouse.owned0, __mouse.x,__mouse.y
 end
 
 ------------MISC
 
 function make_copy( tbl )
-	local ret={}
-	for k,v in pairs(tbl) do
-		ret[k]=v
-	end
-	return ret
+  local ret={}
+  for k,v in pairs(tbl) do
+    ret[k]=v
+  end
+  return ret
 end
 
 function gaussian (mean, variance)
@@ -311,34 +311,34 @@ function gaussian (mean, variance)
 end
 
 function gaussian2 (mean1, variance1, mean2, variance2)
-	local r1=math.random()
-	local r2=math.random()
+  local r1=math.random()
+  local r2=math.random()
     return  math.sqrt(-2 * variance1 * math.log(r1)) * math.cos(2 * math.pi * r2) + mean1,
-    		math.sqrt(-2 * variance2 * math.log(r1)) * math.sin(2 * math.pi * r2) + mean2
+        math.sqrt(-2 * variance2 * math.log(r1)) * math.sin(2 * math.pi * r2) + mean2
 end
 function random_in_circle(radius,cx,cy)
-	local r=math.sqrt(math.random())*radius
-	local theta=math.random()*math.pi*2
-	return cx+r*math.cos(theta),cy+r*math.sin(theta)
+  local r=math.sqrt(math.random())*radius
+  local theta=math.random()*math.pi*2
+  return cx+r*math.cos(theta),cy+r*math.sin(theta)
 end
 ------------
 
 function load_png( path )
-	local w=ffi.new 'int[1]'
-	local h=ffi.new 'int[1]'
-	local comp=ffi.new 'int[1]'
+  local w=ffi.new 'int[1]'
+  local h=ffi.new 'int[1]'
+  local comp=ffi.new 'int[1]'
 
-	local data=ffi.C.png_load(path,w,h,comp,4)
-	local ret=make_image_buffer(w[0],h[0])
-	for i=0,w[0]*h[0]-1 do
-		local p=ret.d[i]
-		p.r=data[i*4]
-		p.g=data[i*4+1]
-		p.b=data[i*4+2]
-		p.a=data[i*4+3]
-	end
-	ffi.C.free_image(data)
-	return ret
+  local data=ffi.C.png_load(path,w,h,comp,4)
+  local ret=make_image_buffer(w[0],h[0])
+  for i=0,w[0]*h[0]-1 do
+    local p=ret.d[i]
+    p.r=data[i*4]
+    p.g=data[i*4+1]
+    p.b=data[i*4+2]
+    p.a=data[i*4+3]
+  end
+  ffi.C.free_image(data)
+  return ret
 end
 
 ----------------
@@ -418,11 +418,11 @@ end
 
 -- scalar multiplication and division is '*' and '/' respectively
 function Point.__mul(s,p)
-	if type(s)=="number" then
-  		return Point( s*p[1], s*p[2], s*p[3] )
-  	else
-  		return Point( s[1]*p, s[2]*p, s[3]*p )
-  	end
+  if type(s)=="number" then
+      return Point( s*p[1], s*p[2], s*p[3] )
+    else
+      return Point( s[1]*p, s[2]*p, s[3]*p )
+    end
 end
 
 function Point.__div(p,s)
@@ -500,241 +500,241 @@ end
 
 -------------------------------------------
 function GenPointN( N ) --ndimensional vector
-	local Point = class(function(pt,...)
-		local arg={...}
-		local count=#arg
-		if count==0 then
-	   		pt:set(0)
-	   	elseif count==1 and type(arg[1])=="table" then
-	   		pt:set(arg[1])
-	   	else
-	   		pt:set(...)
-	   	end
-	end)
+  local Point = class(function(pt,...)
+    local arg={...}
+    local count=#arg
+    if count==0 then
+        pt:set(0)
+      elseif count==1 and type(arg[1])=="table" then
+        pt:set(arg[1])
+      else
+        pt:set(...)
+      end
+  end)
 
-	function Point.get(p)
-	  return table.unpack(p)
-	end
+  function Point.get(p)
+    return table.unpack(p)
+  end
 
-	function Point.__add(p1,p2)
-		local tbl={}
-		for i=1,N do
-			tbl[i]=p1[i]+p2[i]
-		end
-	  	return Point(tbl)
-	end
+  function Point.__add(p1,p2)
+    local tbl={}
+    for i=1,N do
+      tbl[i]=p1[i]+p2[i]
+    end
+      return Point(tbl)
+  end
 
-	function Point.__sub(p1,p2)
-		local tbl={}
-		for i=1,N do
-			tbl[i]=p1[i]-p2[i]
-		end
-	  	return Point(tbl)
-	end
+  function Point.__sub(p1,p2)
+    local tbl={}
+    for i=1,N do
+      tbl[i]=p1[i]-p2[i]
+    end
+      return Point(tbl)
+  end
 
 -- unitary minus  (e.g in the expression f(-p))
-	function Point.__unm(p)
-		local tbl={}
-		for i=1,N do
-			tbl[i]=-p[i]
-		end
-		return Point(tbl)
-	end
+  function Point.__unm(p)
+    local tbl={}
+    for i=1,N do
+      tbl[i]=-p[i]
+    end
+    return Point(tbl)
+  end
 
 -- scalar multiplication and division is '*' and '/' respectively
-	function Point.__mul(a1,a2)
-  		local tbl={}
-  		local s=a1
-  		local p=a2
-  		if type(a2)=="number" then
-  			s=a2
-  			p=a1
-  		end
-		for i=1,N do
-			tbl[i]=p[i]*s
-		end
+  function Point.__mul(a1,a2)
+      local tbl={}
+      local s=a1
+      local p=a2
+      if type(a2)=="number" then
+        s=a2
+        p=a1
+      end
+    for i=1,N do
+      tbl[i]=p[i]*s
+    end
 
-	  	return Point(tbl)
-	end
+      return Point(tbl)
+  end
 
-	function Point.__div(p,s)
-  		local tbl={}
-		for i=1,N do
-			tbl[i]=p[i]/s
-		end
-	  	return Point(tbl)
-	end
+  function Point.__div(p,s)
+      local tbl={}
+    for i=1,N do
+      tbl[i]=p[i]/s
+    end
+      return Point(tbl)
+  end
 
 -- dot product is '..'
-	function Point.__concat(p1,p2)
-  		local sum=0
-		for i=1,N do
-			sum=sum+p1[i]*p2[i]
-		end
-	  	return sum
-	end
+  function Point.__concat(p1,p2)
+      local sum=0
+    for i=1,N do
+      sum=sum+p1[i]*p2[i]
+    end
+      return sum
+  end
 
-	function Point.normalize(p)
-		local l = p:len()
-		return p/l
-	end
+  function Point.normalize(p)
+    local l = p:len()
+    return p/l
+  end
 
-	function Point.set(pt,...)
-		local arg={...}
-	  	if type(arg[1]) == 'table'  then --and getmetatable(x) == Point
-	  		local tbl=arg[1]
-	     	for i=1,N do
-				pt[i]=tbl[i] or 0
-			end
-	  	else
-	  		for i=1,N do
-				pt[i]=arg[i] or 0
-			end
-		end
-	end
-	local pt_format=string.format("(%s)",string.rep("%f",N,","))
-	function Point.__tostring(p)
-	  return string.format(pt_format,unpack(p))
-	end
+  function Point.set(pt,...)
+    local arg={...}
+      if type(arg[1]) == 'table'  then --and getmetatable(x) == Point
+        local tbl=arg[1]
+        for i=1,N do
+        pt[i]=tbl[i] or 0
+      end
+      else
+        for i=1,N do
+        pt[i]=arg[i] or 0
+      end
+    end
+  end
+  local pt_format=string.format("(%s)",string.rep("%f",N,","))
+  function Point.__tostring(p)
+    return string.format(pt_format,unpack(p))
+  end
 
-	function Point.len_sq(p)
-	  return p..p
-	end
+  function Point.len_sq(p)
+    return p..p
+  end
 
-	function Point.len(p)
-	  return math.sqrt(p:len_sq())
-	end
+  function Point.len(p)
+    return math.sqrt(p:len_sq())
+  end
 
-	return Point
+  return Point
 end
 
 
 -------------------------------------------
-GL_BYTE=			0x1400
-GL_UNSIGNED_BYTE=	0x1401
-GL_SHORT=			0x1402
-GL_UNSIGNED_SHORT=	0x1403
-GL_INT=				0x1404
-GL_UNSIGNED_INT=	0x1405
-GL_FLOAT=			0x1406
-GL_2_BYTES=			0x1407
-GL_3_BYTES=			0x1408
-GL_4_BYTES=			0x1409
-GL_DOUBLE=			0x140A
+GL_BYTE=      0x1400
+GL_UNSIGNED_BYTE= 0x1401
+GL_SHORT=     0x1402
+GL_UNSIGNED_SHORT=  0x1403
+GL_INT=       0x1404
+GL_UNSIGNED_INT=  0x1405
+GL_FLOAT=     0x1406
+GL_2_BYTES=     0x1407
+GL_3_BYTES=     0x1408
+GL_4_BYTES=     0x1409
+GL_DOUBLE=      0x140A
 --------------------------------------------
 
 multi_texture=class(
 function(mb,w,h,buf_count,texture_type)
-	mb.count=buf_count
-	mb.type=texture_type
-	mb.current=1
-	mb:update_size(w,h)
+  mb.count=buf_count
+  mb.type=texture_type
+  mb.current=1
+  mb:update_size(w,h)
 end
 )
 function multi_texture:update_size( w,h )
-	self.textures=self.textures or {}
- 	if self.w~=w or self.h~=h then
- 		self.w=w
- 		self.h=h
- 		for i=1,self.count do
- 			local t=textures:Make()
- 			t:use(0,1)
- 			t:set(w,h,self.type)
- 			self.textures[i]=t
- 		end
- 	end
+  self.textures=self.textures or {}
+  if self.w~=w or self.h~=h then
+    self.w=w
+    self.h=h
+    for i=1,self.count do
+      local t=textures:Make()
+      t:use(0,1)
+      t:set(w,h,self.type)
+      self.textures[i]=t
+    end
+  end
 end
 function multi_texture:advance(  )
-	self.current=self.current+1
-	if self.current>self.count then
-		self.current=1
-	end
+  self.current=self.current+1
+  if self.current>self.count then
+    self.current=1
+  end
 end
 function multi_texture:get(offset)
-	offset =offset or 0
-	local id=self.current+offset
-	id=((id-1) % self.count)+1
-	return self.textures[id]
+  offset =offset or 0
+  local id=self.current+offset
+  id=((id-1) % self.count)+1
+  return self.textures[id]
 end
 function multi_texture:get_next()
-	return self:get(1)
+  return self:get(1)
 end
 function multi_texture:get_prev()
-	return self:get(self.count-1)
+  return self:get(self.count-1)
 end
 -----------------------------------------
 --TODO: better state on creation
 multi_buffer=class(
 function(mb,buf_count)
-	mb.count=buf_count
-	mb.current=1
-	mb:reinit()
+  mb.count=buf_count
+  mb.current=1
+  mb:reinit()
 end
 )
 function multi_buffer:reinit(force)
-	--TODO: implement force reinit or refactor etc..
-	self.buffers=self.buffers or {}
- 	for i=1,self.count do
- 		if self.buffers[i]==nil or force then
- 			local t=buffer_data.Make()
- 			self.buffers[i]=t
- 		end
- 	end
+  --TODO: implement force reinit or refactor etc..
+  self.buffers=self.buffers or {}
+  for i=1,self.count do
+    if self.buffers[i]==nil or force then
+      local t=buffer_data.Make()
+      self.buffers[i]=t
+    end
+  end
 end
 function multi_buffer:advance(  )
-	self.current=self.current+1
-	if self.current>self.count then
-		self.current=1
-	end
+  self.current=self.current+1
+  if self.current>self.count then
+    self.current=1
+  end
 end
 function multi_buffer:get(offset)
-	offset =offset or 0
-	local id=self.current+offset
-	id=((id-1) % self.count)+1
-	return self.buffers[id]
+  offset =offset or 0
+  local id=self.current+offset
+  id=((id-1) % self.count)+1
+  return self.buffers[id]
 end
 function multi_buffer:get_next()
-	return self:get(1)
+  return self:get(1)
 end
 function multi_buffer:get_prev()
-	return self:get(self.count-1)
+  return self:get(self.count-1)
 end
 -----------------------------------------
 gif_saver=class(
 function(gs,fname,buffer,frames,frame_skip)
-	gif_saver.start(gs,fname,buffer,frames,frame_skip)
+  gif_saver.start(gs,fname,buffer,frames,frame_skip)
 end
 )
 function gif_saver:start(fname,buffer,frames,frame_skip )
-	self:stop()
-	__gif_start(buffer,fname)
-	self.no_frames_to_save=frames
-	self.frame_skip=frame_skip or 1
-	self.current_frame=0
+  self:stop()
+  __gif_start(buffer,fname)
+  self.no_frames_to_save=frames
+  self.frame_skip=frame_skip or 1
+  self.current_frame=0
 end
 function gif_saver:stop()
-	__gif_end()
-	self.current_frame=0
-	self.no_frames_to_save=0
+  __gif_end()
+  self.current_frame=0
+  self.no_frames_to_save=0
 end
 --TODO: save frame only if change is >some value
 function gif_saver:want_frame(  )
-	if self.no_frames_to_save<=0 then
-		return false
-	end
-	return ((self.current_frame+1) % self.frame_skip)==0
+  if self.no_frames_to_save<=0 then
+    return false
+  end
+  return ((self.current_frame+1) % self.frame_skip)==0
 end
 function gif_saver:frame( buffer,delay )
-	--delay is optional
-	self.current_frame=self.current_frame+1
-	if self.current_frame % self.frame_skip==0 then
-		self.no_frames_to_save=self.no_frames_to_save-1
-		print("GIF FRAME, Left:",self.no_frames_to_save)
-		__gif_frame(buffer,delay)
-		if self.no_frames_to_save==0 then
-			__gif_end()
-		end
-	end
+  --delay is optional
+  self.current_frame=self.current_frame+1
+  if self.current_frame % self.frame_skip==0 then
+    self.no_frames_to_save=self.no_frames_to_save-1
+    print("GIF FRAME, Left:",self.no_frames_to_save)
+    __gif_frame(buffer,delay)
+    if self.no_frames_to_save==0 then
+      __gif_end()
+    end
+  end
 end
 
 
@@ -802,52 +802,52 @@ function DisjointSet:union(element1, element2)
 end
 ----------------------------------------------------
 Grapher=class(function (cls, size )
-	cls:reinit(size)
+  cls:reinit(size)
 end)
 function Grapher:reinit( size )
-	self.size=size
-	self.current_size=0
-	self.filter_count=0
-	self.filter_data={}
-	self.buffer=make_float_buffer(size,1);
+  self.size=size
+  self.current_size=0
+  self.filter_count=0
+  self.filter_data={}
+  self.buffer=make_float_buffer(size,1);
 end
 function Grapher:set_filter( filter_count )
-	self.filter_count=filter_count
-	self.filter_data={}
+  self.filter_count=filter_count
+  self.filter_data={}
 end
 function Grapher:draw(label)
-	imgui.PlotLines(label,self.buffer.d,self.current_size)
+  imgui.PlotLines(label,self.buffer.d,self.current_size)
 end
 function Grapher:clear()
-	self.current_size=0
-	self.filter_data={}
+  self.current_size=0
+  self.filter_data={}
 end
 function Grapher:add_value( v )
-	if self.filter_count>0 then
-		if #self.filter_data<self.filter_count then
-			table.insert(self.filter_data,v)
-			return
-		else
-			local vv=0
-			for i,v in ipairs(self.filter_data) do
-				vv=vv+v
-			end
-			vv=vv/#self.filter_data
-			self.filter_data={}
-			v=vv
-		end
-	end
-	if self.current_size<self.size-1 then
-		--append and grow
-		self.buffer:set(self.current_size,0,v)
-		self.current_size=self.current_size+1
-	else
-		--move over all values, and set the last one
-		for i=0,self.current_size-2 do
-			self.buffer:set(i,0,self.buffer:get(i+1,0))
-		end
-		self.buffer:set(self.current_size-1,0,v)
-	end
+  if self.filter_count>0 then
+    if #self.filter_data<self.filter_count then
+      table.insert(self.filter_data,v)
+      return
+    else
+      local vv=0
+      for i,v in ipairs(self.filter_data) do
+        vv=vv+v
+      end
+      vv=vv/#self.filter_data
+      self.filter_data={}
+      v=vv
+    end
+  end
+  if self.current_size<self.size-1 then
+    --append and grow
+    self.buffer:set(self.current_size,0,v)
+    self.current_size=self.current_size+1
+  else
+    --move over all values, and set the last one
+    for i=0,self.current_size-2 do
+      self.buffer:set(i,0,self.buffer:get(i+1,0))
+    end
+    self.buffer:set(self.current_size-1,0,v)
+  end
 end
 
 ----------------------------------------------------------------
@@ -976,4 +976,34 @@ function sign( v )
     else
         return -1
     end
+end
+
+--TODO: this probably never gc keys?
+MultiKeyTable=class(function (tbl, ...)
+    tbl:new(...)
+  end
+  )
+
+function MultiKeyTable:new()
+    self.keys={}
+    self.data={}
+end
+function MultiKeyTable:get_key(argcount, ... )
+    local key=self.keys
+    for i=1,argcount do
+        local kk=select(i,...)
+        if key[kk]==nil then
+            key[kk]={}
+        end
+        key=key[kk]
+    end
+    return key
+end
+function MultiKeyTable:get(...)
+    return self.data[self:get_key(select("#",...),...)]
+end
+
+function MultiKeyTable:set(...)
+    local argcount=select("#",...)
+    self.data[self:get_key(argcount-1,...)]=select(argcount,...)
 end

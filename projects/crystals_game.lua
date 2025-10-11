@@ -3,7 +3,7 @@
 
 	factorio like with some rts features. Maybe some procedural generated abilities and co.
 
-	crystal like because this is rewareded:
+	crystal like because this is rewarded:
 		- repeating structure
 		- symmetries
 		- scale symmetry? (hard to imagine how that would work)

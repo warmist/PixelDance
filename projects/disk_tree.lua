@@ -614,10 +614,12 @@ function save_img_vor(path)
 			-- [===[vornoi with borders AA
 			local border_size=1.5
 			local nn=agent_tree:knn(2,{x,y})
-			local pix_border={r=50,g=50,b=50,a=255}
+			local pix_border={r=10,g=10,b=10,a=255}
 			if #nn==2 then
 				local a1=agent_data:get(nn[1][1],0)
 				local a2=agent_data:get(nn[2][1],0)
+				local _,typ1=decode_rad(a1.a)
+				local _,typ2=decode_rad(a2.a)
 				--vector from one to the other
 				local vec={a2.r-a1.r,a2.g-a1.g}
 				local len=math.sqrt(vec[1]*vec[1]+vec[2]*vec[2])
@@ -625,7 +627,7 @@ function save_img_vor(path)
 				local scale=dprod/(len*len)
 				local border_dist=len*math.abs(0.5-scale)
 
-				if border_dist>border_size then
+				if border_dist>border_size or (typ1==2 and typ2==2) then
 					local cdata=agent_data:get(nn[1][1],0)
 					local rad2,typ=decode_rad(cdata.a)
 					img_buf:set(x,y,palette[typ])
@@ -838,6 +840,60 @@ function full_sim(  )
 	end
     sim_thread=nil
 end
+function fill_circles()
+	local r=8
+	local x_step=r*2
+	local y_step=r*2*3/4
+	local x_count=math.floor(size[1]/x_step)
+	local y_count=math.floor((size[2]-r)/y_step)
+	local missing_tree=kd_tree.Make(2)
+	local count_missing=100
+	local D=r*3
+	local DD=D*D
+	local missing_tbl={}
+	for i=1,count_missing do
+		local t=math.random()
+		local d=(math.random()-0.5)*r*30
+		local rx=t*size[1]
+		local ry=t*size[2]+d
+		missing_tree:add{rx,ry}
+		table.insert(missing_tbl,math.random()*0.5+0.25)
+		add_circle({rx,ry,math.random()*math.pi*2,encode_rad(r,2)})
+	end
+	for i=1,5 do
+		local rx=math.random(0,size[1])
+		local ry=math.random(0,size[2])
+		missing_tree:add{rx,ry}
+		table.insert(missing_tbl,math.random()*0.25+5)
+		add_circle({rx,ry,math.random()*math.pi*2,encode_rad(r,3)})
+	end
+
+	for j=0,y_count do
+	for i=0,x_count do
+		local x=i*x_step
+		if j%2==1 then
+			x=x+x_step/2
+		end
+		local y=r+j*y_step
+		--if math.random()<0.85 then
+		--[[
+		local cx=x-size[1]/2
+		local cy=y-size[2]/2
+		local l=math.sqrt(cx*cx+cy*cy)
+		if l>r*3 then--]]
+		local nn=missing_tree:knn(1,{x,y})[1]
+		--local cdata=agent_data:get(v[1],0)
+
+		if nn[2]>DD*missing_tbl[nn[1]+1] then
+			add_circle({x,y,math.random()*math.pi*2,encode_rad(r,1)})
+		else
+			--add_circle({x,y,math.random()*math.pi*2,encode_rad(r,2)})
+		end
+	end
+	end
+
+	write_circle_buffer()
+end
 local count_frames=1
 current_frame=0
 function update(  )
@@ -868,6 +924,11 @@ function update(  )
     end
     imgui.SameLine()
     imgui.Text(string.format("H:%d",#circle_data.heads))
+    imgui.SameLine()
+    if imgui.Button("Fill") then
+    	restart()
+    	fill_circles()
+    end
     if imgui.Button("Restart") then
     	restart()
     end

@@ -749,6 +749,46 @@ vec4 gravity_system(vec4 c,vec2 normed)
 	pos*=clamp(l,0,dist_scale);
 	return pos;
 }
+//second attempt at understanding this stuff...
+float F(float p,vec4 k)
+{
+	//return (1-p)*(p*k.x-sqrt(p)*k.y+(k.z/(1+p)))*k.w;
+	return 0;
+}
+//basic idea to have functions that are f(X)=0 at dot(X,X)=1. Then F(X)*f(X)+G(dot(X,X))
+vec4 second_pass(vec4 c,vec2 normed)
+{
+	vec4 scale=vec4(10);
+	vec4 offset=-scale/2;
+
+	vec4 k=kill_feed;
+#ifdef MAPPING
+	if (map_region[0].x>=0)
+	{
+		#define MAPPED_VALUE(id,value) value=mix(value,mix(map_region[id].x,map_region[id].y,mix(normed.x,normed.y,map_region[id].w)),map_region[id].z)
+		MAPPED_VALUE(0,k.x);
+		MAPPED_VALUE(1,k.y);
+		MAPPED_VALUE(2,k.z);
+		MAPPED_VALUE(3,k.w);
+		#undef MAPPED_VALUE	
+	}
+#endif
+	k=k*scale+offset;
+	vec4 roots=vec4(0.1,0.5,0.75,0.3);
+	float rsq=dot(c,c);
+	float prefix=exp(1-rsq);
+	vec4 r1=c-roots.xxxx;
+	vec4 r2=c-roots.yyyy;
+	vec4 r3=c-roots.zzzz;
+	vec4 r4=c-roots.wwww;
+
+
+	//float prefix=1-rsq;
+	return vec4(prefix*(k.x*r1.x*r1.x*r1.x-r2.y*r2.w*r3.w)-F(rsq,k.xyzw),
+		        prefix*(k.y*r1.y*r1.y-r2.x*r3.x*r4.x)-F(rsq,k.yzwx),
+		        prefix*(k.z*r1.z*r1.z*r1.z-r2.w*r4.w)-F(rsq,k.zwxy),
+		        prefix*(k.w*r1.w*r1.w-r4.x*r4.z)-F(rsq,k.wxyz));
+}
 vec4 actual_function(vec4 c,vec2 normed)
 {
 	return
@@ -756,7 +796,7 @@ vec4 actual_function(vec4 c,vec2 normed)
 		//thomas4d(c,normed)
 		//ruijgrok(c,normed)
 		//two_reacts(c,normed)
-		thingy_formulas(c,normed)
+		//thingy_formulas(c,normed)
 		//schnakenberk_reaction_kinetics(c,normed)
 		//gierer_meinhard(c,normed)
 		//rossler(c,normed)
@@ -773,6 +813,7 @@ vec4 actual_function(vec4 c,vec2 normed)
 		//rampe1_modded(c,normed)
 		//coupled_attractors(c,normed)
 		//gravity_system(c,normed)
+		second_pass(c,normed)
 		;
 }
 vec4 runge_kutta_4(vec4 c,vec2 normed,float step_dt)
@@ -795,7 +836,7 @@ void main(){
 	//diffusion_value.xy*=dist;
 	vec4 L=laplace(normed);
 	vec4 cnt=texture(tex_main,normed);
-#if 1
+#if 0
 	vec4 ret=cnt+(diffusion_value*L
 		+actual_function(cnt,normed)
 		)*dt;
@@ -822,7 +863,7 @@ void main(){
 		}
 	ret+=diffusion_value*L*dt;
 #endif
-	float limit=2;
+	float limit=1;
 	ret=clamp(ret,-limit,limit);
 	//float l=length(ret);
 	//l=max(l,0.0001);
@@ -889,15 +930,16 @@ void main(){
 	lv=gain(lv,v_gain);
 	lv=pow(lv,v_gamma);
 	//color=vec4(cnt.xyz,1);
-	#if 1
+	#if 0 //draw polar representation
 	vec4 tlv=vec4(natan(cnt.y,cnt.x),natan(cnt.z,cnt.y),natan(cnt.z,cnt.w),1);
 	tlv=gain(tlv,v_gain);
 	tlv=pow(tlv,vec4(v_gamma));
 	color=tlv;
-	#endif
+	#else
 	//color=vec4(lv,lv,lv,1);
-	//color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,1.5,1.25),vec3(1.0,1.05,1.4)),1);
+	color=vec4(palette(lv,vec3(0.5,0.5,0.5),vec3(0.5,0.5,0.5),vec3(1.5,1.5,1.25),vec3(1.0,1.05,1.4)),1);
 	//color=vec4(palette(lv,vec3(0.6,0,0.3),vec3(.4,0,0.7),vec3(1,1,1),vec3(0,0.33,0.66)),1);
+	#endif
 	/* accent
 	float accent_const=0.5;
 	if(lv<accent_const)
@@ -1518,7 +1560,7 @@ function gui(  )
 			giffer:stop()
 		end
 		giffer=gif_saver(string.format("saved_%d.gif",os.time(os.date("!*t"))),
-			img_buf,500,15)
+			img_buf,500,60)
 	end
 	imgui.SameLine()
 	if imgui.Button("Stop Gif") then

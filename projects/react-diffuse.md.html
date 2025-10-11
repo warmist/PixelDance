@@ -58,6 +58,8 @@ $$
 We ask then:
 
 $$|X^n|< D$$
+
+I.e. to not explode to infinity.
 ### Gravity towards 0
 We construct $G(x)$ such that: $|X^{n-1}+{\Delta t}G(X^{n-1})|\rightarrow 0$ as $|X|\rightarrow D$. Then one solution is $G(X)=-X$ when $|X|=D$ with a lerp/step/smoothstep or any other interpolation function.
 
@@ -65,4 +67,152 @@ We construct $G(x)$ such that: $|X^{n-1}+{\Delta t}G(X^{n-1})|\rightarrow 0$ as 
 
 First we divide the space into points $P_n$. Then if $|G(X)|$ approaches $D$ we lerp/step/smoothstep towards some specific $P_n$. E.g. $P_n$ could be a point in disk that is a polygons opposite vertex.
 
+## Generic reaction diffusion
+$$\frac{df_i}{dt}=R_i(f_1,f_2,...,f_n)+D_i\nabla^2f_i
+$$
+
+Find equilibrium points:
+$$0=R(f_{1eq},f_{2eq},...,f_{neq})
+$$
+
+Analyze linearization around equilibrium points:
+$$sin(\omega x+\phi)\frac{df}{dt}=R(f_{eq}+sin(\omega x+\phi)\Delta f)-D\omega^2 sin(\omega x+\phi)\Delta f$$
+then stability depends on:
+$$(J-D\omega^2)\Bigr|_{f=f_{eq}}$$
+where $J$ is Jacobian of reaction terms, $D$ diagonal diffusion matrix, $\omega$ spacial frequency of perturbation.
+
+Stable if determinant positive and trace is negative.
+## Gray scott
+
+$$
+\frac{du}{dt}=-uv^2+f(1-u)+D_u\nabla^2u\\
+\frac{dv}{dt}=uv^2-(f+k)v+D_v\nabla^2v
+$$
+
+Find equilibrium points:
+
+$$
+0=-uv^2+f(1-u)\\
+0=uv^2-(f+k)v\\
+$$
+Trivial solution $(1,0)$
+$$\left[ \left[ u=1 , v=0 \right]  , \left[ u={{\sqrt{f}\,\sqrt{-
+ \left(4\,k^2\right)-8\,f\,k-4\,f^2+f}+f}\over{2\,f}} , v=-\left({{
+ \sqrt{f}\,\sqrt{-\left(4\,k^2\right)-8\,f\,k-4\,f^2+f}-f}\over{2\,k+
+ 2\,f}}\right) \right]  , \left[ u=-\left({{\sqrt{f}\,\sqrt{-\left(4
+ \,k^2\right)-8\,f\,k-4\,f^2+f}-f}\over{2\,f}}\right) , v={{\sqrt{f}
+ \,\sqrt{-\left(4\,k^2\right)-8\,f\,k-4\,f^2+f}+f}\over{2\,k+2\,f}}
+  \right]  \right] $$
+## 4 equilibrium reaction diffusion
+Let's make it 2 component: $X=(u,v)$
+$$ 0=R_0(u_{eq},v_{eq})\\
+	0=R_1(u_{eq},v_{eq})
+$$
+Set 4 equilibrium points to be $(1,0);(0,1);(-1,0);(0,-1)$
+Then simplest equation is:
+$$R_0=\alpha_0(1-u^2-v^2)+\alpha_1uv\\
+R_1=\beta_0(1-u^2-v^2)+\beta_1uv$$
+Full diffusion equation:
+$$\frac{du}{dt}=\alpha_0(1-u^2-v^2)+\alpha_1uv+D_u\nabla^2u\\
+\frac{dv}{dt}=\beta_0(1-u^2-v^2)+\beta_1uv+D_v\nabla^2v$$
+Rescaling:
+$$u\to Au'\\
+v\to Bv'\\
+t\to Ct'\\
+x,y\to \delta x',\delta y'
+$$
+Then equation becomes:
+$$\frac{dAu'}{dCt'}=\alpha_0(1-A^2u'^2-B^2v'^2)+\alpha_1ABu'v'+\frac{AD_u}{\delta^2}\nabla^2u'\\
+\frac{dBv'}{dCt'}=\beta_0(1-A^2u'^2-B^2v'^2)+\beta_1ABu'v'+\frac{BD_v}{\delta^2}\nabla^2v'$$
+
+$$\frac{du'}{dt'}=\frac{C\alpha_0}{A}(1-A^2u'^2-B^2v'^2)+\alpha_1BCu'v'+\frac{CD_u}{\delta^2}\nabla^2u'\\
+\frac{dv'}{dt'}=\frac{C\beta_0}{B}(1-A^2u'^2-B^2v'^2)+\beta_1ACu'v'+\frac{CD_v}{\delta^2}\nabla^2v'$$
+
+Set:
+$$
+C=\frac{1}{\alpha_0}\\
+\delta=\sqrt{D_u C}\\
+\frac{D_v}{D_u}=D_{ratio}$$
+Then:
+$$\frac{du'}{dt'}=\frac{1}{A}(1-A^2u'^2-B^2v'^2)+\frac{B\alpha_1}{\alpha_0}u'v'+\nabla^2u'\\
+\frac{dv'}{dt'}=\frac{\beta_0}{\alpha_0 B}(1-A^2u'^2-B^2v'^2)+\frac{A\beta_1}{\alpha_0}u'v'+D_{ratio}\nabla^2v'$$
+I give up...
+$$
+A=B=1\\
+\alpha'=\frac{\alpha_1}{\alpha_0}\\
+\beta_0'=\frac{\beta_0}{\alpha_0}\\
+\beta_1'=\frac{\beta_1}{\alpha_0}
+$$
+$$\frac{du'}{dt'}=(1-u'^2-v'^2)+\alpha'u'v'+\nabla^2u'\\
+\frac{dv'}{dt'}=\beta_0'(1-u'^2-v'^2)+\beta_1'u'v'+D_{ratio}\nabla^2v'$$
+
+Cleanup:
+$$\frac{du}{dt}=(1-u^2-v^2)+\alpha uv+\nabla^2u\\
+\frac{dv}{dt}=\beta_0(1-u^2-v^2)+\beta_1uv'+D_{ratio}\nabla^2v$$
+
+Jacobian:
+$$
+J=\begin{pmatrix}
+-2u+\alpha & -2v+\alpha\\
+-2\beta_0u+\beta_1 & -2\beta_0v+\beta_1\\
+\end{pmatrix}
+$$
+Coef matrix:
+$$(J-D\omega^2)\Bigr|_{f=f_{eq}}=\\
+\begin{pmatrix}
+-2u+\alpha & -2v+\alpha\\
+-2\beta_0u+\beta_1 & -2\beta_0v+\beta_1\\
+\end{pmatrix}
+-\begin{pmatrix}
+\omega^2 & 0\\
+0& \omega^2D_{ratio}\\
+\end{pmatrix}$$
+
+### Point 0
+For point $(1,0)$ Coef matrix:
+$$
+C=(J-D\omega^2)\Bigr|_{f=(1,0)}=\\
+\begin{pmatrix}
+-2+\alpha-\omega^2 & \alpha\\
+-2\beta_0+\beta_1 & \beta_1-\omega^2D_{ratio}\\
+\end{pmatrix}\\
+Det(C)>0\\
+Tr(C)<0\\
+Det(C)=2\alpha\beta_0-2\beta_1-\omega^2(\beta_1+D_{ratio}(2-\alpha+\omega^2))\\
+\omega \to 0\\
+\alpha\beta_0>\beta_1\\
+\omega \to \inf\\
+\beta_1+D_{ratio}(2-\alpha+\omega^2)<0\\
+Tr(C)=\alpha+\beta_1-\omega^2(1+D_{ratio})-2\\
+\alpha+\beta_1<2
+$$
+### Point 1
+For point $(0,1)$ Coef matrix:
+$$
+C=(J-D\omega^2)\Bigr|_{f=(1,0)}=\\
+\begin{pmatrix}
+\alpha-\omega^2 & -2+\alpha\\
+\beta_1 & -2\beta_0+\beta_1-\omega^2D_{ratio}\\
+\end{pmatrix}\\
+Det(C)>0\\
+Tr(C)<0\\
+Det(C)=(\alpha-\omega^2)(-2\beta_0+\beta_1-\omega^2D_{ratio})-(-2+\alpha)(\beta_1)\\
+Det(C)=-2\alpha\beta_0-\alpha\omega^2D_{ratio}+\omega^22\beta_0-\omega^2\beta_1+\omega^4D_{ratio}+2\beta_1\\
+Tr(C)=\alpha-2\beta_0+\beta_1-\omega^2(1+D_{ratio})\\
+\alpha-2\beta_0+\beta_1<0
+$$
+$$\begin{pmatrix} b\,v+2\,a
+ \,u&2\,a\,v+b\,u\cr d\,v+2\,c\,u&2\,c\,v+d\,u\cr
+ \end{pmatrix} $$
+
+$$
+2\,a\,y^2+\left(2\,c\,x+c\right)\,y+2\,b\,x^2+\left(a-b\right)\,x-b
+ -a
+$$
+$$
+$$
+\left(-\left({\it D\_u}\,m^2\right)+4\,b+{{2\,a-2\,b}\over{2}}
+ \right)\,\left(3\,f-{\it D\_v}\,m^2\right)-3\,c\,\left(4\,e+{{2\,d-2
+ \,e}\over{2}}\right) $$
+$$
 <!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>

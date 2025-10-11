@@ -1,3 +1,21 @@
+# Waves simple
+
+$$
+\frac{\partial^n u}{\partial t^2}=c^2\Delta u
+$$
+$$D_x=c^2/\Delta x^2$$
+$$D_y=c^2/\Delta y^2$$
+$$
+\frac{u^{n+1}-2u^n+u^{n-1}}{\Delta t^2}=
+D_x(u_{x+1}-2u+u_{x-1})+D_y(u_{y+1}-2u+u_{y-1})+f(x,y,t)
+$$
+$$
+u^{n+1}=\Delta t^2 D_x(u_{x+1}-2u+u_{x-1})+\Delta t^2 D_y(u_{y+1}-2u+u_{y-1})+\Delta t^2 f(x,y,t)+2u-u^{n-1}
+$$
+# Waves implicit
+Crank-Nicolson
+$$
+$$
 # Waves
 $n$ is time. $b_0$ and $b_1$ are dissipation terms.
 $$D_x=c^2/\Delta x^2$$
@@ -190,6 +208,34 @@ $$
 \mathrm{i} \hbar \frac{\partial}{\partial t} | \,\psi (t) \rangle = \hat{H} | \,\psi (t) \rangle
 $$
 
+or in natural:
+$$
+i \frac{\partial}{\partial t} \Psi=\frac{1}{2 m}(-i \nabla)^{2} \Psi
+$$
+$$
+i \frac{\partial}{\partial t} \Psi(r,t)=-\frac{1}{2 m} \nabla^{2} \Psi(r,t) + V(r)\Psi(r,t)
+$$
+$$
+\frac{\partial}{\partial t} \Psi=-ci \nabla^{2} \Psi + iV(r)\Psi
+$$
+$$
+\frac{u^{n+1}-u^n}{2\Delta t}=
+\frac{ic}{\Delta x}(u_{x+1}-2u+u_{x-1})+\frac{ic}{\Delta y}(u_{y+1}-2u+u_{y-1})+iV(r)u^n
+$$
+$$
+u^{n+1}=
+\frac{ic\Delta t}{\Delta x^2}(u_{x+1}-2u+u_{x-1})+\frac{ic\Delta t}{\Delta y^2}(u_{y+1}-2u+u_{y-1})+\Delta t iV(r)u^n+u^n
+$$
+# Relativistic Shrodinger eq
+
+$$
+\left(\frac{1}{c^{2}} \frac{\partial^{2}}{\partial t^{2}}-\nabla^{2}\right) \Psi+\mu^{2} \Psi=0, \quad \text { with } \mu \equiv \frac{m c}{\hbar}
+$$
+
+or in natural units:
+$$
+\left(\frac{\partial^{2}}{\partial t^{2}}-\nabla^{2}\right) \Psi+m^{2} \Psi=0
+$$
 # Ideas and Todo
 
 * Make a nice list (with images) of diff equations
@@ -209,6 +255,7 @@ $$
 * https://en.wikipedia.org/wiki/Kuramoto%E2%80%93Sivashinsky_equation
 * https://grail.cs.washington.edu/projects/watercolor/paper_small.pdf
 * http://web.cse.ohio-state.edu/~wang.3602/Mao-2017-SBS/Mao-2017-SBS.pdf
+* solve as eigenfunctions
 
 # Refs
 * Meta: https://math.meta.stackexchange.com/questions/5020/mathjax-basic-tutorial-and-quick-reference

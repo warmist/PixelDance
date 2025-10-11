@@ -12,6 +12,8 @@ require "splines"
 		* add variance display/accumulation
 		* thin film interference
 --]]
+local EMITTER_COUNT=512
+emitter_state=emitter_state or {}
 local size_mult
 local oversample=1
 local win_w
@@ -331,12 +333,12 @@ config=make_config({
 	{"dt",1,type="float",min=0.001,max=2},
 	{"freq",0.5,type="float",min=0,max=1},
 	{"freq2",0.5,type="float",min=0,max=1},
-	{"decay1",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
-	{"decay2",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
-	{"decay3",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
-	{"decay4",0.00001,type="floatsci",min=1e-6,max=0.01,power=true},
-	{"n",1,type="int",min=0,max=15},
-	{"m",1,type="int",min=0,max=15},
+	{"decay1",0.00001,type="float",min=1e-6,max=0.01,power=true},
+	{"decay2",0.00001,type="float",min=1e-6,max=0.01,power=true},
+	{"decay3",0.00001,type="float",min=1e-6,max=0.01,power=true},
+	{"decay4",0.00001,type="float",min=1e-6,max=0.01,power=true},
+	{"n",1,type="float",min=0,max=15},
+	{"m",1,type="float",min=0,max=15},
 	{"a",1,type="float",min=-1,max=1},
 	{"b",1,type="float",min=-1,max=1},
 	{"angle_offset",0,type="float",min=0,max=math.pi*2},
@@ -363,12 +365,21 @@ in vec3 pos;
 uniform sampler2D values;
 uniform float mult;
 
+float gain(float x, float k)
+{
+    float a = 0.5*pow(2.0*((x<0.5)?x:1.0-x), k);
+    return (x<0.5)?a:1.0-a;
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	float lv=texture(values,normed).x*mult;
 	lv=abs(lv);
-	//lv=1-exp(-lv*lv/1);
+	//lv=lv/(1+lv);
+	//lv=gain(lv,2);
+	//lv=lv*(sin(lv*10)*0.5+0.5);
+	//lv=exp(-lv*lv/0.1);
 	//lv*=lv;
+
 	color=vec4(lv,lv,lv,1);
 }
 ]==]
@@ -638,9 +649,10 @@ void main()
 solver_shader=shaders.Make[==[
 #version 330
 #line __LINE__
-
+#define EMITTER_COUNT 512
 out vec4 color;
 in vec3 pos;
+uniform float emitter_state[EMITTER_COUNT];
 uniform sampler2D values[4];
 
 uniform sampler2D input_map;
@@ -747,7 +759,7 @@ float sdCircle( vec2 p, float r )
 float sdCircle2( vec2 p, float r )
 {
 	float a=(atan(p.y,p.x)+M_PI)/(2*M_PI);
-	a*=8;
+	a*=7;
 	a=abs(mod(a,1)-0.5);
   	return length(p) - r*(0.6+a*0.4);
 }
@@ -878,6 +890,20 @@ float dagger(in vec2 st,float fw)
 {
 	float v=sh_polyhedron(st*vec2(0.4,0.5)+vec2(0,0.122),3,0.1,0,fw/2);
 	v=max(v,sh_polyhedron(st+vec2(0,-0.2),3,0.25,M_PI/3,fw));
+	return v;
+}
+float dagger_x3(in vec2 st, float fw)
+{
+	float v=dagger(st*1.5,fw);
+	vec2 st_bak=st;
+	t_rot(st,M_PI/3);
+	st+=vec2(0.45,0.25);
+	v=max(v,dagger(st*1.5,fw));
+
+	st=st_bak;
+	t_rot(st,-M_PI/3);
+	st+=vec2(-0.45,0.25);
+	v=max(v,dagger(st*1.5,fw));
 	return v;
 }
 float freq_testing(in vec2 st,float fw)
@@ -1093,6 +1119,7 @@ vec2 rotate(vec2 v, float a) {
 	mat2 m = mat2(c, s, -s, c);
 	return m * v;
 }
+
 //sound generating function or driving function
 float func(vec2 pos)
 {
@@ -1113,11 +1140,48 @@ float func(vec2 pos)
 	float max_a=6;
 	float r=0.2;
 	vec2 prot=rotate(pos,angle_offset);
+	float fract_time=fract(time/1000)+1;
 	#if 0
 		//if(time<max_time)
 		if(length(pos+vec2(cos(angle_offset),sin(angle_offset))*r)<0.05)
 			return ab_vec.x*(fract(fn1*time)*2-1)
 			+ab_vec.y*(fract(fn2*time)*2-1);
+	#endif
+	#if 0 //Holographic (i.e. edge only) sources (square)
+		float edge_w=0.025;
+		float edge_s=1-edge_w;
+		if(pos.x<-edge_s || pos.x>edge_s || pos.y<-edge_s || pos.y>edge_s)
+		return ab_vec.x*sin(fn1*time+dot(pos,nm_vec)+angle_offset)
+			+ab_vec.y*sin(fn2*time+dot(pos,nm_vec)+angle_offset);
+	#endif
+	#if 1 //Holographic (i.e. edge only) sources (round)
+		float dist_r=length(pos);
+		float angle=(atan(pos.y,pos.x)/M_PI+1)*0.5;
+		int id=int(angle*EMITTER_COUNT);
+
+		float edge_w=0.2;
+		float pulse_w=0.025;
+		float edge_s=1-edge_w;
+		if(dist_r>edge_s && dist_r<edge_s+pulse_w)
+		return ab_vec.x*emitter_state[id]*sin(fn1*time)
+			+ab_vec.y*emitter_state[id]*sin(fn2*time);
+	#endif
+	#if 0
+		//if(abs(rotate(pos,angle_offset).x)<0.005)//highjacked angle_offset to use here...
+		if(abs(pos.x)<angle_offset)//highjacked angle_offset to use here...
+			return ab_vec.x*(fract(fn1*time)*2-1)
+			+ab_vec.y*(fract(fn2*time)*2-1);
+	#endif
+	#if 0
+		//chirp
+		if(abs(pos.x)<angle_offset)//highjacked angle_offset to use here...
+			return ab_vec.x*sin(fn1*fract_time*fract_time)
+			+ab_vec.y*sin(fn2*fract_time*fract_time);
+	#endif
+	#if 0
+		//if(abs(pos.x)<angle_offset)//highjacked angle_offset to use here...
+			return ab_vec.x*sin(fn1*time+dot(pos,nm_vec)+angle_offset)
+			+ab_vec.y*sin(fn2*time+dot(pos,nm_vec)+angle_offset);
 	#endif
 	#if 0
 		//if(time<max_time)
@@ -1191,7 +1255,7 @@ float func(vec2 pos)
 		//return ab_vec.x*sin(time*fn1)*val+ab_vec.y*sin(time*fn2)*val;
 		return ab_vec.x*sin(time*fn1+val)+ab_vec.y*sin(time*fn2+val);
 	#endif
-	#if 1
+	#if 0
 	//if(time<max_time)
 		float ret_v=(
 		ab_vec.x*sin(time*fn1
@@ -1203,7 +1267,7 @@ float func(vec2 pos)
 		//+pos.y*M_PI*2*nm_vec.y
 		)*cos(prot.y*M_PI*nm_vec.y)
 		);
-		return ret_v*step(pos.y,0);
+		return ret_v;//*step(pos.y,0);
 		//return ret_v*ret_v*ret_v;
 	#endif
 	#if 0
@@ -1312,8 +1376,30 @@ float func_init(vec2 pos)
 	return 0;
 }
 #define IDX(dx,dy) func_init(pos+vec2(dx,dy)*dtex)
-#define DX(dx,dy,NOTUSED) textureOffset(values[3],normed,ivec2(dx,dy)).x
+#define DX(dx,dy,NOTUSED) textureOffset(values[1],normed,ivec2(dx,dy)).x
 #define ST(id,dx,dy) textureOffset(values[id],normed,ivec2(dx,dy)).x
+float calc_new_value_simple(vec2 pos)
+{
+
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+
+	vec2 dtex=1/tex_size;
+	float dcsqr=c_const*c_const;
+
+	float GX=dcsqr*dt*dt/(dtex.x*dtex.x);
+	float GY=dcsqr*dt*dt/(dtex.y*dtex.y);
+
+	float ret=0;
+
+	ret+=ST(1,0,0)*2;
+	ret+=ST(0,0,0)*(-1);
+
+	ret+=GX*(ST(1,1,0)-2*ST(1,0,0)+ST(1,-1,0));
+	ret+=GY*(ST(1,0,1)-2*ST(1,0,0)+ST(1,0,-1));
+	ret+=dt*dt*func(pos);
+	return ret;
+
+}
 float calc_new_value(vec2 pos,vec2 c_sqr_avg)
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -1462,6 +1548,65 @@ float calc_init_value(vec2 pos,vec2 c_sqr_avg)
 	return ret;
 	#endif
 }
+float calc_edge(vec2 pos,float old_v)
+{
+	float edge_w=0.1;
+	float r=length(pos);
+	float max_disp=0.9999;
+
+	if(r<1-edge_w)
+		return old_v;
+	else
+	{
+		return 0;
+		// still can't make this work good enough ;(
+		float p=sqrt(-(1-edge_w)*(1-edge_w)/log(max_disp));
+		float disp_act=exp(-(r-edge_w)*(r-edge_w)/(p*p));
+		return old_v*disp_act;
+	}
+}
+float calc_edge_sq(vec2 pos,float old_v)
+{
+
+	float edge_w=0.1;
+	if (pos.x<1-edge_w && pos.x>-1+edge_w && pos.y<1-edge_w && pos.y>-1+edge_w)
+		return old_v;
+	else
+	{
+		float normed_dist=1-smoothstep(1-edge_w,1,abs(max(pos.x,pos.y)));
+		return old_v*normed_dist;
+	}
+	float normed_dist=1-smoothstep(1-edge_w,1,abs(max(pos.x,pos.y)));
+	float decay_max=5;
+	float dist=max(abs(pos.x)-1,1-abs(pos.y-1));
+	float dec2=decay_max*normed_dist;
+	vec2 normed=(pos.xy+vec2(1,1))/2;
+	//return DX(0,0,0);
+	//return 0;
+
+
+	vec2 dtex=1/tex_size;
+	float dcsqr=c_const*c_const;
+
+	float c_const2=2;
+	float GX=dcsqr*dt*dt*c_const2/(dtex.x*dtex.x);
+	float GY=dcsqr*dt*dt*c_const2/(dtex.y*dtex.y);
+
+	float HX=dcsqr*dt*dec2/(dtex.x*dtex.x);
+	float HY=dcsqr*dt*dec2/(dtex.y*dtex.y);
+
+	float ret=0;
+
+	ret+=ST(1,0,0)*2;
+	ret+=ST(0,0,0)*(-1);
+
+	ret+=(GX+HX)*(ST(1,1,0)-2*ST(1,0,0)+ST(1,-1,0));
+	ret+=(-1)*HX*(ST(0,1,0)-2*ST(0,0,0)+ST(0,-1,0));
+	ret+=(GY+HY)*(ST(1,0,1)-2*ST(1,0,0)+ST(1,0,-1));
+	ret+=(-1)*HY*(ST(0,0,1)-2*ST(0,0,0)+ST(0,0,-1));
+	ret+=dt*dt*func(pos);
+	return ret;
+}
 #define BOUND_N 0
 float boundary_condition(vec2 pos,vec2 dir)
 {
@@ -1592,10 +1737,13 @@ void main(){
 	float v=0;
 	float max_d=0.8;
 	float w=0.0025;
+	float edge_w=0.1;
+	float edge_s=1-edge_w;
 
 	vec2 normed=(pos.xy+vec2(1,1))/2;
-	//float sh_v=0;
-	float sh_v=freq_testing(pos.xy,w);
+	float sh_v=1;
+	//float sh_v=freq_testing(pos.xy,w);
+	//float sh_v=step(sdStar(pos.xy,max_d,5,3),0.0);
 	//float sh_v=holed_tri(pos.xy);
 	//float sh_v=sdEquilateralTriangle(pos.xy/max_d);
 	//float sh_v=1-max(sh_polyhedron(pos.xy,12,max_d,0,w)-sh_polyhedron(pos.xy,12,0.2,0,w),0);
@@ -1606,6 +1754,7 @@ void main(){
 	//float sh_v=sdCircle(pos.xy,0.6);
 	//float sh_v=sdCircle2(pos.xy,0.98);
 	//float sh_v=1-dagger(pos.xy,w);
+	//float sh_v=1-dagger_x3(pos.xy,w);
 	//float sh_v=1-leaf(pos.xy,w);
 	//float sh_v=1-chalice(pos.xy*0.75,w);
 	//float sh_v=slit_experiment(pos.xy,w);
@@ -1699,13 +1848,15 @@ void main(){
 		//lb=clamp(lb,0,1);
 		//float radiation=pow(0.99,(1-lb)*0.75+0.25);
 		if(sh_v<=0)
-			v=calc_new_value(pos.xy,avg_c);
+			v=calc_new_value_simple(pos.xy);
 		//else if(sh_v3<=0)
 		//else
 		//	v=calc_new_value(pos.xy,avg_c)*radiation;
 		else
-			v=calc_new_value(pos.xy,avg_c)*radiation;//mix(radiation,radiation*radiation*radiation,l);
+			v=calc_new_value_simple(pos.xy)*radiation;//mix(radiation,radiation*radiation*radiation,l);
 		//else v=0;
+		//if (pos.x<-edge_s || pos.x>edge_s || pos.y<-edge_s ||pos.y>edge_s)
+		v=calc_edge(pos.xy,v);
 	}
 
 	color=vec4(v,0,0,1);
@@ -1895,20 +2046,25 @@ function animate_rotation()
     sim_thread=nil
 end
 function animate_spectral(  )
-	local f1_start=12
-	local f1_end=12.4
-	local f2_start=5
-	local f2_end=4.6
+	local f1_start=1
+	local f1_end=1
+	local f2_start=0.7
+	local f2_end=0.7
 
-	local angle_start=-0.02
-	local angle_end=0.02
+	local angle_start=0.0
+	local angle_end=2
+
+	local n_start=7-0.05
+	local n_end=7+0.05
+	local m_start=12-0.05
+	local m_end=12+0.05
 
 	local max_anim_frame=1--120
-	local frame_count=10
+	local frame_count=20
 	clear_sum()
-	local emit_time=1000
-	local wait_for_settle=3000
-	local integrate_wait=200
+	local emit_time=100
+	local wait_for_settle=10000
+	local integrate_wait=1000
 
 	reset_state()
 	for anim_frame=0,max_anim_frame-1 do
@@ -1930,23 +2086,27 @@ function animate_spectral(  )
 			-- [[
 			config.freq=lerp(f1_start,f1_end,t)
 			config.freq2=lerp(f2_start,f2_end,t)
+			--config.n=lerp(n_start,n_end,t)
+			--config.m=lerp(m_start,m_end,t)
 			--]]
-			--config.angle_offset=lerp(angle_start,angle_end,t)+angle_offset
+			config.angle_offset=lerp(angle_start,angle_end,t)+angle_offset
 			--start emitting waves
-		    for k=1,emit_time do
-		    	coroutine.yield()
-		    end
-		    current_time=0
-		    --[[ invert source for half of time
-		    config.a=-1--lerp(0.6,1,t)
-			config.b=1
-		    for k=1,emit_time/2 do
-		    	coroutine.yield()
-		    end
-		    --]]
-			-- [[ disable waves and wait to settle
-			config.a=0
-			config.b=0
+			if emit_time > 0 then
+			    for k=1,emit_time do
+			    	coroutine.yield()
+			    end
+			    current_time=0
+			    --[[ invert source for half of time
+			    config.a=-1--lerp(0.6,1,t)
+				config.b=1
+			    for k=1,emit_time/2 do
+			    	coroutine.yield()
+			    end
+			    --]]
+				-- [[ disable waves and wait to settle
+				config.a=0
+				config.b=0
+			end
 			for k=1,wait_for_settle do
 		    	coroutine.yield()
 		    end
@@ -1967,6 +2127,46 @@ function animate_spectral(  )
 	end
 	sim_thread=nil
 end
+function animate_accumulation_ca()
+	local wait_emit=200
+    local wait_for_settle=6000
+    local frame_count=10
+    local frame_wait=2000
+    init_emitters()
+    advance_emitters()
+    for frame=1,frame_count do
+	    reset_state()
+	    config.a=1
+		config.b=1
+	    config.accumulate=false
+	    --start emitting waves
+	    for k=1,wait_emit do
+	    	coroutine.yield()
+	    end
+		-- [[ disable waves and wait to settle
+		config.a=0
+		config.b=0
+	    --]]
+		for k=1,wait_for_settle do
+	    	coroutine.yield()
+	    end
+	    config.accumulate=true
+	    --start capturing frames
+
+    	config.draw=false
+    	for i=1,frame_wait do
+    		coroutine.yield()
+    	end
+    	config.draw=true
+    	need_save=true
+    	while need_save do
+    		coroutine.yield()
+    	end
+	    sim_thread_progress=frame/frame_count
+	    advance_emitters()
+	end
+    sim_thread=nil
+end
 function animation_system(  )
 	if imgui.CollapsingHeader("Animation") then
 	    if not sim_thread then
@@ -1974,7 +2174,8 @@ function animation_system(  )
 	           --sim_thread=coroutine.create(animate_accumulation)
 	           --sim_thread=coroutine.create(animate_rotation)
 	           --sim_thread=coroutine.create(animate_accumulation_wmask)
-	           sim_thread=coroutine.create(animate_spectral)
+	           --sim_thread=coroutine.create(animate_spectral)
+	           sim_thread=coroutine.create(animate_accumulation_ca)
 	        end
 	    else
 	        if imgui.Button("Stop Animate") then
@@ -2039,6 +2240,63 @@ uniform float exposure;
 		save_img()
 	end
 end
+local current_state=0
+function init_emitters(  )
+	-- [[
+	for i=0,EMITTER_COUNT-1 do
+		if math.random()>0.5 then
+			emitter_state[i]=1
+		else
+			emitter_state[i]=0
+		end
+	end
+	--]]
+end
+function advance_emitters(  )
+	local rule={
+		--[110]=0,
+		[110]=1,
+		[101]=1,
+		[011]=1,
+		[010]=1,
+		[001]=1
+	}
+	local new_emitter_state={}
+	for i=0,EMITTER_COUNT-1 do
+		local b
+		if i>0 then b=emitter_state[i-1]
+		else b=emitter_state[EMITTER_COUNT-1] end
+
+		local n
+		if i<EMITTER_COUNT-1 then n=emitter_state[i+1]
+		else n=emitter_state[0] end
+
+		local nr=rule[b*100+emitter_state[i]*10+n] or 0
+		new_emitter_state[i]=nr
+	end
+	emitter_state=new_emitter_state
+end
+function randomize_emitters(  )
+	--[[
+	for i=0,EMITTER_COUNT-1 do
+		if math.random()>0.5 then
+			emitter_state[i]=1
+		else
+			emitter_state[i]=0
+		end
+	end
+	--]]
+	for i=0,EMITTER_COUNT-1 do
+		emitter_state[i]=0
+	end
+	local count_on=10
+
+	for i=current_state,current_state+count_on-1 do
+
+		emitter_state[i%EMITTER_COUNT]=1
+	end
+	current_state=current_state+10
+end
 function gui()
 	imgui.Begin("Waviness")
 	draw_config(config)
@@ -2073,6 +2331,14 @@ function gui()
 	imgui.SameLine()
 	if imgui.Button("Reset Accumlate") then
 		clear_sand()
+	end
+	imgui.SameLine()
+	if imgui.Button("Randomize emitters") then
+		init_emitters()
+	end
+	imgui.SameLine()
+	if imgui.Button("Advance emitters") then
+		advance_emitters()
 	end
 	if imgui.Button("SingleShotNorm") then
 		single_shot_value=true
@@ -2161,6 +2427,11 @@ function waves_solve(  )
 	solver_shader:set("freq2",config.freq2)
 	solver_shader:set("nm_vec",config.n,config.m)
 	solver_shader:set("ab_vec",config.a,config.b)
+
+	for i=0,EMITTER_COUNT-1 do
+		solver_shader:set("emitter_state["..i.."]",emitter_state[i] or 0)
+	end
+
 	if config.draw_form then
 		solver_shader:set_i("draw_form",1)
 	else

@@ -41,7 +41,7 @@ void main(){
 )
 
 
-local shape_radius=5
+local shape_radius=2
 --calculate shape if it's at shape_pos and you are checking at p
 --returns "allowed height" at pos p
 function shape( shape_pos,p )
@@ -114,7 +114,7 @@ function sand_sim( e )
     local const_r=shape_radius
     local rr=const_r*const_r
 
-    for i=1,5000 do
+    for i=1,10000 do
         local p=Point(math.random(0,map_w-1),math.random(0,map_h-1))
         tumble_sand(e,p)
     end
@@ -491,6 +491,9 @@ teleport2(my_p)
 --teleport2(my_p+Point(shape_radius/4,0))
 local last_pos=my_p
 local time=0
+function logic_step(  )
+    
+end
 function update(  )
     local spiral_t=(time/12-math.floor(time/12))*100
     -- [==[
@@ -508,7 +511,9 @@ function update(  )
         teleport2(sphere_pos)
     end
     last_pos=sphere_pos
-    sand_sim(sphere_pos)
+    for i=1,10 do
+        sand_sim(sphere_pos)
+    end
     --]==]
     __no_redraw()
     draw()

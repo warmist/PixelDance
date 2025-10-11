@@ -973,7 +973,7 @@ int main(int argc, char** argv)
 			window.draw(back_buffer_sprite);
 		}
         */
-        if(!project_exists)
+        if(!project_exists || current_project.is_errored)
             window.clear();
 		auto_redraw = true;
         ImGui::SFML::Render(window);

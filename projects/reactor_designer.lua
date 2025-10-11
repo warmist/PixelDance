@@ -17,6 +17,14 @@ end
 function MultiKeyTable:set_vec( v,value )
 	self:set(v[1],v[2],v[3],v[4],value)
 end
+local function reverse_table(tab)
+	local ret={}
+
+    for i = 1, #tab do
+        ret[i]=tab[#tab-i+1]
+    end
+    return ret
+end
 local mtbl=MultiKeyTable
 local omega_powers={
 	{1,0,0,0},
@@ -107,6 +115,31 @@ function four_vec:set_direction_filled( start_dir,end_dir,face )
 		end
 	end
 end
+function four_vec:can_direction_filled( start_dir,end_dir )
+	start_dir=lua_mod(start_dir,12)
+	end_dir=lua_mod(end_dir,12)
+	local cur_dir
+	for i=0,11 do
+		cur_dir=lua_mod(start_dir+i,12)
+		--if self.directions[cur_dir]~=nil then
+		--	local sides=self.directions[cur_dir]
+			if cur_dir~=end_dir then
+				if not self:is_dir_lempty(cur_dir) then
+					return false
+				end
+			end
+			if i~=0 then
+				if not self:is_dir_rempty(cur_dir) then
+					return false
+				end
+			end
+			if cur_dir==end_dir then
+				break
+			end
+		--end
+	end
+	return true
+end
 function four_vec:directions_string()
 	local tbl={}
 	for i=1,12 do
@@ -127,6 +160,21 @@ function four_vec:directions_string()
 		end
 	end
 	return table.concat( tbl, " " )
+end
+
+function four_vec:get_next_face(face_id)
+	for i=1,12 do
+		if self.directions[i] and self.directions[i].r and self.directions[i].r.id==face_id then
+			if self.directions[i].r~=self.directions[i].l then
+				if self.directions[i].l then
+					return self.directions[i].l.id
+				else
+					return -1
+				end
+			end
+		end
+	end
+	error("Face not found on vertex:"..face_id.."\n"..self:directions_string())
 end
 function four_vec:is_dir_empty(dir)
 	local sides=self.directions[lua_mod(dir,12)]
@@ -160,11 +208,12 @@ end
 --first empty direction in ccw
 function four_vec:first_empty( min_size )
 	local offset=self:first_non_empty_back()
-	print("O:",offset)
+	--print("O:",offset)
 	min_size=min_size or 1
 	for i=1,12 do
 		local is_empty=true
 		for mi=0,min_size-1 do
+			--print("\t",mi,min_size)
 			if mi==0 then
 				if not self:is_dir_lempty(i+mi+offset) then
 					is_empty=false
@@ -302,10 +351,35 @@ function topology:add_ngon(vertex_start,start_omega,count)
 	table.insert(self.faces,ret)
 	return ret
 end
+function topology:does_ngon_fit2( vertex_start,start_omega,count )
+	local step=12/count
+	local inner_angle=(count-2)*6/count
+	local actual_pos=vertex_start
+	local grid_pos=self:get_point(vertex_start)
+	for i =1,12,step do
+		if grid_pos~=nil then
+			if not grid_pos:can_direction_filled(i+start_omega-1,i+start_omega-1+inner_angle) then
+				print("Direction could not be filled:",i+start_omega-1,i+start_omega-1+inner_angle)
+				print(grid_pos:directions_string())
+				return false
+			end
+		end
+		actual_pos=actual_pos:add(four_vec.omega(i+start_omega-1))
+		grid_pos=self:get_point(actual_pos)
+	end
+	return true
+end
 function topology:fit_ngon(vertex,count )
 	local omega=vertex:first_empty_ngon(count)
-	print("Found omega:",omega,vertex:directions_string())
+	if omega==nil then
+		error("Could not fit "..count.." at vertex:"..vertex:to_string().."\n"..vertex:directions_string())
+	end
+	--print("Found omega:",omega,vertex:directions_string())
 	return self:add_ngon(vertex,omega,count)
+end
+function topology:does_ngon_fit( vertex,count )
+	local omega=vertex:first_empty_ngon(count)
+	return self:does_ngon_fit2(vertex,omega,count)
 end
 function topology:check_vertex_filled( v )
 
@@ -323,8 +397,139 @@ function topology:check_vertex_filled( v )
 	v.finished=true
 	return true
 end
+
+local letter_table={
+	G={12,12,3},
+	H={6,12,4},
+	K={6,6,6},
+	L={3,12,4,3},
+	M={3,12,3,4},
+	N={4,4,6,3},
+	P={4,3,4,6},
+	Q={3,6,6,3},
+	R={6,3,6,3},
+	S={4,4,4,4},
+	T={4,3,3,3,4},
+	U={3,4,3,4,3},
+	V={6,3,3,3,3},
+	W={3,3,3,3,3,3},
+}
+-- -1 is a wildcard
+function does_sublist_match(tbl,match)
+	for i=0,#tbl-1 do
+		local actual_match=true
+		for j=1,#match do
+			if match[j]~=-1 and tbl[lua_mod(i+j,#tbl)]~=match[j] then
+				actual_match=false
+				break
+			end
+		end
+		if actual_match then
+			return true,i --TODO: multiple matches???
+		end
+	end
+end
+function does_sublist_match_rev(tbl,match)
+	for i=0,#tbl-1 do
+		local actual_match=true
+		for j=1,#match do
+			if match[j]~=-1 and tbl[#tbl-lua_mod(i+j,#tbl)+1]~=match[j] then
+				actual_match=false
+				break
+			end
+		end
+		if actual_match then
+			return true,i --TODO: multiple matches???
+		end
+	end
+end
+function match_sublist( tbl )
+
+	local ret={}
+	for k,v in pairs(letter_table) do
+		local m,offset=does_sublist_match(v,tbl)
+		if m then
+			table.insert(ret,{k,offset})
+		end
+		local m,offset=does_sublist_match_rev(v,tbl)
+		if m then
+			table.insert(ret,{k.."'",offset})
+		end
+	end
+	return ret
+end
+function ngons_to_edges(list_of_polys)
+	local ret={}
+	local ids={}
+	local id=1
+	for _,v in ipairs(list_of_polys) do
+		local inner_angle=(v-2)*6/v
+		for i=1,inner_angle do
+			table.insert(ret,v)
+			table.insert(ids,id)
+		end
+		id=id+1
+	end
+	return ret,ids
+end
+function get_faces_list( vertex )
+	local dirs=vertex.directions
+	local faces={}
+	local ids={}
+	for i=1,12 do
+		local d=dirs[i]
+		if d and d.l then
+			table.insert(faces,d.l.count)
+			table.insert(ids,d.l.id)
+		else
+			table.insert(faces,-1)
+			table.insert(ids,-1)
+		end
+	end
+	return faces,ids
+end
+function topology:try_add_missing( vertex,list_of_polys,unfinished_vertexes )
+	print("Filled:",vertex:is_filled())
+	local faces,ids=get_faces_list(vertex)
+	local ngon_table,poly_ids=ngons_to_edges(list_of_polys)
+	local m,off=does_sublist_match(ngon_table,faces)
+	if not m then
+		for i,v in ipairs(faces) do
+			print(i,v.count)
+		end
+		print("could not match!")
+		return false
+	end
+	local poly_id=poly_ids[1+off]
+	print("Matching:",m,off,poly_id)
+	for i=0,11 do
+
+	end
+	for i=1,#ngon_table do
+		local ngon_sides=ngon_table[lua_mod(i+off,#ngon_table)]
+		local ftable=faces[lua_mod(i,#faces)]
+		local inner_angle=(ngon_sides-2)*6/ngon_sides
+		if ftable==-1 then
+			--local new_faces=get_faces_list(vertex)
+			for i=1,12 do
+				print(i,ngon_table[lua_mod(i+off,#ngon_table)],poly_ids[lua_mod(i+off,#ngon_table)],faces[i],ids[i])
+			end
+			print("Adding:",i,ngon_sides,ftable)
+			local nngon=topology:fit_ngon(vertex,ngon_sides)
+			--local nngon=self:add_ngon(vertex,i+off,ngon_sides)
+			for _,v in ipairs(nngon.vertexes) do
+				table.insert(unfinished_vertexes,v)
+			end
+			faces,ids=get_faces_list(vertex)
+		else
+			--skip already placed ones
+		end
+	end
+	return true
+end
 function topology:parse_string(s)
 	--3,4,6,D,*
+
 	local unfinished_vertexes={}
 	local cur_vertex=topology:getc_point(four_vec(0,0,0,0))
 	function advance_vertex(  )
@@ -340,7 +545,7 @@ function topology:parse_string(s)
 	}
 	for i =1,#s do
 		local letter=s:sub(i,i)
-		print(i,letter)
+		--print(i,letter)
 		if ngon_count[letter] then
 			local nngon=topology:fit_ngon(cur_vertex,ngon_count[letter])
 			for _,v in ipairs(nngon.vertexes) do
@@ -348,6 +553,11 @@ function topology:parse_string(s)
 			end
 		elseif letter=="*" then
 			advance_vertex()
+		elseif letter_table[letter] then
+
+			if not topology:try_add_missing(cur_vertex,letter_table[letter],unfinished_vertexes) then
+				topology:try_add_missing(cur_vertex,reverse_table(letter_table[letter]),unfinished_vertexes)
+			end
 		else
 			error("Invalid command:"..letter)
 		end
@@ -355,6 +565,47 @@ function topology:parse_string(s)
 			advance_vertex()
 		end
 	end
+	return cur_vertex
+end
+function topology:add_random(count)
+
+	local unfinished_vertexes={}
+	local cur_vertex=topology:getc_point(four_vec(0,0,0,0))
+	function advance_vertex(  )
+		cur_vertex=unfinished_vertexes[1]
+		table.remove(unfinished_vertexes,1)
+		if cur_vertex==nil then return end
+		while cur_vertex:is_filled() do
+			cur_vertex=unfinished_vertexes[1]
+			table.remove(unfinished_vertexes,1)
+			if cur_vertex==nil then return end
+		end
+	end
+	local ngon_choice={3,4,6,12}
+	for i =1,count do
+		ngon_choice=shuffle_table(ngon_choice)
+		for j=1,#ngon_choice do
+			local fit_pos=cur_vertex:first_empty_ngon(ngon_choice[j])
+			print("Attempting to put:",ngon_choice[j]," at ",fit_pos)
+			if fit_pos then
+				if topology:does_ngon_fit(cur_vertex,ngon_choice[j]) then
+					print(cur_vertex:directions_string())
+					local nngon=topology:fit_ngon(cur_vertex,ngon_choice[j])
+					for _,v in ipairs(nngon.vertexes) do
+						table.insert(unfinished_vertexes,v)
+					end
+					break
+				end
+			end
+		end
+		--can't fit?
+		advance_vertex()
+		if cur_vertex==nil then return end
+		--if cur_vertex:is_filled() then
+		--	advance_vertex()
+		--end
+	end
+	return cur_vertex
 end
 
 count_draw=0
@@ -378,6 +629,8 @@ function process_face(f,tri_data,color_data,point_offset)
 		current_offset=current_offset+1
 	end
 	local shrinkage=0.05
+	local dist=center_pt:len()
+	shrinkage=shrinkage*(3/(dist+1))
 	for vert_id=1,#verts do
 		--print("adding:",vert_id)
 		local centerwise1=center_pt-face_verts[vert_id]
@@ -390,18 +643,53 @@ function process_face(f,tri_data,color_data,point_offset)
 	end
 	return current_offset
 end
+--add triangles of the face to buffers
+function process_face_indicator(vert,tri_data,color_data,point_offset)
 
-function fill_faces( faces )
+	local indicator_size=0.125
+	local color={1,1,1,1}
+	local offsets={
+		Point(-1,-1),
+		Point(1,-1),
+		Point(1,1),
+		Point(1,1),
+		Point(-1,-1),
+		Point(-1,1)
+	}
+	local face_verts={}
+	for vert_id=1,#offsets do
+		local tmp_pt=vert:to_cartesian()
+		face_verts[vert_id]=tmp_pt+offsets[vert_id]*indicator_size
+	end
+
+	local current_offset=point_offset
+	local function add_pt( pt )
+		tri_data:set(current_offset,0,{pt[1],pt[2],0,1})
+		color_data:set(current_offset,0,color)
+		current_offset=current_offset+1
+	end
+
+	for i=1,#offsets do
+		add_pt(face_verts[i])
+	end
+
+	return current_offset
+end
+function fill_faces( faces,next_vert )
 	--two ways: tri fan, tris or tri_strip
 
 	--tri fan
 	--first pass:count vertexes and tris
 	local count_pt=0
-	local count_tri=0
+	--local count_tri=0
 
 	for i,f in ipairs(faces) do
-		count_tri=count_tri+#f.vertexes
+		--count_tri=count_tri+#f.vertexes
 		count_pt=count_pt+#f.vertexes*3
+	end
+	--add next vert square
+	if next_vert then
+		count_pt=count_pt+6
 	end
 	print("Point count:",count_pt)
 	--alloc buffers
@@ -413,7 +701,10 @@ function fill_faces( faces )
 	--local f=faces[3]
 		pt_id=process_face(f,tri_data,color_data,pt_id)
 	end
-	print("done with pts:",pt_id)
+	print("done with pts:",pt_id,count_pt)
+	if next_vert then
+		pt_id=process_face_indicator(next_vert,tri_data,color_data,pt_id)
+	end
 	--upload buffers
 	count_draw=count_pt
 	local byte_count=count_pt*4*4
@@ -425,13 +716,6 @@ function fill_faces( faces )
 	tri_buffer=buffer_data.Make()
 	tri_buffer:use()
 	tri_buffer:set(tri_data.d,byte_count)
-	__unbind_buffer()
-end
-
-function draw_points( )
-	point_shader:use()
-	vertex_buf:use()
-	point_shader:draw_points(0,draw_sample_count,4,1)
 	__unbind_buffer()
 end
 
@@ -503,32 +787,9 @@ end
 
 
 
-local letter_table={
-	G={12,12,3},
-	H={6,12,4},
-	K={6,6,6},
-	L={3,12,4,3},
-	M={3,12,3,4},
-	N={4,4,6,3},
-	P={4,3,4,6},
-	Q={3,6,6,3},
-	R={6,3,6,3},
-	S={4,4,4,4},
-	T={4,3,3,3,4},
-	U={3,4,3,4,3},
-	V={6,3,3,3,3},
-	W={3,3,3,3,3,3},
-}
 
-local function reverse_table(tab)
-	local ret={}
 
-    for i = 1, #tab do
-        ret[i]=tab[#tab-i+1]
-    end
-    return ret
-end
-
+print("====================")
 --[[
 local start=topology:add_ngon(four_vec(0,0,0,0),1,6)
 local zero_point=start.vertexes[1]
@@ -547,32 +808,61 @@ topology:fit_ngon(s2.vertexes[2],3)
 topology:fit_ngon(s3.vertexes[2],3)
 topology:fit_ngon(s3.vertexes[2],3)
 --]]
-topology:parse_string("6663344344334434433443443**********3***********3")--4434*334434433443443")
-fill_faces(topology.faces)
+--topology:parse_string("6663344344334434433443443**********3***********3")--4434*334434433443443")
+--local next_vert=topology:parse_string("STUT34UT34UT34")
+--topology:parse_string("PP******PP343334333443334333433343************333")
+--topology:parse_string("PP******PP343334333443334333433343************333")
+--topology:parse_string("ST")
+--ocal next_vert=topology:parse_string("646*********6*6")
+--local next_vert=topology:parse_string("646***4*************4****D")
+--local next_vert=topology:parse_string("646****4***********46****6***************4*3434*43*********343*******3*****3**4**3***4*3**3***4*43**3")
+
+--local next_vert=topology:parse_string("434***3*******34****4*******34****3*******34***43******34")
+--local next_vert=topology:parse_string("N46436**43443434********43434436")
+local next_vert=topology:parse_string("3433433433")
+--local next_vert=topology:parse_string("3433433433433343433343433343")
+--local next_vert=topology:parse_string("34334334334643464346434334***4334334**4334334**433")
+
+--topology:add_random(100)
+fill_faces(topology.faces,next_vert)
 function save_gdres( name , topology )
 	local f=io.open(name..".txt","w")
 
-	f:write(string.format("tiling_dx = Vector2(%g,%g)\n",0,0))
-	f:write(string.format("tiling_dy = Vector2(%g,%g)\n",0,0))
 	local table_counts={}
-	for i,v in ipairs(topo_info.face_cons) do
-		table.insert(table_counts,#v)
+	for i,v in ipairs(topology.faces) do
+		table.insert(table_counts,#v.vertexes)
 	end
 	f:write(string.format("vertex_counts = PackedInt32Array(%s)\n",table.concat( table_counts,", ")))
 	local topo_out={}
-	for i,v in ipairs(topo_info.face_cons) do
-		for vert_id,vert_con in ipairs(v) do
-			table.insert(topo_out,vert_con[1])
-			table.insert(topo_out,vert_con[2])
-			table.insert(topo_out,vert_con[3])
+	for i,v in ipairs(topology.faces) do
+		for _,vertex in ipairs(v.vertexes) do
+			local next_face=vertex:get_next_face(v.id)
+			if next_face>0 then
+				table.insert(topo_out,next_face-1)
+			else
+				table.insert(topo_out,-1)
+			end
 		end
 	end
 	f:write(string.format("face_topology = PackedInt32Array(%s)\n",table.concat( topo_out,", ")))
 	f:write(string.format("tiling_name = \"%s\"\n",name))
-	local vert_out={}
-	for face_id,face in ipairs(faces_list) do
-		for vert_id,vert in ipairs(face) do
+
+	local min_point
+	for face_id,face in ipairs(topology.faces) do
+		for vert_id,vert in ipairs(face.vertexes) do
 			local vc=vert:to_cartesian()
+			if min_point==nil then
+				min_point=Point(vc[1],vc[2])
+			else
+				if vc[1]<min_point[1] then min_point[1]=vc[1] end
+				if vc[2]<min_point[2] then min_point[2]=vc[2] end
+			end
+		end
+	end
+	local vert_out={}
+	for face_id,face in ipairs(topology.faces) do
+		for vert_id,vert in ipairs(face.vertexes) do
+			local vc=vert:to_cartesian()-min_point
 			table.insert(vert_out,vc[1])
 			table.insert(vert_out,vc[2])
 		end
@@ -580,15 +870,14 @@ function save_gdres( name , topology )
 	f:write(string.format("vertex_coords = PackedVector2Array(%s)\n",table.concat( vert_out,", ")))
 	f:close()
 end
-function save_reactor()
 
-end
 function update(  )
 	__clear()
 	imgui.Begin("R")
 	if imgui.Button("Save") then
-		save_reactor()
+		save_gdres("out",topology)
 	end
 	imgui.End()
 	draw_faces(0,0,0.1)
+
 end

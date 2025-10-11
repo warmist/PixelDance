@@ -5,11 +5,11 @@ require "common"
 local ffi=require "ffi"
 local w=1024
 local h=1024
-local particle_count=100
+local particle_count=1024
 config=make_config({
 	{"gain",1,type="float",min=0,max=10},
 	{"mult",1,type="float",min=0,max=10},
-	{"perturb_str",0.05,type="float",min=0,max=0.1},
+	{"perturb_str",0.005,type="float",min=0,max=0.01},
 },config)
 
 
@@ -17,9 +17,9 @@ local cl_kernels=opencl.make_program[==[
 #line __LINE__
 #define W 1024
 #define H 1024
-#define PCOUNT 64
+#define PCOUNT 1024
 #define M_PI 3.1415926538
-#define SMALL_SCALE_SIZE 0.005f
+#define SMALL_SCALE_SIZE 0.0005f
 #define RADIUS 1.0f
 int2 clamp_pos(int2 p)
 {
@@ -175,11 +175,97 @@ float2 potential_grad_exp(float2 delta)
 }
 float2 actual_grad(float2 p)
 {
+	return potential_grad_2pow(p);
 	return potential_grad_ln(p);
+	return potential_grad_exp(p);
 	return potential_grad_4pow(p);
 	return potential_grad_org(p);
-	return potential_grad_exp(p);
-	return potential_grad_2pow(p);
+}
+float2 teleported_value_grad_wave_simple(float2 p1,float2 p2)
+{
+	//simpler idea:
+	//  if p2=>center -> influence=>0
+	//  if p2=>edge -> influence=>1 (constant)
+	// inbetween some sin(delta angle) and sin(delta radius) thingy
+	float l2=length(p2);
+	if(l2<SMALL_SCALE_SIZE)
+		return 0;
+	float l1=length(p1);
+	if(l1<SMALL_SCALE_SIZE)
+		return 0;
+	float2 edge=normalize(p2)*RADIUS;
+	float edge_val=1-l2/RADIUS;
+	float dp=dot(p1,p2)/(l1*l2);
+	dp=clamp(dp,-1.f,1.f);
+	float da=acos(dp);//cos(angle);
+	float dr=fabs(l1-l2);
+	return 1*(actual_grad(-edge)+actual_grad(p2-p1)*((l2-0.1f)*cos(da*edge_val*12)+1)*(exp(-dr*dr)*sin(dr*edge_val*64)+1));
+}
+float2 teleported_value_grad_wave_simple2(float2 p1,float2 p2)
+{
+	//simpler idea:
+	// if center=>0
+	// near edge=>1
+	//
+	float l2=length(p2);
+	if(l2<SMALL_SCALE_SIZE)
+		return 0;
+	float l1=length(p1);
+	if(l1<SMALL_SCALE_SIZE)
+		return 0;
+	float2 edge=normalize(p2)*RADIUS;
+	float dp=dot(p1,p2)/(l1*l2);
+
+	float dist_to_edge=RADIUS-l2;
+	float dist_to_edge2=RADIUS-l1;
+	dp=clamp(dp,-1.f,1.f);
+	float da=acos(dp);//cos(angle);
+	float dr=fabs(l1-l2);
+	return 3*(actual_grad(-edge)*exp(-dist_to_edge*dist_to_edge/(da+0.01f+dr)-dist_to_edge2*dist_to_edge2/(da+0.01f)));
+}
+float2 teleported_value_grad_wave(float2 p1,float2 p2) //Eh...
+{
+	float2 delta_pt=p2+p1;
+	float len=length(delta_pt);
+	if(len<SMALL_SCALE_SIZE)
+		return 0;
+
+	float2 v=delta_pt/len;
+	float dp=dot(v,p1);
+	float rval=dp*dp-dot(p1,p1)+RADIUS*RADIUS;
+	if(rval<0)
+		return 0;
+	//if(rval<0)
+	//	rval*=-1;
+
+	float u1=-dp+sqrt(rval); //tv+A and circle intersection at t=u
+	float u2=-dp-sqrt(rval);
+
+
+	float2 intersect1=u1*v+p1;
+	float2 mirror_intesect1=-intersect1;
+	float2 mirror_p1_1=mirror_intesect1-u1*v;
+	float2 delta3_1=p2-mirror_p1_1;
+
+	float2 intersect2=u2*v+p1;
+	float2 mirror_intesect2=-intersect2;
+	float2 mirror_p1_2=mirror_intesect2-u2*v;
+	float2 delta3_2=p2-mirror_p1_2;
+	float delta_len=length(delta3_1+delta3_2);
+	float2 ret=0;
+	int N_MAX=12;
+	for(int n=1;n<N_MAX;n++)
+	{
+
+		float alpha=n*M_PI/4*rval;
+		ret+=sin(alpha*delta_len)*actual_grad(delta3_1+delta3_2)/N_MAX;
+	}
+	return ret;
+	//else
+	//	return actual_grad(-delta3_2);
+	//return actual_grad(delta1)+actual_grad(delta2);
+	//return actual_grad(delta1+delta2);
+	//return actual_grad(delta3);
 }
 float2 teleported_value_grad(float2 p1,float2 p2)
 {
@@ -319,8 +405,8 @@ __kernel void update_grid(__global float2* particles,__global float2* output,__w
 	int max=W*H;//s.w*s.h;
 	float max_rad=RADIUS;
 	float rad_sq=max_rad*max_rad;
-	float electric_str=0.1;
-	float teleport_str=4.0;
+	float electric_str=0.125;
+	float teleport_str=1.0;
 	float angle_step=0.8;
 	if(i>=0 && i<max)
 	{
@@ -346,7 +432,7 @@ __kernel void update_grid(__global float2* particles,__global float2* output,__w
 					potential_sum+=electric_str*actual_grad(delta);
 				else
 					inside_pt=1;
-				teleport_sum+=teleport_str*electric_str*teleported_value_grad(particles[j]+offset,pos_normed+offset);
+				teleport_sum+=teleport_str*electric_str*teleported_value_grad_wave_simple2(particles[j]+offset,pos_normed+offset);
 				/*
 				if(j%2==0)
 					teleport_sum+=teleport_str*electric_str*teleported_value_grad_angle(particles[j]+offset,pos_normed+offset,M_PI+angle_step);
@@ -440,7 +526,7 @@ __kernel void init_particles(__global float2* output,float seed)
 {
 	int i=get_global_id(0);
 	int max=PCOUNT;
-	float dist=0.4;
+	float dist=0.8;
 	if(i>=0 && i<max)
 	{
 		float2 pos;
@@ -556,7 +642,7 @@ function update(  )
 	update_grid:run(w*h)
 	display_buffer:release()
 
-	if imgui.Button("Perturb") then
+	--if imgui.Button("Perturb") then
 		local perturb_particles=cl_kernels.perturb_particles
 		perturb_particles:set(0,particle_buffers[2])
 		perturb_particles:set(1,particle_buffers[1])
@@ -564,7 +650,7 @@ function update(  )
 		perturb_particles:set(3,config.perturb_str)
 
 		perturb_particles:run(particle_count)
-	end
+	--end
 	--particle move
 	local update_particles=cl_kernels.update_particles
 	update_particles:set(0,particle_buffers[1])

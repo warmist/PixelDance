@@ -185,7 +185,7 @@ function load_hd_png()
 		__unbind_buffer()
 	end
 end
-image_buf=read_hd_png_buf("sim_aneal.dat")
+--image_buf=read_hd_png_buf("sim_aneal.dat")
 --]]
 function safe_set_size( w,h )
 	if STATE.size[1]~=w or STATE.size[2]~=h then
@@ -273,10 +273,105 @@ function load_csv_pigments( path )
 	f:close()
 	return ret
 end
+function tbl_min_max(tbl,min_v,max_v )
+	min_v=min_v or math.huge
+	max_v=max_v or -math.huge
 
+	for k,v in pairs(tbl) do
+		if min_v>v[2] then
+			min_v=v[2]
+		end
+		if max_v<v[2] then
+			max_v=v[2]
+		end
+	end
+	return min_v,max_v
+end
+function normalize( tbl,min_v,max_v)
+	for k,v in pairs(tbl) do
+		tbl[k][2]=(v[2]-min_v)/(max_v-min_v)
+	end
+end
+function load_csv_mie_pigment( path ,radius)
+	local ret={{},{},{}}
+	local sep=','
+
+	local f=io.open(path,'r')
+	local line=f:read("l")
+ 	line=f:read("l") --skip first line
+	local wavelen=0
+	while line do
+		local id=1
+		local pos=1
+		while true do
+			local startp,endp = string.find(line,sep,pos)
+			if startp then
+				local s=string.sub(line,pos,startp-1)
+				if id==1 then
+					wavelen=tonumber(s)
+					--print("Wavelen:",wavelen)
+				else
+					--print("INSERT:",id,s)
+					table.insert(ret[id-1],{wavelen,tonumber(s)})
+				end
+				pos = endp + 1
+				id=id+1
+			else
+				local s=string.sub(line,pos)
+				--print("END:",id,s)
+				table.insert(ret[id-1],{wavelen,tonumber(s)})
+				id=id+1
+				break
+			end
+		end
+		line=f:read("l")
+	end
+	f:close()
+	--normalize the values
+	--[[
+	local min_v,max_v=tbl_min_max(ret[2])
+	min_v,max_v=tbl_min_max(ret[2],min_v,max_v)
+
+	normalize(ret[2],min_v,max_v)
+	normalize(ret[3],min_v,max_v)
+	--]]
+	normalize(ret[2],0,math.pi*radius*radius*1e-18)
+	normalize(ret[3],0,math.pi*radius*radius*1e-18)
+	return ret
+end
+function add_mie_pigment(name,tbl_K,tbl_S,radius)
+	local r=load_csv_mie_pigment("../assets/mie/"..name..".csv",radius)
+	tbl_S[name]=r[2]
+	tbl_K[name]=r[3]
+end
+function load_dat_mie_pigment( path )
+	--source: https://saviot.cnrs.fr/mie/index.en.html
+	local ret={{},{},{}}
+	local f=io.open(path,'r')
+	local f=io.open(path,'r')
+	f:read("l")--skip first line
+ 	f:read("l")--skip second line
+ 	local wavelen=f:read("*n")
+ 	while wavelen do
+ 		for i=1,3 do
+ 			local v=f:read("*number")
+ 			if v<0.000001 then
+ 				v=0.0000001
+ 			end
+ 			table.insert(ret[i],{wavelen,v})
+ 		end
+ 		wavelen=f:read("*n")
+ 	end
+ 	return ret
+end
+function add_mie_pigment_dat( name,tbl_K,tbl_S )
+	local r=load_dat_mie_pigment("../assets/mie/"..name..".dat")
+	tbl_S[name]=r[2]
+	tbl_K[name]=r[3]
+end
 local main_shader=shaders.Make[===[
 #version 330
-#line 265
+#line __LINE__
 out vec4 color;
 in vec3 pos;
 #define M_PI 3.14159265359
@@ -575,7 +670,7 @@ uniform float iteration_step;
 uniform float input_temp;
 uniform float do_intensity;
 uniform vec4 wave_reflect;
-uniform vec2 pigment[6];
+uniform vec2 pigment[7];
 
 
 float black_body_spectrum(float l,float temperature )
@@ -764,7 +859,7 @@ float reflectivity_KS(vec2 v1,float height,float Rg)
 	float k=v1.x;
 	float s=v1.y;
 	float R_inf=kubelka_munk(v1);
-	if(height<0.005)
+	if(height<0.00005)
 		return Rg;
 #if 0
 	float eterm=exp(s*height*(1/R_inf-R_inf));
@@ -853,6 +948,36 @@ float mix3(float a,float b,float c,float v)
 	float w2=fract(saturate(1-abs(v-1.0)*2));
 	return w0*a+w1*b+w2*c;
 }
+
+float scene(vec2 pos)
+{
+#if 1
+	//back is first pigment i.e. dark
+	float back=kubelka_munk(pigment[0]);
+#elif 0
+	//second dark pigment
+	float back=kubelka_munk(pigment[2]);
+#elif 0
+	//second light pigment
+	float back=kubelka_munk(pigment[3]);
+#else
+	//back is second pigment i.e. light
+	float back=kubelka_munk(pigment[1]);
+#endif
+	float id_f=(pos.y+1)/2;
+	int id=int(id_f*7);
+#if 0
+	//pigments layerd on backing (with x increasing depth)
+	float r=reflectivity_KS(pigment[id],(pos.x+1)*0.5,back);
+#elif 1
+	//mixed pigments
+	float r=kubelka_munk(mix(pigment[0],pigment[id],(pos.x+1)*0.5));
+#else
+	//pure pigments
+	float r=kubelka_munk(pigment[id]);
+#endif
+	return r;
+}
 void main(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 	vec2 offset=vec2(0,0);
@@ -888,7 +1013,7 @@ void main(){
 
 	//nv.xyz=vec3(pos.xy+1,0)/2;
 	float sw=0.05;
-	///*
+	/*
 	float back_v=1-smoothstep(sw,-sw,
 		//sminCubic(sdSphere(pos.xy,0.12),1-sdSphere(pos.xy,1),0.05)
 		abs(sdSphere(pos.xy,0.6))-0.3
@@ -907,8 +1032,9 @@ void main(){
 			   kubelka_munk(pigment[5])*(1-back_v);
 	*/
 	//vec2 back_ks=mix(pigment[0],pigment[1],back_v);
-	float back=reflectivity_KS(pigment[0],back_v*5,kubelka_munk(pigment[5]));
+	//float back=reflectivity_KS(pigment[0],back_v*5,kubelka_munk(pigment[5]));
 	//float back=kubelka_munk(back_ks);
+	float back=kubelka_munk(pigment[0]);
 	//float stripes=step(mod(normed.y+1/24.0,1/6.0),1/12.0)*0.4;
 	//float back=kubelka_munk(mix(pigment[0],pigment[5],stripes));
 	float vv=clamp(abs(pos.y)+0.1,0,1);//step((pos.x+pos.y)/2,0);
@@ -929,7 +1055,7 @@ void main(){
 
 	int p=int(icoord.x+icoord.y*4);
 
-	///*
+	/*
 	float mix_v=clamp(c,0,1);
 	float w_mix=0.5;
 	vec2 p1=mix(pigment[1],pigment[3],smoothstep(-w_mix,w_mix,pos.x));
@@ -937,21 +1063,25 @@ void main(){
 
 	vec2 mix_ks=mix(p1,p2,mix_v);
 	
-	float r0=reflectivity_KS(p1,h.x,back);
-	float r=reflectivity_KS(p2,h.y,r0);
+	//float r0=reflectivity_KS(p1,h.x,back);
+	//float r=reflectivity_KS(p2,h.y,r0);
+
+	float r0=reflectivity_KS(p1,pos.x+1,back);
+	float r=reflectivity_KS(p2,pos.y+1,r0);
+
 	//float mask=(1-smoothstep(-sw,sw,length(pos.xy)-0.8));
 	//float r=kubelka_munk(mix_k,mix_s)*mask+back*(1-mask);
 	//*/
-
 	//float border=step(abs(pos.x)-0.9,0)*step(abs(pos.y)-0.9,0);
 	//r=r*border+back*(1-border);
+	float r=scene(pos.xy);
 	if(do_intensity==1)
 	{
-		float illuminant=black_body(iteration,T);
+		//float illuminant=black_body(iteration,T);
 		//float illuminant=D65_approx(iteration);
-		//float illuminant=D65_blackbody(iteration,T);
+		float illuminant=D65_blackbody(iteration,T);
 		//if(pos.x>0)
-		//	illuminant=D65_approx(iteration);
+			//illuminant=D65_blackbody(iteration,T);
 		color.xyz=xyz_from_normed_waves(iteration)*illuminant*iteration_step*r;
 	}
 	else
@@ -1127,7 +1257,8 @@ function sample_pigment(p, iter ,w)
 			local before=p[i-1]
 			local weight=(wl-before[1])/(v[1]-before[1])
 			local ret=((1-weight)*before[2]+weight*v[2])*w
-			return math.max(math.min(ret,1),0)
+			--return math.max(math.min(ret,1),0)
+			return ret
 		end
 	end
 	return 0
@@ -1159,12 +1290,19 @@ end
 
 function set_samples(  )
 	pigment_inputs={
-	"bone_black",
-	"k_cerulean_blue",
-	"k_quinacridone_magenta",
-	"Phthalo B (GS) and Phthalo G (BS)",
+	"carbon_50",
+	"TiO2_50",
+	--"carbon_500",
+	--"TiO2_500",
 	"arylide_yellow",
-	"titanium_white"
+	"gold_50",
+	--"gold_75",
+	--"gold_100",
+	"Cu50",
+	"Fe2O3_50",
+	"Cu100",
+	--"Al2O3",
+
 }
 	local names={}
 	for k,v in pairs(pigments_K) do
@@ -1175,13 +1313,13 @@ function set_samples(  )
 		end
 	end
 	--nice mix: phathlo_green_blue_shade & cadmium_orange
-	-- [[
+	--[[
 	for i=2,5 do
 		local n=names[math.random(1,#names)]
 		pigment_inputs[i]=n
 	end
 	--]]
-	for i=1,6 do
+	for i=1,7 do
 		print(i,pigment_inputs[i])
 	end
 end
@@ -1203,7 +1341,7 @@ function update(  )
 		main_shader:use()
 		con_tex:use(0,1)
 		main_shader:blend_add()
-		image_buf:write_texture(con_tex)
+		--image_buf:write_texture(con_tex)
 		main_shader:set_i("tex_main",0)
 		main_shader:set("barrel_power",config.bulge_r);
 		main_shader:set("barrel_offset",config.bulge_radius_offset)
@@ -1237,7 +1375,7 @@ function update(  )
 
 			local K={}
 			local S={}
-			for i=1,6 do
+			for i=1,7 do
 				local name=pigment_inputs[i]
 				K[i]=sample_pigment(pigments_K[name],iteration,1)
 				S[i]=sample_pigment(pigments_S[name],iteration,1)
@@ -1305,6 +1443,26 @@ function update(  )
 
 		pigments_K=load_csv_pigments("../assets/Artist Paint Spectral Database/k_values.csv")
 		pigments_S=load_csv_pigments("../assets/Artist Paint Spectral Database/s_values.csv")
+
+		--add_mie_pigment("gold_75",pigments_K,pigments_S,75)
+		--add_mie_pigment("gold_50",pigments_K,pigments_S,50)
+		local mie_dats={
+			"carbon_50",
+			"carbon_500",
+			"TiO2_50",
+			"TiO2_500",
+			"gold_50",
+			"gold_75",
+			"gold_100",
+			"Cu50",
+			"Cu100",
+			"Fe2O3_50",
+			"Fe2O3_100",
+			"Al2O3",
+		}
+		for i,v in ipairs(mie_dats) do
+			add_mie_pigment_dat(v,pigments_K,pigments_S)
+		end
 	end
 	imgui.End()
 

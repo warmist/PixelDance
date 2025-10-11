@@ -909,7 +909,8 @@ void main()
 	//color.xyz=tonemapFilmic(color.xyz);
 
 	//color.xyz=vec3(gain(color.x,v_gain),gain(color.y,v_gain),gain(color.z,v_gain));
-	float s=smoothstep(1,8,length(color.xyz));
+	//float s=smoothstep(1,8,length(color.xyz));
+	float s=0;
     color.xyz=mix(color.xyz,vec3(1),s);
 }
 ]]

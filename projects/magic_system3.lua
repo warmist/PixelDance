@@ -75,8 +75,8 @@ config=make_config({
     {"color_spread",10,type="float",min=0,max=25},
 
     {"draw_layer",0,type="int",min=0,max=3,watch=true},
-    {"agent_mult",1,type="floatsci",min=-8,max=8,watch=true},
-    {"agent_whitepoint",1,type="floatsci",min=-0.001,max=10,watch=true},
+    {"agent_mult",1,type="float",min=-8,max=8,watch=true,power=0},
+    {"agent_whitepoint",1,type="float",min=-0.001,max=10,watch=true,power=0},
     {"agent_gamma",1,type="float",min=0,max=2,watch=true},
 },config)
 
@@ -105,7 +105,28 @@ if field_texture==nil then
     field_texture:set(map_w,map_h,FLTA_PIX)
     display_buffer=opencl.make_buffer_gl(field_texture)
 end
-
+local bread = require "blobreader"
+function buffer_read(fname )
+    local file = io.open(fname, 'rb')
+    local b = bread(file:read('*all'))
+    local w=b:u32()
+    local h=b:u32()
+    print("Buffer:",w,h)
+    b:u32()
+    b:u32()
+    local min=b:f32()
+    local max=b:f32()
+    local avg=b:f32()
+    local oversample_x=w/map_w
+    local oversample_y=h/map_h
+    print(oversample_x,oversample_y)
+    for x=0,w-1 do
+    for y=0,h-1 do
+        local v=b:f32()
+    end
+    end
+end
+buffer_read("waves_out.buf")
 kernels=opencl.make_program
 [==[
 const sampler_t default_sampler =CLK_NORMALIZED_COORDS_TRUE|CLK_ADDRESS_REPEAT|CLK_FILTER_LINEAR;
@@ -154,9 +175,11 @@ __kernel void advance_particles(__global float8* input,
         //$ 2.4 normed speed stepping
         //agent_data.s01+=normalize(agent_data.s23)*speed_mult;
 
-		if(agent_data.s0<0 || agent_data.s0>map_w || agent_data.s1<0 ||agent_data.s1>map_h)
-			agent_data.s7=-1;
+        //limit sides
+		//if(agent_data.s0<0 || agent_data.s0>map_w || agent_data.s1<0 ||agent_data.s1>map_h)
+		//	agent_data.s7=-1;
 
+        //torus (i.e. repeating sides)
 		agent_data.s01=fmod(agent_data.s01,(float2)(map_w,map_h));
         //float col_variation=exp(-agent_data.s4*agent_data.s4/color_spread*color_spread);
         //float col_variation=exp(-(agent_data.s7*agent_data.s7)/(color_spread*color_spread));
@@ -167,8 +190,8 @@ __kernel void advance_particles(__global float8* input,
         old_speed=1-pow(1-old_speed,0.4f);
 
         //$3.1 color spread by force influence
-        float2 add_speed=field.s01*field_mult*col_variation;
-        //float2 add_speed=field.s01*field_mult;
+        //float2 add_speed=field.s01*field_mult*col_variation;
+        float2 add_speed=field.s01*field_mult;
         
 
         float max_speed=10.0f;
@@ -186,11 +209,11 @@ __kernel void advance_particles(__global float8* input,
         	old_vec*=max_speed;
         }
         //$2.2 speed of light constrain and rotate by f(current_normalized_speed)
-        agent_data.s23=lorenz_addition(old_vec,rotate2d(add_speed,M_PI*2*(length(old_vec)/max_speed)),max_speed);
+        //agent_data.s23=lorenz_addition(old_vec,rotate2d(add_speed,M_PI*2*(length(old_vec)/max_speed)),max_speed);
         //$2.1 speed of light constrain
-        //agent_data.s23=lorenz_addition(old_vec,add_speed,max_speed);
+        agent_data.s23=lorenz_addition(old_vec,add_speed,max_speed);
         //$3.2 color spread by rotation
-        //agent_data.s23=lorenz_addition(old_vec,rotate2d(add_speed,col_variation*M_PI*2),max_speed);
+        agent_data.s23=lorenz_addition(old_vec,rotate2d(add_speed,col_variation*M_PI*2),max_speed);
 
         //no constrain movement
         //agent_data.s23=old_vec+add_speed;
@@ -512,7 +535,7 @@ void main(){
 ]==],
 attribute_variables_frag,
 uniform_string,draw_string)
-    print(vert_shader,frag_shader)
+    --print(vert_shader,frag_shader)
     local draw_shader=shaders.Make(vert_shader,frag_shader)
     local need_clear=false
 
@@ -961,19 +984,12 @@ function recursive_set_octree( buf,iter,max_iter,box )
 end
 function global_field_value( x,y )
     local rings={
-<<<<<<< Updated upstream
         {count=3,radius=0.39,color=0.5,aoffset=0,rotation=math.pi/3,power=0.2},
         {count=9,radius=0.4,color=0.9,aoffset=0,rotation=-math.pi/2,power=0.4},
         {count=27,radius=0.43,color=0.1,aoffset=0,rotation=-math.pi/3,power=0.8},
         {count=9,radius=0.52,color=0.9,aoffset=math.pi/2,rotation=math.pi,power=0.9},
         {count=3,radius=0.55,color=0.1,aoffset=math.pi/4,rotation=-math.pi/4,power=0.8},
         {count=27,radius=0.75,color=0.75,aoffset=0,rotation=-math.pi/3},
-=======
-        {count=7,radius=0.3,color=0.5,aoffset=0,rotation=math.pi/3},
-        {count=9,radius=0.4,color=0.9,aoffset=0,rotation=-math.pi/2,power=0.4},
-        {count=12,radius=0.6,color=0.1,aoffset=math.pi/4,rotation=-math.pi/3,power=0.2},
-        {count=7,radius=0.8,color=0.75,aoffset=0,rotation=-math.pi/3},
->>>>>>> Stashed changes
     }
     local r=math.sqrt(x*x+y*y)
     local a=math.atan2(y,x)
@@ -1085,7 +1101,7 @@ function init_tools(  )
     local buf=make_flt_buffer(map_w,map_h)
     local cx=map_w/2
     local cy=map_h/2
-    -- [==[
+    --[==[
     local default_influence=.001
     for x=0,map_w-1 do
     for y=0,map_h-1 do
@@ -1109,8 +1125,8 @@ function init_tools(  )
     end
     end
     --]==]
-    --[==[
-    recursive_set_octree(buf,0,6)
+    -- [==[
+    recursive_set_octree(buf,0,5)
     --]==]
     __unbind_buffer()
 

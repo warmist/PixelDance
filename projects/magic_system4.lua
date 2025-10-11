@@ -657,12 +657,19 @@ end
 function tick(  )
 	local energy_balance=0
 	local energy_levels={
-		5,4,3,2,1
+		16,8,4,2,1
 	}
 	local function level_transfer(levels,space_below,want_overflow,from,to )
 		local overflow=math.floor(want_overflow/energy_levels[to])
 		energy_balance=energy_balance+overflow*(energy_levels[from]-energy_levels[to])
-		local drop_amount=math.min(space_below,levels[to])
+
+		local energy_transfer_step=energy_levels[from]/energy_levels[to]
+
+		local energy_below=math.floor(space_below*energy_transfer_step)
+		local energy_above=levels[to]*energy_levels[to]
+
+		local max_drop=math.floor((levels[to]*energy_levels[to])/energy_levels[from])
+		local drop_amount=math.min(space_below,max_drop)
 		levels[to]=levels[to]-drop_amount+overflow
 		levels[from]=levels[from]+drop_amount
 		energy_balance=energy_balance+drop_amount*(energy_levels[to]-energy_levels[from])
@@ -724,7 +731,7 @@ function tick(  )
 		local ga=grid_alt:get(x,y)
 		local g=bit.tobit(grid:get(x,y))
 		local el=split_energy(g)
-		local total_overflow=0
+		local total_overflow=0 --overflow in "energy"
 		for i=1,5 do
 			local m=orbital_masks_unshifted[i]
 			m=modify_mask[i](m,ga,g,x,y)
