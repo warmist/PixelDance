@@ -64,8 +64,10 @@ local ffi=require "ffi"
 local w=512
 local h=512
 config=make_config({
+	{"paused",false,type="bool"},
 	{"mult",1,type="float",min=0,max=10},
 	{"field",0,type="choice",choices={"cells","growth","starve","growth inhibit","destruct","growth sum"}},
+	{"field_sample",0,type="choice",choices={"growth","starve","growth inhibit","destruct","growth sum"}},
 },config)
 
 
@@ -94,12 +96,12 @@ local cl_kernels=opencl.make_program[==[
 #define FIELD_TRANSFORM_INHIBIT z
 #define FIELD_DESTRUCT w
 
-#define TRANS_THRESH 0.01
-#define VEIN_SPAWN_THRESH 5.0
-#define VEIN_PRUNE_STARVATION 0.0001
-#define TRANS_INHIBIT_THRESH 0.01
+#define TRANS_THRESH 20
+#define VEIN_SPAWN_THRESH 3.0
+#define VEIN_PRUNE_STARVATION 1.0
+#define TRANS_INHIBIT_THRESH 2000
 
-#define DEFAULT_FLOW 0.01,0.05,0.02,0.01
+#define DEFAULT_FLOW 0.02,0.05,0.01,0.01
 #define DEFAULT_IO -0.001,-0.001,-0.025,0
 
 #define STEM_EMIT 2.0,0,0,0
@@ -108,18 +110,17 @@ local cl_kernels=opencl.make_program[==[
 
 
 #define ORGAN_EMIT 10.0
-#define ORGAN_TRANS_THRESH 0.05
-#define ORGAN_GROW_THRESH 1000
-#define ORGAN_STARVE_THRESH 10000
+#define ORGAN_TRANS_THRESH 25
+#define ORGAN_GROW_THRESH 100
+#define ORGAN_STARVE_THRESH 5000
 #define ORGAN_FLOW 0.01,0.4,0.02,0.01
 
 #define NODULE_EMIT 0.1,ORGAN_EMIT,0,0
 #define NODULE_FLOW 0.5,0.5,0,0
 
 
-#define VEIN_EMIT_PART -0.0125
-#define VEIN_FLOW 0.01,0.5,0.00007,0.0
-#define VEIN_EMIT 0,-2.0,12.0,0
+#define VEIN_FLOW 0.01,0.5,0.007,0.0
+#define VEIN_EMIT 0,-0.05,0.5,0
 
 #define ROCK_FLOW 0.0001,0.0001,0.0001,0.0001
 #define ROCK_EMIT 0,0,0,0
@@ -127,17 +128,20 @@ local cl_kernels=opencl.make_program[==[
 #define DECAY_ROCK_EMIT -1,-1,-1,0.1
 #define DECAY_ROCK_DESTRUCT 10
 
-#define BLOB_MAX_GROW 1.7
-#define BLOB_GROW 1.6
-#define BLOB_DESTRUCT 40
+#define BLOB_MAX_GROW 0.35
+#define BLOB_GROW 0.3
+#define BLOB_DESTRUCT 5.5
 #define BLOB_TRANSFORM_INHIBIT (0)
 #define BLOB_TRANSFORM_DESTRUCT (-0)
-#define BLOB_TRANSFORM_GROW (10)
+#define BLOB_TRANSFORM_GROW (-1)
 
-#define BLOB2_LIVE_STATE 87.8
+#define BLOB2_LIVE_STATE 2.7
+#define BLOB2_SKIN_TRANSF -3
+#define BLOB2_BONES_TRANSF 30
 
-#define BLOB_EMIT 0.2,0,0.3,0.05
-#define BLOB_FLOW 0.3,0.01,0.3,0.4
+#define BLOB_EMIT 0.1,   0, 0.04,0.05
+#define BLOB2_EMIT 0.5,   0.1, 0.5,0.05
+#define BLOB_FLOW 0.3,0.05, 0.3, 0.4
 #define LOG_FIELD_DECAY -0.0009
 
 #define W 512
@@ -421,15 +425,14 @@ int mask_around4(__global int* arr,int2 pos)
 	ret|=CELL_MASK(sample_at_pos_int(arr,pos+(int2)( -1, 0)));
 	return ret;
 }
+
 __kernel void cell_update(
 	__global int* cell_input,
 	__global int* cell_output,
 	__global float4* field_input,
 	__global float4* field_output,
 	__global float4* field_params,
-	__global float4* field_weights,
-	__write_only image2d_t output_tex,
-	int field_id
+	__global float4* field_weights
 	)
 {
 	int i=get_global_id(0);
@@ -474,6 +477,7 @@ __kernel void cell_update(
 				&& HAS_CELL(mask,CELL_TYPE_BLOB))
 			{
 				//field_value.FIELD_STEM_ROOT-=BLOB_GROW/2;
+				field_value.FIELD_STEM_ROOT+=BLOB_TRANSFORM_GROW;
 				field_value.FIELD_TRANSFORM_INHIBIT+=BLOB_TRANSFORM_INHIBIT;
 				field_value.FIELD_DESTRUCT+=BLOB_TRANSFORM_DESTRUCT;
 				my_cell=CELL_TYPE_BLOB;
@@ -496,15 +500,11 @@ __kernel void cell_update(
 			int organ_around=count_around(cell_input,CELL_TYPE_ORGAN,pos);
 			if(organ_around>4)
 				my_cell=CELL_TYPE_ORGAN;
-			/*if(field_value.FIELD_STARVED<VEIN_PRUNE_STARVATION)
+			if(field_value.FIELD_STARVED<VEIN_PRUNE_STARVATION)
 			{
-				int mask=mask_around4(cell_input,pos);
-				if(HAS_CELL(mask,CELL_TYPE_ORGAN))
-					my_cell=CELL_TYPE_ORGAN;
-				else
-					my_cell=CELL_TYPE_STEM;
+				my_cell=CELL_TYPE_STEM;
 
-			}*/
+			}
 		} else if (my_cell==CELL_TYPE_BLOB)
 		{
 			int mask=mask_around4(cell_input,pos);
@@ -527,6 +527,15 @@ __kernel void cell_update(
 			if(field_value.FIELD_STEM_ROOT<BLOB2_LIVE_STATE)
 			{
 				my_cell=CELL_TYPE_ROCK2;
+			}
+			else if (field_value.FIELD_STEM_ROOT-field_value.FIELD_TRANSFORM_INHIBIT<BLOB2_SKIN_TRANSF)
+			{
+				my_cell=CELL_TYPE_ROCK;
+			}
+			else if(field_value.FIELD_DESTRUCT>BLOB2_BONES_TRANSF)
+			{
+				my_cell=CELL_TYPE_BLOB;
+				field_value.FIELD_DESTRUCT-=BLOB2_BONES_TRANSF;
 			}
 		}else if (my_cell==CELL_TYPE_DECAY_ROCK)
 		{
@@ -586,9 +595,28 @@ __kernel void cell_update(
 		else if(my_cell==CELL_TYPE_BLOB2)
 		{
 			field_weights[i]=(float4)(BLOB_FLOW);
-			field_params[i]=(float4)(BLOB_EMIT);
+			field_params[i]=(float4)(BLOB2_EMIT);
 		}
 		field_output[i]=field_value;
+	}
+}
+__kernel void update_texture(
+	__global int* cell_input,
+	__global float4* field_input,
+	__write_only image2d_t output_tex,
+	int field_id
+	)
+{
+	int i=get_global_id(0);
+	int max_i=W*H;
+
+	if(i>=0 && i<max_i)
+	{
+		int2 pos;
+		pos.x=i%W;
+		pos.y=i/W;
+		int my_cell=cell_input[i];
+		float4 field_value=field_input[i];
 		float4 col;
 		if(field_id==0)
 		{
@@ -617,6 +645,7 @@ __kernel void cell_update(
 		write_imagef(output_tex,pos,col);
 	}
 }
+
 __kernel void init_grid(
 	__global float4* output_grid1,
 	__global float4* output_grid2,
@@ -635,22 +664,12 @@ __kernel void init_grid(
 		pos_normed.y=2*pos.y/(float)(H)-1.0;
 
 		float r=0;
-		float rdiff=(pos_normed.x+1.0)*.5;
+		float rdiff=0;
 		float ri=0;
-
-		if(length(pos_normed)<0.6)
-		{
-			rdiff=0;
-			r=0;
-			//ri=-0.001;
-		}
 		output_grid1[i]=(float4)(r,r,0,0);
 		output_grid2[i]=(float4)(r,r,0,0);
 		output_weights[i]=(float4)(rdiff,0.5,0.5,0.5);
-		if(length(pos_normed)<0.2)
-			ri=10;
-		if(length(pos_normed)>0.8)
-			ri=-0.001;
+
 		output_params[i]=(float4)(ri,0,0,0);
 	}
 }
@@ -698,7 +717,7 @@ __kernel void init_cells(__global int* cells1,__global int* cells2)
 		hash.x=lowbias32(hash.x);
 		hash.x=lowbias32(hash.x);
 		#if 1
-		if(  length(float_from_hash(hash).x)>0.9998
+		if(  length(float_from_hash(hash).x)>0.999
 		//	&&((pos_normed.y<-0.3 && pos_normed.y>-0.35) ||
 		//	(pos_normed.y>0.3 && pos_normed.y<0.35))
 			//&&length(pos_normed)>0.24
@@ -707,18 +726,30 @@ __kernel void init_cells(__global int* cells1,__global int* cells2)
 			)
 			v=CELL_TYPE_BLOB;
 		#endif
-		#if 0
-		if(  length(float_from_hash(hash+2).x)>0.6
-			&&length(pos_normed)>0.59
-			&&length(pos_normed)<0.7
+		#if 1
+		hash.x=lowbias32(hash.x);
+		if(  length(float_from_hash(hash).x)>0.999
+		//	&&((pos_normed.y<-0.3 && pos_normed.y>-0.35) ||
+		//	(pos_normed.y>0.3 && pos_normed.y<0.35))
+			//&&length(pos_normed)>0.24
+			//&&length(pos_normed-pos_organ)<0.3
+			//&&pos.x==256
+			)
+			v=CELL_TYPE_ORGAN;
+		#endif
+		#if 1
+		hash.x=lowbias32(hash.x);
+		if(  length(float_from_hash(hash+2).x)>0.3
+			&&length(pos_normed)>0.6
+			&&length(pos_normed)<0.61
 			)
 			v=CELL_TYPE_ROCK;
 		#endif
-		#if 1
+		#if 0
 		//if(length(pos_normed-pos_root)<0.0125)
 		//if(pos.x>=254 && pos.x<=257 && pos.y==256)
-		//if(pos.x==256 && pos.y==256)
-		//	v=CELL_TYPE_STEM_ROOT;
+		if(pos.x==256)// && pos.y==256)
+			v=CELL_TYPE_STEM_ROOT;
 		#endif
 		cells1[i]=v;
 		cells2[i]=v;
@@ -892,6 +923,16 @@ function read_pixel(x,y,arr)
 	arr:get(pixel_size,pixel4,(lx+ly*w)*pixel_size)
 	print(string.format("(%g,%g,%g,%g)",pixel4.d[0],pixel4.d[1],pixel4.d[2],pixel4.d[3]))
 end
+function get_sample(data)
+	local samples={
+		data.d[0],
+		data.d[1],
+		data.d[2],
+		data.d[3],
+		data.d[0]-data.d[2],
+	}
+	return samples[config.field_sample+1]
+end
 function read_pixel_group( x,y,arr )
 	local s=STATE.size
 	local lx=math.floor((x/s[1])*w)
@@ -907,10 +948,13 @@ function read_pixel_group( x,y,arr )
 		--for k=1,4 do
 			--plot_data[k]:set(i,0,pixel4_group[i].d[k-1])
 		--end
-		plot_data[1]:set(i,0,pixel4_group[i].d[0]-pixel4_group[i].d[2])
+		plot_data[1]:set(i,0,get_sample(pixel4_group[i]))
 	end
 end
 local mouse_update_needed=false
+local diffuse_update_needed=300
+local max_diffuse_update_per_update=30
+local diffuse_updates_left=0
 function update(  )
 	__no_redraw()
 	__clear()
@@ -920,41 +964,53 @@ function update(  )
 	--cl tick
 	--setup stuff
 	-- [==[
-	local cell_update=cl_kernels.cell_update
-	cell_update:set(0,cell_fields[1])
-	cell_update:set(1,cell_fields[2])
-	cell_update:set(2,fields[1])
-	cell_update:set(3,fields[2])
-	cell_update:set(4,field_params)
-	cell_update:set(5,field_weights)
-	cell_update:set(6,display_buffer)
-	cell_update:seti(7,config.field)
-	display_buffer:aquire()
-	cell_update:run(w*h)
-	display_buffer:release()
-	swap_cells()
-	swap_fields()
-	--]==]
-	-- [[
-	local count_diffuse=40
-	for i=1,count_diffuse do
+	if not config.paused then
+		if diffuse_updates_left<=0 then
+			local cell_update=cl_kernels.cell_update
+			cell_update:set(0,cell_fields[1])
+			cell_update:set(1,cell_fields[2])
+			cell_update:set(2,fields[1])
+			cell_update:set(3,fields[2])
+			cell_update:set(4,field_params)
+			cell_update:set(5,field_weights)
+			cell_update:run(w*h)
+			swap_cells()
+			swap_fields()
+		end
+		--]==]
+		-- [[
+		if diffuse_updates_left<=0 then
+			diffuse_updates_left=diffuse_update_needed
+		end
+		for i=1,math.min(max_diffuse_update_per_update,diffuse_updates_left) do
 
-	local field_update=cl_kernels.field_update
-	field_update:set(0,fields[1])
-	field_update:set(1,fields[2])
-	field_update:set(2,field_weights)
-	field_update:set(3,field_params)
-	field_update:set(4,1/count_diffuse)
-	--field_update:set(5,display_buffer)
+			local field_update=cl_kernels.field_update
+			field_update:set(0,fields[1])
+			field_update:set(1,fields[2])
+			field_update:set(2,field_weights)
+			field_update:set(3,field_params)
+			field_update:set(4,1/diffuse_update_needed)
+			--field_update:set(5,display_buffer)
 
-	--  run kernel
-	--display_buffer:aquire()
-	field_update:run(w*h)
-	--display_buffer:release()
-	--]]
-	swap_fields()
+			--  run kernel
+			--display_buffer:aquire()
+			field_update:run(w*h)
+			--display_buffer:release()
+			--]]
+			swap_fields()
+		end
+
+		diffuse_updates_left=diffuse_updates_left-max_diffuse_update_per_update
 	end
-	
+	local update_texture=cl_kernels.update_texture
+	update_texture:set(0,cell_fields[1])
+	update_texture:set(1,fields[1])
+	update_texture:set(2,display_buffer)
+	update_texture:seti(3,config.field)
+	display_buffer:aquire()
+	update_texture:run(w*h)
+	display_buffer:release()
+
 	--opengl draw
 	--  read from cl
 	-- actually the kernel writes it itself...
