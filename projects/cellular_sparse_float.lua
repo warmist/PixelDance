@@ -1,9 +1,6 @@
 --[==[
-	A sparse CA:
-	v1
-		* e.g. ruleset:
-			0=>[1=>2] -> 0 turns into 1 if alive closest alive cell is at 2
-			1=>[0=>1] -> 1 turns into 0 if alive closest cell is at 0 (i.e. range>max_range)
+	A sparse CA float version:
+
 --]==]
 
 require "common"
@@ -20,9 +17,9 @@ local aspect_ratio=win_w/win_h
 local map_aspect_ratio=map_w/map_h
 local size=STATE.size
 local max_range=40
-local range_zones=4
+local range_zones=2
 local zone_starts={4,6,8}
-local max_state=8
+local max_state=10
 
 config=make_config({
     {"pause",true,type="bool"},
@@ -54,19 +51,19 @@ local kernel_str=[==[
 #define W $width
 #define H $height
 
-#define MAX_ZONE_ID 3
-const int zone_starts[]={10,20,30};
+#define MAX_ZONE_ID 1
+const int zone_starts[]={20};
 #define STATE_COUNT $state_count
 #define SAMPLE_TYPE 1
 #define BORDER_ZERO 1
-
+#define BORDER_MIRROR 0
 int pos_to_index(int2 p)
 {
 	//int2 p2=clamp_pos(p);
 	return p.x+p.y*W;
 }
 
-int sample_at_pos_int(__global int* arr,int2 p)
+float sample_at_pos_float(__global float* arr,int2 p)
 {
 #if BORDER_CLAMP
 	p.x=clamp(p.x,0,W-1);
@@ -98,7 +95,7 @@ int find_zone_start(int rsqr)
 	}
 	return MAX_ZONE_ID;
 }
-void count_around(__global int* cells,int2 pos,int* state_out)
+void count_around(__global float* cells,int2 pos,int* state_out)
 {
 	int rr=RADIUS*RADIUS;
 	int zone_ids[MAX_ZONE_ID+1]={};
@@ -109,10 +106,11 @@ void count_around(__global int* cells,int2 pos,int* state_out)
 		int rsq=dx*dx+dy*dy;
 		if(rsq<rr)
 		{
-			int sample=sample_at_pos_int(cells,pos+(int2)(dx,dy));
+			float sample=sample_at_pos_float(cells,pos+(int2)(dx,dy));
 			int zone=find_zone_start(rsq);
 #if SAMPLE_TYPE==1
-			zone_ids[zone]+=sample;
+			zone_ids[zone]+=floor(sample);
+			//zone_ids[zone]+=sample;
 			counts[zone]+=1;
 #elif SAMPLE_TYPE==2
 			zone_ids[zone]=(sample>zone_ids[zone])?sample:zone_ids[zone];
@@ -131,9 +129,11 @@ void count_around(__global int* cells,int2 pos,int* state_out)
 
 $generated_rule_definition
 
+
+const float cell_step=0.1;
 __kernel void cell_update(
-	__global int* cell_input,
-	__global int* cell_output
+	__global float* cell_input,
+	__global float* cell_output
 	)
 {
 	int i=get_global_id(0);
@@ -144,12 +144,18 @@ __kernel void cell_update(
 		int2 pos;
 		pos.x=i%W;
 		pos.y=i/W;
+		//float2 pos_i=convert_float2(pos)-(float2)(W/2,H/2);
+		//float cell_step=(1+0.25*length(pos_i)/(W/2))*0.01; //probably quite silly...
+		float my_cell_f=cell_input[i];
+		int my_cell=(floor(my_cell_f));
 
-		int my_cell=cell_input[i];
-		int new_cell=my_cell;
+		float new_cell=0;
 		int cell_state[MAX_ZONE_ID+1];
 		count_around(cell_input,pos,cell_state);
-		int state_id=cell_state[0]+cell_state[1]*STATE_COUNT+cell_state[2]*STATE_COUNT*STATE_COUNT; //TODO: gen this too
+		//int state_id=floor(cell_state[0])+floor(cell_state[1])*STATE_COUNT+floor(cell_state[2])*STATE_COUNT*STATE_COUNT; //TODO: gen this too
+		//int state_id=floor(cell_state[0])+floor(cell_state[1])*STATE_COUNT+floor(cell_state[2])*STATE_COUNT*STATE_COUNT+floor(cell_state[3])*STATE_COUNT*STATE_COUNT*STATE_COUNT; //TODO: gen this too
+		//int state_id=cell_state[0]+cell_state[1]*STATE_COUNT+cell_state[2]*STATE_COUNT*STATE_COUNT;intentionally wrong
+		int state_id=cell_state[0]+cell_state[1]*STATE_COUNT+cell_state[2]*STATE_COUNT*STATE_COUNT+cell_state[3]*STATE_COUNT*STATE_COUNT*STATE_COUNT;
 		if(false);
 		$generated_rule_logic
 		//something like if(my_cell==1) new_cell=rulebook_1[state_id];
@@ -163,7 +169,41 @@ __kernel void cell_update(
 		else
 			new_cell=0;
 #endif
-		cell_output[i]=new_cell;
+#if 1
+		float cell_final_out=0;
+		int new_cell_i=(floor(new_cell));
+		if(my_cell!=new_cell_i)
+		{
+			//trying to change cell type
+			float offset=my_cell_f-floor(my_cell_f);
+			if(offset+cell_step<1) //if we dont overflow, we increase the "fractional part timer"
+			{
+				cell_final_out=my_cell_f+cell_step;
+			}
+			else
+			{
+				//if we overflow just set to new cell
+				cell_final_out=new_cell;
+			}
+		}
+		else
+		{
+			//we want to keep same cell
+			float offset=my_cell_f-floor(my_cell_f);
+			if(offset>cell_step)
+			{
+				//if we have some fractional part, reduce it
+				cell_final_out=my_cell_f-cell_step;
+			}
+			else
+			{
+				cell_final_out=floor(my_cell_f);
+			}
+		}
+#else
+		float cell_final_out=new_cell;
+#endif
+		cell_output[i]=cell_final_out;
 	}
 }
 
@@ -181,8 +221,8 @@ float4 float_from_hash(uint4 val)
 	return convert_float4(val)/(float4)(4294967295.0);
 }
 __kernel void init_cells(
-	__global int* cells1,
-	__global int* cells2,
+	__global float* cells1,
+	__global float* cells2,
 	int radius,
 	float noise_level)
 {
@@ -197,7 +237,7 @@ __kernel void init_cells(
 		float2 pos_i=convert_float2(pos)-(float2)(W/2,H/2);
 		pos_normed.x=2*pos.x/(float)(W)-1.0;
 		pos_normed.y=2*pos.y/(float)(H)-1.0;
-		int v=0;
+		float v=0;
 		uint4 hash=(uint4)(i,0,0,0);
 		hash.x=lowbias32(hash.x);
 		hash.x=lowbias32(hash.x);
@@ -210,8 +250,8 @@ __kernel void init_cells(
 			//&& fmod(length(pos_normed),0.4f)<0.3
 			//&& fmax(fabs(pos_normed.x),fabs(pos_normed.y))<0.1
 			//&& fmax(fabs(pos_normed.x),fabs(pos_normed.y))>0.05
-			//&& fmax(fabs(pos_i.x),fabs(pos_i.y))<radius
-			|| length(pos_i)<radius
+			|| fmax(fabs(pos_i.x),fabs(pos_i.y))<radius
+			//|| length(pos_i)<radius
 			//&& length(pos_i)>radius/2
 			//&& pos_normed.y<0.01
 			//&& pos_normed.y*pos_normed.x<0.00008
@@ -254,7 +294,7 @@ __kernel void init_cells(
 
 
 __kernel void update_texture(
-	__global int* cell_input,
+	__global float* cell_input,
 	__write_only image2d_t output_tex
 	)
 {
@@ -266,9 +306,9 @@ __kernel void update_texture(
 		int2 pos;
 		pos.x=i%W;
 		pos.y=i/W;
-		int my_cell=cell_input[i];
+		float my_cell=cell_input[i];
 
-		float4 col=(float4)(convert_float(my_cell)/(float)(STATE_COUNT),0.f,0.f,0.f);
+		float4 col=(float4)(my_cell/(float)(STATE_COUNT),0.f,0.f,0.f);
 
 		write_imagef(output_tex,pos,col);
 	}
@@ -364,9 +404,9 @@ vec4 gaussian_sample(in vec2 texcoord)
 void main(){
     vec2 normed=(pos.xy+vec2(1,-1))*vec2(0.5,-0.5);
     normed=(normed-vec2(0.5,0.5))+vec2(0.5,0.5);
-    //vec4 data=texture(tex_main,normed);
+    vec4 data=texture(tex_main,normed);
     //vec4 data=texture2D_bilinear(tex_main,normed,vec2(1024),vec2(1));
-    vec4 data=gaussian_sample(normed);
+    //vec4 data=gaussian_sample(normed);
     //data.x*=data.x;
     float normed_particle=data.x;
     //vec3 c=palette(normed_particle,vec3(0.2),vec3(0.8),vec3(1.5,0.5,1.0),vec3(0.5,0.5,0.25));
@@ -396,7 +436,7 @@ function randomize_colors()
 			color_info.col_offset[i]=math.random()
 			color_info.col_amplitute[i]=1-color_info.col_offset[i]
 		--]==]
-		color_info.col_freq[i]=math.random()*2
+		color_info.col_freq[i]=math.random()*4
 		color_info.col_angle[i]=math.random()
 	end
 
@@ -442,9 +482,9 @@ function save_img(  )
 end
 function random_rule_state(cur_state)
 	local ret={}
-	local chance_stay=0.6
-	local chance_random=0.0
-	local chance_advance=0.4
+	local chance_stay=0.3
+	local chance_random=0.5
+	local chance_advance=0.0
 	for i=0,math.pow(max_state,range_zones)-1 do
 		--ret[i]=math.random(0,max_state)
 		--  [==[
