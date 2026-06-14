@@ -21,6 +21,9 @@ local ffi = require("ffi")
 				- clear to blackbody
 				- stamp with "multiply" and "pow(absorbtion,depth)" (actually it's exp(-depth*absorbtion))
 		save hd buffer with tonemapping applied
+	NB:
+		normed_iter is a misnomer! due to random being restarted at any time, it's not "normalized iteration!!!!"
+		actually it's okay if you dont use "smart reset"!
 --]]
 
 win_w=win_w or 0
@@ -33,8 +36,12 @@ function update_size()
 	local trg_h=1024*2*size_mult
 	--]]
 	--[[
-	local trg_w=1024
-	local trg_h=1024
+	local trg_w=1440*0.5
+	local trg_h=1440*0.5
+	--]]
+	--[[
+	local trg_w=512
+	local trg_h=512
 	--]]
 	-- [[
 	local trg_w=2560*0.5
@@ -62,7 +69,20 @@ end
 update_size()
 local size=STATE.size
 
-local max_palette_size=50
+local max_palette_size=1000
+function update_palette_texture()
+	if palette_buffer==nil or palette_texture.w~=max_palette_size then
+		palette_buffer=make_flt_buffer(max_palette_size,1)
+		palette_texture={t=textures:Make(),w=max_palette_size,h=1}
+		palette_texture.t:use(0)
+		palette_texture.t:set(max_palette_size,1,FLTA_PIX)
+	end
+end
+
+if palette_texture==nil then
+	update_palette_texture()
+end
+
 local need_clear=false
 local oversample=2
 local complex=true
@@ -72,7 +92,7 @@ local not_pixelated=0
 str_x=str_x or "s.x"
 str_y=str_y or "s.y"
 
-str_cmplx=str_cmplx or "c_mul(s,vec2(prand.x,move_dist))"
+str_cmplx=str_cmplx or "c_mul(s,vec2(move_dist,prand.x))"
 
 str_other_code=str_other_code or ""
 str_preamble=str_preamble or ""
@@ -211,7 +231,7 @@ local display_shader=shaders.Make[==[
 out vec4 color;
 in vec3 pos;
 
-uniform vec4 palette[50];
+uniform vec4 palette[1000];
 uniform int palette_size;
 
 uniform vec2 min_max;
@@ -498,7 +518,7 @@ vec3 YxyToXyz(vec3 v)
 void main_normal(){
 	vec2 normed=(pos.xy+vec2(1,1))/2;
 #if SHOW_PALETTE
-	vec3 ccol=mix_palette2(normed.x).xyz;
+	vec3 ccol=mix_palette(normed.x).xyz;
 #else
 	vec3 ccol=texture(tex_main,normed).xyz;
 #endif
@@ -531,6 +551,7 @@ void main_normal(){
 	//color.xyz=pow(color.xyz,vec3(2.4));
 	color.a=1;
 }
+#define COMPLEX_POINT_OUTPUT 0
 void main_complex()
 {
 	vec2 normed=(pos.xy+vec2(1,1))/2;
@@ -546,33 +567,41 @@ void main_complex()
 	Y=pow(Y,v_gamma);
 	//Y=Y/(Y+1);
 	//Y = (Y*(1 + Y / lum_white)) / (Y + 1);
-	vec3 ccol=mix_palette2(1-Y).xyz;
+	vec3 ccol=mix_palette(1-Y).xyz;
 	//ccol.y=length(complex_value);
 	color = vec4(tonemap_simple(ccol,1),1);
 	//color.xyz=vec3(Y);
 #elif 1 //mixed
+#if COMPLEX_POINT_OUTPUT==1
 	float Y=length(complex_value);
 	float T=atan(complex_value.y,complex_value.x)/M_PI+0.5;
+#else
+	float Y=complex_value.y;
+	float T=complex_value.x/(Y+0.01);
+#endif
+
 
 	//Y=(Y-min_max.x)/(min_max.y-min_max.x);
 	Y=(log(Y+1)-log(min_max.x+1))/(log(min_max.y+1)-log(min_max.x+1));
+	//Y-=0.3;
+	//Y+=-0.4;
 	//Y=log(Y+2.8);
 	//Y=Y*exp(exposure);//(exp(avg_lum));
 	//Y=Y*exposure;
 	Y=pow(Y,v_gamma);
 	//Y=Y/(Y+1);
 	//Y = (Y*(1 + Y / lum_white)) / (Y + 1);
-	vec3 ccol=mix_palette2(T).xyz*Y;
+	vec3 ccol=mix_palette(T).xyz*Y;
 	//ccol.y*=Y;
 	color = vec4(tonemap(ccol,exposure),1);
 #else //angle
 	float Y=atan(complex_value.y,complex_value.x)/M_PI+0.5;
 	//color.xyz=vec3(Y);
-	color.xyz=vec3(mix_palette2(Y).xyz*exp(exposure));
+	color.xyz=vec3(mix_palette(Y).xyz*exp(exposure));
 #endif
 	color.a=1;
 }
-#define COMPLEX_POINT_OUTPUT 0
+
 void main()
 {
 #if COMPLEX_POINT_OUTPUT
@@ -692,7 +721,10 @@ function draw_visits(  )
 	end
 
 	display_shader:use()
+
+	display_shader:set_i("tex_main",0)
 	visit_tex.t:use(0,not_pixelated)
+
 	set_shader_palette(display_shader)
 	display_shader:set("min_max",llmin or 0,llmax or 0)
 	--display_shader:set("min_max",lmin[2],lmax[2])
@@ -706,7 +738,7 @@ function draw_visits(  )
 	display_shader:set("uchimura_params[5]",config.black_off)
 	--]]
 	display_shader:set("avg_lum",lavg)
-	display_shader:set_i("tex_main",0)
+
 	display_shader:set("v_gamma",config.gamma)
 
 	display_shader:set("exposure",config.exposure)
@@ -734,13 +766,14 @@ palette=palette or {show=false,
 rgb_lerp=false,
 current_gen=8,
 colors_input={{0.01, 0.01, 0.01, 0,0},{0.25,0.25,0.25,1,math.floor(max_palette_size*0.5)},{.99, .99, .99, 1,max_palette_size-1}}}
+
 function update_palette_img(  )
-	if palette_img.w~=#palette.colors_input then
-		palette_img=make_flt_buffer(#palette.colors_input,1)
-	end
+	update_palette_texture()
 	for i,v in ipairs(palette.colors_input) do
-		palette_img:set(i-1,0,v)
+		palette_buffer:set(i-1,0,v)
 	end
+	palette_texture.t:use(2)
+	palette_buffer:write_texture(palette_texture.t)
 end
 function lerp_hue( h1,h2,local_v )
 
@@ -817,6 +850,8 @@ function set_shader_palette(s)
 			cur_color=cur_color+1
 		end
 		local c
+		s:set_i("tex_palette",2)
+		palette_texture.t:use(2,not_pixelated)
 		if palette.is_xyz then
 			s:set_i("palette_xyz",1)
 			c=mix_color_xyz(palette.colors_input[cur_color-1],palette.colors_input[cur_color],i)
@@ -944,9 +979,10 @@ function phase_difference(layers,n1,n0,angle,wavelen,layer_count)
 	end
 	return ret*math.pi*4
 end
+--TODO: generator based on fullspectral + closed random curve
 palette.generators={
 	{"random",function (ret, hue_range,sat_range,lit_range )
-		local count=math.random(5,25)
+		local count=math.random(30,45)
 		--local count=2
 		for i=1,count do
 			local nh,ns,nl
@@ -1074,6 +1110,49 @@ palette.generators={
 			w.z=w.z*b
 			table.insert(ret,new_color(w.x,w.y,w.z,(i/(max_palette_size-1))*(max_palette_size-1)))
 		end
+	end},{"fullspectrum random",function (ret, hue_range,sat_range,lit_range )
+		palette.is_xyz=true
+		local chunkyness=10
+		local speed=0.05
+		local wave_n=math.random()
+		for i=0,max_palette_size-1 do
+			if i%chunkyness==0 then
+				wave_n=math.random()
+			end
+			local h=i/(max_palette_size-1)
+			local w=xyz_from_normed_waves(wave_n)
+			wave_n=wave_n+(math.random()*speed-speed/2)
+			if wave_n<0 then
+				wave_n=0
+			elseif wave_n>1 then
+				wave_n=1
+			end
+			local b=D65_blackbody(h,6503.5)
+			--local b=black_body(h,6503.5)
+			--local b=1
+			w.x=w.x*b
+			w.y=w.y*b
+			w.z=w.z*b
+			table.insert(ret,new_color(w.x,w.y,w.z,(i/(max_palette_size-1))*(max_palette_size-1)))
+		end
+	end},{"fullspectrum circle",function (ret, hue_range,sat_range,lit_range )
+		palette.is_xyz=true
+		local temp_variation=2000
+		for i=0,max_palette_size-1 do
+			local temp_center=6503.5
+			local wave_center=0.6
+			local h=i/(max_palette_size-1)
+			local cur_wave=math.cos(h*math.pi*2)*(1-wave_center)+wave_center
+			local cur_temp=math.sin(h*math.pi*2)*temp_variation+temp_center
+			local w=xyz_from_normed_waves(cur_wave)
+			local b=D65_blackbody(cur_wave,cur_temp)
+			--local b=black_body(h,6503.5)
+			--local b=1
+			w.x=w.x*b
+			w.y=w.y*b
+			w.z=w.z*b
+			table.insert(ret,new_color(w.x,w.y,w.z,(i/(max_palette_size-1))*(max_palette_size-1)))
+		end
 	end},{"full_temperature",function (ret, hue_range,sat_range,lit_range )
 		palette.is_xyz=true
 		local max_temp=8000
@@ -1132,6 +1211,7 @@ function gen_palette( )
 	local l=rand_range(lit_range)
 	palette.is_xyz=false
 	palette.generators[palette.current_gen][2](ret,hue_range,sat_range,lit_range)
+	update_palette_img()
 end
 function print_col( c )
 	for i,v in ipairs(c) do
@@ -1257,8 +1337,8 @@ end
 
 local terminal_symbols={
 ["s.x"]=1,["s.y"]=1,["p.x"]=1,["p.y"]=1,
---[[
 ["params.x"]=1,["params.y"]=1,["params.z"]=1,["params.w"]=1,
+--[[
 ["normed_iter"]=0.05,
 --]]
 ["1.0"]=0.5,
@@ -1503,12 +1583,14 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 			dy=-dy
 		end
 
-		local r=math.sqrt(math.random())
+		local r=1--math.sqrt(math.random())
 		local ang=math.random()*math.pi*2
-		local dx2=math.cos(ang)*r
-		local dy2=math.sin(ang)*r
-		local dx=math.cos(istart*math.pi*2)*1
-		local dy=math.sin(istart*math.pi*2)*1
+		--local dx2=math.cos(ang)*r
+		--local dy2=math.sin(ang)*r
+		local dx2=0.1
+		local dy2=math.random()*2-1
+		local dx=math.cos(istart*math.pi*2)*0.1
+		local dy=math.sin(istart*math.pi*2)*0.1
 		--]]
 		--[[
 
@@ -1522,8 +1604,8 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 		local dx=0
 		local dy=0
 		--]]
-		--ret=ret..string.format("(c_mul(%s,vec2(%g,%g))+vec2(%g,%g))*value_inside(prand.y,%g,%g)",rc,dx2,dy2,dx,dy,istart,iend)
-		ret=ret..string.format("(%s+vec2(%g,%g)*params.w)*value_inside(prand.y,%g,%g)",rc,dx,dy,istart,iend)
+		--ret=ret..string.format("(c_mul(%s,vec2(%g,%g))+vec2(%g,%g))*value_inside(global_seeds.x+(prand.x*2-1)*move_dist,%g,%g)",rc,dx2,dy2,dx,dy,istart,iend)
+		--ret=ret..string.format("(%s+vec2(%g,%g)*params.w)*value_inside(prand.y,%g,%g)",rc,dx,dy,istart,iend)
 		--[[
 		if i==1 then
 			ret=ret..string.format("(c_mul(%s,vec2(%g,%g))+vec2(%g,%g))*value_inside(global_seeds.x,%g,%g)",rc,dx,dy,dx2,dy2,istart,iend)
@@ -1532,6 +1614,7 @@ function random_math_complex_intervals(steps,count_intervals,seed,force_values )
 		end
 		--]]
 		--ret=ret..string.format("(c_pow(s,%d)+p+vec2(%g,%g))*value_inside(global_seeds.x,%g,%g)",i+1,dx,dy,istart,iend)
+		ret=ret..string.format("(%s)*value_inside(prand.y,%g,%g)",rc,istart,iend)
 		if i~=count_intervals then
 			ret=ret.."+"
 		end
@@ -1567,13 +1650,173 @@ function random_math_intervals(is_dx,steps,count_intervals,seed,force_values )
 		local delta=dx
 		if not is_dx then delta=dy end
 
-		ret=ret.."("..rc..string.format("+%g)*value_inside(global_seeds.x,%g,%g)",dy,istart,iend)
+		--ret=ret.."("..rc..string.format("+%g)*value_inside(global_seeds.x,%g,%g)",delta,istart,iend)
+		ret=ret.."("..rc..string.format("+%g*move_dist)*value_inside(prand.x,%g,%g)",delta,istart,iend)
 		if i~=count_intervals then
 			ret=ret.."+"
 		end
 		--rc="c_mul("..rc..","..random_math(3,seed)..")"
 		rc=random_math(steps,seed,force_values)
 	end
+	return ret
+end
+function legendre_poly(n,sym)
+	if n==0 then
+		return "1"
+	elseif n==1 then
+		return sym
+	else
+		return string.format("(%d*(%s)*(%s)-%d*(%s))/(%d)",2*n-1,sym,legendre_poly(n-1,sym),n-1,legendre_poly(n-2,sym),n)
+	end
+end
+function legendre_poly_cheb(n,sym) --Actually chebyshev poly here...
+	if n==0 then
+		return "1"
+	elseif n==1 then
+		return sym
+	else
+		return string.format("(2*(%s)*(%s)-(%s))",sym,legendre_poly(n-1,sym),legendre_poly(n-2,sym))
+	end
+end
+function gen_legendre(max_v)
+	local str=""
+	for i=0,max_v do
+		str=str..string.format("float legendre_%d(float v){ return %s;}\n",i,legendre_poly(i,"v"))
+	end
+	str_other_code=str
+end
+local possible_params={
+	"params.x",
+	"params.y",
+	"params.z",
+	"params.w",
+	"-params.x",
+	"-params.y",
+	"-params.z",
+	"-params.w",
+	"params.x*params.x",
+	"params.x*params.y",
+	"params.x*params.z",
+	"params.x*params.w",
+	"params.y*params.x",
+	"params.y*params.y",
+	"params.y*params.z",
+	"params.y*params.w",
+	"params.z*params.x",
+	"params.z*params.y",
+	"params.z*params.z",
+	"params.z*params.w",
+	"params.w*params.x",
+	"params.w*params.y",
+	"params.w*params.z",
+	"params.w*params.w",
+}
+local sym_rand={
+	-- [==[ direct input
+	"s.x",
+	"s.y",
+	"p.x",
+	"p.y",
+	--]==]
+	-- [==[ delta input
+	"s.x-p.x",
+	"s.x-p.y",
+	"s.y-p.x",
+	"s.y-p.y",
+	--]==]
+	--[==[ normalized delta
+	"normalize(s-p*(1+prand.x*move_dist)).x",
+	"normalize(s-p*(1+prand.x*move_dist)).y",
+	--]==]
+	--[==[
+	"s.y-p.x*normed_iter*(1+prand.x*move_dist)",
+	"s.y-p.y*normed_iter*(1+prand.x*move_dist)",
+	"s.x-p.x*normed_iter*(1+prand.x*move_dist)",
+	"s.x-p.y*normed_iter*(1+prand.x*move_dist)",
+	--]==]
+	--"atan(s.y,s.x)",
+	--"atan(p.y,p.x)",
+	--"atan(s.y-p.y,s.x-p.x)",
+	--"atan(s.y-p.y*(1+prand.x*move_dist),s.x-p.x)",
+	--"atan(s.y-p.x,s.x-p.y)",
+	--"atan(s.y-p.x*(1+prand.x*move_dist),s.x-p.y)",
+	--[==[
+	"sin((s.x-p.x)*M_PI*2*(1+prand.x*move_dist))",
+	"sin((s.x-p.y)*M_PI*2*(1+prand.x*move_dist))",
+	"sin((s.y-p.x)*M_PI*2*(1+prand.x*move_dist))",
+	"sin((s.y-p.y)*M_PI*2*(1+prand.x*move_dist))",
+	--]==]
+	--"s.x*normed_iter-prand.x*move_dist*p.y",
+	--"s.y*normed_iter-prand.x*move_dist*p.x",
+	--"s.y-prand.x*move_dist*tex_s.x",
+	--"rotate(s-p,prand.x*move_dist).x+p.x",
+	--"rotate(s-p,prand.x*move_dist).y+p.y",
+}
+function random_math_legendre(is_dx,steps,count_intervals,seed,force_values )
+	gen_legendre(steps)
+	local ret=""
+	local wsum=""
+	local sym
+	--sym="s.y"
+	--sym="s.y-tex_s.y*(1+prand.x*move_dist)"
+	--sym="rotate(s-p,prand.x*move_dist*M_PI*2).y"
+	--sym="s.y-p.y*(1+prand.x*move_dist)"
+	--sym="atan(s.y-p.y*(1+prand.x*move_dist),s.x-p.x*(1+prand.x*move_dist))"
+	--sym="s.y-p.x*prand.x*move_dist"
+	--if is_dx then sym="s.x" end
+	--if is_dx then sym="length(s-p)" end
+	--if is_dx then sym="s.x-p.y*prand.x*move_dist" end
+	local last_rc="1"
+	for i=1,count_intervals do
+		local istart=(i-1)/count_intervals
+		local iend=(i)/count_intervals
+		sym=sym_rand[math.random(#sym_rand)]
+		if i==1 then
+		--if math.random()>0.5 then
+			--sym=sym.."*(1+prand.x*move_dist)"
+		--else
+			--sym=sym.."*(prand.x*move_dist)"
+			--sym="mix(-prand.x*move_dist,prand.x*move_dist,"..sym..")"
+			--sym=sym.."*(1-prand.x*move_dist)"
+			--sym=sym.."*(1+prand.y*move_dist)"
+		end
+		--end
+		local rc=string.format("legendre_%d(%s)",math.random(3,steps),sym)
+		local p=possible_params[math.random(#possible_params)]
+		--ret=ret.."("..rc..string.format("*move_dist*%s)*value_inside(prand.x,%g,%g)",p,istart,iend)
+		--ret=ret.."("..rc..string.format(")*value_inside(prand.x*(1-move_dist)+params.y*move_dist,%g,%g)",istart,iend)
+		--ret=ret.."("..rc..string.format("*%s)*value_inside(prand.x*(1-move_dist)+params.y*move_dist,%g,%g)",p,istart,iend)
+		--ret=ret.."("..rc..string.format("*(%s)*1.2)*value_inside(prand.x*(1-move_dist)+prand.y*move_dist,%g,%g)",p,istart,iend)
+		--ret=ret.."("..rc..string.format("*%s)",p)
+		--ret=ret.."("..rc..string.format("*%s)*value_inside(global_seeds.x,%g,%g)",p,istart,iend)
+		--ret=ret.."("..rc..string.format("*%s)*value_inside(prand.y,%g,%g)",p,istart,iend)
+		--ret=ret..string.format("(pow(%s-%s,3)*%s)",rc,last_rc,p)
+		--ret=ret..string.format("(%s-%s)*%s*value_inside(prand.y,%g,%g)",rc,last_rc,p,istart,iend)
+		--ret=ret..string.format("(%s-%s)*%s*(0.5+0.5*prand.x*%g*move_dist)",rc,last_rc,p,1/i)
+		ret=ret..string.format("%s*%s*(0.5+0.5*prand.x*%g*move_dist*normed_iter)",rc,p,1/i)
+		--ret=ret..string.format("(%s-%s)*%s*value_inside(s.y,%g,%g)",rc,last_rc,p,istart,iend)
+		--ret=ret..string.format("(%s-%s)*%s*value_inside(prand.y,%g,%g)",rc,last_rc,p,istart,iend)
+		last_rc=rc
+		--ret=ret.."("..rc..string.format("*(%s))*%g",p,1/count_intervals)
+		--ret=ret.."("..rc..string.format("*(%s))*%g",p,1/count_intervals)
+		--ret=ret.."("..rc..string.format("*move_dist*(1-prand.x*2))*value_inside(global_seeds.x,%g,%g)",istart,iend)
+		--ret=ret.."("..rc..string.format("*move_dist*(1-prand.x*2))*(%s)*%g",p,1/count_intervals)
+		--ret=ret.."("..rc..string.format("*move_dist)*value_inside(params.x*(%s),%g,%g)",p,istart,iend)
+		wsum=wsum..string.format("abs(%s)",p)
+		--wsum=wsum..string.format("abs(%s)+%g",p,1/i)
+		if i~=count_intervals then
+			ret=ret.."+"
+			wsum=wsum.."+"
+		end
+	end
+	ret=string.format("(%s)/(%s)",ret,wsum)
+	--[==[
+	ret=ret.."R"
+	function MT(  )
+		return rand_weighted(terminal_symbols)
+	end
+	ret=string.gsub(ret,"R",MT)
+	--]==]
 	return ret
 end
 function factorial( n )
@@ -1817,8 +2060,8 @@ animate=false
 
 function get_forced_insert_complex(  )
 	--local tbl_insert={}
-	local tbl_insert={"s","p"}
-	--local tbl_insert={"s","p","params.xy","params.zw"}
+	--local tbl_insert={"s","p"}
+	local tbl_insert={"s","p","params.xy","params.zw"}
 	--{"s","p","vec2(cos(global_seeds.x*2*M_PI),sin(global_seeds.x*2*M_PI))","params.xy","params.zw"})--{"vec2(global_seeds.x,0)","vec2(0,1-global_seeds.x)"})
 	--{"s","c_mul(p,vec2(exp(-npl),1-exp(-npl)))","c_mul(params.xy,vec2(cos(global_seeds.x*2*M_PI),sin(global_seeds.x*2*M_PI)))","params.zw"})
 	--{"vec2(cos(length(s)*M_PI*5+move_dist),sin(length(s)*M_PI*5+move_dist))*(0.25+global_seeds.x)","vec2(cos(length(p)*M_PI*4+global_seeds.x),sin(length(p)*M_PI*4+global_seeds.x))*(move_dist)","params.xy","params.zw","vec2(s.x,p.y)","vec2(p.x,s.y)"}
@@ -1832,7 +2075,7 @@ function get_forced_insert_complex(  )
 	--local tbl_insert={"mix(c_mul(c_mul(s,s),s),c_mul(c_mul(p,p),p),global_seeds.x)","c_mul(s,p)","params.xy","params.zw"}
 	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seeds.x*global_seeds.x*8))"} --"(p*(global_seeds.x+0.5))/length(p)"
 
-	--local tbl_insert={"s*(length(s-p)*prand.x)","p","params.xy","params.zw"}
+	--local tbl_insert={"s*(length(s-p)*prand.x*move_dist)","p*(length(p-s)*prand.y*move_dist)","p","params.xy","params.zw"}
 	--local tbl_insert={"params.xy+s*params.z+p*params.w+c_mul(s,p)*global_seeds.x"}
 	--local tbl_insert={"c_mul(s,s)","c_mul(p,p)","c_mul(s,p)","params.xy","params.zw","vec2(cos((global_seeds.x-0.5)*M_PI*2*move_dist),sin((global_seeds.x-0.5)*M_PI*2*move_dist))"} --"(p*(global_seeds.x+0.5))/length(p)"
 	--local tbl_insert={"s","p","mix(params.xy,params.zw,exp(-global_seeds.x*global_seeds.x*3))"} --"(p*(global_seeds.x+0.5))/length(p)"
@@ -1851,15 +2094,19 @@ function get_forced_insert_complex(  )
 	--table.insert(tbl_insert,"vec2(cos(prand.x*prand.x*4),sin(prand.x*prand.x*4))")
 	--table.insert(tbl_insert,"vec2(cos(prand.y*M_PI*2),sin(prand.y*M_PI*2))*(1-prand.x)*move_dist")
 	--table.insert(tbl_insert,"vec2(prand.x,0)")
-	for i=1,1 do
+	for i=1,6 do
 		--table.insert(tbl_insert,"prand.x*move_dist*(prand.x*move_dist*(p+(s-p)*move_dist*prand.x)+s)")
 		--table.insert(tbl_insert,"rotate(s/(0.01+length(s)),M_PI*2*prand.x*length(p))*move_dist")
 		--table.insert(tbl_insert,"rotate(p/(0.01+length(p)),M_PI*2*prand.x*length(s))*move_dist")
 		--table.insert(tbl_insert,"rotate(s-p,M_PI*2*prand.x*move_dist)+p")
 		--table.insert(tbl_insert,"rotate(p-s,M_PI*2*prand.x*move_dist)+s")
 		--table.insert(tbl_insert,"rotate(s-p,M_PI*2*prand.y*move_dist*move_dist)+p")
-		--table.insert(tbl_insert,"mix(s,p,prand.x*move_dist)")
+		--table.insert(tbl_insert,"mix(s,p,prand.y*(1-move_dist))")
 		--table.insert(tbl_insert,"rotate(p-s,M_PI*2*global_seeds.x*move_dist)+s")
+		--table.insert(tbl_insert,string.format("rotate(s-p,M_PI*2*prand.x*move_dist*%g)+p",math.random()-0.5))
+		--table.insert(tbl_insert,string.format("normalize(p-s)*move_dist*prand.x"))
+		table.insert(tbl_insert,string.format("mix(s,s+normalize(p-s)*prand.x,move_dist)"))
+		--table.insert(tbl_insert,string.format("mix(s+normalize(p-s)*prand.x,s+normalize(p-s)*prand.y,move_dist)"))
 	end
 	-- [[
 	--table.insert(tbl_insert,"mix(c_mul(s,params.xy),c_mul(s,params.zw),prand.x)")
@@ -1895,8 +2142,9 @@ function get_forced_insert_complex(  )
 		}
 		local NO_PICKS=3
 		for i=1,NO_PICKS do
-			table.insert(tbl_insert,rand_choices[math.random(1,#rand_choices)])
+			--table.insert(tbl_insert,rand_choices[math.random(1,#rand_choices)])
 			--table.insert(tbl_insert,rand_choices[math.random(1,#rand_choices)].."*prand.x*move_dist")
+			table.insert(tbl_insert,rand_choices[math.random(1,#rand_choices)].."*(1+prand.x)*move_dist")
 		end
 	end
 	--]==]
@@ -1956,6 +2204,7 @@ function get_forced_insert_complex(  )
 	--table.insert(tbl_insert,"c_mul(mix(s,p,global_seeds.x),mix(s,p,1-global_seeds.x))")
 	--table.insert(tbl_insert,"((global_seeds.x*2-1)*(move_dist*c_mul(s,s)+s+p))")
 	--table.insert(tbl_insert,"((prand.x*2-1)*(move_dist*c_mul(s,s)+s+p))")
+	--table.insert(tbl_insert,"(mix(prand.x,prand.y,move_dist)*(c_mul(s,s)+s-p))")
 	--[[
 	table.insert(tbl_insert,"vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2))")
 	--]]
@@ -1991,9 +2240,10 @@ function get_forced_insert_complex(  )
 	for i=1,num_tex do
 		--table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)].."))")
 		--table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*prand.x)")
-		table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*(prand.x+prand.y*(1-normed_iter)))")
+		--table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*(prand.x+prand.y*(1-normed_iter)))")
 		--table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*prand.y)")
 		--table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*move_dist*prand.x)")
+		--table.insert(tbl_insert,"(("..tex_variants[math.random(1,#tex_variants)]..")*move_dist)")
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2)))")
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(prand.x*M_PI*2),sin(prand.x*M_PI*2))*move_dist)")
 		--table.insert(tbl_insert,"c_mul("..tex_variants[math.random(1,#tex_variants)]..",vec2(cos(prand.y*M_PI*2),sin(prand.y*M_PI*2))*move_dist)")
@@ -2038,12 +2288,16 @@ end
 function get_forced_insert( )
 	local tbl_insert_x={}
 	local tbl_insert_y={}
-	--[[ random picks
+	-- [[ random picks
 	local choices={
-		"s.x","s.x*s.x","s.x*s.x*s.x","s.x*s.x*s.x*s.x",
-		"s.y","s.y*s.y","s.y*s.y*s.y","s.y*s.y*s.y*s.y",
-		"p.x","p.x*p.x","p.x*p.x*p.x","p.x*p.x*p.x*p.x",
-		"p.y","p.y*p.y","p.y*p.y*p.y","p.y*p.y*p.y*p.y",
+		--"s.x","s.x*s.x","s.x*s.x*s.x","s.x*s.x*s.x*s.x",
+		--"s.y","s.y*s.y","s.y*s.y*s.y","s.y*s.y*s.y*s.y",
+		--"p.x","p.x*p.x","p.x*p.x*p.x","p.x*p.x*p.x*p.x",
+		--"p.y","p.y*p.y","p.y*p.y*p.y","p.y*p.y*p.y*p.y",
+		"s.x-s.y","s.x*s.x-s.y*s.y","s.x*s.x*s.y-s.x*s.y*s.y",
+		"p.x-p.y","p.x*p.x-p.y*p.y","p.x*p.x*p.y-p.x*p.y*p.y",
+		"s.x-p.y","s.x*p.x-s.y*p.y","s.x*p.x*p.y-s.x*p.y*p.y",
+		"p.x-s.y","p.x*p.x-s.y*s.y","p.x*p.x*s.y-p.x*p.y*s.y",
 	}
 	local NO_PICKS=5
 	for i=1,NO_PICKS do
@@ -2118,6 +2372,7 @@ function get_forced_insert( )
 		table.insert(tbl_insert_cmplx,string.format("vec2(%g,%g)",math.cos(vr)*r,math.sin(vr)*r))
 	end
 	--]]
+	--[==[
 	table.insert(tbl_insert_x,"((rotate(s-p,M_PI/4)+p).x*prand.x*move_dist)")
 	table.insert(tbl_insert_y,"((rotate(s-p,M_PI/4)+p).y*prand.x*move_dist)")
 	table.insert(tbl_insert_x,"((rotate(s-p,M_PI/4)+p).y*prand.x*move_dist)")
@@ -2127,6 +2382,7 @@ function get_forced_insert( )
 	table.insert(tbl_insert_y,"((rotate(s-p,M_PI/4)+p).y*prand.y*move_dist)")
 	table.insert(tbl_insert_x,"((rotate(s-p,M_PI/4)+p).y*prand.y*move_dist)")
 	table.insert(tbl_insert_y,"((rotate(s-p,M_PI/4)+p).x*prand.y*move_dist)")
+	--]==]
 	--[=[
 	local tex_variants_real={
 		-- [[
@@ -2136,14 +2392,14 @@ function get_forced_insert( )
 		"(atan(tex_s.y,tex_s.x)/M_PI)","(atan(tex_p.y,tex_p.x)/M_PI)",
 		"(atan(tex_s.x,tex_s.z)/M_PI)","(atan(tex_p.x,tex_p.z)/M_PI)"
 	}
-	local num_tex=2
+	local num_tex=4
 	for i=1,num_tex do
 		--table.insert(tbl_insert_x,tex_variants_real[math.random(1,#tex_variants_real)])
 		--table.insert(tbl_insert_y,tex_variants_real[math.random(1,#tex_variants_real)])
-		--table.insert(tbl_insert_x,tex_variants_real[math.random(1,#tex_variants_real)].."*prand.x*move_dist")
-		--table.insert(tbl_insert_y,tex_variants_real[math.random(1,#tex_variants_real)].."*prand.x*move_dist")
-		table.insert(tbl_insert_x,tex_variants_real[math.random(1,#tex_variants_real)].."*prand.y")
-		table.insert(tbl_insert_y,tex_variants_real[math.random(1,#tex_variants_real)].."*prand.y")
+		table.insert(tbl_insert_x,tex_variants_real[math.random(1,#tex_variants_real)].."*prand.x*move_dist")
+		table.insert(tbl_insert_y,tex_variants_real[math.random(1,#tex_variants_real)].."*prand.x*move_dist")
+		--table.insert(tbl_insert_x,tex_variants_real[math.random(1,#tex_variants_real)].."*prand.y")
+		--table.insert(tbl_insert_y,tex_variants_real[math.random(1,#tex_variants_real)].."*prand.y")
 	end
 	--]=]
 	return tbl_insert_x,tbl_insert_y
@@ -2296,10 +2552,11 @@ function rand_function(  )
 	--]==]
 	--chebyshev_poly_series(10)
 	--str_cmplx="(s/length(s)+p/length(p))*(0.5+global_seeds.x)"
-	str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert_cmplx)
+	--str_cmplx=random_math_complex(rand_complexity,nil,tbl_insert_cmplx)
+	str_cmplx="vec2(sqrt(s.x),s.y)"
 	--str_cmplx=random_math_complex(rand_complexity,generate_intervals_diff(5,0.0,0.1,0.1),tbl_insert_cmplx)
 	--str_cmplx=random_math_complex_transformed(rand_complexity,nil,tbl_insert_cmplx,0.2,0.25)
-	--str_cmplx=random_math_complex_intervals(rand_complexity,10,nil,tbl_insert_cmplx)
+	--str_cmplx=random_math_complex_intervals(rand_complexity,4,nil,tbl_insert_cmplx)
 
 	--str_cmplx=random_math_complex(15,"cheb_eval(R)",tbl_insert)
 	--str_cmplx=random_math_complex(15,"c_mul(cheb_eval(c_mul(vec2(cos(global_seeds.x*M_PI*2),sin(global_seeds.x*M_PI*2)),(s-p))),R)",tbl_insert)
@@ -2317,10 +2574,18 @@ function rand_function(  )
 	--str_cmplx="c_mul(params.xy,c_inv(c_mul(c_conj(c_cos(s)),p*vec2(move_dist,global_seeds.x)+params.zw)))"
 	--str_cmplx=str_cmplx.."*value_inside(global_seeds.x,0,0.5)+(s-(s*move_dist)/length(s))*value_inside(global_seeds.x,0.5,1)+(s*floor(global_seeds.x*5)/5)/length(s)"
 	--str_cmplx="c_tan(c_cos(c_tan((((params.xy)-(s))-(c_cos(c_mul(c_atan(params.zw),c_tan((params.zw)+(params.xy))))))-(p*vec2(move_dist*(1-global_seeds.x*global_seeds.x),global_seeds.x)))))"
-
-	--str_x=random_math_intervals(true,rand_complexity,6,nil,{"s.x","p.y","params.x","params.y"})
-	--str_y=random_math_intervals(false,rand_complexity,6,nil,{"s.y","p.x","params.z","params.w"})
-
+	--[==[
+	str_x=random_math_intervals(true,rand_complexity,6,nil,tbl_insert_x)
+	str_y=random_math_intervals(false,rand_complexity,6,nil,tbl_insert_y)
+	--]==]
+	--[==[
+	str_x=random_math_legendre(true,rand_complexity,12,nil,tbl_insert_x)
+	str_y=random_math_legendre(false,rand_complexity,12,nil,tbl_insert_y)
+	--]==]
+	-- [==[
+	str_x=random_math_legendre(true,6,rand_complexity,nil,tbl_insert_x)
+	str_y=random_math_legendre(false,6,rand_complexity,nil,tbl_insert_y)
+	--]==]
 	--str_cmplx="c_mul(s,s)+from_polar(to_polar(p)+vec2(0,prand.x*move_dist*M_PI*2))"
 	--str_cmplx="c_cos(s+params.xy)+p*prand.x+c_mul(s,s)*(1-prand.x)"
 	--str_cmplx=random_math_complex(rand_complexity,"c_mul(R,last_s/length(last_s)+c_one())")
@@ -2446,9 +2711,10 @@ function rand_function(  )
 	--str_y="cos("..s.."-s.y*s.x)"
 	--str_x=random_math_centered(3,rand_complexity)
 	--str_y=random_math_centered(3,rand_complexity)
+	--[==[
 	str_x=random_math(rand_complexity,nil,tbl_insert_x)
 	str_y=random_math(rand_complexity,nil,tbl_insert_y)
-
+	--]==]
 	--[[
 	local str1="p.x"
 	local str2="p.y"
@@ -2621,7 +2887,7 @@ function rand_function(  )
 	--]]
 	--[[ const-delta-like
 	str_preamble=str_preamble.."vec2 os=s;"
-	--str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
+	str_postamble=str_postamble.."s/=length(s);s=os+s*move_dist*exp(1/-dot(p,p));"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/(1+global_seeds.x));"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*exp(-dot(p,p)/(1+prand.x));"
 	--str_postamble=str_postamble.."s/=length(s);s=os+s*dot(tex_p,tex_p)*prand.y;"
@@ -2638,7 +2904,7 @@ function rand_function(  )
 	--str_postamble=str_postamble.."s/=length(s);s=rotate(rotate(os,(prand.x-0.5)*M_PI*2)+s*move_dist,-(prand.x-0.5)*M_PI*2);"
 	--str_postamble=str_postamble.."s/=length(s);s=os+rotate(s,(prand.y-0.5)*M_PI*2*move_dist)*(prand.x-0.5)*move_dist;"
 	--str_postamble=str_postamble.."s/=length(s);s=os+rotate(s,(prand.x-0.5)*M_PI*2*move_dist)*(prand.x-0.5)*move_dist;"
-	str_postamble=str_postamble.."s=os+rotate(s-os,(prand.x*exp(-dot(p,p))-0.5)*M_PI*2)*move_dist;"
+	--str_postamble=str_postamble.."s=os+rotate(s-os,(prand.x*exp(-dot(p,p))-0.5)*M_PI*2)*move_dist;"
 	--]]
 	--[[ const-delta-like complex
 	str_preamble=str_preamble.."vec2 os=s;"
@@ -2664,7 +2930,7 @@ function rand_function(  )
 	r2=r2/r
 	r3=r3/r
 	r4=r4/r
-	--[[
+	-- [[
 	str_preamble=str_preamble..string.format("vec2 s2=c_one();su2_mat_mult(s,s2,vec2(%.3f,%.3f),vec2(%.3f,%.3f));",r1,r2,r3,r4)
 	--str_postamble=str_postamble..string.format("su2_mat_mult(s,s2,vec2(%.3f,%.3f),vec2(%.3f,%.3f));",r1,-r2,-r3,-r4)
 	--]]
@@ -2805,7 +3071,9 @@ function rand_function(  )
 	--str_preamble=str_preamble.."p=vec2(cos(params.z*M_PI*2)*p.x-sin(params.z*M_PI*2)*p.y,cos(params.z*M_PI*2)*p.y+sin(params.z*M_PI*2)*p.x);"
 	--str_postamble=str_postamble.."p=vec2(cos(global_seeds.x*M_PI*2)*p.x-sin(global_seeds.x*M_PI*2)*p.y,cos(global_seeds.x*M_PI*2)*p.y+sin(global_seeds.x*M_PI*2)*p.x);"
 	--str_postamble=str_postamble.."p=vec2(cos(prand.x*M_PI*2*move_dist)*s.x-sin(prand.x*M_PI*2*move_dist)*s.y,cos(prand.x*M_PI*2*move_dist)*s.y+sin(prand.x*M_PI*2*move_dist)*s.x);"
-	str_postamble=str_postamble.."s=vec2(cos(prand.x*M_PI*2*move_dist)*s.x-sin(prand.x*M_PI*2*move_dist)*s.y,cos(prand.x*M_PI*2*move_dist)*s.y+sin(prand.x*M_PI*2*move_dist)*s.x);"
+	--str_postamble=str_postamble.."s=vec2(cos(prand.x*M_PI*2*move_dist)*s.x-sin(prand.x*M_PI*2*move_dist)*s.y,cos(prand.x*M_PI*2*move_dist)*s.y+sin(prand.x*M_PI*2*move_dist)*s.x);"
+	--str_postamble=str_postamble.."s=vec2(cos(prand.x*M_PI*2*move_dist)*s.x-sin(prand.x*M_PI*2*move_dist)*s.y,cos(prand.x*M_PI*2*move_dist)*s.y+sin(prand.x*M_PI*2*move_dist)*s.x);"
+	str_postamble=str_postamble.."s=vec2(cos(normed_iter*M_PI*2*move_dist)*s.x-sin(normed_iter*M_PI*2*move_dist)*s.y,cos(normed_iter*M_PI*2*move_dist)*s.y+sin(normed_iter*M_PI*2*move_dist)*s.x);"
 	--]]
 	--[[ offset_complex
 	--str_preamble=str_preamble.."s+=params.xy*floor(seed*move_dist+1)/move_dist;s=c_mul(s,params.zw);"
@@ -2815,15 +3083,17 @@ function rand_function(  )
 	--str_postamble=str_postamble.."s=c_div(s,params.zw);s-=params.xy*floor(seed*move_dist+1)/move_dist;"
 	str_postamble=str_postamble.."s=c_mul(s,c_inv(params.zw));s-=params.xy*floor(global_seeds.x*move_dist+1)/move_dist;"
 	--]]
-	-- [[ rotate (p)
+	--[[ rotate (p)
 	--str_preamble=str_preamble.."s=vec2(cos(p.x)*s.x-sin(p.x)*s.y,cos(p.x)*s.y+sin(p.x)*s.x);"
 	--str_preamble=str_preamble.."s=vec2(cos(p.y)*s.x-sin(p.y)*s.y,cos(p.y)*s.y+sin(p.y)*s.x);"
 	--str_preamble=str_preamble.."s=vec2(cos(normed_iter*M_PI*2)*s.x-sin(normed_iter*M_PI*2)*s.y,cos(normed_iter*M_PI*2)*s.y+sin(normed_iter*M_PI*2)*s.x);"
 	--str_preamble=str_preamble.."s=vec2(cos(prand.x*move_dist*M_PI*2)*s.x-sin(prand.x*move_dist*M_PI*2)*s.y,cos(prand.x*move_dist*M_PI*2)*s.y+sin(prand.x*move_dist*M_PI*2)*s.x);"
 	--str_preamble=str_preamble.."s=rotate(s,prand.x*move_dist*M_PI*2);"
+	str_preamble=str_preamble.."s=rotate(s,prand.y*M_PI*2)+vec2(move_dist)*prand.x;"
+	str_postamble=str_postamble.."s=rotate(s-vec2(move_dist)*prand.x,prand.y*M_PI*2);"
 	--str_preamble=str_preamble.."p=rotate(p,-prand.x*move_dist*M_PI*2);"
 	--]]
-	str_postamble=str_postamble.."s=s+rotate(p-s,move_dist*M_PI*2)*prand.x*(1/(length(last_s-s)+2));"
+	--str_postamble=str_postamble.."s=s+rotate(p-s,move_dist*M_PI*2)*move_dist*prand.x*(1/(length(last_s-s)+2));"
 	--[[ sdf-probe
 	str_preamble=str_preamble.."float sval=sign(sdf(s));"
 	--str_postamble=str_postamble.."s=mix(vec2(cos(prand.y*M_PI*2),sin(prand.y*M_PI*2)),s,((sign(sdf(s))*sval)+1)*0.5);"
@@ -2836,12 +3106,16 @@ function rand_function(  )
 	str_preamble=str_preamble.."vec2 ls=s;"
 	--str_postamble=str_postamble.."s=rotate((s+ls)*0.5,M_PI*prand.x*move_dist)-ls*0.5;"
 	--]]
-	--[[ polar-like
+	-- [[ polar-like
 	str_preamble=str_preamble.."s=to_polar(s);p=to_polar(p);"
 	str_postamble=str_postamble.."s=from_polar(s);p=from_polar(p);"
 	--]]
 	--[[ centered-polar
 	str_preamble=str_preamble.."s=to_polar(s-p);"
+	--str_preamble=str_preamble.."s=to_polar(s-p*(0.5+prand.x*0.5)*move_dist);"
+	--str_preamble=str_preamble.."vec2 lp=p;p=vec2(0);"
+	--str_preamble=str_preamble.."vec2 lp=p;p=vec2(ls);"
+	--str_postamble=str_postamble.."p=lp;"
 	str_postamble=str_postamble.."s=from_polar(s)+p;"
 	--]]
 	--[[ logitify POST
@@ -3560,7 +3834,7 @@ end*/
 vec3 func_actual(vec2 s,vec2 p)
 {
 	vec4 prand=get_rnd_floats(rnd_data);
-#if 1
+#if 0
 	vec2 normed_p=(p*scale*move_dist+vec2(1,1))/2;
 	vec2 normed_s=(s*scale*move_dist+vec2(1,1))/2;
 #else
@@ -3572,11 +3846,11 @@ vec3 func_actual(vec2 s,vec2 p)
 
 	float tex_sl=length(tex_s);
 	float tex_pl=length(tex_p);
-#if 1
+#if 0
 	tex_s=tex_s/(tex_sl+1);
 	tex_p=tex_p/(tex_pl+1);
 #endif
-#if 0
+#if 1
 	float lum_white=exp(move_dist);
 	tex_s=(tex_s*(1 + tex_sl / lum_white)) / (tex_sl + 1);
 	tex_p=(tex_p*(1 + tex_pl / lum_white)) / (tex_pl + 1);
@@ -3748,7 +4022,8 @@ void main()
 	else
 	{
 		vec2 seed=float_from_floathash(position.zw);
-		start_pos=gaussian2(seed,vec2(0),vec2(gen_radius));
+		//TODO: add offset changeable offset here. This would allow to have "small part" of ifs
+		start_pos=gaussian2(seed,vec2(0),vec2(gen_radius));//+params.xy;
 	}
 	vec2 p=func(position.xy,start_pos).xy;
 #if ESCAPE_MODE
@@ -3816,16 +4091,17 @@ vec2 mapping(vec2 p)
 	return p; //normal - do nothing
 	//return abs(p)-vec2(1);
 	//return mod(p+vec2(1),2)-vec2(1); //modulo, has ugly artifacts when point is HUGE
-	///*
+	/*
 	if(length(p)<50) //modulo, but no artifacts because far away points are far away
 	{
 		float size=2.005; //0.005 overdraw as it smooths the tiling when using non 1 sized points
+		//p=tRotate(p,length(p)*0.1);
 		return mod(p+vec2(size/2),size)-vec2(size/2);
 	}
 	else
 		return p;
 	//*/
-#if 0
+#if 1
 	//TODO: https://en.wikipedia.org/wiki/Wallpaper_group most of these would be fun...
 	if(length(p)<50) //modulo, but no artifacts because far away points are far away
 	{
@@ -3945,12 +4221,18 @@ uniform int pix_size;
 uniform float normed_iter;
 uniform vec4 global_seeds;
 
-uniform vec4 palette[50];
+uniform vec4 palette[1000];
 uniform int palette_size;
 uniform int palette_xyz;
-
-
-vec4 mix_palette(float value )
+uniform sampler2D tex_palette;
+vec4 mix_palette(float value)
+{
+	if (palette_size==0)
+		return vec4(0);
+	value=clamp(value,0,1);
+	return texture(tex_palette,vec2(value,0));
+}
+vec4 mix_palette2(float value )
 {
 	if (palette_size==0)
 		return vec4(0);
@@ -4040,7 +4322,16 @@ float color_value_vornoi(vec2 pos)
 	return cur_dom;
 }
 float value_inside(float x,float a,float b){return step(a,x)-step(b,x);}
-
+vec2 normed_vec_from_normed_angle(float x)
+{
+	return vec2(cos(x*M_PI*2),sin(x*M_PI*2));
+}
+float angle_diff(float x,float y)
+{
+	//real stupid way of doing this...
+	float d=dot(normed_vec_from_normed_angle(x),normed_vec_from_normed_angle(y));
+	return acos(d)/M_PI;
+}
 void main(){
 	vec2 pos=pos_f.xy;
 #if ESCAPE_MODE
@@ -4077,14 +4368,21 @@ void main(){
 	//start_l=clamp(start_l,0,1000)/1000;
 	start_l=1-clamp(start_l,0,10)/10;
 	//start_l=1-exp(-start_l*start_l/100);
-	float dist_traveled=length(delta_pos);
+	float dist_traveled=length(delta_pos); //not actual point travel distance, could we calculate that? - prob, not as xy is pos, zw is seed
+	//float phase_difference=distance(normed_vec_from_normed_angle(rnd_f.x),normed_vec_from_normed_angle(rnd_f.y))/2;
+	float phase_difference=angle_diff(rnd_f.x,rnd_f.y);
 	//float color_value=global_seeds.x;
 	//float color_value=abs(rnd_f.x*2-1);
 	float color_value=rnd_f.x;
 	//float color_value=rnd_f.y;
 	//float color_value=abs(fract(rnd_f.x*3)*2-1);
 	//float color_value=normed_iter;
+	//float color_value=(normed_iter-0.75)*4;// [0,1] 
+	//float color_value=1-normed_iter;
+	//float color_value=pow(1-normed_iter,0.9);
+	//float color_value=fract(normed_iter*3);
 	//float color_value=normed_iter*(0.5+rnd_f.y*0.5);
+	//float color_value=cos(normed_iter*3.14*3)*0.5+0.5;
 	//float color_value=(cos((rnd_f.x*rnd_f.x+1)*3.14*3)*0.5+0.5);
 	//float color_value=(cos(rnd_f.x*3.14*10)*0.5+0.5)*rnd_f.x;
 	//float color_value=cos((1-rnd_f.x*rnd_f.x)*3.14*4)*0.5+0.5;
@@ -4097,7 +4395,6 @@ void main(){
 	//float color_value=length(pos);
 	//float color_value=dot(delta_pos,delta_pos)/10;
 	//float color_value=exp(-start_l*start_l);
-	//float color_value=1-normed_iter;
 	//float color_value=cos(normed_iter*M_PI*2*20)*0.5+0.5;
 	//float color_value=smoothstep(0,1,start_l);
 	//float color_value=sin(start_l*M_PI*2/4)*0.5+0.5;
@@ -4107,28 +4404,47 @@ void main(){
 	//float color_value=clamp(dist_traveled/(1+dist_traveled),0,1);
 
 	float intensity2=1;
+	//intensity2=smoothstep(0.74,0.75,normed_iter);
 	//intensity2=1/clamp(dist_traveled,1,10);//1-clamp(dist_traveled/(1+dist_traveled),0,1);
 	//intensity2=log(clamp(dist_traveled,0,10000)+3);
+	//intensity2=cos(clamp(dist_traveled,0,10000)/100)*0.5+0.5;
 	//intensity2=1/clamp(dist_traveled,1,10000);
 	//intensity2=start_l;
-	//intensity2=global_seeds.y;
+	//intensity2=global_seeds.x;
+	//intensity2=(phase_difference*2-1);
+	//intensity2=cos(phase_difference*M_PI*3);
 	//intensity2=rnd_f.y*2-1;
 	//intensity2=rnd_f.y;
 	//intensity2=rnd_f.x;
-	//intensity2=cos(rnd_f.x*4*M_PI);
-	//intensity2=cos(rnd_f.y*2*M_PI);
+	//intensity2=rnd_f.x*2-1;
+	//intensity2=cos(rnd_f.x*8*M_PI)*0.5+0.5;
+	//intensity2=cos(rnd_f.y*6*M_PI);
 	//intensity2=cos(start_pos.y*2*M_PI);
 	//intensity2=1/(abs(start_pos.y)+1);
 	//intensity2=cos(rnd_f.y*4)+cos(rnd_f.y*7)*0.5+cos(rnd_f.y*12)*0.25;
-	//intensity2=smoothstep(0.5,1,normed_iter);
+	//intensity2=smoothstep(0.2,0.25,normed_iter);
 	//intensity2=1-normed_iter;
 	//intensity2=normed_iter;
-	//intensity2=clamp(dist_traveled/(1+dist_traveled),0,1);
+	//intensity2=-normed_iter*2+1;
+	float cut_width=0.8;
+	float cut_place=0.1;
+	intensity2=step(cut_place,normed_iter)-step(cut_place+cut_width,normed_iter);
+	//intensity2=1-smoothstep(0.49,0.51,normed_iter)*2; //basically flip sign at the middle of iterations
+	//intensity2=-1+smoothstep(0.49,0.51,normed_iter)*2; //same as above, start negative
+	//intensity2=(1-smoothstep(1,1.5,dist_traveled)*2); //same as above, start negative
+	//intensity2=-(1-smoothstep(rnd_f.y-0.1,rnd_f.y+0.1,dist_traveled)*2);
+	//intensity2=-(1-smoothstep(0.49,0.51,rnd_f.y)*2);
+	//intensity2=cos(normed_iter*M_PI*6);
+	//intensity2=1-clamp(dist_traveled/(1+dist_traveled),0,1);
 	vec3 c;
 #define COMPLEX_POINT_OUTPUT 0
-#if COMPLEX_POINT_OUTPUT
+#if COMPLEX_POINT_OUTPUT==1
 	c.x=cos(color_value*M_PI*2)*intensity*intensity2;
 	c.y=sin(color_value*M_PI*2)*intensity*intensity2;
+	c.z=0;
+#elif COMPLEX_POINT_OUTPUT==2
+	c.x=color_value*intensity*intensity2;
+	c.y=intensity*intensity2;
 	c.z=0;
 #else
 	if(palette_xyz==1)
@@ -4328,14 +4644,14 @@ bool need_reset(vec2 p,vec2 s)
 	if(isnan(s.x) || isnan(s.y))
 		return true;
 #endif
-#if 0
+#if 1
 	float move_dist=length(s-p);
-	if(move_dist<0.005)
+	if(move_dist<0.00005)
 		return true;
 #endif
 #if 1
 	float dist=length(s);
-	if(dist>2)
+	if(dist>100)
 		return true;
 #endif
 	return false;
@@ -4665,6 +4981,9 @@ function visit_iter()
 		add_visits_shader:set("scale",config.scale,config.scale*aspect_ratio)
 		add_visits_shader:set("normed_iter",cur_visit_iter/config.IFS_steps)
 		add_visits_shader:set("global_seeds",global_seed,1-cur_visit_iter/config.IFS_steps,0,0)
+
+		add_visits_shader:set_i("tex_palette",2)
+		palette_texture.t:use(2)
 
 		rnd_samples:get():use()
 		add_visits_shader:push_iattribute(0,1,4,GL_UNSIGNED_INT)
