@@ -14,6 +14,8 @@
 		point colors
 		absorbtion/emittion?
 		local thread group iterate over x by y by z cell (why? though?)
+		diffuse rays
+		different materials
 --]==]
 
 --[=[
@@ -25,8 +27,8 @@
 		- rendering kernel -> raytraces over the voxels
 --]=]
 require "common"
-local grid_size={200,200,200}
-local point_count=100
+local grid_size={500,500,500}
+local point_count=10000
 local view_w=1024
 local view_h=1024
 --__set_window_size(view_w,view_h)
@@ -61,7 +63,11 @@ point_data_rnd=point_data_rnd or {
 	opencl.make_buffer(point_count*4*4),
 	swap=function() swap_buffers(point_data_rnd) end
 }
-
+point_data_rnd2=point_data_rnd2 or {
+	opencl.make_buffer(point_count*4*4),
+	opencl.make_buffer(point_count*4*4),
+	swap=function() swap_buffers(point_data_rnd2) end
+}
 texture=textures:Make()
 texture:use(1)
 texture:set(view_w,view_h,FLTA_PIX)
@@ -82,9 +88,22 @@ local kernel_base=[==[
 #define POINT_COUNT $POINT_COUNT
 #define MAX_STEPS 1000
 #define POINT_SPREAD 0.5f
-#define SPLAT_SCALE 0.2f
-#define CUBE_CENTER (float3)(0,0,0.0f)
-#define GENERATION_OFFSET (float4)(0.0f,0.0f,0.0f,0.0f)
+#define SPLAT_SCALE 0.3f
+#define CUBE_CENTER (float3)(0.5f,0.5f,0.5f)
+#define GENERATION_OFFSET (float4)(0.5f,0.0f,0.5f,0.0f)
+#define AMBIENT_ABSORBTION (float4)(0,0,0,-0.005)
+//nvidia only?
+float atomic_add_float_global(__global float* p, float val)
+{
+    float prev;
+    asm volatile(
+        "atom.global.add.f32 %0, [%1], %2;" 
+        : "=f"(prev) 
+        : "l"(p) , "f"(val) 
+        : "memory" 
+    );
+    return prev;
+}
 
 //from: https://www.shadertoy.com/view/WttXWX
 //bias: 0.17353355999581582 ( very probably the best of its kind )
@@ -127,7 +146,7 @@ float4 calculate_origin_point(uint4 seed)
 {
 	float4 rnd_pt=convert_float4(seed)/(4294967295.0f);
 	float4 ret=gaussian4(rnd_pt,GENERATION_OFFSET,(float4)(POINT_SPREAD));
-	ret.w=0;
+	//ret.w=0;
 	return ret;
 }
 __kernel void seed_random(__global uint4* output_random,__global float4* output_points,uint4 global_seed)
@@ -158,37 +177,84 @@ float3 rotate_around(float3 vec, float3 axis,float angle)
 	float sa=sin(angle);
 	return vec*ca+cross(axis,vec)*sa+axis*(dot(axis,vec))*(1-ca);
 }
-float4 pt_func(float4 pt,float4 pt_start)
+float3 palette( float t, float3 a, float3 b,float3 c,float3 d )
+{
+    return clamp(a + b*cos( M_PI_F*(c*t+d) ),(float3)(0),(float3)(1));
+}
+float4 complex_mult(float4 a,float4 b)
+{
+	float4 ret;
+	ret.x=a.x*b.x-a.y*b.y+a.z*b.z-a.y*b.z-a.z*b.y;
+	ret.y=a.x*b.y+a.y*b.x;
+	ret.z=a.x*b.z+a.z*b.x;
+	ret.w=(a.w+b.w)*0.5f;
+	return ret;
+}
+float4 pt_func(float4 pt,float4 pt_start,float4 step_rnd)
 {
 	float4 pt_out;
 	//cubic mandelbulb?
+	float spread=0.05f;
 #if 0
-	pt_out.x=pt.x*pt.x*pt.x-3*pt.x*(pt.y*pt.y+pt.z*pt.z);
-	pt_out.y=-pt.y*pt.y*pt.y+3*pt.y*pt.x*pt.x-pt.y*pt.z*pt.z;
-	pt_out.z=pt.z*pt.z*pt.z-3*pt.z*pt.x*pt.x+pt.z*pt.y*pt.y;
+	pt_out.x=pt.x*pt.x*pt.x-(3-pt_start.w*spread)*pt.x*(pt.y*pt.y+pt.z*pt.z);
+	pt_out.y=-pt.y*pt.y*pt.y+(3-pt_start.w*spread)*pt.y*pt.x*pt.x-pt.y*pt.z*pt.z;
+	pt_out.z=pt.z*pt.z*pt.z-(3-pt_start.w*spread)*pt.z*pt.x*pt.x+pt.z*pt.y*pt.y;
 	pt_out+=pt_start;
-#elif 0
-	float b=0.1f;
-	float a=1.0f;
+#elif 1
+	float b=0.2f;
+	float a=1.0f+step_rnd.x*spread;
 	float c=-0.01f;
-	pt_out=a*sin(pt.yzxw)-b*pt+c*pt_start;
+	if (step_rnd.x>0.25)
+		pt_out=a*sin(pt.yzxw)-b*pt+c*pt_start+0.5f*a*(pt*pt-pt.yxzw*pt.xyzw);
+	else if(step_rnd.x>0.5)
+		pt_out=a*sin(pt.yzxw)+b*pt-c*pt_start+0.5f*a*(pt*pt-pt.yxzw*pt.xyzw);
+	else
+		pt_out=a*sin(pt.zxyw)-b*pt+c*pt_start+0.5f*a*(pt*pt-pt.xzyw*pt.xyzw);
 #elif 0 //simple affine?
 	pt_out.xyz=rotate_around(pt.xyz-pt_start.xyz,(float3)(0,0,1),0.1)*0.9f+pt_start.xyz;
 	pt_out.w=pt.w;
-#elif 1
-	float a=0.2f;
+#elif 0
+	float a=0.1f;
 	float b=0.8f;
 	pt_out=a*pt*pt.yzxw-b*pt.zzyy*pt.xxyy;
+	pt_out+=pt_start;
+#elif 0
+	float a=0.5f;
+	float b=0.4f;
+	float c=0.03f;
+	float d=0.01f;
+	pt_out=a*complex_mult(pt,pt)-b*complex_mult(pt,complex_mult(pt,pt));
 	pt_out+=pt_start;
 #endif
 	pt_out.w=pt.w;
 	return pt_out;
 }
+void atomic_add_point(float4 point,volatile __global float4* output_voxels,float4 color)
+{
+	int3 pt_pos=convert_int3(((point.xyz-CUBE_CENTER)*SPLAT_SCALE)*(float3)(GRID_W,GRID_H,GRID_D)+(float3)(GRID_W,GRID_H,GRID_D)*0.5f);
+	if( pt_pos.x>=0 && pt_pos.x<GRID_W &&
+		pt_pos.y>=0 && pt_pos.y<GRID_H &&
+		pt_pos.z>=0 && pt_pos.z<GRID_D)
+		{
+
+			volatile __global float* input_f = (volatile __global float*)&output_voxels[pt_pos.x+pt_pos.y*GRID_W+pt_pos.z*GRID_W*GRID_H];
+			atomic_add_float_global(&input_f[0],color.x);
+			atomic_add_float_global(&input_f[1],color.y);
+			atomic_add_float_global(&input_f[2],color.z);
+			atomic_add_float_global(&input_f[3],color.w);
+		}
+	
+}
 __kernel void point_iterate(
 	__global float4* point_list_input,
 	__global uint4*  input_random,
+	__global uint4*  input_random2,
 	__global float4* point_list_output,
-	__global uint4*  output_random
+	__global uint4*  output_random,
+	__global uint4*  output_random2
+#if 1
+	,volatile __global float4* output_voxels
+#endif
 	//__global float4* params
 	)
 {
@@ -197,19 +263,34 @@ __kernel void point_iterate(
 	if(i>=0 && i<POINT_COUNT)
 	{
 		uint4 my_rnd=input_random[i];
+		uint4 step_rnd=hash_seed(input_random2[i]);
+		output_random2[i]=step_rnd;
+		float4 step_rnd_float=convert_float4(step_rnd)/(4294967295.0f);
 		float4 point_start=calculate_origin_point(my_rnd);
 		float4 pt=point_list_input[i];
 		float4 pt_out;
 		float dist_traveled=0;
 		//pt_out=pt*1.001f;
 		//pt_out=a*sin(c*pt.yzxw)-b*pt;
-		for(int k=0;k<200;k++)
+		for(int k=0;k<500;k++)
 		{
-			pt_out=pt_func(pt,point_start);
+			float4 color;
+			color.w=0.01f;
+			pt_out=pt_func(pt,point_start,step_rnd_float);
 			pt_out.w=pt.w;
 			dist_traveled+=distance(pt_out.xyz,pt.xyz);
+			//float str=clamp(sin(length(point_start)*5.0f)*0.5f+0.5f,0.0f,1.0f);
+			//float str=clamp(sin(dist_traveled*5.0f)*0.5f+0.5f,0.0f,1.0f);
+			float str=1.0f;
+			//color.xyz=str*palette(length(point_start)*12,(float3)(0.5),(float3)(0.5),(float3)(1.0),(float3)(0.0,0.1,0.2));
+			//color.xyz=str*palette(point_start.w*1,(float3)(0.5),(float3)(0.5),(float3)(1.0),(float3)(0.3,0.5,0.1));
+			color.xyz=str*palette(step_rnd_float.x,(float3)(0.5),(float3)(0.5),(float3)(1.0),(float3)(4.3,2.5,3.1));
+			//color.xyz=str*palette(point_start.z*10,(float3)(0.5),(float3)(0.5),(float3)(1.0),(float3)(0.0,0.1,0.2));
 			pt=pt_out;
-		}
+#if 1
+			atomic_add_point(pt_out,output_voxels,color);
+#endif
+		
 		float abs_dist=distance(point_start.xyz,pt_out.xyz);
 		//--------------
 		//if(pt_out.w<0.1 )//&& dist_traveled>0.001
@@ -219,17 +300,29 @@ __kernel void point_iterate(
 		pt_out.w=0.01;
 		if( //dist_traveled<1 || dist_traveled>100 ||
 			//abs_dist<0.2 ||
-			dist_traveled/abs_dist <1 ||
+			//dist_traveled/abs_dist <1 ||
 		    pt_out.x*SPLAT_SCALE<-GRID_W || pt_out.x*SPLAT_SCALE>GRID_W*2 ||
 			pt_out.y*SPLAT_SCALE<-GRID_H || pt_out.y*SPLAT_SCALE>GRID_H*2 ||
 			pt_out.z*SPLAT_SCALE<-GRID_D || pt_out.z*SPLAT_SCALE>GRID_D*2)
 			{
 				my_rnd=hash_seed(my_rnd);
 				pt_out=calculate_origin_point(my_rnd);
+				point_start=pt_out;
+				pt=pt_out;
 				pt_out.w=0;
 			}
+		}
 		point_list_output[i]=pt_out;
 		output_random[i]=my_rnd;
+	}
+}
+__kernel void clear_voxels(__global float4* output_voxels)
+{
+	int i=get_global_id(0);
+	int max=GRID_W*GRID_H*GRID_D;
+	if(i>=0 && i<max)
+	{
+		output_voxels[i]=AMBIENT_ABSORBTION;
 	}
 }
 __kernel void splat(__global float4* point_list,__global float4* input_voxels,__global float4* output_voxels,int need_reset)
@@ -376,7 +469,7 @@ bool ray_intersects_aabb(float3 ray_origin, float3 ray_inv_direction,
 }
 float tonemap(float Y)
 {
-	float white_point=0.0000001;
+	float white_point=2;
 	float lum_white=pow(10,white_point);
 	if(white_point<0)
     	Y = Y / (1 + Y); //simple compression
@@ -391,7 +484,11 @@ float4 raycast_voxels(__global float4* voxels,float3 ray_start,float3 ray_direct
 	float3 world_scale=(float3)(GRID_W,GRID_H,GRID_D);
 	if(ray_intersects_aabb(ray_start*world_scale,1/ray_direction,(float3)(0,0,0),world_scale,&t_near,&t_far))
 		{
+#if 1
 			float4 ret=(float4)(0);
+#else
+			float4 ret=(float4)(0.25f,0.25,0.25,1.0f); //does not work
+#endif
 			t_near=max(t_near,0.0f);
 
 			float3 cur_pos=(t_near+0.5f)*ray_direction+ray_start*world_scale;
@@ -399,7 +496,7 @@ float4 raycast_voxels(__global float4* voxels,float3 ray_start,float3 ray_direct
 			//distance to separating planes
 			float3 s=((sign(ray_direction)*(floor(cur_pos)-cur_pos+0.5f))+0.5f)*tdelta;
 			float t=0; //actual t in ray_start+(t+t_near)*ray_direction
-
+			float amount_passed=1;
 			for(int i=0;i<MAX_STEPS;i++)
 			{
 				float3 mask=convert_float3((-1)*islessequal(s,min(s.yzx,s.zxy)));
@@ -414,18 +511,34 @@ float4 raycast_voxels(__global float4* voxels,float3 ray_start,float3 ray_direct
 				cur_pos+=sign(ray_direction)*mask;
 				//if(data.x>0.001)
 				//	data.x=1/data.x;
-				ret+=data;
+#if 1
+				if(data.w<0)
+					amount_passed*=exp(data.w);
+#else
+				if(data.w<0)
+					;
+#endif
+#if 0
+				else if(data.w>0.01)
+					ret+=data*amount_passed/data.w;
+#else
+				else
+					ret+=data*amount_passed;
+#endif
 				if (t>t_far){
 					//ret=(float4)(0,0,1,1); //Debug if we see all of it
-					break;
+					//break;
 				}
 			}
+			//ret*=amount_passed;
 			ret=log(ret+(float4)(M_E_F))-(float4)(1);
 			//ret.x*=1/(1+ret.x);
 			//ret=pow(fabs(ret),1/4.0f);
 			ret*=brightness;
-			ret.x=tonemap(ret.x);
-
+			float lum=sqrt(dot((float3)(0.299,0.587,0.114),ret.xyz*ret.xyz));
+			ret*=tonemap(lum);
+			//ret.x=tonemap(ret.x);
+			ret+=(float4)(0.25f,0.25,0.25,1.0f)*amount_passed; //TODO: make some sort of skybox?
 			ret.w=1;
 			return ret;
 		}
@@ -472,13 +585,13 @@ __kernel void render(__global float4* input_voxels,	__write_only image2d_t outpu
 {
 	int i=get_global_id(0);
 	int max=VIEW_W*VIEW_H;
-	float view_dist=2;
+	float view_dist=2.0;
 	float view_angle=x_rot*M_PI*2;
 	float view_angle2=y_rot*M_PI*2;
 	float3 up_dir=(float3)(0.0f,0.0f,1.0f);
 	up_dir=normalize(up_dir);
 	//float3 view_pos=(float3)(cos(view_angle)*view_dist,sin(view_angle)*view_dist,0.5f);
-	float3 offset=(float3)(0.5f,0.5f,.5f);
+	float3 offset=(float3)(0.5f,0.5f,.45f);
 
 	float3 view_ray=rotate_around((float3)(1.0f,0.0f,0.0f),up_dir,view_angle);
 	view_ray=normalize(view_ray);
@@ -560,10 +673,20 @@ void main(){
 function init_buffer(  )
 	local maxint=4294967295
 	local seed_random=cl_kernels.seed_random
+	seed_random:set(0,point_data_rnd2[1])
+	seed_random:set(1,point_data[1])
+	seed_random:seti(2,math.random(0,maxint),math.random(0,maxint),math.random(0,maxint),math.random(0,maxint))
+	seed_random:run(point_count)
+
 	seed_random:set(0,point_data_rnd[1])
 	seed_random:set(1,point_data[1])
 	seed_random:seti(2,math.random(0,maxint),math.random(0,maxint),math.random(0,maxint),math.random(0,maxint))
 	seed_random:run(point_count)
+end
+function clear_voxels()
+	local kernel=cl_kernels.clear_voxels
+	kernel:set(0,grid_field[1])
+	kernel:run(grid_size[1]*grid_size[2]*grid_size[3])
 end
 function advance_random()
 	local adv_random=cl_kernels.advance_random
@@ -576,11 +699,15 @@ function point_step()
 	local point_iterate=cl_kernels.point_iterate
 	point_iterate:set(0,point_data[1])
 	point_iterate:set(1,point_data_rnd[1])
-	point_iterate:set(2,point_data[2])
-	point_iterate:set(3,point_data_rnd[2])
+	point_iterate:set(2,point_data_rnd2[1])
+	point_iterate:set(3,point_data[2])
+	point_iterate:set(4,point_data_rnd[2])
+	point_iterate:set(5,point_data_rnd2[2])
+	point_iterate:set(6,grid_field[1])
 	point_iterate:run(point_count)
 	point_data:swap()
 	point_data_rnd:swap()
+	point_data_rnd2:swap()
 end
 function put_points( need_reset )
 	local splat=cl_kernels.splat
@@ -615,7 +742,7 @@ function draw(  )
 	    end
 	end
 end
-function save_img(  )
+function save_img( id )
     img_buf_save=make_image_buffer(view_w,view_h)
     local config_serial=__get_source().."\n--AUTO SAVED CONFIG:\n"
     for k,v in pairs(config) do
@@ -624,12 +751,17 @@ function save_img(  )
         end
     end
     img_buf_save:read_frame()
-    img_buf_save:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
+    if id then
+    	img_buf_save:save(string.format("video/saved (%d).png",id),config_serial)
+    else
+    	img_buf_save:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
+	end
 end
 
 local need_step=false
-local need_save=0
-local max_count_steps=100
+local cur_save=0
+local max_save=0
+local max_count_steps=10
 local cur_count_steps=0
 function update(  )
 	__clear()
@@ -639,11 +771,11 @@ function update(  )
     draw_config(config)
     if imgui.Button("Reset") then
     	init_buffer()
-    	put_points(true)
+    	clear_voxels()
     end
     if imgui.Button("Step") then
     	init_buffer()
-    	put_points(false)
+    	--put_points(false)
     end
     -- [[
     cur_count_steps=cur_count_steps+1
@@ -657,7 +789,7 @@ function update(  )
 	    --advance_random()
 	    point_step()
 
-	    put_points(false)
+	    --put_points(false)
 	end
     --if not config.pause or need_step then
     --	sim_tick()
@@ -665,12 +797,18 @@ function update(  )
     --end
     draw()
     if imgui.Button("Save") then
-    	need_save=1
-    	--config.x_rot=config.x_rot+0.001
+    	max_save=60*5
+    	cur_save=0
     end
- 	if need_save>0 then
-    	save_img()
-    	if need_save>0 then need_save=need_save-1 end
+ 	if max_save>0 then
+    	save_img(cur_save)
+    	config.x_rot=config.x_rot+1/max_save
+    	if cur_save<max_save then
+    		cur_save=cur_save+1
+    	else
+    		max_save=0
+    	end
+
     end
     imgui.End()
 end
