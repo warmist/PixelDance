@@ -25,14 +25,6 @@
 		add gui for cube center/zoom
 --]==]
 
---[=[
-	basic architecture:
-		- iteration kernel -> a main function that takes points and advances on a function
-			- might do N steps to be faster
-		- splatting kernel -> iterates over output points and adds them to "their voxels"
-			- gal sujungti splat+iterate, nes reik po kiekvieno iterate, splat daryt kad nereiktu invocation overhead moket
-		- rendering kernel -> raytraces over the voxels
---]=]
 require "common"
 local grid_size={500,500,500}
 local point_count=10000
@@ -400,68 +392,6 @@ __kernel void clear_voxels(__global float4* output_voxels)
 		output_voxels[i]=AMBIENT_ABSORBTION;
 	}
 }
-__kernel void splat(__global float4* point_list,__global float4* input_voxels,__global float4* output_voxels,int need_reset)
-{
-	int i=get_global_id(0);
-	int max=GRID_W*GRID_H*GRID_D;
-	float3 grid_center=CUBE_CENTER;
-	float3 grid_size=(float3)(2);
-	float3 grid_cell_size=(float3)(grid_size.x/GRID_W,grid_size.y/GRID_H,grid_size.z/GRID_D);
-	if(i>=0 && i<max)
-	{
-		int3 pos;
-		pos.x=i%GRID_W;
-		pos.y=i%(GRID_W*GRID_H)/GRID_W;
-		pos.z=i/(GRID_W*GRID_H);
-		int3 center;
-		center.x=GRID_W/2;
-		center.y=GRID_H/2;
-		center.z=GRID_D/2;
-#if 0 //debug basic splat
-
-
-		int3 delta=pos*SPLAT_SCALE-center;
-		delta*=delta;
-		int wsq=(GRID_W/2)*(GRID_W/2);
-		int wsq2=(GRID_W/4)*(GRID_W/4);
-		if(delta.x+delta.y+delta.z<wsq)
-		{
-			if(delta.x+delta.y+delta.z<wsq2)
-				output_voxels[i]=(float4)(1.0f,0.0f,1.0f,0.1f);
-			else
-				output_voxels[i]=(float4)(1.0f,0.0f,0.0f,0.01f);
-		}
-		else
-		{
-			output_voxels[i]=(float4)(0.0f,0.0f,0.0f,0.0f);
-		}
-
-#elif 0 //debug wall splat
-		int3 delta=pos-center;
-		if(abs(delta.x)<2)
-			output_voxels[i]=(float4)(0.125f,0.0f,0.0f,1.0f);
-#else
-		float4 accumulated_color=(float4)(0);
-		if(need_reset==0)
-			accumulated_color=input_voxels[i];
-		float3 cell_start=convert_float3(pos-center)*grid_cell_size-grid_center;
-		for(int j=0;j<POINT_COUNT;j++)
-		{
-			float3 delta=point_list[j].xyz*SPLAT_SCALE-cell_start;
-			if( point_list[j].w>0 &&
-			    delta.x>0 && delta.x<grid_cell_size.x &&
-				delta.y>0 && delta.y<grid_cell_size.y &&
-				delta.z>0 && delta.z<grid_cell_size.z)
-				{
-					accumulated_color+=(float4)(1.0f,1.0f,1.0f,1.0f)*point_list[j].w;
-				}
-		}
-		accumulated_color.w=1;
-		output_voxels[i]=accumulated_color;
-#endif
-	}
-}
-
 float4 raycast_voxels3(__global float4* voxels,float3 ray_start,float3 ray_direction)
 {
 	float4 ret=(float4)(0);
@@ -872,7 +802,6 @@ function update(  )
     end
     if imgui.Button("Step") then
     	init_buffer()
-    	--put_points(false)
     end
     -- [[
     cur_count_steps=cur_count_steps+1
@@ -885,13 +814,7 @@ function update(  )
     if not config.pause_points then
 	    --advance_random()
 	    point_step()
-
-	    --put_points(false)
 	end
-    --if not config.pause or need_step then
-    --	sim_tick()
-    --	need_step=false
-    --end
     draw()
     if imgui.Button("Save") then
     	save_img()
