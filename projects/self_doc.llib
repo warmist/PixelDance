@@ -1,0 +1,81 @@
+--[===[
+# Self documentation library
+
+Allows self documenting code.
+
+More like inline description of stuff that generates nice output markdeep file.
+
+!!!Currently in lloyds_algo.lua
+
+Ideas:
+	Inline png
+	Inline source
+	place png in correct place
+	a function that if was ran (??) for image generation add some text to output
+		e.g. only when using randomized ruleset output info about it
+--]===]
+local header=[==[	                       <meta charset="utf-8" emacsmode="-*- markdown -*-">]==]
+local footer=[==[
+<!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>
+<script type="text/javascript">
+function do_changes()
+{
+//TODO: somewhat cursed... also TODO: actually compress...
+function download_source()
+{
+my_code=atob("@this_code_compressed@")
+const link = document.getElementById("specific_code");
+const file = new Blob([my_code], { type: 'text/plain' });
+
+// Add file content in the object URL
+link.href = URL.createObjectURL(file);
+
+// Add file name
+link.download = "@project_name@.lua";
+}
+download_source()
+function set_image()
+{
+	const img = document.getElementById("placeholder_img");
+	img.src="data:image/png;base64,@base64_image@"
+	img.parentElement.href=img.src
+}
+set_image()
+}
+window.markdeepOptions={}
+window.markdeepOptions.onLoad=do_changes
+</script>
+]==]
+local placeholder_image=[==[![Generated image](data:image/gif;base64,R0lGODlhAQABAAAAACw= id=placeholder_img)]==]
+local trigger_multiline="--[===[="
+local trigger_oneline="--="
+
+local ffi = require("ffi")
+local b64= require("base64")
+function encode_base64( buffer,size )
+	print(buffer,size)
+	local str=ffi.cast("unsigned char**",buffer)[0]
+
+	return b64.encode_arr(str,size)
+end
+
+function compress( str )
+	return b64.encode(str)
+end
+
+function set_values(s,tbl)
+	return (s:gsub("@([^@]+)@",function ( n )
+		--[[if tbl[n] == nil then
+			error("no value provided for %s",n)
+		end]]
+		return tbl[n]
+	end))
+end
+
+function parse_comments(  )
+
+end
+function save( source,image,filename )
+	filename=filename or string.format("saved_%d.md.html",os.time(os.date("!*t")))
+	local image_str=encode_base64(image:save_mem())
+end
