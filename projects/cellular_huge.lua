@@ -1,19 +1,27 @@
 require "common"
-require "self_doc"
---[===[=
-	** Cellular automaton "Huge" edition **
+local doc=require "self_doc"
+project_name="cellular_huge"
+--[===[=                             **Cellular automaton "Huge" edition**
+@subheader@
 
-	An exploration of cellular automaton (CA) with huge state space. This includes having
-	big number of states each cell can have, various neighborhoods, totalistic and not, etc...
+# Description
+An exploration of cellular automaton (CA) with huge state space. This includes having
+big number of states each cell can have, various neighborhoods, totalistic and not, etc...
 
-	Due to very large number of possible states ruletable can't be practically written down,
-	so rules are generated on the fly from seed(s).
+Due to very large number of possible states ruletable can't be practically written down,
+so rules are generated on the fly from seed(s).
 
-	Refs:
-	* https://en.wikipedia.org/wiki/Cellular_automaton
+# Image
+
+@generated_image@
+@download_links@
+
+
 --]===]
 --[==[
 	TODO:
+		* rewrite state calculation to somehow be more overflow proof
+		* document more stuff!
 	FIXME:
 --]==]
 
@@ -22,13 +30,20 @@ local win_h=1024
 
 local oversample=1/4
 
-local map_w=math.floor(win_w*oversample)
-local map_h=math.floor(win_h*oversample)
+map_w=math.floor(win_w*oversample)
+map_h=math.floor(win_h*oversample)
 
 local size=STATE.size
-local max_state=20
+max_state=20
 local use_actual_rulebook=false
+--[===[=
+# Configuration and settings
 
+* Simulation size: @map_w@x@map_h@
+* State count: @max_state@
+* Steps done: @count_steps_done@
+
+--]===]
 local symmetries={
 	--"pos.yx","-pos.xy","-pos.yx", --mirrors
 	--"rotated(pos-center,M_PI_F/2)+center","rotated(pos-center,2*M_PI_F/2)+center","rotated(pos-center,3*M_PI_F/2)+center",
@@ -38,7 +53,7 @@ local symmetries={
 }
 
 local checked_cells=(8+#symmetries)
-local max_rule=math.pow(checked_cells,max_state)-1
+
 config=make_config({
     {"pause",true,type="bool"},
     {"draw_food",false,type="bool"},
@@ -46,7 +61,6 @@ config=make_config({
     {"noise",1,type="float",min=0,max=1},
     {"step_count",8,type="int",min=0,max=15},
     },config)
-
 
 local need_reinit=(cell_fields==nil)
 cell_fields=cell_fields or{
@@ -179,53 +193,13 @@ float avg_around(__global float* values,int2 pos)
 }
 $generated_rule_definition
 
-int count_cell_state(int* cell_state)
-{
-	int trg_id=0;
-	for(int k=0;k<STATE_COUNT;k++)
-		trg_id+=cell_state[k]*(int)(pown((float)(CELL_COUNT),k));
-
-	int max_id=pown((float)(CELL_COUNT),STATE_COUNT)-1;
-	int actual_id=0;
-	for(int i=0;i<max_id;i++)
-	{
-		if(i==trg_id)
-			return actual_id;
-
-		int sum=0;
-		int split_i=i;
-		for(int k=0;k<STATE_COUNT;k++)
-		{
-			sum+=(i%CELL_COUNT);
-			i/=CELL_COUNT;
-		}
-
-
-		if(sum<CELL_COUNT)
-			actual_id+=1;
-	}
-	return 0;
-}
 $weight_table
 int hash_based_rule(int state,uint hash_offset,int my_state)
 {
 	uint h=lowbias32(hash_offset);
 	h=lowbias32(h);
 	h=lowbias32(h+state);
-#if 0 //weights... unfinished!
-//TODO: better weight system
-#define WEIGHTS_PER_STATE 3
-	//weighted table for rule selection
-	int wtable[]={
-		//state 0
-		0,1,2,1,1,1,2,2,2,
-		//state 1
-		0,0,1,1,1,1,1,2,2,
-		//state 2
-		0,0,0,0,1,2,2,2,2,
-	};
-	return wtable[(h % STATE_COUNT*WEIGHTS_PER_STATE)+my_state*STATE_COUNT*WEIGHTS_PER_STATE];
-#elif 1
+#if 1
 	// something like: return weight_table_my_state[h%WEIGHT_COUNT];
 	$weight_logic
 #else
@@ -533,11 +507,14 @@ __kernel void init_cells(
 			&& (abs(posc.y)<edge_w || (posc.x-edge_w<slider_pos && posc.x+edge_w>slider_pos))
 			&& (abs(posc.x)%4==0 || (abs(posc.x)>(radius*2-edge_w*2) || (posc.x-edge_w<slider_pos && posc.x+edge_w>slider_pos)))
 #elif 1 //grid
-			&& e_mod(pos.x,8)<4
-			&& e_mod(pos.y,8)<4
+			&& e_mod(pos.x,32)<8
+			&& e_mod(pos.y,32)<8
 #endif
 		)
-			v=5;
+		{
+			//v=lowbias32(abs(posc.x)/32+abs(posc.y)/32)%STATE_COUNT;
+			v=lowbias32(i)%STATE_COUNT;
+		}
 			//v=pos.x%COUNT_TYPES;
 			//v=hash.x%COUNT_TYPES;
 	#endif
@@ -672,7 +649,6 @@ function logic_preamble()
 		table.insert(tbl_cells,string.format("cell_state[%d]",i-1)..mult..table.concat(tbl_count,"*"))
 		table.insert(tbl_count,"CELL_COUNT")
 	end
-	--return "int state_id=count_cell_state(cell_state);"
 	return string.format("int state_id=%s;",table.concat(tbl_cells,"+"))
 end
 function gen_symmetries_def()
@@ -837,7 +813,16 @@ function init_buffer(  )
 	init_cells:set(4,config.radius)
 	init_cells:set(5,config.noise)
 	init_cells:run(map_w*map_h)
+	count_steps_done=0
+	need_save_init=true
 end
+--[===[=
+# Initial state
+Initial state is initialized to this image:
+
+@initial_state@
+
+--]===]
 function inject_food( scale )
 	scale=scale or 1
 	local inject_food=cl_kernels.inject_food
@@ -881,6 +866,11 @@ function save_img( id )
     img_buf_save:read_frame()
     if id and type(id)=="number" then
     	img_buf_save:save(string.format("video/saved (%d).png",id),config_serial)
+    elseif type(id)=="string" and id=="init" then
+    	initial_state=doc.encode_image(img_buf_save)
+    	--print("init image:",#initial_state)
+    elseif type(id)=="string" and id=="doc" then
+    	doc.save(config_serial,{generated_image=img_buf_save,initial_state=initial_state},"test.md.html")
     else
     	img_buf_save:save(string.format("saved_%d.png",os.time(os.date("!*t"))),config_serial)
     end
@@ -1010,6 +1000,7 @@ function simulate_ui(tick)
 	    end
 	end
 end
+count_steps_done=count_steps_done or 0
 function update(  )
 	local step_done=false
 	__clear()
@@ -1071,13 +1062,26 @@ function update(  )
     	sim_tick()
     	need_step=need_step-1
     	step_done=true
+    	count_steps_done=count_steps_done+1
     end
     draw()
 	simulate_ui(step_done)
  	if imgui.Button("Save") or (need_save and need_step==0) then
     	save_img(need_save)
     	need_save=false
-    	--config.noise=config.noise-1
+    end
+    if imgui.Button("Save initial") or need_save_init then
+    	save_img("init")
+    	need_save=false
+    	need_save_init=false
+    end
+    if imgui.Button("Doc") then
+    	save_img("doc")
     end
     imgui.End()
 end
+
+--[===[=
+# References
+	* https://en.wikipedia.org/wiki/Cellular_automaton
+--]===]

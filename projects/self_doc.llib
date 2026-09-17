@@ -5,17 +5,32 @@ Allows self documenting code.
 
 More like inline description of stuff that generates nice output markdeep file.
 
-!!!Currently in lloyds_algo.lua
+!!!Currently in cellular_huge.lua
+based on things in disk_tree_potential_well.lua
 
 Ideas:
-	Inline png
-	Inline source
-	place png in correct place
 	a function that if was ran (??) for image generation add some text to output
 		e.g. only when using randomized ruleset output info about it
 --]===]
-local header=[==[	                       <meta charset="utf-8" emacsmode="-*- markdown -*-">]==]
+local use_image_hacks=true
+local header=[==[
+	                       <meta charset="utf-8" emacsmode="-*- markdown -*-">
+	                       	**Generated Image Infocard**
+]==]
+local download_links=[==[
+[Family source code](https://github.com/warmist/PixelDance/blob/master/projects/@project_name@.lua)
+
+<a id="specific_code" href="tmp">Specific file source code</a>
+]==]
 local footer=[==[
+
+# Socials
+* [Bluesky](https://bsky.app/profile/warmist.bsky.social)
+* [Reddit](https://www.reddit.com/user/warmist/submitted/)
+* [Github](https://github.com/warmist)
+* I also hang out in [generative discord server](https://discord.gg/PvCev7J4Af)
+
+
 <!-- Markdeep: --><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>
 <script type="text/javascript">
 function do_changes()
@@ -34,20 +49,35 @@ link.href = URL.createObjectURL(file);
 link.download = "@project_name@.lua";
 }
 download_source()
-function set_image()
-{
-	const img = document.getElementById("placeholder_img");
-	img.src="data:image/png;base64,@base64_image@"
-	img.parentElement.href=img.src
-}
-set_image()
+@img_hacks@
 }
 window.markdeepOptions={}
 window.markdeepOptions.onLoad=do_changes
+
 </script>
 ]==]
-local placeholder_image=[==[![Generated image](data:image/gif;base64,R0lGODlhAQABAAAAACw= id=placeholder_img)]==]
+--markdeep used to take a long time if image is too big? but not if we replace it with code
+local hack_images=[==[
+function set_images()
+{
+	const images=[@element_ids@];
+	const image_data=[
+@base64_image_data@
+]
+	images.forEach((item,index)=>{
+		const img = document.getElementById(item);
+		img.src="data:image/png;base64,"+image_data[index]
+		img.parentElement.href=img.src
+	});
+}
+set_images()
+]==]
+local placeholder_image=[==[![%s](data:image/gif;base64,R0lGODlhAQABAHAAACwAAAAAAQABAIH/AAAAAAAAAAAAAAACAkQBADs= id=%s)]==]
+
+local subheader=[==[	                       	***By [Warmist](#Socials)***]==]
+local generated_image=[==[![Generated image](data:image/gif;base64,@base64_image@)]==]
 local trigger_multiline="--[===[="
+local end_multiline="--]===]"
 local trigger_oneline="--="
 
 local ffi = require("ffi")
@@ -65,17 +95,110 @@ end
 
 function set_values(s,tbl)
 	return (s:gsub("@([^@]+)@",function ( n )
-		--[[if tbl[n] == nil then
-			error("no value provided for %s",n)
-		end]]
-		return tbl[n]
+		--print(n)
+		local val=tbl[n]
+		if val==nil then
+			val=_G[n]
+		end
+		if val == nil then
+			print(string.format("WARN:no value provided for %s",n))
+		end
+		return val
 	end))
 end
-
-function parse_comments(  )
-
+function substring_contains(str,pos,substr)
+	return str:sub(pos,pos+#substr-1)==substr
 end
-function save( source,image,filename )
+function parse_comments( source )
+	local ret={}
+	local cur_point=1
+	while cur_point<#source do
+		local start_comment=source:find("--",cur_point,true)
+		if start_comment==nil then
+			break
+		end
+		if substring_contains(source,start_comment,trigger_oneline) then
+			--print("One line doc-comment@"..start_comment)
+			local start_text=start_comment+#trigger_oneline
+			local text,end_text=source:match("([^\n]+)()",start_text)
+			table.insert(ret,text)
+			cur_point=end_text
+		elseif substring_contains(source,start_comment,trigger_multiline) then
+			--print("Multi line doc-comment@"..start_comment)
+			local end_text=source:find(end_multiline,start_comment,true)
+			if end_text==nil then
+				print("WARN:Could not find ending for multiline doc-comment @"..start_comment)
+				break
+			end
+			table.insert(ret,source:sub(start_comment+#trigger_multiline,end_text-1))
+			cur_point=end_text+#end_multiline
+		else
+			cur_point=start_comment+2
+		end
+	end
+	return ret
+end
+function capitalize_word(word)
+    return word:sub(1,1):upper()..word:sub(2)
+end
+function capitalize(str)
+    return str:gsub("%a[^%s]*", capitalize_word)
+end
+function niceify_name(s)
+	s=s:gsub("_"," ")
+	s=capitalize(s)
+	return s
+end
+function save( source,images,filename )
+
 	filename=filename or string.format("saved_%d.md.html",os.time(os.date("!*t")))
-	local image_str=encode_base64(image:save_mem())
+	--local image_str=encode_base64(image:save_mem())
+	local f=io.open(filename,"wb")
+
+	local tbl_data={}
+	--tbl_data.header=header
+	--tbl_data.footer=footer
+	local image_table={element_ids={},base64_image_data={}}
+	for k,v in pairs(images) do
+		table.insert(image_table.element_ids,string.format('"%s"',k))
+		if type(v)=="string" then
+			table.insert(image_table.base64_image_data,string.format('"%s"',v))
+		else
+			table.insert(image_table.base64_image_data,string.format('"%s"',encode_image(v)))
+		end
+	end
+	image_table.element_ids=table.concat(image_table.element_ids,", ")
+	image_table.base64_image_data=table.concat(image_table.base64_image_data,", ")
+	if use_image_hacks then
+		tbl_data.img_hacks=set_values(hack_images,image_table)
+		--tbl_data.img_hacks=""
+		for k,v in pairs(images) do
+			tbl_data[k]=string.format(placeholder_image,niceify_name(k),k)
+		end
+	else
+		tbl_data.img_hacks=""
+		for k,v in pairs(images) do
+			if type(v)=="string" then
+				tbl_data[k]=v
+			else
+				tbl_data[k]=format_image(v,"Generated Image")
+			end
+		end
+	end
+
+	tbl_data.this_code_compressed=compress(source)
+	--tbl_data.base64_image=image_str
+	tbl_data.subheader=subheader
+	tbl_data.download_links=set_values(download_links,{})
+	local md_source=parse_comments(source,tbl_data)
+	local template=header..table.concat(md_source,"\n\n")..footer
+	f:write(set_values(template,tbl_data))
+	f:close()
 end
+function encode_image(img)
+	return encode_base64(img:save_mem())
+end
+function format_image(img,name)
+	return string.format("![%s](data:image/png;base64,%s)",name,encode_image(img))
+end
+return {save=save,encode_image=encode_image,format_image=format_image}
