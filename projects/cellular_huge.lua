@@ -20,9 +20,14 @@ so rules are generated on the fly from seed(s).
 --]===]
 --[==[
 	TODO:
-		* rewrite state calculation to somehow be more overflow proof
+		+ rewrite state calculation to somehow be more overflow proof
 		* document more stuff!
+			* like neighborhood
+			* weighting system
+			* maybe how state is calculated
+		* add config for rule balance
 	FIXME:
+		* crashes sometimes :< (after rulegen/weight gen)
 --]==]
 
 local win_w=1024
@@ -34,7 +39,7 @@ map_w=math.floor(win_w*oversample)
 map_h=math.floor(win_h*oversample)
 
 local size=STATE.size
-max_state=20
+max_state=25
 local use_actual_rulebook=false
 --[===[=
 # Configuration and settings
@@ -45,6 +50,8 @@ local use_actual_rulebook=false
 
 --]===]
 local symmetries={
+	--"(pos+(int2)(0,4))","(pos+(int2)(0,-4))","(pos+(int2)(-4,0))","(pos+(int2)(4,0))",
+	--"(pos+(int2)(16,16))","(pos+(int2)(-16,-16))","(pos+(int2)(-16,16))","(pos+(int2)(16,-16))",
 	--"pos.yx","-pos.xy","-pos.yx", --mirrors
 	--"rotated(pos-center,M_PI_F/2)+center","rotated(pos-center,2*M_PI_F/2)+center","rotated(pos-center,3*M_PI_F/2)+center",
 	--"rotated(pos-center,2*M_PI_F/3)+center","rotated(pos-center,4*M_PI_F/3)+center", --3fold
@@ -60,6 +67,9 @@ config=make_config({
     {"radius",8,type="float",min=1,max=100},
     {"noise",1,type="float",min=0,max=1},
     {"step_count",8,type="int",min=0,max=15},
+    {"color_amplitude",1,type="float",min=0,max=5},
+	{"color_freq",3,type="float",min=0,max=5},
+	{"color_phase",1,type="float",min=0,max=5},
     },config)
 
 local need_reinit=(cell_fields==nil)
@@ -155,24 +165,33 @@ void count_around(__global float* cells,int2 pos,int* state_counts)
 		{
 			float sample=sample_at_pos_float(cells,pos+(int2)(dx,dy));
 			int state_id=floor(sample);
-			if(state_id>0)
-				state_counts[state_id-1]++;
+			//if(state_id>0)
+			state_counts[state_id]++;
 				//state_counts[0]++;
 		}
 	}
 	int2 center=(int2)(W/2,H/2);
 	//something along the lines of int2 samples_pos[]={a,b,c}
 	$generated_count_logic
-#if 0
+#if 1
 	for(int i=0;i<SYMMETRY_COUNT;i++)
 	{
 		int2 dp=sample_pos[i];
 		float sample=sample_at_pos_float(cells,dp);
 		int state_id=floor(sample);
-		if(state_id>0)
-			state_counts[state_id-1]++;
+		//if(state_id>0)
+		state_counts[state_id]++;
 	}
 #endif
+}
+uint calculate_hash_based_state_id(int* cell_state)
+{
+	int state_start_seed=lowbias32(123999);
+	for(int i=0;i<STATE_COUNT;i++)
+	{
+		state_start_seed=lowbias32(state_start_seed+cell_state[i]);
+	}
+	return state_start_seed;
 }
 float avg_around(__global float* values,int2 pos)
 {
@@ -247,6 +266,31 @@ float state_cost(int state)
 	//ret_cost+=state_cost(state-1);
 	return cost_change*ret_cost;
 }
+__kernel void cell_update_zoom(
+	__global float* cell_input,
+	__global float* cell_output,
+	__global float* cell_food_input,
+	__global float* cell_food_output
+	)
+{
+	int i=get_global_id(0);
+	int max_i=W*H;
+
+	if(i>=0 && i<max_i)
+	{
+		int2 pos;
+		pos.x=i%W;
+		pos.y=i/W;
+		int2 center_i;
+		center_i.x=W/2;
+		center_i.y=H/2;
+		int zoom_amount=2;
+		int2 new_pos=(pos-center_i)/zoom_amount+center_i;
+
+		cell_output[i]=sample_at_pos_float(cell_input,new_pos);
+		cell_food_output[i]=sample_at_pos_float(cell_food_input,new_pos);
+	}
+}
 __kernel void cell_update(
 	__global float* cell_input,
 	__global float* cell_output,
@@ -283,7 +327,7 @@ __kernel void cell_update(
 		int cell_state[STATE_COUNT]={};
 		count_around(cell_input,pos,cell_state);
 		//int state_id=cell_state[0]+cell_state[1]*STATE_COUNT+cell_state[2]*STATE_COUNT*STATE_COUNT+cell_state[3]*STATE_COUNT*STATE_COUNT*STATE_COUNT;
-
+		int state_id=calculate_hash_based_state_id(cell_state);
 		$generated_rule_logic
 		//something like if(my_cell_i==1) new_cell=rulebook_1[state_id];
 		//or new_cell=hash_based_rule(state_id,state_hash_offset[my_cell_i])
@@ -293,7 +337,7 @@ __kernel void cell_update(
 			new_cell=0;
 
 		int new_cell_i=(floor(new_cell));
-		float cell_final_out=my_cell_f;
+		float cell_final_out=new_cell;
 
 #if 0 //cell food system
 
@@ -361,7 +405,7 @@ __kernel void cell_update(
 				cell_final_out=floor(my_cell_f);
 			}
 		}
-#elif 1 //fractional part is only for display
+#elif 0 //fractional part is only for display
 		if(my_cell_i!=new_cell_i)
 		{
 			cell_final_out=new_cell;
@@ -466,9 +510,12 @@ __kernel void init_cells(
 		int edge_w=8;
 		float L=radius-edge_w*2;
 		int slider_pos=noise_level;
+		int edge_skip=4;
+		int grid_skip=32;
+		int grid_w=30;
 	#if 1
 		if( true
-			&& float_from_hash(hash).x<noise_level
+			//&& float_from_hash(hash).x<noise_level
 			//&& length(pos_normed-center_offset)<radius/(float)(W)
 			//&& length(pos_normed)<0.2
 			//&& fmod(length(pos_normed),0.4f)<0.3
@@ -484,36 +531,42 @@ __kernel void init_cells(
 #if 0 //box
 			&& (abs(posc.x)<radius)
 			&& (abs(posc.y)<radius)
-			&& (abs(posc.x)%4==0 || abs(posc.x)>(radius-edge_w*2))
-			&& (abs(posc.y)%4==0 || abs(posc.y)>(radius-edge_w*2))
+			&& (abs(posc.x)%edge_skip==0 || abs(posc.x)>(radius-edge_w*2))
+			&& (abs(posc.y)%edge_skip==0 || abs(posc.y)>(radius-edge_w*2))
 			&& (max(abs(posc.x),abs(posc.y))>L)
 #elif 0 // T
 			&& (abs(posc.x)<radius*2)
 			&& (abs(posc.y)<edge_w || abs(posc.x)<edge_w)
 			&& (posc.y>-edge_w)
 			&& (posc.y<radius*2)
-			&& (abs(posc.x)%4==0 || (abs(posc.x)>(radius*2-edge_w*2) || abs(posc.x)<edge_w))
-			&& (abs(posc.y)%4==0 || (abs(posc.y)>(radius*2-edge_w*2) || abs(posc.y)<edge_w))
-#elif 0 // X
+			&& (abs(posc.x)%edge_skip==0 || (abs(posc.x)>(radius*2-edge_w*2) || abs(posc.x)<edge_w))
+			&& (abs(posc.y)%edge_skip==0 || (abs(posc.y)>(radius*2-edge_w*2) || abs(posc.y)<edge_w))
+#elif 1 // X
 			&& (abs(posc.x)<radius*2)
 			&& (abs(posc.y)<edge_w || abs(posc.x)<edge_w)
 			&& (posc.y>-radius*2)
 			&& (posc.y<radius*2)
-			&& (abs(posc.x)%4==0 || (abs(posc.x)>(radius*2-edge_w*2) || abs(posc.x)<edge_w))
-			&& (abs(posc.y)%4==0 || (abs(posc.y)>(radius*2-edge_w*2) || abs(posc.y)<edge_w))
+			&& (abs(posc.x)%edge_skip==0 || (abs(posc.x)>(radius*2-edge_w*2) || abs(posc.x)<edge_w))
+			&& (abs(posc.y)%edge_skip==0 || (abs(posc.y)>(radius*2-edge_w*2) || abs(posc.y)<edge_w))
 #elif 0 // slider
 			&& (abs(posc.x)<radius*2)
 			&& (abs(posc.y)<edge_w+1)
 			&& (abs(posc.y)<edge_w || (posc.x-edge_w<slider_pos && posc.x+edge_w>slider_pos))
-			&& (abs(posc.x)%4==0 || (abs(posc.x)>(radius*2-edge_w*2) || (posc.x-edge_w<slider_pos && posc.x+edge_w>slider_pos)))
-#elif 1 //grid
-			&& e_mod(pos.x,32)<8
-			&& e_mod(pos.y,32)<8
+			&& (abs(posc.x)%edge_skip==0 || (abs(posc.x)>(radius*2-edge_w*2) || (posc.x-edge_w<slider_pos && posc.x+edge_w>slider_pos)))
+#elif 0 //grid
+			&& e_mod(pos.x,grid_skip)<grid_w
+			&& e_mod(pos.y,grid_skip)<grid_w
+			//&& lowbias32(abs(pos.x)/grid_skip+(W/grid_skip)*abs(pos.y)/grid_skip)%5!=0
+
 #endif
 		)
 		{
 			//v=lowbias32(abs(posc.x)/32+abs(posc.y)/32)%STATE_COUNT;
-			v=lowbias32(i)%STATE_COUNT;
+			//v=lowbias32(i)%STATE_COUNT;
+			if(float_from_hash(hash).x<noise_level)
+				v=1;
+			else
+				v=2;
 		}
 			//v=pos.x%COUNT_TYPES;
 			//v=hash.x%COUNT_TYPES;
@@ -601,7 +654,8 @@ __kernel void update_texture(
 		float my_food=food_input[i]*1;
 		//float my_cell=cell_input[i]*25;
 
-		float4 col=(float4)(my_cell/(float)(STATE_COUNT),my_food,0.f,0.f);
+		//float4 col=(float4)(my_cell/(float)(STATE_COUNT),my_food,0.f,0.f);
+		float4 col=(float4)(my_cell,my_food,0.f,0.f);
 
 		write_imagef(output_tex,pos,col);
 	}
@@ -614,7 +668,7 @@ function update_kernels()
 		width=map_w,
 		height=map_h,
 		generated_rule_definition=generated_rule_definition or "",
-		generated_rule_logic=generated_rule_logic or "int state_id=0;",
+		generated_rule_logic=generated_rule_logic or "",
 		generated_count_logic=generated_count_logic or "int2 sample_pos[]={};",
 		weight_table=weight_table or "",
 		weight_logic=weight_logic or "return h%STATE_COUNT;",
@@ -662,7 +716,9 @@ function update_rules()
 
 	generated_rule_definition=string.format("uint state_hash_offset[]={%s};\n",table.concat(hash_offsets,",\n"))
 	generated_rule_definition=generated_rule_definition..string.format("uint state_hash_offset_food[]={%s};\n#define STATE_LOOKUP(s) state_hash_offset_food[s]",table.concat(hash_offsets_food,",\n"))
-	local rule_logic={logic_preamble(),"new_cell=hash_based_rule(state_id,state_hash_offset[my_cell_i],my_cell_i);\n"}
+	local rule_logic={
+	--logic_preamble(),
+"new_cell=hash_based_rule(state_id,state_hash_offset[my_cell_i],my_cell_i);\n"}
 	generated_rule_logic=table.concat(rule_logic,"\n")
 
 	print(generated_rule_definition)
@@ -755,8 +811,8 @@ void main(){
     //vec3 c=palette(normed_particle,vec3(0.2),vec3(0.8),vec3(1.5,0.5,1.0),vec3(0.5,0.5,0.25));
     //vec3 c=palette(normed_particle,vec3(0.5),vec3(0.5),vec3(1.0),vec3(0.0,0.1,0.2));
 // saturation or value slowly increasing if state stays the same
-    float state_whole_part=floor(normed_particle*state_count)/float(state_count);
-    vec3 c=palette(state_whole_part,col_offset,col_amplitute,col_freq,col_angle);
+    float state_whole_part=normed_particle/float(state_count);
+   	vec3 c=palette(state_whole_part,col_offset,col_amplitute,col_freq,col_angle);
     //vec3 c=vec3(state_whole_part);
 #if 0
     float state_fract_part=(normed_particle-state_whole_part)*float(state_count);
@@ -790,9 +846,9 @@ void main(){
 }
 )
 function randomize_colors()
-	local max_amplitude=0.8
-	local max_freq=1
-	local max_phase=2
+	local max_amplitude=config.color_amplitude
+	local max_freq=config.color_freq
+	local max_phase=config.color_phase
 	for i=1,3 do
 		-- [==[ rand offset+ampl
 			color_info.col_offset[i]=math.random()*max_amplitude
@@ -834,6 +890,15 @@ function inject_food( scale )
 end
 function sim_tick(  )
     local cell_update=cl_kernels.cell_update
+	cell_update:set(0,cell_fields[1])
+	cell_update:set(1,cell_fields[2])
+	cell_update:set(2,cell_food_fields[1])
+	cell_update:set(3,cell_food_fields[2])
+	cell_update:run(map_w*map_h)
+	swap_cells()
+end
+function sim_tick_zoom(  )
+    local cell_update=cl_kernels.cell_update_zoom
 	cell_update:set(0,cell_fields[1])
 	cell_update:set(1,cell_fields[2])
 	cell_update:set(2,cell_food_fields[1])
@@ -896,13 +961,15 @@ function random_hashes_food()
 	end
 end
 function random_weights()
-	local fill_stable=24
-	local fill_zero=2
-	local fill_random=2
+	local fill_stable=13
+	local fill_zero=3
+	local fill_random=4
+	local fill_next=0
+	local fill_prev=0
 
-	local zero_fill_zero=8
-	local zero_fill_state=20
-	local weight_count=fill_stable+fill_zero+fill_random
+	local zero_fill_zero=18
+	local zero_fill_state=0
+	local weight_count=fill_stable+fill_zero+fill_random+fill_next+fill_prev
 
 	weight_table={string.format("#define WEIGHT_COUNT %d",weight_count)}
 	weight_logic={"if(false);"}
@@ -914,20 +981,27 @@ function random_weights()
 				table.insert(wtbl,0)
 			end
 			for j=0,zero_fill_state-1 do
-				table.insert(wtbl,j)
+				table.insert(wtbl,j%max_state)
 			end
-			for j=1,weight_count-zero_fill_zero-zero_fill_state do
+			local ws=#wtbl
+			for j=1,weight_count-ws do
 				table.insert(wtbl,math.random(0,max_state-1))
 			end
 		else
+			for j=1,fill_random do
+				table.insert(wtbl,math.random(0,max_state-1))
+			end
 			for i=1,fill_stable do
 				table.insert(wtbl,cur_state)
 			end
 			for i=1,fill_zero do
 				table.insert(wtbl,0)
 			end
-			for j=1,weight_count-#wtbl do
-				table.insert(wtbl,math.random(0,max_state-1))
+			for i=1,fill_next do
+				table.insert(wtbl,(cur_state+1)%max_state)
+			end
+			for i=1,fill_prev do
+				table.insert(wtbl,cur_state-1)
 			end
 		end
 		table.insert(weight_table,string.format("const int weight_table_%d[]={%s};",cur_state,table.concat(wtbl,", ")))
@@ -1042,6 +1116,9 @@ function update(  )
     	need_step=config.step_count
     	need_save=true
     end
+    if imgui.Button("Zoom") then
+    	sim_tick_zoom()
+    end
     if imgui.Button("RandColor") then
     	randomize_colors()
     end
@@ -1084,4 +1161,5 @@ end
 --[===[=
 # References
 	* https://en.wikipedia.org/wiki/Cellular_automaton
+	* colors: https://iquilezles.org/articles/palettes/
 --]===]
